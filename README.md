@@ -1,6 +1,6 @@
 # Sahkarmi
 
-[![CI](https://github.com/ganguydhrubo/sahkarmi/actions/workflows/ci.yml/badge.svg)](https://github.com/ganguydhrubo/sahkarmi/actions/workflows/ci.yml)
+[![CI](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml/badge.svg)](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Sahkarmi is a local-first desktop workspace for persistent AI teammates. It supports the local
@@ -36,12 +36,12 @@ Sahkarmi supports macOS 12 or newer on Apple Silicon and Windows 10 or newer on 
 
 ### macOS
 
-1. Download the latest `Sahkarmi-*.dmg` from [GitHub Releases](https://github.com/ganguydhrubo/sahkarmi/releases).
+1. Download the latest `Sahkarmi-*.dmg` from [GitHub Releases](https://github.com/ganguydhrubo/sahakarmi/releases).
 2. Drag Sahkarmi to Applications and open it.
 
 ### Windows
 
-1. Download the latest `Sahkarmi-*-x64.exe` from [GitHub Releases](https://github.com/ganguydhrubo/sahkarmi/releases).
+1. Download the latest `Sahkarmi-*-x64.exe` from [GitHub Releases](https://github.com/ganguydhrubo/sahakarmi/releases).
 2. Run the installer and open Sahkarmi.
 
 > [!IMPORTANT]
@@ -84,7 +84,7 @@ Development requires [Bun](https://bun.sh/) 1.3.11, Node.js 22.12 or newer, and 
 supported agent CLI.
 
 ```bash
-git clone https://github.com/ganguydhrubo/sahkarmi.git
+git clone https://github.com/ganguydhrubo/sahakarmi.git
 cd sahkarmi
 bun install --frozen-lockfile
 bun run codex:doctor

@@ -8,7 +8,7 @@ are not built on a developer machine.
 
 ## One-time GitHub setup
 
-Create the `release` environment in `ganguydhrubo/sahkarmi`, then add these environment secrets:
+Create the `release` environment in `ganguydhrubo/sahakarmi`, then add these environment secrets:
 
 - `CSC_LINK` — a base64-encoded Developer ID Application `.p12` file.
 - `CSC_KEY_PASSWORD` — the `.p12` export password.
@@ -69,7 +69,7 @@ The workflow:
 7. publishes one non-draft GitHub Release only after both platform jobs pass.
 
 Users can verify a downloaded artifact with
-`gh attestation verify <file> --repo ganguydhrubo/sahkarmi`.
+`gh attestation verify <file> --repo ganguydhrubo/sahakarmi`.
 
 Installed Sahkarmi builds check for updates shortly after launch and every four hours. Updates are
 never downloaded without a user action. The account popover shows the current state and lets the user

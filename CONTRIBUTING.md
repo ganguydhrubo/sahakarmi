@@ -14,7 +14,7 @@ easiest to review.
 ## Development setup
 
 ```bash
-git clone https://github.com/ganguydhrubo/sahkarmi.git
+git clone https://github.com/ganguydhrubo/sahakarmi.git
 cd sahkarmi
 bun install --frozen-lockfile
 bun run check
