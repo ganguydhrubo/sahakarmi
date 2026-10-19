@@ -351,7 +351,14 @@ export interface OpenSharedFileInput {
   action: "open" | "reveal";
 }
 
-export type ToolCallKind = "command" | "file" | "browser" | "web" | "coworker" | "approval" | "tool";
+export type ToolCallKind =
+  | "command"
+  | "file"
+  | "browser"
+  | "web"
+  | "coworker"
+  | "approval"
+  | "tool";
 
 export interface ToolCallSummary {
   name: string;

@@ -5,19 +5,18 @@ import type {
   AttachmentImportEvent,
   BotSummary,
   ConversationSnapshot,
-  UpdateStatus,
 } from "../../shared/ipc";
 import { App } from "./App";
 
 let emitAgentEvent: ((event: AgentEvent) => void) | undefined;
 let emitAttachmentImport: ((event: AttachmentImportEvent) => void) | undefined;
-let emitUpdateStatus: ((status: UpdateStatus) => void) | undefined;
 
 const BOTS: BotSummary[] = [
   {
     id: "chief",
+    workspaceId: "my-business",
     name: "Chief",
-    role: "Chief of staff",
+    role: "",
     description: "Coordinates work",
     notifications: true,
     model: "gpt-5.6-luna",
@@ -31,8 +30,9 @@ const BOTS: BotSummary[] = [
   },
   {
     id: "sales-outbound",
+    workspaceId: "my-business",
     name: "Sales Outbound",
-    role: "Outbound specialist",
+    role: "",
     description: "",
     notifications: true,
     model: "gpt-5.6-luna",
@@ -58,7 +58,6 @@ describe("Sahkarmi connected desktop shell", () => {
   beforeEach(() => {
     emitAgentEvent = undefined;
     emitAttachmentImport = undefined;
-    emitUpdateStatus = undefined;
     window.localStorage.clear();
     Object.defineProperty(window, "sahkarmi", {
       configurable: true,
@@ -157,7 +156,7 @@ describe("Sahkarmi connected desktop shell", () => {
             },
           ]),
           listBots: vi.fn().mockResolvedValue(BOTS),
-          createBot: vi.fn().mockResolvedValue({ ...BOTS[0], id: "bot-new", name: "New agent" }),
+          createBot: vi.fn().mockResolvedValue({ ...BOTS[0], id: "bot-new", name: "New coworker" }),
           updateBot: vi.fn().mockImplementation(async (input) => ({
             ...BOTS.find((bot) => bot.id === input.botId),
             ...input,
@@ -203,6 +202,34 @@ describe("Sahkarmi connected desktop shell", () => {
           listTabs: vi.fn().mockResolvedValue([]),
           getControlState: vi.fn().mockResolvedValue({ sessions: [] }),
           setVisible: vi.fn().mockResolvedValue(undefined),
+          getTakeover: vi.fn().mockResolvedValue({ humanInControl: false, requests: [] }),
+          takeOver: vi.fn().mockResolvedValue({ humanInControl: true, requests: [] }),
+          handBack: vi.fn().mockResolvedValue({ humanInControl: false, requests: [] }),
+        },
+        team: {
+          listWorkspaces: vi.fn().mockResolvedValue({
+            workspaces: [{ id: "my-business", name: "My Business", createdAt: "2026-10-01" }],
+            activeWorkspaceId: "my-business",
+          }),
+          createWorkspace: vi.fn(),
+          renameWorkspace: vi.fn(),
+          setActiveWorkspace: vi.fn(),
+        },
+        approvals: {
+          list: vi.fn().mockResolvedValue([]),
+          decide: vi.fn(),
+        },
+        schedules: {
+          list: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          setEnabled: vi.fn(),
+          delete: vi.fn(),
+          runNow: vi.fn(),
+        },
+        files: {
+          list: vi.fn().mockResolvedValue({ root: "/tmp/Shared", directory: "", entries: [] }),
+          add: vi.fn(),
+          open: vi.fn(),
         },
         update: {
           getStatus: vi.fn().mockResolvedValue({
@@ -230,10 +257,7 @@ describe("Sahkarmi connected desktop shell", () => {
             message: null,
           }),
           install: vi.fn().mockResolvedValue(undefined),
-          onEvent: vi.fn((listener) => {
-            emitUpdateStatus = listener;
-            return () => undefined;
-          }),
+          onEvent: vi.fn(() => () => undefined),
         },
         maintenance: {
           exportData: vi.fn().mockResolvedValue({ saved: true }),
@@ -343,19 +367,18 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(window.sahkarmi.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
   });
 
-  it("lets the user review providers and permissions from the account menu", async () => {
+  it("lets the user review providers and permissions from Settings", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
 
-    await fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
-    await fireEvent.click(screen.getByRole("menuitem", { name: "Providers & permissions" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
 
     expect(screen.getByRole("dialog", { name: "Providers & permissions" })).toBeInTheDocument();
     const providers = screen.getByRole("radiogroup", { name: "Default provider" });
     expect(within(providers).getByRole("radio", { name: /Codex.*Available/ })).toBeChecked();
     expect(within(providers).getByText("norbert@example.com")).toBeInTheDocument();
     expect(within(providers).getByText("claude@example.com")).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     await fireEvent.click(within(providers).getByRole("radio", { name: /Claude.*Available/ }));
     await fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     expect(window.sahkarmi.saveSetup).toHaveBeenLastCalledWith({ preferredProvider: "claude" });
@@ -364,12 +387,12 @@ describe("Sahkarmi connected desktop shell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens the create-agent picker for a new user with no agents", async () => {
+  it("shows an empty team with a new-coworker action when a workspace has no coworkers", async () => {
     vi.mocked(window.sahkarmi.agent.listBots).mockResolvedValueOnce([]);
     render(() => <App />);
 
-    expect(await screen.findByRole("option", { name: "Create new agent" })).toBeInTheDocument();
-    expect(screen.getByText("No agents yet")).toBeInTheDocument();
+    expect(await screen.findByText("No coworkers in this workspace yet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New coworker" })).toBeInTheDocument();
   });
 
   it("keeps agents disabled when setup persistence fails", async () => {
@@ -449,7 +472,7 @@ describe("Sahkarmi connected desktop shell", () => {
       screen.queryByRole("listbox", { name: "What do you want me helping with most?" }),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Message Chief")).toHaveAttribute("contenteditable", "false");
-    expect(screen.getByRole("button", { name: "Attach a file" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Attach file" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
 
     await confirmOnboardingModel();
@@ -457,7 +480,7 @@ describe("Sahkarmi connected desktop shell", () => {
       screen.getByRole("listbox", { name: "What do you want me helping with most?" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Message Chief")).toHaveAttribute("contenteditable", "true");
-    expect(screen.getByRole("button", { name: "Attach a file" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Attach file" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
     expect(screen.queryByText(/Salesforce account queue/i)).not.toBeInTheDocument();
   });
@@ -480,32 +503,93 @@ describe("Sahkarmi connected desktop shell", () => {
     await waitFor(() => expect(window.sahkarmi.openExternal).toHaveBeenCalledWith("agent-setup"));
   });
 
-  it("shows a compact account menu with weekly usage and contact actions", async () => {
+  it("switches theme and language from Settings", async () => {
     render(() => <App />);
-    const accountButton = await screen.findByRole("button", { name: "Open account menu" });
-    expect(accountButton).toHaveTextContent("norbert@example.com");
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
-    fireEvent.click(accountButton);
-    await waitFor(() => expect(window.sahkarmi.agent.getUsage).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText("Weekly usage")).toBeInTheDocument();
-    expect(screen.getByText("59%")).toBeInTheDocument();
-    expect(screen.queryByText(/ChatGPT Pro/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Developer preview/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Lifetime/i)).not.toBeInTheDocument();
+    await fireEvent.click(await screen.findByRole("button", { name: "Night (dark)" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(window.localStorage.getItem("sahkarmi:theme")).toBe("dark");
 
-    expect(screen.queryByRole("menuitem", { name: "Export data" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Export diagnostics" })).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "हिन्दी" }));
+    expect(document.documentElement.lang).toBe("hi");
+    expect(await screen.findByRole("heading", { name: "सेटिंग्स" })).toBeInTheDocument();
+    expect(
+      screen.getByText("आपकी AI टीम. भारत में बनी.", { selector: ".rail-tagline" }),
+    ).toBeInTheDocument();
 
-    await screen.findByRole("menuitem", { name: "Send feedback" });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Send feedback" }));
-    await waitFor(() => expect(window.sahkarmi.openExternal).toHaveBeenCalledWith("feedback"));
-
-    fireEvent.click(accountButton);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Message" }));
-    await waitFor(() => expect(window.sahkarmi.openExternal).toHaveBeenCalledWith("message"));
+    await fireEvent.click(screen.getByRole("button", { name: "বাংলা" }));
+    expect(
+      screen.getByText("আপনার AI টিম. ভারতে তৈরি.", { selector: ".rail-tagline" }),
+    ).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "English" }));
+    await fireEvent.click(screen.getByRole("button", { name: "System" }));
+    expect(document.documentElement.dataset.theme).toBeUndefined();
   });
 
-  it("shows an available update, downloads it, and exposes restart to install", async () => {
+  it("lists pending approvals with a badge and sends the owner's decision", async () => {
+    vi.mocked(window.sahkarmi.approvals.list).mockResolvedValue([
+      {
+        id: "ap1",
+        botId: "chief",
+        title: "Pay Sharma Traders INV-482",
+        details: "UPI to sharma@okaxis",
+        category: "payment",
+        amount: "₹18,500",
+        status: "pending",
+        createdAt: "2026-10-19T10:00:00.000Z",
+        decidedAt: null,
+        note: null,
+      },
+    ]);
+    vi.mocked(window.sahkarmi.approvals.decide).mockResolvedValue({} as never);
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+
+    const approvalsButton = await screen.findByRole("button", { name: /Approvals/ });
+    expect(within(approvalsButton).getByText("1")).toBeInTheDocument();
+    await fireEvent.click(approvalsButton);
+    expect(await screen.findByText("Pay Sharma Traders INV-482")).toBeInTheDocument();
+    expect(screen.getByText("₹18,500")).toBeInTheDocument();
+    expect(document.querySelector(".approval-coworker")).toHaveTextContent("Chief");
+
+    await fireEvent.input(screen.getByPlaceholderText("Add a note (optional)"), {
+      target: { value: "Pay after GST invoice" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.approvals.decide).toHaveBeenCalledWith({
+        approvalId: "ap1",
+        decision: "approved",
+        note: "Pay after GST invoice",
+      }),
+    );
+  });
+
+  it("marks coworkers waiting for approval, working, or in error in the team list", async () => {
+    vi.mocked(window.sahkarmi.approvals.list).mockResolvedValue([
+      {
+        id: "ap1",
+        botId: "sales-outbound",
+        title: "Send quote",
+        details: "",
+        category: "message",
+        amount: null,
+        status: "pending",
+        createdAt: "2026-10-19T10:00:00.000Z",
+        decidedAt: null,
+        note: null,
+      },
+    ]);
+    render(() => <App />);
+    expect(
+      await screen.findByRole("button", { name: "Sales Outbound, New coworker, Waiting for you" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chief, New coworker, Idle" })).toBeInTheDocument();
+  });
+
+  it("checks for updates from Settings", async () => {
     vi.mocked(window.sahkarmi.update.getStatus).mockResolvedValueOnce({
       phase: "available",
       currentVersion: "0.1.0",
@@ -515,22 +599,10 @@ describe("Sahkarmi connected desktop shell", () => {
       message: null,
     });
     render(() => <App />);
-
-    expect(await screen.findByText("Update")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Download update/ }));
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
     await waitFor(() => expect(window.sahkarmi.update.download).toHaveBeenCalledOnce());
-
-    emitUpdateStatus?.({
-      phase: "ready",
-      currentVersion: "0.1.0",
-      availableVersion: "0.2.0",
-      progress: 100,
-      checkedAt: "2026-08-12T22:00:00.000Z",
-      message: null,
-    });
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Restart to update/ }));
-    await waitFor(() => expect(window.sahkarmi.update.install).toHaveBeenCalledOnce());
   });
 
   it("renders loaded history without replaying entrance animations", async () => {
@@ -639,29 +711,50 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(window.sahkarmi.agent.readConversation).toHaveBeenCalledTimes(2);
   });
 
-  it("filters and switches backend bots", async () => {
+  it("switches coworkers from the team list and between workspaces", async () => {
+    vi.mocked(window.sahkarmi.team.listWorkspaces).mockResolvedValue({
+      workspaces: [
+        { id: "my-business", name: "My Business", createdAt: "2026-10-01" },
+        { id: "showroom", name: "Kolkata Showroom", createdAt: "2026-10-02" },
+      ],
+      activeWorkspaceId: "my-business",
+    });
+    vi.mocked(window.sahkarmi.team.setActiveWorkspace).mockResolvedValue({
+      workspaces: [
+        { id: "my-business", name: "My Business", createdAt: "2026-10-01" },
+        { id: "showroom", name: "Kolkata Showroom", createdAt: "2026-10-02" },
+      ],
+      activeWorkspaceId: "showroom",
+    });
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
-    await screen.findByRole("button", { name: "Onboarding model: Luna" });
-    const search = screen.getByRole("searchbox", { name: "Search chats" });
-    await fireEvent.input(search, { target: { value: "Sales" } });
-    await fireEvent.click(screen.getByRole("button", { name: /Sales Outbound/ }));
+    await fireEvent.click(screen.getByRole("button", { name: /^Sales Outbound,/ }));
     expect(screen.getByRole("heading", { name: "Sales Outbound" })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Workspace: My Business" }));
+    await fireEvent.click(screen.getByRole("menuitemradio", { name: /Kolkata Showroom/ }));
+    await waitFor(() =>
+      expect(window.sahkarmi.team.setActiveWorkspace).toHaveBeenCalledWith("showroom"),
+    );
+    expect(await screen.findByText("No coworkers in this workspace yet")).toBeInTheDocument();
   });
 
-  it("shows the specialty question immediately after creating a new agent", async () => {
+  it("shows the specialty question immediately after creating a new coworker", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
 
-    await fireEvent.click(screen.getByRole("button", { name: "New agent" }));
-    await fireEvent.click(screen.getByRole("option", { name: "Create new agent" }));
+    await fireEvent.click(screen.getByRole("button", { name: "New coworker" }));
 
-    expect(await screen.findByRole("heading", { name: "New agent" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New coworker" })).toBeInTheDocument();
+    expect(window.sahkarmi.agent.createBot).toHaveBeenCalledWith("my-business");
     expect(screen.queryByRole("complementary", { name: "Agent settings" })).not.toBeInTheDocument();
     expect(
       await screen.findByRole("listbox", { name: "What do you want me helping with most?" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Message New agent")).toHaveAttribute("contenteditable", "true");
+    expect(screen.getByLabelText("Message New coworker")).toHaveAttribute(
+      "contenteditable",
+      "true",
+    );
   });
 
   it("resizes and persists the left and right side panels", async () => {
@@ -670,11 +763,11 @@ describe("Sahkarmi connected desktop shell", () => {
 
     const leftResizer = screen.getByRole("separator", { name: "Resize left sidebar" });
     await fireEvent.keyDown(leftResizer, { key: "ArrowRight" });
-    expect(leftResizer).toHaveAttribute("aria-valuenow", "287");
-    expect(leftResizer.closest(".app-frame")).toHaveStyle("--left-panel-width: 287px");
-    expect(window.localStorage.getItem("sahkarmi:left-panel-width")).toBe("287");
+    expect(leftResizer).toHaveAttribute("aria-valuenow", "272");
+    expect(leftResizer.closest(".app-frame")).toHaveStyle("--left-panel-width: 272px");
+    expect(window.localStorage.getItem("sahkarmi:left-panel-width")).toBe("272");
 
-    await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
     const rightResizer = screen.getByRole("separator", { name: "Resize right panel" });
     await fireEvent.keyDown(rightResizer, { key: "ArrowLeft" });
     expect(rightResizer).toHaveAttribute("aria-valuenow", "308");
@@ -831,7 +924,7 @@ describe("Sahkarmi connected desktop shell", () => {
   it("edits the persisted model and thinking level in agent settings", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
-    await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
 
     const settings = screen.getByRole("complementary", { name: "Agent settings" });
     const thinking = within(settings).getByRole("combobox", { name: "Agent reasoning level" });
@@ -871,7 +964,7 @@ describe("Sahkarmi connected desktop shell", () => {
   it("keeps provider choices separate for each agent profile", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
-    await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
     let settings = screen.getByRole("complementary", { name: "Agent settings" });
     await fireEvent.click(within(settings).getByRole("button", { name: "Agent model: Luna" }));
     let picker = within(settings).getByRole("dialog", { name: "Choose agent model" });
@@ -879,7 +972,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
 
     await fireEvent.click(screen.getByRole("button", { name: /Sales Outbound/ }));
-    await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
     settings = screen.getByRole("complementary", { name: "Agent settings" });
     expect(within(settings).getByRole("button", { name: "Agent model: Luna" })).toBeEnabled();
 
@@ -933,7 +1026,7 @@ describe("Sahkarmi connected desktop shell", () => {
   it("does not remount settings or discard an in-progress edit on bot list refresh", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
-    await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
     const name = screen.getByRole("textbox", { name: "Agent name" });
     await fireEvent.input(name, { target: { value: "Draft coordinator name" } });
 
@@ -959,7 +1052,9 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(sidebarToggle).toHaveAttribute("aria-expanded", "true");
     await fireEvent.click(sidebarToggle);
 
-    expect(screen.queryByRole("complementary", { name: "Bot navigation" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("complementary", { name: "Coworker navigation" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("separator", { name: "Resize left sidebar" }),
     ).not.toBeInTheDocument();
@@ -972,10 +1067,10 @@ describe("Sahkarmi connected desktop shell", () => {
 
     await fireEvent.click(restoreSidebar);
 
-    expect(screen.getByRole("complementary", { name: "Bot navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Coworker navigation" })).toBeInTheDocument();
     expect(screen.getByRole("separator", { name: "Resize left sidebar" })).toHaveAttribute(
       "aria-valuenow",
-      "275",
+      "260",
     );
     expect(frame).not.toHaveClass("app-frame-sidebar-collapsed");
     expect(window.localStorage.getItem("sahkarmi:left-panel-collapsed")).toBe("false");
@@ -1114,7 +1209,7 @@ describe("Sahkarmi connected desktop shell", () => {
       ],
       activeTabId: "tab-resize",
     });
-    await fireEvent.click(screen.getByRole("button", { name: "Open computer" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show browser" }));
     const surface = document.querySelector(".browser-surface");
     if (!(surface instanceof HTMLElement)) throw new Error("Browser surface was not rendered.");
     await waitFor(() =>
@@ -1149,14 +1244,14 @@ describe("Sahkarmi connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
 
-    await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
     expect(screen.getByRole("complementary", { name: "Agent settings" })).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: /Sales Outbound/ }));
     expect(screen.queryByRole("complementary", { name: "Agent settings" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open computer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show browser" })).toBeInTheDocument();
 
-    await fireEvent.click(screen.getByRole("button", { name: "Open computer" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show browser" }));
     expect(screen.getByRole("complementary", { name: "Browser" })).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: /Chief/ }));
@@ -1583,7 +1678,7 @@ describe("Sahkarmi connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await confirmOnboardingModel();
-    await fireEvent.click(screen.getByRole("button", { name: "Attach a file" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Attach file" }));
     await fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     expect(await screen.findByText("brief.pdf")).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
@@ -1650,7 +1745,7 @@ describe("Sahkarmi connected desktop shell", () => {
         ],
       },
     });
-    await fireEvent.click(screen.getByRole("button", { name: "Resume queue" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Resume" }));
     emitAgentEvent?.({
       type: "queue-changed",
       snapshot: {
@@ -1686,13 +1781,13 @@ describe("Sahkarmi connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await confirmOnboardingModel();
-    await fireEvent.click(screen.getByRole("option", { name: /Work & projects/ }));
+    await fireEvent.click(screen.getByRole("option", { name: /Accounts/ }));
     await waitFor(() =>
       expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
         botId: "chief",
-        role: "Work & projects",
+        role: "Accounts",
         description:
-          "Helps plan, organize, and execute ongoing work and projects while keeping priorities, next steps, and deliverables clear.",
+          "Handles invoices, GST-ready bookkeeping, payment follow-ups and reconciliations in INR. Never makes a payment without approval.",
         model: "gpt-5.6-luna",
         reasoningEffort: "medium",
       }),
@@ -1700,7 +1795,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await waitFor(() =>
       expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith({
         botId: "chief",
-        text: "Focus on my work and projects. Help me plan, organize, and execute them proactively.",
+        text: "You're my accounts coworker. Start by asking what books, invoices and payment follow-ups I need help with.",
         attachmentDraftIds: [],
       }),
     );
@@ -1923,7 +2018,7 @@ describe("Sahkarmi connected desktop shell", () => {
 
   it("persists settings and opens managed attachment actions", async () => {
     render(() => <App />);
-    await fireEvent.click(await screen.findByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "View coworker settings" }));
     await screen.findByRole("button", { name: "Onboarding model: Luna" });
     const name = screen.getByRole("textbox", { name: "Agent name" });
     await fireEvent.input(name, { target: { value: "Coordinator" } });
@@ -1971,7 +2066,7 @@ describe("Sahkarmi connected desktop shell", () => {
       clientX: 120,
       clientY: 90,
     });
-    await fireEvent.click(screen.getByRole("menuitem", { name: "Edit agent" }));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Edit coworker" }));
     expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "Agent settings" })).toBeInTheDocument();
   });
@@ -1981,7 +2076,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
     const sales = screen.getByRole("button", { name: /Sales Outbound/ });
     await fireEvent.contextMenu(sales, { clientX: 120, clientY: 90 });
-    await fireEvent.click(screen.getByRole("menuitem", { name: "Delete agent" }));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Delete coworker" }));
     expect(screen.getByRole("alertdialog", { name: "Delete Sales Outbound?" })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() =>

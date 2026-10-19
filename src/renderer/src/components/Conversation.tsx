@@ -11,25 +11,44 @@ import type {
   BrowserControlAction,
   BrowserControlState,
   BrowserTab,
+  BrowserTakeoverState,
+  CoworkerStatus,
   DraftAttachment,
   MessageReaction,
   QueueSnapshot,
+  ScheduleCadence,
+  ScheduledTask,
   UpdateBotInput,
 } from "../../../shared/ipc";
 import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
 import type { BotMessage, BotProfile } from "../data";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
+import { t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import {
+  type CadenceDraft,
+  CadencePicker,
+  cadenceFromDraft,
+  defaultCadenceDraft,
+  ScheduleList,
+} from "./ScheduleControls";
 import { SidebarToggleIcon } from "./Sidebar";
+import { StatusDot, statusLabel } from "./StatusDot";
+import { TaskQueueStrip } from "./TaskQueueStrip";
+import { ToolCallCard } from "./ToolCallCard";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 interface ConversationProps {
   agentStatus: AgentStatus;
   bot: BotProfile | undefined;
   bots: BotProfile[];
+  status: CoworkerStatus;
+  schedules: ScheduledTask[];
+  takeover: BrowserTakeoverState;
   modelOptions: AgentModelOption[];
   messages: BotMessage[];
   loaded: boolean;
@@ -53,6 +72,13 @@ interface ConversationProps {
     attachmentDraftIds: string[],
     replyToMessageId: string | null,
   ) => Promise<boolean>;
+  onScheduleMessage: (text: string, cadence: ScheduleCadence) => Promise<boolean>;
+  onToggleSchedule: (task: ScheduledTask) => void;
+  onDeleteSchedule: (task: ScheduledTask) => void;
+  onRunSchedule: (task: ScheduledTask) => void;
+  onPauseQueue: () => void;
+  onTakeOverBrowser: () => void;
+  onHandBackBrowser: (note: string | null) => void;
   onCompleteOnboarding: (
     answer: string,
     model: AgentModelId,
@@ -84,12 +110,7 @@ interface MediaPreview {
 type RightPanelMode = "none" | "browser" | "settings";
 
 const EMPTY_DRAFT: ComposerDraft = { text: "", attachments: [], replyToMessageId: null };
-const ONBOARDING_CHOICES = [
-  "Work & projects",
-  "Research & writing",
-  "Sales & outreach",
-  "Something else",
-];
+const ONBOARDING_CHOICES = ["Accounts", "Sales", "Support", "Something else"];
 const SETTINGS_PANEL_STORAGE_KEY = "sahkarmi:settings-panel-width";
 const SETTINGS_PANEL_DEFAULT = 296;
 const SETTINGS_PANEL_MIN = 180;
@@ -235,6 +256,23 @@ function CheckIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20">
       <path d="m4.5 10.5 3.25 3.25L15.5 6" />
+    </svg>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="composer-glyph">
+      <path d="M15.5 9.3 10 14.8a3.6 3.6 0 0 1-5.1-5.1l5.9-5.9a2.4 2.4 0 0 1 3.4 3.4l-5.8 5.8a1.2 1.2 0 0 1-1.7-1.7l5.3-5.3" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="composer-glyph">
+      <circle cx="10" cy="10" r="6.5" />
+      <path d="M10 6.5V10l2.5 1.6" />
     </svg>
   );
 }
@@ -651,6 +689,8 @@ function RichMessageText(props: {
             </button>
           );
         }
+        if (part.emphasis === "strong") return <strong>{part.text}</strong>;
+        if (part.emphasis === "code") return <code class="message-inline-code">{part.text}</code>;
         return part.text;
       }}
     </For>
@@ -661,14 +701,35 @@ interface RichMessagePart {
   text: string;
   bot?: BotProfile;
   url?: string;
+  emphasis?: "strong" | "code";
 }
 
 function richMessageParts(body: string, bots: BotProfile[]): RichMessagePart[] {
   const parts: RichMessagePart[] = [];
   for (const part of linkedMessageParts(body)) {
     if (part.url) parts.push(part);
-    else parts.push(...taggedMessageParts(part.text, bots));
+    else {
+      for (const tagged of taggedMessageParts(part.text, bots)) {
+        if (tagged.bot) parts.push(tagged);
+        else parts.push(...emphasisParts(tagged.text));
+      }
+    }
   }
+  return parts;
+}
+
+/** Inline **bold** and `code`, the Markdown coworkers use most in short replies. */
+function emphasisParts(text: string): RichMessagePart[] {
+  const parts: RichMessagePart[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(/\*\*([^*\n]+)\*\*|`([^`\n]+)`/g)) {
+    const index = match.index ?? 0;
+    if (index > cursor) parts.push({ text: text.slice(cursor, index) });
+    if (match[1] !== undefined) parts.push({ text: match[1], emphasis: "strong" });
+    else parts.push({ text: match[2] ?? "", emphasis: "code" });
+    cursor = index + match[0].length;
+  }
+  if (cursor < text.length) parts.push({ text: text.slice(cursor) });
   return parts;
 }
 
@@ -820,6 +881,10 @@ export function Conversation(props: ConversationProps) {
   const [avatarShape, setAvatarShape] = createSignal<BotAvatarShape>("blob");
   const [avatarColor, setAvatarColor] = createSignal<BotAvatarColor>("orange");
   const [browserAddress, setBrowserAddress] = createSignal("https://www.google.com");
+  const [scheduleMode, setScheduleMode] = createSignal(false);
+  const [cadenceDraft, setCadenceDraft] = createSignal<CadenceDraft>(defaultCadenceDraft());
+  const [scheduleNotice, setScheduleNotice] = createSignal<string | null>(null);
+  const [handBackNote, setHandBackNote] = createSignal("");
   const [mediaPreview, setMediaPreview] = createSignal<MediaPreview | null>(null);
   const [pickerQuery, setPickerQuery] = createSignal("");
   const [activePickerOption, setActivePickerOption] = createSignal(0);
@@ -946,10 +1011,11 @@ export function Conversation(props: ConversationProps) {
     }
     return null;
   });
-  const queueBarVisible = createMemo(
-    () =>
-      Boolean(props.queue?.paused) ||
-      Boolean(props.queue?.deliveries.some((item) => item.status === "queued")),
+  const takeoverRequests = createMemo(() =>
+    props.takeover.requests.map((request) => ({
+      ...request,
+      bot: props.bots.find((bot) => bot.id === request.botId),
+    })),
   );
   const seenMessageIds = new Set<string>();
   const [fadeAtTop, setFadeAtTop] = createSignal(false);
@@ -1178,6 +1244,7 @@ export function Conversation(props: ConversationProps) {
       !agentReady() ||
       props.activeTurnId ||
       props.messages.length > 0 ||
+      props.bot?.role.trim() ||
       props.onboardingRequest?.botId === botId ||
       completedOnboardingBots()[botId] ||
       onboardingBots()[botId]
@@ -1221,6 +1288,16 @@ export function Conversation(props: ConversationProps) {
     if (screenOpen() && activeTab && activeTab.id !== props.activeBrowserTabId) {
       props.onActivateBrowserTab(activeTab.id);
     }
+  });
+
+  createEffect(() => {
+    const requested = props.takeover.requests.map((request) => request.botId);
+    if (requested.length === 0) return;
+    setRightPanels((current) => {
+      const next = { ...current };
+      for (const botId of requested) next[botId] = "browser";
+      return next;
+    });
   });
 
   createEffect(() => {
@@ -1355,6 +1432,24 @@ export function Conversation(props: ConversationProps) {
     stickToLatest = true;
     setSubmitting(true);
     setComposerError(null);
+    if (scheduleMode() && !override) {
+      let cadence: ScheduleCadence;
+      try {
+        cadence = cadenceFromDraft(cadenceDraft());
+      } catch {
+        setSubmitting(false);
+        setComposerError("Pick a valid date and time.");
+        return;
+      }
+      const scheduled = await props.onScheduleMessage(text, cadence);
+      setSubmitting(false);
+      if (scheduled) {
+        setDrafts((current) => ({ ...current, [botId]: EMPTY_DRAFT }));
+        setScheduleNotice(t("scheduleSaved"));
+        window.setTimeout(() => setScheduleNotice(null), 2_500);
+      }
+      return;
+    }
     const sent = await props.onSendMessage(
       text,
       attachments.map((item) => item.id),
@@ -1563,41 +1658,38 @@ export function Conversation(props: ConversationProps) {
                   <button
                     type="button"
                     class="conversation-title no-drag"
-                    aria-label="View agent settings"
+                    aria-label="View coworker settings"
                     onClick={() => {
                       setActiveRightPanel("settings");
                     }}
                   >
-                    <AgentAvatar bot={bot()} />
-                    <h1>{bot().name}</h1>
+                    <span class="conversation-title-avatar">
+                      <AgentAvatar bot={bot()} />
+                      <StatusDot status={props.status} class="conversation-title-status" />
+                    </span>
+                    <span class="conversation-title-copy">
+                      <h1>{bot().name}</h1>
+                      <span>
+                        {bot().role || t("newCoworker")} · {statusLabel(props.status)}
+                      </span>
+                    </span>
                   </button>
                 )}
               </Show>
               <div class="conversation-header-actions no-drag">
-                <Show when={props.bot}>
-                  <ProviderModelPicker
-                    value={settingsModel()}
-                    modelOptions={props.modelOptions}
-                    agentStatus={props.agentStatus}
-                    disabled={!agentReady() || agentActivity() === "Working"}
-                    disabledReason={
-                      agentActivity() === "Working"
-                        ? "Wait for the current work to finish before changing models."
-                        : "Models are available after an agent CLI connects."
-                    }
-                    onChange={(model) => void selectAndConfirmModel(model)}
-                  />
-                </Show>
                 <button
                   type="button"
-                  class="header-panel-toggle computer-button"
-                  classList={{ "computer-button-agent-active": Boolean(activeBrowserControl()) }}
+                  class="header-panel-toggle computer-button browser-toggle"
+                  classList={{
+                    "computer-button-agent-active": Boolean(activeBrowserControl()),
+                    "browser-toggle-open": screenOpen(),
+                  }}
                   aria-label={
                     activeBrowserControl()
-                      ? `${browserControlBot()?.name ?? "Agent"} is controlling the browser`
+                      ? `${browserControlBot()?.name ?? "Coworker"} is controlling the browser`
                       : screenOpen()
-                        ? "Hide computer"
-                        : "Open computer"
+                        ? t("hideBrowser")
+                        : t("showBrowser")
                   }
                   aria-expanded={screenOpen()}
                   onClick={() => {
@@ -1606,6 +1698,7 @@ export function Conversation(props: ConversationProps) {
                   }}
                 >
                   <ComputerIcon />
+                  <span class="browser-toggle-label">{t("browser")}</span>
                   <Show when={activeBrowserControl()}>
                     <span class="computer-control-dot" aria-hidden="true" />
                   </Show>
@@ -1663,6 +1756,17 @@ export function Conversation(props: ConversationProps) {
           </div>
         </Show>
       </header>
+
+      <Show when={props.bot && !props.agentPickerOpen}>
+        <TaskQueueStrip
+          queue={props.queue}
+          activeTurnId={props.activeTurnId}
+          onPause={props.onPauseQueue}
+          onResume={props.onResumeQueue}
+          onCancel={props.onCancelQueuedMessage}
+          onStop={props.onStop}
+        />
+      </Show>
 
       <div
         class="conversation-scroll"
@@ -1763,6 +1867,14 @@ export function Conversation(props: ConversationProps) {
           <For each={props.messages}>
             {(message) => {
               const animateEntrance = message.animate === true && markMessageSeen(message.id);
+              if (message.kind === "tool" && message.tool) {
+                const tool = message.tool;
+                return (
+                  <div classList={{ "thinking-entry-animated": animateEntrance }}>
+                    <ToolCallCard tool={message.tool ?? tool} />
+                  </div>
+                );
+              }
               return (
                 <Show
                   when={message.exchange}
@@ -1943,46 +2055,23 @@ export function Conversation(props: ConversationProps) {
             {composerError()}
           </div>
         </Show>
-        <div
-          class="agent-queue-bar"
-          classList={{ "agent-queue-bar-visible": queueBarVisible() }}
-          aria-hidden={!queueBarVisible()}
-        >
-          <Show when={props.queue?.paused}>
-            <button type="button" onClick={props.onResumeQueue}>
-              Resume queue
-            </button>
-          </Show>
-          <For each={props.queue?.deliveries.filter((item) => item.status === "queued") ?? []}>
-            {(delivery) => (
-              <span>
-                Queued #{delivery.position}
-                <button
-                  type="button"
-                  aria-label={`Cancel queued message ${delivery.position}`}
-                  onClick={() => props.onCancelQueuedMessage(delivery.id)}
-                >
-                  <CloseIcon />
-                </button>
-              </span>
-            )}
-          </For>
-        </div>
-        <div class="composer">
-          <button
-            type="button"
-            class="composer-button"
-            aria-label="Attach a file"
-            disabled={
-              props.agentPickerOpen ||
-              attachmentBusy() ||
-              !agentReady() ||
-              onboardingModelRequired()
-            }
-            onClick={() => setShowAttachments((value) => !value)}
-          >
-            <PlusIcon />
-          </button>
+        <Show when={scheduleMode()}>
+          <div class="schedule-panel">
+            <CadencePicker draft={cadenceDraft()} onChange={setCadenceDraft} />
+            <ScheduleList
+              schedules={props.schedules}
+              onToggle={props.onToggleSchedule}
+              onDelete={props.onDeleteSchedule}
+              onRunNow={props.onRunSchedule}
+            />
+          </div>
+        </Show>
+        <Show when={scheduleNotice()}>
+          <div class="composer-notice" role="status">
+            {scheduleNotice()}
+          </div>
+        </Show>
+        <div class="composer" classList={{ "composer-scheduling": scheduleMode() }}>
           <div class="composer-input-label">
             <ComposerEditor
               botId={props.bot?.id}
@@ -1993,41 +2082,99 @@ export function Conversation(props: ConversationProps) {
               }
               placeholder={
                 !agentReady()
-                  ? "Complete agent CLI setup to start"
+                  ? "Complete AI provider setup to start"
                   : onboardingModelRequired()
                     ? "Choose a model to continue"
                     : replyTarget()
                       ? "Reply…"
-                      : `Message ${props.agentPickerOpen ? "agent" : (props.bot?.name ?? "agent")}`
+                      : scheduleMode()
+                        ? t("schedulePlaceholder", { name: props.bot?.name ?? "" })
+                        : t("messagePlaceholder", { name: props.bot?.name ?? "" })
               }
-              ariaLabel={`Message ${props.agentPickerOpen ? "agent" : (props.bot?.name ?? "agent")}`}
+              ariaLabel={t("messagePlaceholder", { name: props.bot?.name ?? "" })}
               onValueChange={(text) => updateCurrentDraft({ text })}
               onSubmit={() => void submitMessage()}
             />
           </div>
-          <Show
-            when={props.activeTurnId}
-            fallback={
-              <button
-                type="button"
-                class="voice-button"
-                aria-label="Send message"
-                disabled={submitting() || !agentReady() || onboardingModelRequired()}
-                onClick={() => void submitMessage()}
-              >
-                {submitting() ? "…" : "↑"}
-              </button>
-            }
-          >
+          <div class="composer-toolbar">
             <button
               type="button"
-              class="voice-button voice-button-active"
-              aria-label="Stop agent"
-              onClick={props.onStop}
+              class="composer-icon-button"
+              aria-label={t("attachFile")}
+              title={t("attachFile")}
+              disabled={
+                props.agentPickerOpen ||
+                attachmentBusy() ||
+                !agentReady() ||
+                onboardingModelRequired()
+              }
+              onClick={() => setShowAttachments((value) => !value)}
             >
-              <StopIcon />
+              <PaperclipIcon />
             </button>
-          </Show>
+            <Show when={props.bot}>
+              <ProviderModelPicker
+                value={settingsModel()}
+                modelOptions={props.modelOptions}
+                agentStatus={props.agentStatus}
+                disabled={!agentReady() || agentActivity() === "Working"}
+                disabledReason={
+                  agentActivity() === "Working"
+                    ? "Wait for the current work to finish before changing models."
+                    : "Models are available after an AI provider connects."
+                }
+                onChange={(model) => void selectAndConfirmModel(model)}
+              />
+            </Show>
+            <VoiceInputButton
+              disabled={!agentReady() || submitting()}
+              onTranscript={(text) =>
+                updateCurrentDraft({
+                  text: currentDraft().text ? `${currentDraft().text.trimEnd()} ${text}` : text,
+                })
+              }
+              onError={setComposerError}
+            />
+            <button
+              type="button"
+              role="switch"
+              class="schedule-toggle"
+              classList={{ "schedule-toggle-on": scheduleMode() }}
+              aria-checked={scheduleMode()}
+              onClick={() => setScheduleMode((value) => !value)}
+            >
+              <span class="schedule-toggle-track" aria-hidden="true">
+                <span />
+              </span>
+              {t("runOnSchedule")}
+            </button>
+            <span class="composer-toolbar-spacer" />
+            <Show
+              when={props.activeTurnId && !scheduleMode()}
+              fallback={
+                <button
+                  type="button"
+                  class="voice-button send-button"
+                  aria-label={scheduleMode() ? t("scheduleLabel") : "Send message"}
+                  disabled={submitting() || !agentReady() || onboardingModelRequired()}
+                  onClick={() => void submitMessage()}
+                >
+                  <Show when={scheduleMode()} fallback={submitting() ? "…" : "↑"}>
+                    <ClockIcon />
+                  </Show>
+                </button>
+              }
+            >
+              <button
+                type="button"
+                class="voice-button voice-button-active"
+                aria-label="Stop coworker"
+                onClick={props.onStop}
+              >
+                <StopIcon />
+              </button>
+            </Show>
+          </div>
         </div>
       </div>
 
@@ -2217,10 +2364,56 @@ export function Conversation(props: ConversationProps) {
                 onInput={(event) => setBrowserAddress(event.currentTarget.value)}
               />
             </form>
-            <button type="button" class="browser-toolbar-button" aria-label="Browser menu">
-              <span class="browser-menu-dots">•••</span>
-            </button>
+            <Show
+              when={props.takeover.humanInControl}
+              fallback={
+                <button
+                  type="button"
+                  class="takeover-button"
+                  classList={{ "takeover-button-requested": takeoverRequests().length > 0 }}
+                  onClick={props.onTakeOverBrowser}
+                >
+                  {t("takeOver")}
+                </button>
+              }
+            >
+              <button
+                type="button"
+                class="takeover-button takeover-button-active"
+                onClick={() => {
+                  props.onHandBackBrowser(handBackNote().trim() || null);
+                  setHandBackNote("");
+                }}
+              >
+                {t("handBack")}
+              </button>
+            </Show>
           </div>
+          <Show when={props.takeover.humanInControl || takeoverRequests().length > 0}>
+            <div
+              class="takeover-banner"
+              classList={{ "takeover-banner-active": props.takeover.humanInControl }}
+              role="status"
+            >
+              <For each={takeoverRequests()}>
+                {(request) => (
+                  <p>
+                    <strong>{request.bot?.name ?? request.botId}</strong> {t("takeoverRequested")}:{" "}
+                    {request.reason}
+                  </p>
+                )}
+              </For>
+              <Show when={props.takeover.humanInControl}>
+                <p>{t("youAreInControl")}</p>
+                <input
+                  value={handBackNote()}
+                  placeholder={t("handBackNote")}
+                  aria-label={t("handBackNote")}
+                  onInput={(event) => setHandBackNote(event.currentTarget.value)}
+                />
+              </Show>
+            </div>
+          </Show>
           <div class="browser-surface" ref={(element) => (browserSurface = element)}>
             <Show when={browserTabs().length === 0}>
               <div class="browser-empty-state">

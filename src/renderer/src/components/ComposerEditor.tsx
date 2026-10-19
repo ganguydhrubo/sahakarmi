@@ -276,8 +276,9 @@ function renderEditorValue(editor: HTMLDivElement, value: string, bots: BotProfi
       createMentionToken(
         bot ?? {
           id,
+          workspaceId: "",
           name,
-          role: "Agent",
+          role: "Coworker",
           description: "",
           notifications: true,
           model: "gpt-5.6-luna",

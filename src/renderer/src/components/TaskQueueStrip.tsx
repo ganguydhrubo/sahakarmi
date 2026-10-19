@@ -24,7 +24,9 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
       .sort((left, right) => (left.position ?? 0) - (right.position ?? 0)),
   );
   const running = createMemo(() =>
-    deliveries().filter((delivery) => delivery.status === "starting" || delivery.status === "running"),
+    deliveries().filter(
+      (delivery) => delivery.status === "starting" || delivery.status === "running",
+    ),
   );
   const done = createMemo(() =>
     deliveries()
@@ -36,7 +38,11 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
   const isEmpty = () => deliveries().length === 0;
 
   return (
-    <section class="task-strip" aria-label={t("taskQueue")} classList={{ "task-strip-empty": isEmpty() }}>
+    <section
+      class="task-strip"
+      aria-label={t("taskQueue")}
+      classList={{ "task-strip-empty": isEmpty() }}
+    >
       <div class="task-strip-counts">
         <span class="task-count task-count-queued">
           <b>{queued().length}</b> {t("queued")}
@@ -64,12 +70,20 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
             </button>
           }
         >
-          <button type="button" class="task-strip-button task-strip-button-primary" onClick={props.onResume}>
+          <button
+            type="button"
+            class="task-strip-button task-strip-button-primary"
+            onClick={props.onResume}
+          >
             {t("resume")}
           </button>
         </Show>
         <Show when={done().length > VISIBLE_DONE || queued().length + running().length > 3}>
-          <button type="button" class="task-strip-button" onClick={() => setExpanded((value) => !value)}>
+          <button
+            type="button"
+            class="task-strip-button"
+            onClick={() => setExpanded((value) => !value)}
+          >
             {expanded() ? t("showLess") : t("showAll")}
           </button>
         </Show>
@@ -80,7 +94,11 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
             {(delivery) => (
               <TaskChip delivery={delivery} state="running">
                 <Show when={props.activeTurnId}>
-                  <button type="button" onClick={props.onStop} aria-label={`${t("stop")}: ${taskTitle(delivery)}`}>
+                  <button
+                    type="button"
+                    onClick={props.onStop}
+                    aria-label={`${t("stop")}: ${taskTitle(delivery)}`}
+                  >
                     {t("stop")}
                   </button>
                 </Show>
@@ -93,7 +111,7 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
                 <button
                   type="button"
                   onClick={() => props.onCancel(delivery.id)}
-                  aria-label={`${t("cancel")}: ${taskTitle(delivery)}`}
+                  aria-label={`Cancel queued message ${delivery.position ?? ""}`.trim()}
                 >
                   {t("cancel")}
                 </button>
@@ -101,7 +119,12 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
             )}
           </For>
           <For each={visibleDone()}>
-            {(delivery) => <TaskChip delivery={delivery} state={delivery.status === "completed" ? "done" : "failed"} />}
+            {(delivery) => (
+              <TaskChip
+                delivery={delivery}
+                state={delivery.status === "completed" ? "done" : "failed"}
+              />
+            )}
           </For>
         </ol>
       </Show>
@@ -115,7 +138,10 @@ function TaskChip(props: {
   children?: unknown;
 }) {
   return (
-    <li class={`task-chip task-chip-${props.state}`} title={props.delivery.error ?? taskTitle(props.delivery)}>
+    <li
+      class={`task-chip task-chip-${props.state}`}
+      title={props.delivery.error ?? taskTitle(props.delivery)}
+    >
       <span class="task-chip-dot" aria-hidden="true" />
       <span class="task-chip-title">
         <Show when={props.state === "queued" && props.delivery.position}>

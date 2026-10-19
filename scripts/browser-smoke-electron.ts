@@ -211,7 +211,8 @@ async function main(): Promise<void> {
     });
     await waitFor(
       async () =>
-        (await readFile(join(downloadsRoot, "sahkarmi-smoke (2).txt"), "utf8")) === "local download",
+        (await readFile(join(downloadsRoot, "sahkarmi-smoke (2).txt"), "utf8")) ===
+        "local download",
     );
     process.stdout.write("BrowserHost: download passed.\n");
 

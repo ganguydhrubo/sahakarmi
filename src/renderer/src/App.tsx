@@ -1,4 +1,14 @@
-import { batch, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import {
+  batch,
+  createEffect,
+  createMemo,
+  createSignal,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+} from "solid-js";
 import { createMutable } from "solid-js/store";
 import type {
   AccountUsage,
@@ -9,20 +19,29 @@ import type {
   AgentReasoningEffort,
   AgentStatus,
   AppInfo,
+  ApprovalRequest,
   AppSetupState,
   BotSummary,
   BrowserControlState,
   BrowserTab,
+  BrowserTakeoverState,
   ConversationMessage,
   ConversationSnapshot,
+  CoworkerStatus,
   QueueSnapshot,
+  ScheduleCadence,
+  ScheduledTask,
   UpdateBotInput,
   UpdateStatus,
+  WorkspaceState,
 } from "../../shared/ipc";
+import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation } from "./components/Conversation";
 import { InitialSetup } from "./components/InitialSetup";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./components/PanelResizer";
-import { Sidebar, type SidebarAgentState } from "./components/Sidebar";
+import { SettingsView } from "./components/SettingsView";
+import { SharedFilesView } from "./components/SharedFilesView";
+import { type CenterView, Sidebar } from "./components/Sidebar";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 
 const FALLBACK_STATUS: AgentStatus = {
@@ -51,7 +70,7 @@ type PromptEvent = Extract<AgentEvent, { type: "prompt" }>;
 
 const LEFT_PANEL_STORAGE_KEY = "sahkarmi:left-panel-width";
 const LEFT_PANEL_COLLAPSED_STORAGE_KEY = "sahkarmi:left-panel-collapsed";
-const LEFT_PANEL_DEFAULT = 275;
+const LEFT_PANEL_DEFAULT = 260;
 const LEFT_PANEL_MIN = 220;
 const LEFT_PANEL_MAX = 360;
 
@@ -59,28 +78,30 @@ const ONBOARDING_PROFILES: Record<
   string,
   { role: string; description: string; firstMessage: string }
 > = {
-  "Work & projects": {
-    role: "Work & projects",
+  Accounts: {
+    role: "Accounts",
     description:
-      "Helps plan, organize, and execute ongoing work and projects while keeping priorities, next steps, and deliverables clear.",
+      "Handles invoices, GST-ready bookkeeping, payment follow-ups and reconciliations in INR. Never makes a payment without approval.",
     firstMessage:
-      "Focus on my work and projects. Help me plan, organize, and execute them proactively.",
+      "You're my accounts coworker. Start by asking what books, invoices and payment follow-ups I need help with.",
   },
-  "Research & writing": {
-    role: "Research & writing",
+  Sales: {
+    role: "Sales",
     description:
-      "Researches topics, synthesizes reliable sources, and helps draft, edit, and refine clear writing.",
+      "Researches leads, drafts outreach and follow-ups, and keeps the pipeline current. Asks for approval before contacting customers.",
     firstMessage:
-      "Focus on research and writing. Help me investigate topics and turn the findings into clear, useful writing.",
+      "You're my sales coworker. Ask me about my products, ideal customers and current pipeline.",
   },
-  "Sales & outreach": {
-    role: "Sales & outreach",
+  Support: {
+    role: "Support",
     description:
-      "Supports prospect research, sales preparation, personalized outreach, and organized follow-up work.",
+      "Triages customer queries and drafts polite replies in English, Hindi or Bengali. Asks for approval before replying to customers.",
     firstMessage:
-      "Focus on sales and outreach. Help me research prospects, prepare personalized outreach, and manage follow-ups.",
+      "You're my customer support coworker. Ask how customers reach us and what questions come up most.",
   },
 };
+
+const EMPTY_TAKEOVER: BrowserTakeoverState = { humanInControl: false, requests: [] };
 
 export function App() {
   const [botList, setBotList] = createSignal<BotProfile[]>([]);
@@ -94,7 +115,7 @@ export function App() {
   );
   const [activeTurns, setActiveTurns] = createSignal<Record<string, string | null>>({});
   const [unreadReplies, setUnreadReplies] = createSignal<Record<string, number>>({});
-  const [recentReplies, setRecentReplies] = createSignal<Record<string, boolean>>({});
+  const [, setRecentReplies] = createSignal<Record<string, boolean>>({});
   const [queues, setQueues] = createSignal<Record<string, QueueSnapshot>>({});
   const [browserTabs, setBrowserTabs] = createSignal<BrowserTab[]>([]);
   const [activeBrowserTabId, setActiveBrowserTabId] = createSignal<string | null>(null);
@@ -116,7 +137,7 @@ export function App() {
   );
   const [appInfo, setAppInfo] = createSignal<AppInfo | null>(null);
   const [agentStatus, setAgentStatus] = createSignal<AgentStatus>(FALLBACK_STATUS);
-  const [accountUsage, setAccountUsage] = createSignal<AccountUsage | null>(null);
+  const [, setAccountUsage] = createSignal<AccountUsage | null>(null);
   const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>(FALLBACK_UPDATE_STATUS);
   const [leftPanelWidth, setLeftPanelWidth] = createSignal(
     readPanelWidth(LEFT_PANEL_STORAGE_KEY, LEFT_PANEL_DEFAULT, LEFT_PANEL_MIN, LEFT_PANEL_MAX),
@@ -127,12 +148,24 @@ export function App() {
   const [setupState, setSetupState] = createSignal<AppSetupState | null>(null);
   const [setupLoaded, setSetupLoaded] = createSignal(false);
   const [permissionsOpen, setPermissionsOpen] = createSignal(false);
+  const [view, setView] = createSignal<CenterView>("coworker");
+  const [workspaces, setWorkspaces] = createSignal<WorkspaceState>({
+    workspaces: [],
+    activeWorkspaceId: "",
+  });
+  const [approvals, setApprovals] = createSignal<ApprovalRequest[]>([]);
+  const [schedules, setSchedules] = createSignal<ScheduledTask[]>([]);
+  const [takeover, setTakeover] = createSignal<BrowserTakeoverState>(EMPTY_TAKEOVER);
   const pendingConversationSnapshots = new Map<string, ConversationSnapshot>();
   const recentReplyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let conversationFrame: number | undefined;
 
+  const workspaceBots = createMemo(() => {
+    const workspaceId = workspaces().activeWorkspaceId;
+    return workspaceId ? botList().filter((bot) => bot.workspaceId === workspaceId) : botList();
+  });
   const activeBot = createMemo(
-    () => botList().find((bot) => bot.id === activeBotId()) ?? botList()[0],
+    () => workspaceBots().find((bot) => bot.id === activeBotId()) ?? workspaceBots()[0],
   );
   const activeMessages = createMemo(() => {
     const bot = activeBot();
@@ -141,6 +174,22 @@ export function App() {
 
   onMount(() => {
     const unsubscribe = window.sahkarmi.agent.onEvent(handleAgentEvent);
+    void window.sahkarmi.team
+      .listWorkspaces()
+      .then(setWorkspaces)
+      .catch(() => undefined);
+    void window.sahkarmi.approvals
+      .list()
+      .then(setApprovals)
+      .catch(() => undefined);
+    void window.sahkarmi.schedules
+      .list()
+      .then(setSchedules)
+      .catch(() => undefined);
+    void window.sahkarmi.browser
+      .getTakeover()
+      .then(setTakeover)
+      .catch(() => undefined);
     const unsubscribeUpdate = window.sahkarmi.update.onEvent(setUpdateStatus);
     onCleanup(() => {
       unsubscribe();
@@ -239,6 +288,18 @@ export function App() {
       case "browser-control-changed":
         setBrowserControlState(event.state);
         return;
+      case "browser-takeover-changed":
+        setTakeover(event.state);
+        return;
+      case "workspaces-changed":
+        setWorkspaces(event.state);
+        return;
+      case "approvals-changed":
+        setApprovals(event.approvals);
+        return;
+      case "schedules-changed":
+        setSchedules(event.schedules);
+        return;
       case "turn-started":
         clearRecentReply(event.botId);
         setActiveTurns((current) => ({ ...current, [event.botId]: event.turnId }));
@@ -271,7 +332,19 @@ export function App() {
     setActiveBotId((current) =>
       profiles.some((bot) => bot.id === current) ? current : (profiles[0]?.id ?? ""),
     );
-    if (profiles.length === 0) setAgentPickerOpen(true);
+    // Status dots need every coworker's queue, not only the one on screen.
+    const known = queues();
+    for (const profile of profiles) {
+      if (known[profile.id]) continue;
+      void window.sahkarmi.agent
+        .listQueue(profile.id)
+        .then((queue) =>
+          setQueues((current) =>
+            current[profile.id] ? current : { ...current, [profile.id]: queue },
+          ),
+        )
+        .catch(() => undefined);
+    }
   }
 
   function scheduleConversation(snapshot: ConversationSnapshot) {
@@ -350,12 +423,15 @@ export function App() {
     if (creatingAgent()) return;
     setCreatingAgent(true);
     try {
-      const stored = await window.sahkarmi.agent.createBot();
+      const stored = await window.sahkarmi.agent.createBot(
+        workspaces().activeWorkspaceId || undefined,
+      );
       const newAgent = createMutable(toBotProfile(stored));
       setBotList((current) => [newAgent, ...current.filter((item) => item.id !== newAgent.id)]);
       setLiveMessages((current) => ({ ...current, [newAgent.id]: [] }));
       setConversationLoaded((current) => ({ ...current, [newAgent.id]: true }));
       setAgentPickerOpen(false);
+      setView("coworker");
       setActiveBotId(newAgent.id);
       setOnboardingRequest({ botId: newAgent.id, nonce: Date.now() });
     } catch (error) {
@@ -367,6 +443,11 @@ export function App() {
   }
 
   function selectBot(botId: string) {
+    const bot = botList().find((candidate) => candidate.id === botId);
+    if (bot && bot.workspaceId !== workspaces().activeWorkspaceId) {
+      void selectWorkspace(bot.workspaceId);
+    }
+    setView("coworker");
     setAgentPickerOpen(false);
     clearReplyIndicators(botId);
     setActiveBotId(botId);
@@ -533,6 +614,59 @@ export function App() {
       .catch((error) => appendUiError(bot.id, error, "Cancel failed"));
   }
 
+  function setQueuePaused(paused: boolean) {
+    const bot = activeBot();
+    if (!bot) return;
+    void window.sahkarmi.agent
+      .setQueuePaused({ botId: bot.id, paused })
+      .catch((error) => appendUiError(bot.id, error, paused ? "Pause failed" : "Resume failed"));
+  }
+
+  async function selectWorkspace(workspaceId: string) {
+    const state = await window.sahkarmi.team.setActiveWorkspace(workspaceId);
+    setWorkspaces(state);
+    const first = botList().find((bot) => bot.workspaceId === state.activeWorkspaceId);
+    if (first && activeBot()?.workspaceId !== state.activeWorkspaceId) setActiveBotId(first.id);
+  }
+
+  async function createWorkspace(name: string) {
+    setWorkspaces(await window.sahkarmi.team.createWorkspace(name));
+    setView("coworker");
+  }
+
+  async function renameWorkspace(workspaceId: string, name: string) {
+    setWorkspaces(await window.sahkarmi.team.renameWorkspace(workspaceId, name));
+  }
+
+  async function decideApproval(
+    approvalId: string,
+    decision: "approved" | "rejected",
+    note: string,
+  ) {
+    await window.sahkarmi.approvals.decide({ approvalId, decision, note: note.trim() || null });
+    setApprovals(await window.sahkarmi.approvals.list());
+  }
+
+  async function scheduleMessage(text: string, cadence: ScheduleCadence): Promise<boolean> {
+    const bot = activeBot();
+    if (!bot || !text.trim()) return false;
+    try {
+      await window.sahkarmi.schedules.create({ botId: bot.id, text: text.trim(), cadence });
+      setSchedules(await window.sahkarmi.schedules.list());
+      return true;
+    } catch (error) {
+      appendUiError(bot.id, error, "Schedule failed");
+      return false;
+    }
+  }
+
+  function scheduleAction(action: () => Promise<unknown>) {
+    const botId = activeBot()?.id;
+    void action()
+      .then(() => window.sahkarmi.schedules.list().then(setSchedules))
+      .catch((error) => botId && appendUiError(botId, error, "Schedule failed"));
+  }
+
   function resumeQueue() {
     const bot = activeBot();
     if (!bot) return;
@@ -548,12 +682,6 @@ export function App() {
     void window.sahkarmi.agent
       .interrupt({ botId: bot.id, turnId })
       .catch((error) => appendUiError(bot.id, error, "Stop failed"));
-  }
-
-  async function refreshAccountUsage(): Promise<AccountUsage> {
-    const usage = await window.sahkarmi.agent.getUsage();
-    setAccountUsage(usage);
-    return usage;
   }
 
   function appendUiError(botId: string, error: unknown, status: string) {
@@ -577,26 +705,36 @@ export function App() {
     const bot = activeBot();
     return bot ? queues()[bot.id] : undefined;
   });
-  const sidebarAgentStates = createMemo<Record<string, SidebarAgentState>>(() => {
+  const pendingApprovals = createMemo(() =>
+    approvals().filter((approval) => approval.status === "pending"),
+  );
+  const coworkerStatuses = createMemo<Record<string, CoworkerStatus>>(() => {
     const turns = activeTurns();
     const queueSnapshots = queues();
-    const unread = unreadReplies();
-    const recent = recentReplies();
-    const states: Record<string, SidebarAgentState> = {};
+    const prompts = pendingPrompts();
+    const errors = uiErrors();
+    const waitingBots = new Set([
+      ...pendingApprovals().map((approval) => approval.botId),
+      ...takeover().requests.map((request) => request.botId),
+    ]);
+    const statuses: Record<string, CoworkerStatus> = {};
     for (const bot of botList()) {
+      const deliveries = queueSnapshots[bot.id]?.deliveries ?? [];
       const isWorking =
         Boolean(turns[bot.id]) ||
-        Boolean(
-          queueSnapshots[bot.id]?.deliveries.some(
-            (delivery) => delivery.status === "starting" || delivery.status === "running",
-          ),
+        deliveries.some(
+          (delivery) => delivery.status === "starting" || delivery.status === "running",
         );
-      if (isWorking) states[bot.id] = { kind: "working" };
-      else if ((unread[bot.id] ?? 0) > 0) {
-        states[bot.id] = { kind: "unread", count: unread[bot.id] ?? 1 };
-      } else if (recent[bot.id]) states[bot.id] = { kind: "responded" };
+      const latest = [...deliveries].sort((left, right) =>
+        right.createdAt.localeCompare(left.createdAt),
+      )[0];
+      if (prompts[bot.id] || waitingBots.has(bot.id)) statuses[bot.id] = "waiting";
+      else if (isWorking) statuses[bot.id] = "working";
+      else if (latest?.status === "failed" || (errors[bot.id]?.length ?? 0) > 0) {
+        statuses[bot.id] = "error";
+      } else statuses[bot.id] = "idle";
     }
-    return states;
+    return statuses;
   });
 
   function setSidebarCollapsed(collapsed: boolean) {
@@ -646,21 +784,25 @@ export function App() {
         >
           <Show when={!leftPanelCollapsed()}>
             <Sidebar
-              bots={botList()}
+              bots={workspaceBots()}
               activeBotId={activeBot()?.id ?? ""}
+              view={view()}
               appInfo={appInfo()}
-              agentStatus={agentStatus()}
-              accountUsage={accountUsage()}
-              updateStatus={updateStatus()}
-              agentStates={sidebarAgentStates()}
+              workspaces={workspaces()}
+              statuses={coworkerStatuses()}
+              unread={unreadReplies()}
+              pendingApprovals={pendingApprovals().length}
               onSelectBot={selectBot}
-              onCreateBot={() => setAgentPickerOpen(true)}
+              onCreateBot={() => void createAgent()}
               onEditBot={editBot}
               onDeleteBot={deleteBot}
-              onRefreshUsage={refreshAccountUsage}
-              onUpdateAction={runUpdateAction}
-              onOpenExternal={(destination) => window.sahkarmi.openExternal(destination)}
-              onOpenPermissions={() => setPermissionsOpen(true)}
+              onSelectView={(next) => {
+                setAgentPickerOpen(false);
+                setView(next);
+              }}
+              onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
+              onCreateWorkspace={createWorkspace}
+              onRenameWorkspace={renameWorkspace}
               onCollapse={() => setSidebarCollapsed(true)}
             />
             <PanelResizer
@@ -676,39 +818,83 @@ export function App() {
               onResizeEnd={(value) => savePanelWidth(LEFT_PANEL_STORAGE_KEY, value)}
             />
           </Show>
-          <Conversation
-            agentStatus={agentStatus()}
-            bot={activeBot()}
-            bots={botList()}
-            modelOptions={modelOptions()}
-            messages={activeMessages()}
-            loaded={activeBot() ? conversationLoaded()[activeBot()?.id ?? ""] === true : false}
-            queue={activeQueue()}
-            browserTabs={browserTabs()}
-            activeBrowserTabId={activeBrowserTabId()}
-            browserControlState={browserControlState()}
-            leftSidebarCollapsed={leftPanelCollapsed()}
-            prompt={activeBot() ? pendingPrompts()[activeBot()?.id ?? ""] : undefined}
-            activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
-            agentPickerOpen={agentPickerOpen()}
-            creatingAgent={creatingAgent()}
-            settingsRequest={settingsRequest()}
-            onboardingRequest={onboardingRequest()}
-            onCloseAgentPicker={() => setAgentPickerOpen(false)}
-            onCreateAgent={() => void createAgent()}
-            onSelectAgent={selectBot}
-            onUpdateBot={updateBot}
-            onSendMessage={sendMessage}
-            onCompleteOnboarding={completeOnboarding}
-            onAnswerPrompt={answerPrompt}
-            onCancelQueuedMessage={cancelQueuedMessage}
-            onResumeQueue={resumeQueue}
-            onActivateBrowserTab={activateBrowserTab}
-            onCloseBrowserTab={closeBrowserTab}
-            onToggleLeftSidebar={() => setSidebarCollapsed(false)}
-            onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
-            onStop={stopActiveTurn}
-          />
+          <Switch>
+            <Match when={view() === "approvals"}>
+              <ApprovalsView
+                approvals={approvals()}
+                bots={botList()}
+                onDecide={decideApproval}
+                onOpenCoworker={selectBot}
+              />
+            </Match>
+            <Match when={view() === "files"}>
+              <SharedFilesView />
+            </Match>
+            <Match when={view() === "settings"}>
+              <SettingsView
+                appInfo={appInfo()}
+                agentStatus={agentStatus()}
+                updateStatus={updateStatus()}
+                onOpenPermissions={() => setPermissionsOpen(true)}
+                onUpdateAction={runUpdateAction}
+              />
+            </Match>
+            <Match when={view() === "coworker"}>
+              <Conversation
+                agentStatus={agentStatus()}
+                bot={activeBot()}
+                bots={botList()}
+                status={
+                  activeBot() ? (coworkerStatuses()[activeBot()?.id ?? ""] ?? "idle") : "idle"
+                }
+                modelOptions={modelOptions()}
+                messages={activeMessages()}
+                loaded={activeBot() ? conversationLoaded()[activeBot()?.id ?? ""] === true : false}
+                queue={activeQueue()}
+                schedules={schedules().filter((task) => task.botId === activeBot()?.id)}
+                takeover={takeover()}
+                browserTabs={browserTabs()}
+                activeBrowserTabId={activeBrowserTabId()}
+                browserControlState={browserControlState()}
+                leftSidebarCollapsed={leftPanelCollapsed()}
+                prompt={activeBot() ? pendingPrompts()[activeBot()?.id ?? ""] : undefined}
+                activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
+                agentPickerOpen={agentPickerOpen()}
+                creatingAgent={creatingAgent()}
+                settingsRequest={settingsRequest()}
+                onboardingRequest={onboardingRequest()}
+                onCloseAgentPicker={() => setAgentPickerOpen(false)}
+                onCreateAgent={() => void createAgent()}
+                onSelectAgent={selectBot}
+                onUpdateBot={updateBot}
+                onSendMessage={sendMessage}
+                onScheduleMessage={scheduleMessage}
+                onToggleSchedule={(task) =>
+                  scheduleAction(() => window.sahkarmi.schedules.setEnabled(task.id, !task.enabled))
+                }
+                onDeleteSchedule={(task) =>
+                  scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
+                }
+                onRunSchedule={(task) =>
+                  scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
+                }
+                onCompleteOnboarding={completeOnboarding}
+                onAnswerPrompt={answerPrompt}
+                onCancelQueuedMessage={cancelQueuedMessage}
+                onPauseQueue={() => setQueuePaused(true)}
+                onResumeQueue={resumeQueue}
+                onActivateBrowserTab={activateBrowserTab}
+                onCloseBrowserTab={closeBrowserTab}
+                onTakeOverBrowser={() => void window.sahkarmi.browser.takeOver().then(setTakeover)}
+                onHandBackBrowser={(note) =>
+                  void window.sahkarmi.browser.handBack(note).then(setTakeover)
+                }
+                onToggleLeftSidebar={() => setSidebarCollapsed(false)}
+                onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
+                onStop={stopActiveTurn}
+              />
+            </Match>
+          </Switch>
           <Show when={permissionsOpen()}>
             <InitialSetup
               reviewing
@@ -728,6 +914,7 @@ export function App() {
 function toBotProfile(stored: BotSummary): BotProfile {
   return {
     id: stored.id,
+    workspaceId: stored.workspaceId,
     name: stored.name,
     role: stored.role,
     description: stored.description,
@@ -736,7 +923,7 @@ function toBotProfile(stored: BotSummary): BotProfile {
     reasoningEffort: stored.reasoningEffort,
     threadId: stored.threadId,
     accent:
-      stored.name.toLowerCase() === "new agent"
+      stored.name.toLowerCase() === "new coworker"
         ? "neutral"
         : stored.avatarColor
           ? accentForAvatarColor(stored.avatarColor)
@@ -782,6 +969,10 @@ function toBotMessages(messages: ConversationMessage[]): BotMessage[] {
   const result: BotMessage[] = [];
   const thinkingByTurn = new Map<string, BotMessage>();
   for (const message of messages) {
+    if (message.tool) {
+      result.push({ ...toBotMessage(message), kind: "tool", tool: message.tool });
+      continue;
+    }
     if (message.author !== "assistant" || message.itemType !== "commentary") {
       result.push(toBotMessage(message));
       continue;
@@ -836,7 +1027,8 @@ function botMessagesEqual(left: BotMessage, right: BotMessage): boolean {
     left.reaction === right.reaction &&
     JSON.stringify(left.attachments) === JSON.stringify(right.attachments) &&
     JSON.stringify(left.exchange) === JSON.stringify(right.exchange) &&
-    JSON.stringify(left.items) === JSON.stringify(right.items)
+    JSON.stringify(left.items) === JSON.stringify(right.items) &&
+    JSON.stringify(left.tool) === JSON.stringify(right.tool)
   );
 }
 

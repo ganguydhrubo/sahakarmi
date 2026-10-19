@@ -70,7 +70,8 @@ const en = {
   youAreInControl: "You're in control. Coworkers are paused in the browser.",
   takeoverRequested: "asks you to take over",
   handBackNote: "Note for the coworker (optional)",
-  approvalsEmpty: "Nothing waiting. Coworkers ask here before paying, sending, publishing or submitting.",
+  approvalsEmpty:
+    "Nothing waiting. Coworkers ask here before paying, sending, publishing or submitting.",
   pending: "Pending",
   history: "History",
   approve: "Approve",
@@ -105,8 +106,7 @@ const en = {
   about: "About",
   aboutBody:
     "Sahkarmi runs on your computer. Coworkers use your local Codex or Claude sign-in; there is no Sahkarmi cloud account.",
-  attribution:
-    "Built on OpenBot v0.1.11 by Norbert Bodziony, used under the Apache License 2.0.",
+  attribution: "Built on OpenBot v0.1.11 by Norbert Bodziony, used under the Apache License 2.0.",
   stopAll: "Stop all coworkers",
   role: "Role",
   messagePlaceholder: "Message {name}",
@@ -187,8 +187,7 @@ const hi: Dictionary = {
   youAreInControl: "ब्राउज़र आपके हाथ में है। सहकर्मी रुके हुए हैं।",
   takeoverRequested: "आपसे ब्राउज़र सँभालने को कह रहे हैं",
   handBackNote: "सहकर्मी के लिए नोट (वैकल्पिक)",
-  approvalsEmpty:
-    "कुछ बाकी नहीं। भुगतान, भेजने, प्रकाशित करने या फ़ॉर्म जमा करने से पहले सहकर्मी यहाँ पूछते हैं।",
+  approvalsEmpty: "कुछ बाकी नहीं। भुगतान, भेजने, प्रकाशित करने या फ़ॉर्म जमा करने से पहले सहकर्मी यहाँ पूछते हैं।",
   pending: "बाकी",
   history: "इतिहास",
   approve: "मंज़ूर",
@@ -301,8 +300,7 @@ const bn: Dictionary = {
   youAreInControl: "ব্রাউজার আপনার হাতে। সহকর্মীরা থেমে আছে।",
   takeoverRequested: "আপনাকে ব্রাউজার সামলাতে বলছে",
   handBackNote: "সহকর্মীর জন্য নোট (ঐচ্ছিক)",
-  approvalsEmpty:
-    "কিছু বাকি নেই। টাকা দেওয়া, পাঠানো, প্রকাশ বা ফর্ম জমার আগে সহকর্মীরা এখানে জিজ্ঞেস করে।",
+  approvalsEmpty: "কিছু বাকি নেই। টাকা দেওয়া, পাঠানো, প্রকাশ বা ফর্ম জমার আগে সহকর্মীরা এখানে জিজ্ঞেস করে।",
   pending: "বাকি",
   history: "ইতিহাস",
   approve: "অনুমোদন",
