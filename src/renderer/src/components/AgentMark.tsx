@@ -16,7 +16,9 @@ export function AgentMark(props: { shape?: BotAvatarShape }) {
   return (
     <svg aria-hidden="true" class="agent-mark" viewBox="0 0 100 100">
       <path class="agent-mark__head" d={SILHOUETTES[props.shape ?? "blob"]} />
-      <path class="agent-mark__face" d="M34 31c4 4 6 8 7 13M58 28c4 4 6 8 7 13" />
+      {/* Abstract geometric motif — Sahkarmi avatars are never faces or photos. */}
+      <circle class="agent-mark__dot" cx="64" cy="38" r="10" />
+      <path class="agent-mark__band" d="M26 68h48" />
     </svg>
   );
 }

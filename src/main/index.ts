@@ -90,9 +90,9 @@ const SETUP_FILE = "sahkarmi-setup-v2.json";
 const BROWSER_STATE_FILE = "sahkarmi-browser-state-v1.json";
 
 const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string> = {
-  "agent-setup": "https://github.com/ganguydhrubo/sahkarmi/blob/main/docs/TROUBLESHOOTING.md",
-  feedback: "https://github.com/ganguydhrubo/sahkarmi/issues/new/choose",
-  message: "https://github.com/ganguydhrubo/sahkarmi/discussions",
+  "agent-setup": "https://github.com/ganguydhrubo/sahakarmi/blob/main/docs/TROUBLESHOOTING.md",
+  feedback: "https://github.com/ganguydhrubo/sahakarmi/issues/new/choose",
+  message: "https://github.com/ganguydhrubo/sahakarmi/discussions",
 };
 
 function configureContentSecurityPolicy(): void {

@@ -61,7 +61,7 @@ with Sahkarmi.
 
 ## Report a problem
 
-Use [GitHub Issues](https://github.com/ganguydhrubo/sahkarmi/issues) for reproducible bugs. Include
+Use [GitHub Issues](https://github.com/ganguydhrubo/sahakarmi/issues) for reproducible bugs. Include
 the Sahkarmi version, macOS version, Apple Silicon model, provider and CLI version, and minimal
 reproduction steps. Never publish tokens, `~/.codex`, `~/.claude`, conversations, private files,
 Electron user data, or full unreviewed diagnostics.

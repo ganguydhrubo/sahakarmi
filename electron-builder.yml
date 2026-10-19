@@ -16,7 +16,7 @@ electronFuses:
 publish:
   provider: github
   owner: ganguydhrubo
-  repo: sahkarmi
+  repo: sahakarmi
 files:
   - out/**/*
   - package.json

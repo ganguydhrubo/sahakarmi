@@ -8,6 +8,7 @@ import {
   type BotAvatarColor,
   type BotAvatarShape,
   type MessageReaction,
+  type ToolCallSummary,
 } from "../../shared/ipc";
 
 export type BotAccent = "teal" | "orange" | "purple" | "blue" | "violet" | "coral" | "neutral";
@@ -16,7 +17,7 @@ export const AVATAR_SHAPES: BotAvatarShape[] = [...BOT_AVATAR_SHAPES];
 
 export const AVATAR_COLORS: BotAvatarColor[] = [...BOT_AVATAR_COLORS];
 
-export type MessageKind = "text" | "thinking" | "exchange";
+export type MessageKind = "text" | "thinking" | "exchange" | "tool";
 
 export interface BotMessage {
   id: string;
@@ -35,10 +36,12 @@ export interface BotMessage {
   exchange?: AgentExchangeSummary;
   reaction?: MessageReaction | null;
   items?: string[];
+  tool?: ToolCallSummary;
 }
 
 export interface BotProfile {
   id: string;
+  workspaceId: string;
   name: string;
   role: string;
   description: string;

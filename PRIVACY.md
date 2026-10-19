@@ -66,6 +66,6 @@ not recoverable through an Sahkarmi cloud service because no such service exists
 
 ## Questions
 
-Use [GitHub Discussions](https://github.com/ganguydhrubo/sahkarmi/discussions) for privacy questions.
+Use [GitHub Discussions](https://github.com/ganguydhrubo/sahakarmi/discussions) for privacy questions.
 Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), without attaching
 credentials, conversations, or unrelated private files.

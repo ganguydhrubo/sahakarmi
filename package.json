@@ -10,12 +10,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ganguydhrubo/sahkarmi.git"
+    "url": "git+https://github.com/ganguydhrubo/sahakarmi.git"
   },
   "bugs": {
-    "url": "https://github.com/ganguydhrubo/sahkarmi/issues"
+    "url": "https://github.com/ganguydhrubo/sahakarmi/issues"
   },
-  "homepage": "https://github.com/ganguydhrubo/sahkarmi#readme",
+  "homepage": "https://github.com/ganguydhrubo/sahakarmi#readme",
   "keywords": [
     "ai-coworkers",
     "india",
