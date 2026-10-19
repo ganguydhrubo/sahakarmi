@@ -75,7 +75,7 @@ describe.sequential("AgentService", () => {
       amount: "₹18,500",
       status: "pending",
     });
-    expect(events.some((event) => event.type === "approvals-changed")).toBe(true);
+    await waitFor(() => events.some((event) => event.type === "approvals-changed"));
 
     await service.decideApproval({
       approvalId: approval?.id ?? "",
@@ -546,10 +546,11 @@ describe.sequential("AgentService", () => {
       ]),
     );
 
-    const starts = (await protocolMessages()).filter((message) => message.method === "turn/start");
-    const salesStart = starts.find((message) =>
-      String((message.params as Record<string, unknown>).cwd).endsWith("/sales-outbound"),
-    );
+    const isSalesStart = (message: Record<string, unknown>) =>
+      message.method === "turn/start" &&
+      String((message.params as Record<string, unknown>).cwd).endsWith("/sales-outbound");
+    await waitFor(async () => (await protocolMessages()).some(isSalesStart));
+    const salesStart = (await protocolMessages()).find(isSalesStart);
     const salesInput = (salesStart?.params as Record<string, unknown> | undefined)?.input as
       | Array<Record<string, unknown>>
       | undefined;
@@ -801,7 +802,8 @@ async function protocolMessages(): Promise<Array<Record<string, unknown>>> {
 async function waitFor(
   check: () => boolean | undefined | Promise<boolean | undefined>,
 ): Promise<void> {
-  const deadline = Date.now() + 3_000;
+  // Generous: the suite runs test files in parallel, so CI machines can be slow.
+  const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));

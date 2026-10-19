@@ -3,6 +3,13 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-19
+
+### Fixed
+
+- Release builds: macOS and Linux jobs no longer fail on timing-sensitive backend tests; first
+  release with downloadable Windows, macOS and Linux installers.
+
 ## [0.2.0] - 2026-10-19
 
 ### Added
