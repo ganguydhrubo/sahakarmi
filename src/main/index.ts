@@ -17,9 +17,12 @@ import {
 } from "electron";
 import electronUpdater from "electron-updater";
 import { AgentService } from "../backend/agent-service";
+import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
 import { MailboxStore } from "../backend/mailbox-store";
+import { parseCadence, ScheduleStore } from "../backend/schedule-store";
+import { SharedFiles } from "../backend/shared-files";
 import {
   type AgentEvent,
   type AgentProviderId,
@@ -29,6 +32,8 @@ import {
   type BrowserOpenInput,
   type BrowserVisibilityInput,
   type CancelQueuedMessageInput,
+  type CreateScheduleInput,
+  type DecideApprovalInput,
   type ExternalDestination,
   type ImportAttachmentsInput,
   type InterruptTurnInput,
@@ -41,6 +46,7 @@ import {
   type MacPermissionId,
   type MacPermissionsState,
   type OpenAttachmentInput,
+  type OpenSharedFileInput,
   type RespondToPromptInput,
   type SendMessageInput,
   type SetQueuePausedInput,
@@ -48,25 +54,25 @@ import {
 } from "../shared/ipc";
 import { AgentInitializationGate } from "./agent-initialization";
 import { notificationForAgentEvent } from "./agent-notifications";
-import { exportDiagnostics, exportOpenBotData } from "./maintenance-service";
+import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
 import { readSetupState, writeSetupState } from "./setup-store";
 import { handleTrusted } from "./trusted-ipc";
 import { isTrustedRendererUrl } from "./trusted-renderer";
 import { supportsInstalledUpdates, UpdateService } from "./update-service";
 
 if (!app.isPackaged) {
-  app.setPath("userData", join(app.getPath("appData"), "OpenBot Dev"));
+  app.setPath("userData", join(app.getPath("appData"), "Sahkarmi Dev"));
 }
 app.enableSandbox();
-if (process.platform === "win32") app.setAppUserModelId("app.openbot.desktop");
+if (process.platform === "win32") app.setAppUserModelId("in.sahkarmi.desktop");
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "openbot-app",
+    scheme: "sahkarmi-app",
     privileges: { standard: true, secure: true, supportFetchAPI: true },
   },
   {
-    scheme: "openbot-attachment",
+    scheme: "sahkarmi-attachment",
     privileges: { standard: true, secure: true, supportFetchAPI: true },
   },
 ]);
@@ -76,16 +82,17 @@ let browserHost: BrowserHost | null = null;
 let agentService: AgentService | null = null;
 let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
+let scheduleStore: ScheduleStore | null = null;
 let isQuitting = false;
 let shutdownStarted = false;
 
-const SETUP_FILE = "openbot-setup-v2.json";
-const BROWSER_STATE_FILE = "openbot-browser-state-v1.json";
+const SETUP_FILE = "sahkarmi-setup-v2.json";
+const BROWSER_STATE_FILE = "sahkarmi-browser-state-v1.json";
 
 const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string> = {
-  "agent-setup": "https://github.com/NorbertBodziony/openbot/blob/main/docs/TROUBLESHOOTING.md",
-  feedback: "https://x.com/intent/post?text=Feedback%20for%20OpenBot%20%40norbertbodziony%3A%20",
-  message: "https://x.com/norbertbodziony",
+  "agent-setup": "https://github.com/ganguydhrubo/sahkarmi/blob/main/docs/TROUBLESHOOTING.md",
+  feedback: "https://github.com/ganguydhrubo/sahkarmi/issues/new/choose",
+  message: "https://github.com/ganguydhrubo/sahkarmi/discussions",
 };
 
 function configureContentSecurityPolicy(): void {
@@ -94,11 +101,11 @@ function configureContentSecurityPolicy(): void {
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: openbot-attachment: https:",
+    "img-src 'self' data: sahkarmi-attachment: https:",
     "font-src 'self' data:",
     `connect-src 'self'${developmentSources}`,
     "object-src 'none'",
-    "frame-src 'self' openbot-attachment:",
+    "frame-src 'self' sahkarmi-attachment:",
     "base-uri 'none'",
   ].join("; ");
 
@@ -119,6 +126,8 @@ function registerIpcHandlers(
   updater: UpdateService,
   setupFile: string,
   initializeAgent: () => Promise<void>,
+  schedules: ScheduleStore,
+  sharedFiles: SharedFiles,
 ): void {
   handleTrusted(IPC_CHANNELS.getAppInfo, (): AppInfo => {
     const platform = process.platform;
@@ -157,7 +166,7 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.updateDownload, () => updater.downloadUpdate());
   handleTrusted(IPC_CHANNELS.updateInstall, () => updater.installUpdate());
   handleTrusted(IPC_CHANNELS.maintenanceExportData, () =>
-    exportOpenBotData({ service, mailbox, parentWindow: mainWindow }),
+    exportSahkarmiData({ service, mailbox, parentWindow: mainWindow }),
   );
   handleTrusted(IPC_CHANNELS.maintenanceExportDiagnostics, () =>
     exportDiagnostics({ service, browser, updater, parentWindow: mainWindow }),
@@ -167,13 +176,21 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.agentGetUsage, () => service.getUsage());
   handleTrusted(IPC_CHANNELS.agentListModels, () => service.listModels());
   handleTrusted(IPC_CHANNELS.agentListBots, () => service.listBots());
-  handleTrusted(IPC_CHANNELS.agentCreateBot, () => service.createBot());
+  handleTrusted(IPC_CHANNELS.agentCreateBot, (workspaceId: unknown) =>
+    service.createBot(
+      workspaceId === undefined || workspaceId === null
+        ? undefined
+        : requireString(workspaceId, "workspaceId"),
+    ),
+  );
   handleTrusted(IPC_CHANNELS.agentUpdateBot, (input: unknown) =>
     service.updateBot(parseUpdateBot(input)),
   );
-  handleTrusted(IPC_CHANNELS.agentDeleteBot, (botId: unknown) =>
-    service.deleteBot(requireString(botId, "botId")),
-  );
+  handleTrusted(IPC_CHANNELS.agentDeleteBot, async (botId: unknown) => {
+    const id = requireString(botId, "botId");
+    await service.deleteBot(id);
+    await schedules.deleteBotData(id);
+  });
   handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown) =>
     service.readConversation(requireString(botId, "botId")),
   );
@@ -244,6 +261,104 @@ function registerIpcHandlers(
     const parsed = parseVisibility(input);
     await browser.setVisible(parsed);
   });
+  handleTrusted(IPC_CHANNELS.browserGetTakeover, () => service.getTakeover());
+  handleTrusted(IPC_CHANNELS.browserTakeOver, () => service.takeOverBrowser());
+  handleTrusted(IPC_CHANNELS.browserHandBack, (note: unknown) =>
+    service.handBackBrowser(typeof note === "string" && note.trim() ? note : null),
+  );
+
+  handleTrusted(IPC_CHANNELS.teamListWorkspaces, () => service.listWorkspaces());
+  handleTrusted(IPC_CHANNELS.teamCreateWorkspace, (name: unknown) =>
+    service.createWorkspace(requireString(name, "name")),
+  );
+  handleTrusted(IPC_CHANNELS.teamRenameWorkspace, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid workspace rename request.");
+    return service.renameWorkspace(
+      requireString(input.workspaceId, "workspaceId"),
+      requireString(input.name, "name"),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.teamSetActiveWorkspace, (workspaceId: unknown) =>
+    service.setActiveWorkspace(requireString(workspaceId, "workspaceId")),
+  );
+
+  handleTrusted(IPC_CHANNELS.approvalsList, () => service.listApprovals());
+  handleTrusted(IPC_CHANNELS.approvalsDecide, (input: unknown) =>
+    service.decideApproval(parseDecideApproval(input)),
+  );
+
+  handleTrusted(IPC_CHANNELS.schedulesList, () => schedules.list());
+  handleTrusted(IPC_CHANNELS.schedulesCreate, (input: unknown) => {
+    const parsed = parseCreateSchedule(input);
+    if (!service.listBots().some((bot) => bot.id === parsed.botId)) {
+      throw new Error("Unknown coworker.");
+    }
+    return schedules.create(parsed);
+  });
+  handleTrusted(IPC_CHANNELS.schedulesSetEnabled, (input: unknown) => {
+    if (!isObject(input) || typeof input.enabled !== "boolean") {
+      throw new Error("Invalid schedule update.");
+    }
+    return schedules.setEnabled(requireString(input.scheduleId, "scheduleId"), input.enabled);
+  });
+  handleTrusted(IPC_CHANNELS.schedulesDelete, (scheduleId: unknown) =>
+    schedules.delete(requireString(scheduleId, "scheduleId")),
+  );
+  handleTrusted(IPC_CHANNELS.schedulesRunNow, (scheduleId: unknown) =>
+    schedules.runNow(requireString(scheduleId, "scheduleId")),
+  );
+
+  handleTrusted(IPC_CHANNELS.filesList, (directory: unknown) =>
+    sharedFiles.list(typeof directory === "string" ? directory : ""),
+  );
+  handleTrusted(IPC_CHANNELS.filesAdd, async (directory: unknown) => {
+    const folder = typeof directory === "string" ? directory : "";
+    const options: OpenDialogOptions = { properties: ["openFile", "multiSelections"] };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled ? sharedFiles.list(folder) : sharedFiles.add(result.filePaths, folder);
+  });
+  handleTrusted(IPC_CHANNELS.filesOpen, async (input: unknown) => {
+    const parsed = parseOpenSharedFile(input);
+    const target = sharedFiles.resolve(parsed.path);
+    if (parsed.action === "reveal") {
+      shell.showItemInFolder(target);
+      return;
+    }
+    const error = await shell.openPath(target);
+    if (error) throw new Error(error);
+  });
+}
+
+function parseDecideApproval(value: unknown): DecideApprovalInput {
+  if (!isObject(value) || (value.decision !== "approved" && value.decision !== "rejected")) {
+    throw new Error("Invalid approval decision.");
+  }
+  if (value.note !== undefined && value.note !== null && typeof value.note !== "string") {
+    throw new Error("Invalid approval note.");
+  }
+  return {
+    approvalId: requireString(value.approvalId, "approvalId"),
+    decision: value.decision,
+    note: typeof value.note === "string" ? value.note : null,
+  };
+}
+
+function parseCreateSchedule(value: unknown): CreateScheduleInput {
+  if (!isObject(value)) throw new Error("Invalid schedule.");
+  return {
+    botId: requireString(value.botId, "botId"),
+    text: requireString(value.text, "text"),
+    cadence: parseCadence(value.cadence),
+  };
+}
+
+function parseOpenSharedFile(value: unknown): OpenSharedFileInput {
+  if (!isObject(value) || (value.action !== "open" && value.action !== "reveal")) {
+    throw new Error("Invalid file action.");
+  }
+  return { path: typeof value.path === "string" ? value.path : "", action: value.action };
 }
 
 function createWindow(): BrowserWindow {
@@ -253,8 +368,9 @@ function createWindow(): BrowserWindow {
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: "#0b0d0e",
-    title: "OpenBot",
+    backgroundColor: "#0F1220",
+    title: "Sahkarmi",
+    ...(app.isPackaged ? {} : { icon: join(__dirname, "../../build/icons/512x512.png") }),
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 13, y: 14 } }
       : {}),
@@ -290,7 +406,7 @@ function loadRenderer(window: BrowserWindow): Promise<void> {
   const developmentUrl = process.env.ELECTRON_RENDERER_URL;
   return developmentUrl
     ? window.loadURL(developmentUrl)
-    : window.loadURL("openbot-app://app/index.html");
+    : window.loadURL("sahkarmi-app://app/index.html");
 }
 
 function configureApplicationMenu(service: AgentService, updater: UpdateService): void {
@@ -382,8 +498,16 @@ if (!hasSingleInstanceLock) {
         readComputerUsePrerequisites,
         30_000,
         setupState.preferredProvider ?? "codex",
+        new ApprovalStore(app.getPath("userData")),
       );
       const service = agentService;
+      const schedules = new ScheduleStore(app.getPath("userData"));
+      await schedules.initialize();
+      scheduleStore = schedules;
+      schedules.on("changed", (list) =>
+        forwardAgentEvent({ type: "schedules-changed", schedules: list }),
+      );
+      const sharedFiles = new SharedFiles(store.sharedRoot);
       const { autoUpdater } = electronUpdater;
       updateService = new UpdateService(autoUpdater, {
         currentVersion: app.getVersion(),
@@ -397,14 +521,31 @@ if (!hasSingleInstanceLock) {
       updateService.on("status", forwardUpdateStatus);
       updateService.start();
       const agentInitialization = new AgentInitializationGate(() => service.initialize());
-      registerIpcHandlers(service, mailboxStore, browserHost, updateService, setupFile, () =>
-        agentInitialization.start(),
+      registerIpcHandlers(
+        service,
+        mailboxStore,
+        browserHost,
+        updateService,
+        setupFile,
+        () => agentInitialization.start(),
+        schedules,
+        sharedFiles,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);
-      void agentInitialization.start().catch((error) => {
-        console.error("Unable to initialize the local agent backend:", error);
-      });
+      void agentInitialization
+        .start()
+        .then(() =>
+          schedules.start(async (task) => {
+            await service.sendMessage({
+              botId: task.botId,
+              text: `[Scheduled task] ${task.text}`,
+            });
+          }),
+        )
+        .catch((error) => {
+          console.error("Unable to initialize the local agent backend:", error);
+        });
 
       app.on("activate", () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -417,9 +558,9 @@ if (!hasSingleInstanceLock) {
     })
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("OpenBot failed to start:", error);
+      console.error("Sahkarmi failed to start:", error);
       dialog.showErrorBox(
-        "OpenBot couldn’t start",
+        "Sahkarmi couldn’t start",
         `${message}\n\nYour local data was not reset or overwritten. See the troubleshooting guide for recovery steps.`,
       );
       app.quit();
@@ -499,6 +640,7 @@ async function prepareForShutdown(): Promise<void> {
   shutdownStarted = true;
   isQuitting = true;
   updateService?.stop();
+  scheduleStore?.stop();
   await (browserHost?.destroy() ?? Promise.resolve());
   await (agentService?.stop() ?? Promise.resolve());
 }
@@ -625,7 +767,7 @@ function parseSetQueuePaused(value: unknown): SetQueuePausedInput {
 }
 
 function configureAttachmentProtocol(mailbox: MailboxStore): void {
-  session.defaultSession.protocol.handle("openbot-attachment", async (request) => {
+  session.defaultSession.protocol.handle("sahkarmi-attachment", async (request) => {
     try {
       const url = new URL(request.url);
       const id = url.pathname.split("/").filter(Boolean).at(-1);
@@ -647,7 +789,7 @@ function configureAttachmentProtocol(mailbox: MailboxStore): void {
 
 function configureApplicationProtocol(): void {
   const rendererRoot = resolve(__dirname, "../renderer");
-  session.defaultSession.protocol.handle("openbot-app", async (request) => {
+  session.defaultSession.protocol.handle("sahkarmi-app", async (request) => {
     try {
       const url = new URL(request.url);
       if (url.host !== "app") return new Response("Not found", { status: 404 });

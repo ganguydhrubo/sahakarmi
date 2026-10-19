@@ -1,4 +1,23 @@
-OpenBot
-Copyright 2026 Norbert Bodziony
+Sahkarmi (सहकर्मी)
+Copyright 2026 Dhrubo Ganguly
 
-This product includes software developed by Norbert Bodziony.
+This product is a derivative work of OpenBot, licensed under the Apache License,
+Version 2.0. The upstream base is the last Apache-2.0 release:
+
+  OpenBot v0.1.11 — https://github.com/nightly-labs/openbot/tree/v0.1.11
+  (commit e9cae2ac7c83936a6e7d22c820e9d7ec0726d880)
+
+  OpenBot
+  Copyright 2026 Norbert Bodziony
+  This product includes software developed by Norbert Bodziony.
+
+No code from OpenBot v0.1.12 or later (PolyForm Noncommercial) is included.
+
+Modifications by the Sahkarmi authors include: rebranding, a new visual identity,
+the three-pane coworker layout, workspaces, default coworkers, approvals,
+schedules, shared files, tool-call cards, browser take-over, and EN/HI/BN UI.
+
+Bundled fonts (SIL Open Font License 1.1, see resources/fonts/OFL.txt):
+  Mukta — Ek Type
+  Baloo 2 — Ek Type
+  Hind Siliguri — Indian Type Foundry

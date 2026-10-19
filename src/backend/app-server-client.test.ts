@@ -67,7 +67,7 @@ function createClient(executable: string, timeout: number): CodexAppServerClient
 }
 
 async function createFakeCodex(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "openbot-fake-codex-"));
+  const root = await mkdtemp(join(tmpdir(), "sahkarmi-fake-codex-"));
   temporaryRoots.push(root);
   const executable = join(root, "codex");
   await writeFile(

@@ -20,13 +20,13 @@ const server = createServer((request, response) => {
   if (url.pathname === "/download") {
     response.writeHead(200, {
       "content-type": "text/plain",
-      "content-disposition": 'attachment; filename="openbot-smoke.txt"',
+      "content-disposition": 'attachment; filename="sahkarmi-smoke.txt"',
     });
     response.end("local download");
     return;
   }
   if (url.pathname === "/cookie") {
-    if (url.searchParams.has("set")) response.setHeader("set-cookie", "openbot=shared; Path=/");
+    if (url.searchParams.has("set")) response.setHeader("set-cookie", "sahkarmi=shared; Path=/");
     response.setHeader("content-type", "text/html; charset=utf-8");
     response.end(`<main>cookie:${request.headers.cookie ?? "none"}</main>`);
     return;
@@ -63,7 +63,7 @@ void main().catch((error) => {
 });
 
 async function main(): Promise<void> {
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "openbot-browser-smoke-"));
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "sahkarmi-browser-smoke-"));
   app.setPath("userData", join(temporaryRoot, "user-data"));
   const hardTimeout = setTimeout(() => {
     process.stderr.write("BrowserHost smoke test timed out.\n");
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     const clientHintBrands = identity.requestHeaders["sec-ch-ua"] ?? "";
     if (
       headerSnapshot.text.includes("Electron/") ||
-      headerSnapshot.text.includes("OpenBot/") ||
+      headerSnapshot.text.includes("Sahkarmi/") ||
       identity.requestHeaders["user-agent"] !== identity.navigatorUserAgent ||
       (clientHintBrands.length > 0 &&
         identity.navigatorBrands.some(
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
     await browser.open(`${origin}/cookie?set=1`, "smoke-thread");
     const cookieTab = await browser.open(`${origin}/cookie`, "other-thread");
     const cookieSnapshot = await browser.snapshot(cookieTab.id);
-    if (!cookieSnapshot.text.includes("openbot=shared"))
+    if (!cookieSnapshot.text.includes("sahkarmi=shared"))
       throw new Error("Cookies were not shared.");
     process.stdout.write("BrowserHost: shared cookies passed.\n");
 
@@ -198,7 +198,7 @@ async function main(): Promise<void> {
       type: "click",
       ref: download.ref,
     });
-    const downloadPath = join(downloadsRoot, "openbot-smoke.txt");
+    const downloadPath = join(downloadsRoot, "sahkarmi-smoke.txt");
     await waitFor(async () => (await readFile(downloadPath, "utf8")) === "local download");
     const nextDownloadSnapshot = await browser.snapshot(downloadPage.id);
     const nextDownload = nextDownloadSnapshot.elements.find(
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
     });
     await waitFor(
       async () =>
-        (await readFile(join(downloadsRoot, "openbot-smoke (2).txt"), "utf8")) === "local download",
+        (await readFile(join(downloadsRoot, "sahkarmi-smoke (2).txt"), "utf8")) === "local download",
     );
     process.stdout.write("BrowserHost: download passed.\n");
 
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
       threadId: "smoke-thread",
       turnId: "browser-smoke-turn",
       callId: "browser-smoke-call",
-      namespace: "openbot_browser",
+      namespace: "sahkarmi_browser",
       tool: "open",
       arguments: { url: `${origin}/cookie` },
     });

@@ -30,7 +30,7 @@ await Promise.all([
   writeFile("CHANGELOG.md", nextChangelog),
 ]);
 
-console.log(`Prepared OpenBot v${nextVersion}. Review, commit, push, run preflight, then tag it.`);
+console.log(`Prepared Sahkarmi v${nextVersion}. Review, commit, push, run preflight, then tag it.`);
 
 function bumpVersion(version: string, selectedIncrement: Increment): string {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);

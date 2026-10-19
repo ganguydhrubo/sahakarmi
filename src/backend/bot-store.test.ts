@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { BotStore } from "./bot-store";
+import { BotStore, DEFAULT_COWORKERS, DEFAULT_WORKSPACE_ID } from "./bot-store";
 
 const temporaryRoots: string[] = [];
 
@@ -13,18 +13,76 @@ afterEach(async () => {
 });
 
 describe("BotStore", () => {
-  it("starts a new user with no agents", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+  it("starts a new user with the default Indian team in one workspace", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
 
     await store.initialize();
 
-    expect(store.list()).toEqual([]);
+    expect(store.list().map((bot) => `${bot.name} (${bot.role})`)).toEqual([
+      "Asha (Accounts)",
+      "Vikram (Sales)",
+      "Meera (Support)",
+      "Arjun (Research)",
+      "Kavya (Content)",
+    ]);
+    expect(store.list().every((bot) => bot.workspaceId === DEFAULT_WORKSPACE_ID)).toBe(true);
+    expect(store.workspaces()).toMatchObject({
+      activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+      workspaces: [{ id: DEFAULT_WORKSPACE_ID, name: "My Business" }],
+    });
+  });
+
+  it("creates coworkers in the active workspace and keeps workspaces across restarts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
+    temporaryRoots.push(root);
+    const userData = join(root, "user-data");
+    const store = new BotStore(userData, join(root, "home"));
+    await store.initialize();
+
+    const state = await store.createWorkspace("Kolkata Showroom");
+    const showroom = state.activeWorkspaceId;
+    expect(showroom).not.toBe(DEFAULT_WORKSPACE_ID);
+    const bot = await store.createBot();
+    expect(bot.workspaceId).toBe(showroom);
+    await store.renameWorkspace(showroom, "Kolkata Store");
+
+    const restored = new BotStore(userData, join(root, "home"));
+    await restored.initialize();
+    expect(restored.workspaces().activeWorkspaceId).toBe(showroom);
+    expect(restored.workspaces().workspaces.map((workspace) => workspace.name)).toEqual([
+      "My Business",
+      "Kolkata Store",
+    ]);
+    expect(restored.list().filter((candidate) => candidate.workspaceId === showroom)).toHaveLength(
+      1,
+    );
+    await expect(restored.setActiveWorkspace("missing")).rejects.toThrow("Unknown workspace");
+  });
+
+  it("upgrades version 1 state files into the first workspace", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
+    temporaryRoots.push(root);
+    const userData = join(root, "user-data");
+    const seed = new BotStore(userData, join(root, "home"));
+    await seed.initialize();
+    const legacy = JSON.parse(await readFile(join(userData, "bots.json"), "utf8"));
+    const v1 = {
+      version: 1,
+      examplesInitialized: true,
+      bots: legacy.bots.map(({ workspaceId: _w, ...bot }: Record<string, unknown>) => bot),
+    };
+    await writeFile(join(userData, "bots.json"), JSON.stringify(v1));
+
+    const store = new BotStore(userData, join(root, "home"));
+    await store.initialize();
+    expect(store.list()).toHaveLength(DEFAULT_COWORKERS.length);
+    expect(store.list().every((bot) => bot.workspaceId === DEFAULT_WORKSPACE_ID)).toBe(true);
   });
 
   it("creates separate bot workspaces and a shared directory", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const userData = join(root, "user-data");
     const home = join(root, "home");
@@ -34,18 +92,18 @@ describe("BotStore", () => {
     const chief = await store.getOrCreate("chief");
     const sales = await store.getOrCreate("sales-outbound");
 
-    expect(chief.workspacePath).toBe(join(home, "OpenBot", "Bots", "chief"));
+    expect(chief.workspacePath).toBe(join(home, "Sahkarmi", "Coworkers", "chief"));
     expect(chief.description).toBe("");
     expect(chief.preview).toBe("No messages yet");
     expect(chief.model).toBe("gpt-5.6-luna");
     expect(chief.reasoningEffort).toBe("medium");
-    expect(sales.workspacePath).toBe(join(home, "OpenBot", "Bots", "sales-outbound"));
-    expect(store.sharedRoot).toBe(join(home, "OpenBot", "Shared"));
+    expect(sales.workspacePath).toBe(join(home, "Sahkarmi", "Coworkers", "sales-outbound"));
+    expect(store.sharedRoot).toBe(join(home, "Sahkarmi", "Shared"));
     expect(chief.workspacePath).not.toBe(sales.workspacePath);
   });
 
   it("persists thread ids with a complete JSON state file", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const userData = join(root, "user-data");
     const store = new BotStore(userData, join(root, "home"));
@@ -55,14 +113,14 @@ describe("BotStore", () => {
     await store.setThreadId("chief", "thread-123");
     const parsed = JSON.parse(await readFile(join(userData, "bots.json"), "utf8"));
 
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(2);
     expect(parsed.bots.find((bot: { id: string }) => bot.id === "chief").threadId).toBe(
       "thread-123",
     );
   });
 
   it("creates unique new agents at the top of the persistent list", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const userData = join(root, "user-data");
     const store = new BotStore(userData, join(root, "home"));
@@ -72,8 +130,8 @@ describe("BotStore", () => {
     const second = await store.createBot();
 
     expect(first.id).not.toBe(second.id);
-    expect(first.name).toBe("New agent");
-    expect(second.name).toBe("New agent");
+    expect(first.name).toBe("New coworker");
+    expect(second.name).toBe("New coworker");
     expect(
       store
         .list()
@@ -92,7 +150,7 @@ describe("BotStore", () => {
   });
 
   it("rejects path traversal bot ids", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const store = new BotStore(join(root, "data"), join(root, "home"));
     await store.initialize();
@@ -101,7 +159,7 @@ describe("BotStore", () => {
   });
 
   it("fails closed instead of overwriting agent state from a newer version", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const userData = join(root, "user-data");
     const statePath = join(userData, "bots.json");
@@ -115,7 +173,7 @@ describe("BotStore", () => {
   });
 
   it("persists editable agent settings", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const userData = join(root, "user-data");
     const store = new BotStore(userData, join(root, "home"));
@@ -144,7 +202,7 @@ describe("BotStore", () => {
   });
 
   it("starts a new thread when the model changes provider", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     await store.initialize();
@@ -159,8 +217,8 @@ describe("BotStore", () => {
     expect(opus.threadId).toBe("claude-thread");
   });
 
-  it("deletes agents persistently without reseeding examples", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-store-"));
+  it("deletes coworkers persistently without reseeding the default team", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);
     const userData = join(root, "user-data");
     const home = join(root, "home");

@@ -15,4 +15,4 @@ coverage/
 .vscode/
 playwright-report/
 test-results/
-.openbot-browser-test/
+.sahkarmi-browser-test/

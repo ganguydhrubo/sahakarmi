@@ -1,16 +1,16 @@
-# OpenBot
+# Sahkarmi
 
-[![CI](https://github.com/NorbertBodziony/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/NorbertBodziony/openbot/actions/workflows/ci.yml)
+[![CI](https://github.com/ganguydhrubo/sahkarmi/actions/workflows/ci.yml/badge.svg)](https://github.com/ganguydhrubo/sahkarmi/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-OpenBot is a local-first desktop workspace for persistent AI teammates. It supports the local
+Sahkarmi is a local-first desktop workspace for persistent AI teammates. It supports the local
 [Codex App Server](https://learn.chatgpt.com/docs/app-server) and
 [Claude Code](https://code.claude.com/docs/en/overview). It gives every agent its own workspace and
 conversation, and provides local queues, file transfers, an embedded browser, and agent-to-agent
 messaging in one desktop app.
 
 > [!WARNING]
-> OpenBot is a development preview. Agents currently run with `danger-full-access` and
+> Sahkarmi is a development preview. Agents currently run with `danger-full-access` and
 > `approvalPolicy: never`. They can read and modify files, run commands, use the network, and control
 > the embedded browser without per-action confirmations after the explicit first-launch consent.
 > Run only agents and tasks you trust, keep backups, and review [Security](#security) before use.
@@ -25,24 +25,24 @@ messaging in one desktop app.
 - Optional Computer Use integration for macOS through a locally installed Codex plugin.
 - Per-agent model, reasoning, profile, notification, browser, and panel state.
 - Local data and privacy-safe diagnostics exports from the account menu.
-- No OpenBot cloud backend, account system, telemetry service, or copied CLI credentials.
+- No Sahkarmi cloud backend, account system, telemetry service, or copied CLI credentials.
 
-OpenBot is local-first, not offline-only. Codex connects to OpenAI, Claude connects to Anthropic,
+Sahkarmi is local-first, not offline-only. Codex connects to OpenAI, Claude connects to Anthropic,
 visited pages use the network, and installed plugins may connect to their own services.
 
 ## Install
 
-OpenBot supports macOS 12 or newer on Apple Silicon and Windows 10 or newer on x64 systems.
+Sahkarmi supports macOS 12 or newer on Apple Silicon and Windows 10 or newer on x64 systems.
 
 ### macOS
 
-1. Download the latest `OpenBot-*.dmg` from [GitHub Releases](https://github.com/NorbertBodziony/openbot/releases).
-2. Drag OpenBot to Applications and open it.
+1. Download the latest `Sahkarmi-*.dmg` from [GitHub Releases](https://github.com/ganguydhrubo/sahkarmi/releases).
+2. Drag Sahkarmi to Applications and open it.
 
 ### Windows
 
-1. Download the latest `OpenBot-*-x64.exe` from [GitHub Releases](https://github.com/NorbertBodziony/openbot/releases).
-2. Run the installer and open OpenBot.
+1. Download the latest `Sahkarmi-*-x64.exe` from [GitHub Releases](https://github.com/ganguydhrubo/sahkarmi/releases).
+2. Run the installer and open Sahkarmi.
 
 > [!IMPORTANT]
 > The Windows preview is not code-signed. Windows can show an `Unknown publisher` or SmartScreen
@@ -66,16 +66,16 @@ curl -fsSL https://claude.ai/install.sh | bash
 
 On Windows, install the native CLI and make sure `codex` or `claude` is available in PowerShell.
 Claude Code also requires Git for Windows. Then run `codex login` or `claude auth login` and restart
-OpenBot. Each available provider appears in the agent model list.
+Sahkarmi. Each available provider appears in the agent model list.
 
 Bun and Node.js are not required when using an installed release. Screen Recording and Accessibility
 permissions are needed only for the optional Computer Use plugin.
 
-OpenBot uses the existing local CLI login. It does not copy tokens from `~/.codex` or `~/.claude`.
+Sahkarmi uses the existing local CLI login. It does not copy tokens from `~/.codex` or `~/.claude`.
 See the official Codex and Claude authentication documentation for account setup.
 
 For setup problems, data reset, and uninstall instructions, see
-[Troubleshooting](docs/TROUBLESHOOTING.md). OpenBot's data and network behavior is documented in
+[Troubleshooting](docs/TROUBLESHOOTING.md). Sahkarmi's data and network behavior is documented in
 [Privacy](PRIVACY.md).
 
 ## Development
@@ -84,8 +84,8 @@ Development requires [Bun](https://bun.sh/) 1.3.11, Node.js 22.12 or newer, and 
 supported agent CLI.
 
 ```bash
-git clone https://github.com/NorbertBodziony/openbot.git
-cd openbot
+git clone https://github.com/ganguydhrubo/sahkarmi.git
+cd sahkarmi
 bun install --frozen-lockfile
 bun run codex:doctor
 bun run dev
@@ -136,22 +136,22 @@ SolidJS renderer
 
 - `src/main` owns the Electron lifecycle, window security, local protocol, and IPC registration.
 - `src/backend` owns provider adapters, persistence, message scheduling, transfers, and the browser host.
-- `src/preload` exposes only the typed `window.openbot` API.
+- `src/preload` exposes only the typed `window.sahkarmi` API.
 - `src/renderer` contains the SolidJS interface.
 - `src/shared` contains process-boundary contracts.
 
 ## Local data and network boundaries
 
-- `~/OpenBot/Bots/<bot-id>` — one working directory per agent.
-- `~/OpenBot/Shared` — files intentionally shared between agents.
-- `~/OpenBot/Downloads` — embedded-browser downloads.
+- `~/Sahkarmi/Bots/<bot-id>` — one working directory per agent.
+- `~/Sahkarmi/Shared` — files intentionally shared between agents.
+- `~/Sahkarmi/Downloads` — embedded-browser downloads.
 - Electron `userData` — bot metadata, queues, drafts, and attachment indexes.
 - `~/.codex` — login and thread history managed exclusively by Codex CLI.
 - `~/.claude` — login and session history managed exclusively by Claude CLI.
 
-OpenBot does not open an application HTTP port. Electron communicates with local CLI processes over
+Sahkarmi does not open an application HTTP port. Electron communicates with local CLI processes over
 stdio. The embedded browser uses a separate sandboxed Electron session and cannot access
-`window.openbot` or managed local attachments.
+`window.sahkarmi` or managed local attachments.
 
 ## Security
 
@@ -184,6 +184,6 @@ Copyright 2026 Norbert Bodziony.
 Licensed under the [Apache License 2.0](LICENSE). You may use, modify, and distribute the code under
 that license, provided its license and attribution notices are preserved. See [NOTICE](NOTICE).
 
-OpenBot is an independent open-source project and is not affiliated with, endorsed by, or
+Sahkarmi is an independent open-source project and is not affiliated with, endorsed by, or
 sponsored by OpenAI. OpenAI, ChatGPT, and Codex are used only to describe compatibility with their
 respective products and services.

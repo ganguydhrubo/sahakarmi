@@ -107,7 +107,7 @@ jobs:
       - name: Verify application signature and notarization
         shell: bash
         run: |
-          app_path="dist/mac-arm64/OpenBot.app"
+          app_path="dist/mac-arm64/Sahkarmi.app"
           test -d "$app_path"
           codesign --verify --deep --strict --verbose=2 "$app_path"
           spctl --assess --type execute --verbose=2 "$app_path"
@@ -139,10 +139,10 @@ jobs:
       - name: Generate macOS release SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          path: dist/mac-arm64/OpenBot.app
+          path: dist/mac-arm64/Sahkarmi.app
           format: spdx-json
-          output-file: dist/OpenBot-${{ env.RELEASE_VERSION }}-macos.spdx.json
-          artifact-name: OpenBot-${{ env.RELEASE_VERSION }}-macOS-SBOM
+          output-file: dist/Sahkarmi-${{ env.RELEASE_VERSION }}-macos.spdx.json
+          artifact-name: Sahkarmi-${{ env.RELEASE_VERSION }}-macOS-SBOM
           upload-artifact: false
           upload-release-assets: false
 
@@ -220,8 +220,8 @@ jobs:
         with:
           path: dist/win-unpacked
           format: spdx-json
-          output-file: dist/OpenBot-${{ env.RELEASE_VERSION }}-windows.spdx.json
-          artifact-name: OpenBot-${{ env.RELEASE_VERSION }}-Windows-SBOM
+          output-file: dist/Sahkarmi-${{ env.RELEASE_VERSION }}-windows.spdx.json
+          artifact-name: Sahkarmi-${{ env.RELEASE_VERSION }}-Windows-SBOM
           upload-artifact: false
           upload-release-assets: false
 
@@ -285,5 +285,5 @@ jobs:
               --generate-notes \
               --latest \
               --repo "$GITHUB_REPOSITORY" \
-              --title "OpenBot $RELEASE_TAG"
+              --title "Sahkarmi $RELEASE_TAG"
           fi
