@@ -1,82 +1,75 @@
-# Sahkarmi
+<p align="center">
+  <img src="build/logo.svg" width="96" alt="Sahkarmi logo: two overlapping rounded shapes in saffron and indigo" />
+</p>
 
-[![CI](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml/badge.svg)](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+# Sahkarmi · सहकर्मी
 
-Sahkarmi is a local-first desktop workspace for persistent AI teammates. It supports the local
-[Codex App Server](https://learn.chatgpt.com/docs/app-server) and
-[Claude Code](https://code.claude.com/docs/en/overview). It gives every agent its own workspace and
-conversation, and provides local queues, file transfers, an embedded browser, and agent-to-agent
-messaging in one desktop app.
+**AI coworkers for Indian businesses.**
+Your AI team. Made in India. · आपकी AI टीम. भारत में बनी. · আপনার AI টিম. ভারতে তৈরি.
+
+Sahkarmi is a local-first desktop app where each AI coworker has its own workspace, browser,
+memory and task queue. You hire a small team (Accounts, Sales, Support, Research, Content), give
+them work in plain English, हिन्दी or বাংলা, and stay in control of anything that spends money or
+talks to customers.
+
+![Asha (Accounts) reconciling payables, with the task queue, tool-call cards, schedule panel and the browser take-over request](docs/screenshots/light-schedule.jpg)
 
 > [!WARNING]
-> Sahkarmi is a development preview. Agents currently run with `danger-full-access` and
-> `approvalPolicy: never`. They can read and modify files, run commands, use the network, and control
-> the embedded browser without per-action confirmations after the explicit first-launch consent.
-> Run only agents and tasks you trust, keep backups, and review [Security](#security) before use.
+> Development preview. Coworkers run through your local Codex or Claude CLI with full local access
+> (files, commands, network, embedded browser). Sahkarmi adds approvals for payments, customer
+> messages, publishing and form submissions, but the model is ultimately trusted. Run only tasks you
+> trust and keep backups.
 
-## What works
+## What's inside
 
-- Persistent agents backed by independent Codex or Claude threads and local workspaces.
-- Per-agent context monitoring with automatic compaction before long threads exhaust the model window.
-- FIFO message queues with pause, resume, cancellation, and crash-safe persistence.
-- Agent-to-agent messages, replies, reactions, images, and managed file transfers.
-- A persistent embedded browser that agents can open, inspect, and control.
-- Optional Computer Use integration for macOS through a locally installed Codex plugin.
-- Per-agent model, reasoning, profile, notification, browser, and panel state.
-- Local data and privacy-safe diagnostics exports from the account menu.
-- No Sahkarmi cloud backend, account system, telemetry service, or copied CLI credentials.
+**Three-pane coworker layout**
 
-Sahkarmi is local-first, not offline-only. Codex connects to OpenAI, Claude connects to Anthropic,
-visited pages use the network, and installed plugins may connect to their own services.
+- **Left rail (260 px):** workspace switcher, the Team list (abstract avatar, name, role and a live
+  status dot: idle · working · waiting for you · needs attention), *+ New coworker*,
+  **Shared files**, **Approvals** (with a pending badge) and **Settings**.
+- **Centre:** the selected coworker's thread: streamed replies, collapsible tool-call cards, a
+  task-queue strip on top (queued / running / done with pause, resume, cancel and stop) and a composer
+  with model picker, attach file, voice input (Web Speech API, en-IN / hi-IN / bn-IN) and a
+  **Run on schedule** toggle (once, hourly, daily, weekdays, weekly).
+- **Right pane (resizable, collapsible):** the coworker's live embedded Chromium browser with a
+  **Take over** button. While you're in control (login, OTP/2FA, CAPTCHA, payment pages), coworker
+  browser tools are paused. Coworkers can also *ask* you to take over, and are messaged when you
+  hand back.
 
-## Install
+**Default team** (names and roles are editable): Asha (Accounts), Vikram (Sales), Meera (Support),
+Arjun (Research), Kavya (Content). Each coworker gets standing instructions for Indian business
+context: INR with lakh/crore, IST, GST, DD/MM/YYYY, and replies in the owner's language.
 
-Sahkarmi supports macOS 12 or newer on Apple Silicon and Windows 10 or newer on x64 systems.
+**Approvals.** Coworkers must call `sahkarmi.request_approval` and stop before payments, messages to
+customers or vendors, publishing, government/bank/marketplace form submissions, deleting data or
+sharing personal data. Your decision and note are delivered back to the coworker as a message, so
+nothing blocks while you are away.
 
-### macOS
+| Dark theme | Approvals (हिन्दी) | Shared files (বাংলা) |
+| --- | --- | --- |
+| ![Dark theme](docs/screenshots/dark-asha.jpg) | ![Approvals in Hindi](docs/screenshots/light-approvals-hi.jpg) | ![Shared files in Bengali](docs/screenshots/dark-files-bn.jpg) |
 
-1. Download the latest `Sahkarmi-*.dmg` from [GitHub Releases](https://github.com/ganguydhrubo/sahakarmi/releases).
-2. Drag Sahkarmi to Applications and open it.
+## Brand
 
-### Windows
+- Palette (CSS tokens, light *paper* and dark *night* themes, WCAG AA text contrast in both):
+  saffron `#E8772E` (primary fill), indigo `#1E2A5A`, leaf `#2E8B57`, turmeric `#F2B705`,
+  sindoor `#C0392B`, paper `#FBF7F0`, night `#0F1220`. Saffron is used as a fill; saffron-coloured
+  text uses a darker ink (`#A84E14` light / `#F0904F` dark) to stay above 4.5:1.
+- Type: Mukta (UI, Devanagari + Latin), Baloo 2 (headings), Hind Siliguri (Bengali), all bundled
+  locally from `@fontsource` (SIL OFL 1.1, see `resources/fonts/OFL.txt`); no runtime CDN.
+- Logo: `build/logo.svg`; app icons in `build/icon.icns`, `build/icon.ico` and `build/icons/*.png`
+  (16–1024 px).
 
-1. Download the latest `Sahkarmi-*-x64.exe` from [GitHub Releases](https://github.com/ganguydhrubo/sahakarmi/releases).
-2. Run the installer and open Sahkarmi.
+## Install and set up a provider
 
-> [!IMPORTANT]
-> The Windows preview is not code-signed. Windows can show an `Unknown publisher` or SmartScreen
-> warning. Check the release checksum or GitHub build attestation before you run the installer.
+Sahkarmi uses your existing local login for one of these CLIs. It does not copy tokens.
 
-### Agent setup
+- **Claude Code:** `curl -fsSL https://claude.ai/install.sh | bash`, then `claude auth login`.
+- **Codex CLI:** `curl -fsSL https://chatgpt.com/codex/install.sh | sh`, then `codex login`.
 
-Install at least one supported CLI. You can install both.
-
-Codex CLI on macOS:
-
-```bash
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
-```
-
-Claude CLI on macOS:
-
-```bash
-curl -fsSL https://claude.ai/install.sh | bash
-```
-
-On Windows, install the native CLI and make sure `codex` or `claude` is available in PowerShell.
-Claude Code also requires Git for Windows. Then run `codex login` or `claude auth login` and restart
-Sahkarmi. Each available provider appears in the agent model list.
-
-Bun and Node.js are not required when using an installed release. Screen Recording and Accessibility
-permissions are needed only for the optional Computer Use plugin.
-
-Sahkarmi uses the existing local CLI login. It does not copy tokens from `~/.codex` or `~/.claude`.
-See the official Codex and Claude authentication documentation for account setup.
-
-For setup problems, data reset, and uninstall instructions, see
-[Troubleshooting](docs/TROUBLESHOOTING.md). Sahkarmi's data and network behavior is documented in
-[Privacy](PRIVACY.md).
+On Windows install the native CLI so `claude` or `codex` is on `PATH` (Claude Code also needs Git
+for Windows). Choose the default provider on first launch or later in **Settings → AI providers &
+permissions**.
 
 ## Development
 
@@ -85,7 +78,7 @@ supported agent CLI.
 
 ```bash
 git clone https://github.com/ganguydhrubo/sahakarmi.git
-cd sahkarmi
+cd sahakarmi
 bun install --frozen-lockfile
 bun run codex:doctor
 bun run dev
@@ -142,10 +135,10 @@ SolidJS renderer
 
 ## Local data and network boundaries
 
-- `~/Sahkarmi/Bots/<bot-id>` — one working directory per agent.
-- `~/Sahkarmi/Shared` — files intentionally shared between agents.
+- `~/Sahkarmi/Coworkers/<coworker-id>` — one working directory (and memory) per coworker.
+- `~/Sahkarmi/Shared` — the Shared files folder every coworker and you can see.
 - `~/Sahkarmi/Downloads` — embedded-browser downloads.
-- Electron `userData` — bot metadata, queues, drafts, and attachment indexes.
+- Electron `userData` — coworkers, workspaces, queues, approvals, schedules, drafts, and attachment indexes.
 - `~/.codex` — login and thread history managed exclusively by Codex CLI.
 - `~/.claude` — login and session history managed exclusively by Claude CLI.
 
@@ -179,11 +172,14 @@ under Apache-2.0. Community behavior is governed by the [Code of Conduct](CODE_O
 
 ## License and attribution
 
-Copyright 2026 Norbert Bodziony.
+Sahkarmi is licensed under the [Apache License 2.0](LICENSE).
 
-Licensed under the [Apache License 2.0](LICENSE). You may use, modify, and distribute the code under
-that license, provided its license and attribution notices are preserved. See [NOTICE](NOTICE).
+It is a fork of **OpenBot v0.1.11** by Norbert Bodziony
+([nightly-labs/openbot@v0.1.11](https://github.com/nightly-labs/openbot/tree/v0.1.11)), the last
+release published under Apache-2.0. Later OpenBot releases use the PolyForm Noncommercial license,
+and no code from them is included. The upstream LICENSE and attribution are preserved; see
+[NOTICE](NOTICE).
 
-Sahkarmi is an independent open-source project and is not affiliated with, endorsed by, or
-sponsored by OpenAI. OpenAI, ChatGPT, and Codex are used only to describe compatibility with their
-respective products and services.
+Sahkarmi is an independent project. It is not affiliated with, endorsed by, or sponsored by
+OpenAI, Anthropic, or any other AI company. Codex and Claude are named only to describe
+compatibility with their CLIs.

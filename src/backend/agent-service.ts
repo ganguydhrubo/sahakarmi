@@ -51,7 +51,6 @@ import {
   sortConversationMessages,
 } from "./conversation-snapshots";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
-import { toolCallFromItem } from "./tool-calls";
 import {
   type AccountRateLimitResult,
   type AccountRateLimitsReadResult,
@@ -68,6 +67,7 @@ import {
   type ThreadResponse,
   type TurnResponse,
 } from "./protocol";
+import { toolCallFromItem } from "./tool-calls";
 
 interface AgentServiceEvents {
   event: [event: AgentEvent];
