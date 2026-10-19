@@ -27,7 +27,7 @@ const plist = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", plistPath
 >;
 expectEqual(plist.CFBundleDisplayName, "Sahkarmi", "display name");
 expectEqual(plist.CFBundleExecutable, "Sahkarmi", "executable name");
-expectEqual(plist.CFBundleIdentifier, "app.sahkarmi.desktop", "bundle identifier");
+expectEqual(plist.CFBundleIdentifier, "in.sahkarmi.desktop", "bundle identifier");
 expectEqual(plist.CFBundleIconFile, "icon.icns", "application icon");
 expectEqual(plist.LSMinimumSystemVersion, "12.0", "minimum macOS version");
 if (!plist.ElectronAsarIntegrity) throw new Error("ASAR integrity metadata is missing.");

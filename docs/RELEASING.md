@@ -1,5 +1,26 @@
 # Releasing Sahkarmi
 
+## Quick beta release (no signing certificates needed)
+
+1. Make sure `package.json` `version` and a matching `## [x.y.z]` section in `CHANGELOG.md` agree.
+2. Push a tag on `main`: `git tag vX.Y.Z && git push origin vX.Y.Z`
+   (or GitHub → Releases → *Draft a new release* → new tag `vX.Y.Z` on `main` → *Publish*).
+3. The **Release desktop** workflow builds the macOS ARM64 DMG/ZIP, the Windows x64 installer and
+   the Linux x64 AppImage, then publishes them to GitHub Releases.
+
+Without the Apple secrets below the macOS build is **unsigned**: users right-click → *Open* the first
+time. The Windows installer is unsigned too and shows a SmartScreen "More info → Run anyway" prompt.
+
+## Signed macOS releases
+
+Add these repository secrets (Settings → Secrets and variables → Actions) and the workflow signs and
+notarizes automatically: `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`,
+`APPLE_TEAM_ID`.
+
+---
+
+# Releasing Sahkarmi
+
 Sahkarmi updates are published through GitHub Releases and installed with `electron-updater`.
 macOS requires every auto-updatable build to be signed with a Developer ID Application certificate.
 The release workflow also notarizes and staples the application before publishing it. Windows x64
