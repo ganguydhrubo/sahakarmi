@@ -62,7 +62,7 @@
     "package:win": "bun run build && bun run fetch:opencode && electron-builder --dir --win --x64 --publish never",
     "verify:package:win": "bun scripts/verify-windows-package.ts",
     "package:win:verify": "bun run package:win && bun run verify:package:win",
-    "dist:mac": "bun run build && bun run fetch:opencode && electron-builder --mac --arm64 --config.mac.identity=null --config.mac.notarize=false",
+    "dist:mac": "bun run build && bun run fetch:opencode && electron-builder --mac --arm64 --config.mac.identity=null --config.mac.notarize=false --publish never",
     "dist:win": "bun run build && bun run fetch:opencode && electron-builder --win nsis --x64 --publish never",
     "dist:release": "bun run build && bun run fetch:opencode && electron-builder --mac --arm64 --publish never",
     "dist:linux": "bun run build && bun run fetch:opencode && electron-builder --linux AppImage --x64 --publish never",
