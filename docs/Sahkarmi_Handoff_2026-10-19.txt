@@ -8,10 +8,12 @@ Date of handoff : 19 October 2026 (Monday)
 Owner           : Dhrubo Ganguly (gangulydhrubo@gmail.com)
 GitHub repo     : https://github.com/ganguydhrubo/sahakarmi
 Branch          : main
-Latest commit   : e23ef11  "Fix racy agent-service tests and release v0.2.1"
-App version     : 0.2.1 (package.json)
-Status          : Code complete for v0.2 beta. Release v0.2.1 needs to be
-                  published from the GitHub page (see Section 9, step 1).
+Latest version  : 0.3.0 (package.json) — free AI built in (bundled OpenCode),
+                  Gemini CLI support, auto-detection of all AI CLI logins
+Last updated    : 19 October 2026, evening (revision 2 of this document)
+Status          : Code complete for v0.3.0 beta. Publish release v0.3.0 from
+                  the GitHub page (Section 9, step 1). A Windows installer
+                  from v0.2.1 is already downloadable (Section 9, step 0).
 
 Save this file in: C:\Users\Dhrubo\Desktop\Handoff Master
 
@@ -19,6 +21,7 @@ Save this file in: C:\Users\Dhrubo\Desktop\Handoff Master
 --------------------------------------------------------------------------------
 TABLE OF CONTENTS
 --------------------------------------------------------------------------------
+ 0. WHAT CHANGED IN REVISION 2 (read first)
  1. What Sahkarmi is
  2. Legal base and licence (read first)
  3. Timeline: what was done, in order
@@ -39,6 +42,66 @@ TABLE OF CONTENTS
 
 
 ================================================================================
+0. WHAT CHANGED IN REVISION 2 (19 Oct 2026, evening)
+================================================================================
+Owner request: "use all CLI auto-logins of Claude, Gemini, ChatGPT, Grok and all
+free AI; must be preinstalled as OpenCode". Also asked about Antigravity.
+
+DONE in v0.3.0:
+ - OpenCode 1.19.3 (MIT) is BUNDLED inside every installer
+   (resources/bin/opencode). Free models work with NO install, NO login,
+   NO API key. Default free model: opencode/big-pickle (fallback: any
+   "opencode/...-free" model). OpenCode currently lists 12 free models.
+ - Gemini support via Gemini CLI in ACP mode (`gemini --acp`). Uses the user's
+   existing Google sign-in (free tier), GEMINI_API_KEY / GOOGLE_API_KEY, or
+   Vertex AI. Models: Gemini Auto / Pro / Flash.
+ - Claude (Claude Code CLI) and ChatGPT (Codex CLI) unchanged and still
+   auto-detected with their existing logins.
+ - AUTO-LOGIN: on start Sahkarmi checks all 4 providers and reuses whatever
+   login each CLI already has. It never copies tokens.
+ - Any provider the user signs in to INSIDE OpenCode (`opencode auth login`:
+   API keys for many AI companies, GitHub Copilot, etc.) appears in Sahkarmi as
+   "Your OpenCode model".
+ - Fresh install with nothing else installed: the 5 default coworkers move to
+   the free OpenCode model automatically (only coworkers that never ran).
+ - New ACP adapter (src/backend/acp-client.ts) + loopback MCP bridge, so
+   OpenCode/Gemini coworkers keep Sahkarmi's browser, approval, take-over and
+   team-messaging tools.
+ - Bugs found while testing the real packaged app and fixed: provider status
+   rows overwritten by overlapping connections; error shown when opening a
+   coworker whose CLI is missing.
+
+DECISIONS / NOT DONE (owner to decide):
+ - GROK: NOT added as a named provider. The original brief forbids the word
+   "Grok" anywhere in the UI/marketing. Users who want xAI models can sign in
+   to xAI inside OpenCode (`opencode auth login`) and pick "Your OpenCode
+   model" — Sahkarmi never shows the brand name. If you want a visible Grok
+   option, that changes the brand rule; tell the developer explicitly.
+ - ANTIGRAVITY: Google's agent IDE is a desktop editor with no headless/CLI
+   protocol, so it cannot be driven by Sahkarmi. The same free Gemini models
+   come through Gemini CLI with the same Google login, which IS supported.
+ - "All free AI I've shown you": no list was ever received in this chat. Free
+   AI available now = OpenCode free models (bundled) + Gemini free tier.
+   Send the list to add specific ones (most can be added through OpenCode).
+ - Gemini CLI is NOT bundled (it needs Node.js); users install it with
+   `npm install -g @google/gemini-cli`. OpenCode is a single native binary,
+   which is why it can be bundled.
+
+VERIFIED for v0.3.0:
+ - Lint, typecheck, 151 tests passing (3 skipped) incl. new ACP tests with a
+   fake ACP agent: free-model selection, streamed reply, tool cards,
+   permission auto-answer, approval created through the MCP bridge, history
+   after restart, Gemini login detection, model mapping.
+ - Linux AppImage built with OpenCode inside (≈380 MB). Launched as a normal
+   user on a clean profile with NO other AI installed: status "ready", signed
+   in as OpenCode, bundled `opencode acp` running, all 5 coworkers on
+   "Free model (no login)", zero errors (screenshot taken).
+ - The bundled OpenCode answered the ACP handshake with the default free
+   model. A full chat with a real model could NOT be run in the build sandbox
+   (its network blocks opencode.ai) — test it on your PC (Section 9, step 6).
+
+
+================================================================================
 1. WHAT SAHKARMI IS
 ================================================================================
 Sahkarmi is a local-first DESKTOP app (Windows, macOS, Linux) where each AI
@@ -48,11 +111,13 @@ with its own Indian brand and identity.
 
 - It is NOT a website. "Going live" = publishing installers (.exe / .dmg /
   .AppImage) on GitHub Releases for people to download.
-- There is no Sahkarmi cloud/server. Coworkers run through the user's OWN
-  locally installed AI CLI:
-    * Claude Code  (Anthropic)  — command: claude
-    * Codex CLI    (OpenAI)     — command: codex
-  Each user needs their own subscription/login for one of these.
+- There is no Sahkarmi cloud/server. Coworkers run through AI CLIs on the
+  user's own computer:
+    * OpenCode     — BUNDLED with Sahkarmi, free models, no login
+    * Gemini CLI   (Google)     — command: gemini   (free tier with Google login)
+    * Claude Code  (Anthropic)  — command: claude   (user's plan)
+    * Codex CLI    (OpenAI)     — command: codex    (user's ChatGPT plan)
+  Nothing extra is required: the bundled OpenCode works out of the box.
 - Built with: Electron 43, SolidJS, TypeScript, Tailwind 4, Bun 1.3.11,
   Vitest, Biome.
 
@@ -110,14 +175,28 @@ Commits on main (oldest first):
  e23ef11  Fix racy agent-service tests and release v0.2.1
           - Fixed 2 timing-sensitive tests that failed on GitHub's machines
           - Version bumped to 0.2.1
+ 467d32d  Add end-to-end handoff document (this file, revision 1)
+ 39e3388  Always publish the Windows release; macOS and Linux are optional
+          - v0.2.1 built Windows but published nothing because Mac failed
+            and Linux timed out; Mac/Linux jobs now "continue on error"
+          - Version 0.2.2
+ (next)   Bundle OpenCode, add Gemini CLI + ACP adapter, auto-detect all AI
+          CLI logins — version 0.3.0 (see Section 0)
 
 Release history:
   v0.2.0 — tag + GitHub release created by owner. The build FAILED on
            macOS and Linux (test timing races), while Windows built OK. The
            release page has NO files. Fixed in v0.2.1. Recommended: delete
            the empty v0.2.0 release.
-  v0.2.1 — code is on main; the tag/release must be created by the owner
-           (this session's GitHub access could not create tags).
+  v0.2.1 — owner published it. Windows installer BUILT OK and is
+           downloadable as the "release-windows" artifact of Actions run
+           39252463164; macOS build failed (unsigned build step, log not
+           readable from the dev sandbox) and Linux timed out at 30 min, so
+           nothing was attached to the release page.
+  v0.2.2 — fix pushed (Windows always publishes); not released.
+  v0.3.0 — current code; publish this one (Section 9).
+  Note: this development session cannot create tags or releases (GitHub
+  proxy blocks it); the owner creates releases on the GitHub website.
 
 Total change vs upstream: 105 files changed, ~7,900 lines added, ~2,000 removed.
 
@@ -222,6 +301,13 @@ LANGUAGES
    and reply in the language the owner writes in.
  - Voice input language follows the UI language (en-IN / hi-IN / bn-IN).
 
+AI PROVIDERS (v0.3.0)
+ - Model picker groups: OpenCode (free) · Claude · ChatGPT (Codex) · Gemini
+ - OpenCode models: "Free model (no login)" and "Your OpenCode model"
+ - Gemini models: Auto, Pro, Flash
+ - First-run setup lists "OpenCode (free, built in)" first
+ - Settings → AI providers & permissions shows each CLI's status and login
+
 INHERITED FROM OPENBOT (still working)
  - Persistent threads per coworker, crash-safe FIFO queues, coworker-to-
    coworker messaging with files, automatic context compaction, data export,
@@ -246,6 +332,12 @@ Backend (src/backend)           runs in the main process
   browser-host.ts               embedded browser (WebContentsView)
   claude-client.ts              Claude Agent SDK adapter (+ tool-call items,
                                 + request_approval / request_browser_takeover)
+  acp-client.ts          [NEW]  Agent Client Protocol adapter + loopback MCP
+                                bridge (Gemini CLI, OpenCode, any ACP CLI)
+  acp-providers.ts       [NEW]  OpenCode / Gemini launch args, login
+                                detection, model mapping
+  cli.ts                        finds codex / claude / gemini / opencode
+                                (bundled OpenCode first)
   app-server-client.ts          Codex App Server adapter
 Preload (src/preload/index.ts)  exposes window.sahkarmi (typed API)
 Shared types (src/shared/ipc.ts) every IPC channel and type
@@ -266,6 +358,9 @@ Docs                            README.md, NOTICE, CHANGELOG.md, PRIVACY.md,
                                 docs/TROUBLESHOOTING.md, docs/screenshots/
 Helper                          scripts/tokenize-styles.py (one-off colour
                                 migration, kept for review)
+                                scripts/fetch-opencode.ts (downloads pinned
+                                OpenCode into build/opencode/<os>-<arch>/;
+                                run automatically by every dist:* script)
 
 Tools the coworkers can call (namespace "sahkarmi"):
   list_agents, send_message, request_approval, request_browser_takeover
@@ -283,8 +378,11 @@ App data folder (Electron userData, e.g. %APPDATA%\Sahkarmi on Windows):
    bots.json (coworkers + workspaces, version 2), mailbox / queue files,
    approvals.json, schedules.json, sahkarmi-setup-v2.json,
    sahkarmi-browser-state-v1.json
-~/.claude and ~/.codex       logins and chat history, owned by those CLIs
-                             (Sahkarmi never copies their tokens)
+App data folder /acp-transcripts/   Sahkarmi's own history of OpenCode and
+                             Gemini conversations (ACP has no history API)
+~/.claude, ~/.codex, ~/.gemini, ~/.config/opencode, ~/.local/share/opencode
+                             logins and settings, owned by those CLIs
+                             (Sahkarmi only reads whether a login exists)
 No Sahkarmi server, telemetry or account.
 
 
@@ -306,31 +404,42 @@ Code or Codex CLI signed in.
   bun run dist:win       Windows installer   (run on Windows)
   bun run dist:mac       unsigned Mac DMG    (run on a Mac)
   bun run dist:linux     Linux AppImage      (run on Linux)
+  bun run fetch:opencode download the bundled OpenCode for this machine
+                         (needed once before `bun run dev` to test free AI)
   bun run dev:reset      wipe local DEV data only
 
 
 ================================================================================
 9. HOW TO GO LIVE: STEP-BY-STEP
 ================================================================================
-STEP 1 — Publish release v0.2.1 (2 minutes)
+STEP 0 — Use it on Windows TODAY (older v0.2.1, no built-in free AI)
+  1. Open https://github.com/ganguydhrubo/sahakarmi/actions/runs/39252463164
+  2. Scroll to "Artifacts" → click "release-windows" (162 MB zip)
+  3. Extract → run Sahkarmi-0.2.1-x64.exe → More info → Run anyway
+  (v0.2.1 needs Claude Code or Codex installed. v0.3.0 below needs nothing.)
+
+STEP 1 — Publish release v0.3.0 (2 minutes)
   1. Open https://github.com/ganguydhrubo/sahakarmi/releases/new
-  2. "Choose a tag" → type v0.2.1 → "Create new tag: v0.2.1 on publish"
+  2. "Choose a tag" → type v0.3.0 → "Create new tag: v0.3.0 on publish"
      Target: main
-  3. Title: Sahkarmi v0.2.1 (Beta)
+  3. Title: Sahkarmi v0.3.0 (Beta) — free AI built in
   4. Click "Publish release".
 
 STEP 2 — Wait for the build (20–30 minutes)
   1. Open https://github.com/ganguydhrubo/sahakarmi/actions
   2. Open the "Release desktop" run for v0.2.1.
-  3. All jobs green = installers are attached to the v0.2.1 release:
-       Sahkarmi-0.2.1-x64.exe            (Windows)
-       Sahkarmi-0.2.1-arm64.dmg / .zip   (Mac, Apple Silicon)
-       Sahkarmi-0.2.1-x86_64.AppImage    (Linux)
+  3. When "Build unsigned Windows x64 release" and "Publish GitHub Release"
+     are green, the release page has:
+       Sahkarmi-0.3.0-x64.exe            (Windows, ≈ 350–400 MB)
        SHA256SUMS.txt                    (checksums)
-  4. If any job is red: screenshot the failed step and share it.
+     plus, only if those optional jobs pass:
+       Sahkarmi-0.3.0-arm64.dmg / .zip   (Mac, Apple Silicon)
+       Sahkarmi-0.3.0-x86_64.AppImage    (Linux)
+  4. macOS / Linux red = does NOT block Windows. If Windows is red:
+     screenshot the failed step and share it.
 
 STEP 3 — Clean up
-  Delete the empty v0.2.0 release (release page → ⋯ → Delete).
+  Delete the empty v0.2.0 and v0.2.1 releases (release page → ⋯ → Delete).
 
 STEP 4 — Install and test it yourself
   Windows : run the .exe → "Windows protected your PC" → More info →
@@ -339,17 +448,22 @@ STEP 4 — Install and test it yourself
             Open → Open (first time only, unsigned).
   Linux   : chmod +x Sahkarmi-*.AppImage, then run it.
 
-STEP 5 — Connect an AI provider (every user, once)
-  Claude Code:  curl -fsSL https://claude.ai/install.sh | bash
-                claude auth login
-  (Windows: install the native Claude Code CLI + Git for Windows, so that
-   "claude" works in PowerShell.)
-  Or Codex:     curl -fsSL https://chatgpt.com/codex/install.sh | sh
-                codex login
-  Open Sahkarmi → pick the provider → give Asha a real task.
+STEP 5 — AI provider (v0.3.0: nothing required)
+  Free: just open Sahkarmi → choose "OpenCode (free, built in)" → chat.
+  Optional extra providers (Sahkarmi auto-detects their logins):
+   Claude Code: Windows PowerShell:  irm https://claude.ai/install.ps1 | iex
+                then: claude auth login   (also install Git for Windows)
+   ChatGPT:     npm install -g @openai/codex   then: codex login
+   Gemini:      npm install -g @google/gemini-cli   then run: gemini
+                (sign in with Google once — free tier)
+   More (inside OpenCode): opencode auth login  → appears as
+                "Your OpenCode model" in Sahkarmi
+  Restart Sahkarmi after installing a new CLI.
 
 STEP 6 — Smoke-test checklist (do this before telling anyone)
   [ ] App opens, shows the 5 coworkers, light + dark themes work
+  [ ] With NO other AI installed: model shows "Free model (no login)" and
+      Asha replies (bundled OpenCode)
   [ ] Send Asha a message → reply streams in, tool cards appear
   [ ] Ask Asha to "pay a ₹10 test invoice" → approval appears in Approvals
       with a badge; approve → Asha continues
@@ -440,7 +554,16 @@ NOT YET VERIFIED (do Section 9, Step 6)
  6. Full local access: coworkers can read/write files and run commands like
     the CLI they run on. Approvals depend on the model obeying instructions;
     they are not a hard sandbox.
- 7. Installer size ~300 MB (Electron + Claude Agent SDK binaries).
+ 7. Installer size ≈ 350–400 MB (Electron + Claude Agent SDK + bundled
+    OpenCode ≈ 186 MB). Free models come from OpenCode's service; their
+    names/availability can change — update OPENCODE_VERSION in
+    scripts/fetch-opencode.ts to ship a newer OpenCode.
+ 7b. OpenCode / Gemini coworkers: Sahkarmi tools work through an HTTP MCP
+    bridge; an ACP agent that doesn't support HTTP MCP still chats but can't
+    use the Sahkarmi browser/approval tools. Gemini CLI must be installed
+    separately (needs Node.js 20+).
+ 7c. Signed macOS builds: the bundled OpenCode binary may need extra
+    hardened-runtime entitlements once Apple signing is enabled — test then.
  8. Linux: when running as root you must pass --no-sandbox (normal users are
     unaffected). desktopName is not set (minor window-grouping warning).
  9. Upstream OpenBot docs (TROUBLESHOOTING.md, PRIVACY.md, SECURITY.md) were
@@ -546,11 +669,11 @@ Releases    https://github.com/ganguydhrubo/sahakarmi/releases
 Actions     https://github.com/ganguydhrubo/sahakarmi/actions
 New release https://github.com/ganguydhrubo/sahakarmi/releases/new
 Upstream    https://github.com/nightly-labs/openbot/tree/v0.1.11 (Apache-2.0)
-Version     0.2.1  |  next action: publish release v0.2.1
+Version     0.3.0  |  next action: publish release v0.3.0
 Dev run     bun install && bun run dev
 All checks  bun run lint && bun run typecheck && bun run test
 Licence     Apache-2.0 (keep LICENSE + NOTICE)
 
 ================================================================================
-End of handoff — 19 October 2026
+End of handoff — 19 October 2026 (revision 2)
 ================================================================================

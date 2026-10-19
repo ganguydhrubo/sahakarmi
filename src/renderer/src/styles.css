@@ -6523,3 +6523,24 @@ fieldset.cadence-kinds {
   border: 0;
   padding: 0;
 }
+
+/* Letter marks for providers without a bundled logo (Gemini CLI, OpenCode). */
+.provider-model-letter {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.provider-model-letter-gemini {
+  background: #3d6fb6;
+  color: #fff;
+}
+
+.provider-model-letter-opencode {
+  background: var(--brand-indigo);
+  color: #fbf7f0;
+}

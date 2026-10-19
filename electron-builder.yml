@@ -27,6 +27,11 @@ extraResources:
     to: licenses/Electron-LICENSE
   - from: node_modules/electron/dist/LICENSES.chromium.html
     to: licenses/LICENSES.chromium.html
+  # Bundled OpenCode (MIT): free, no-login models. Fetched by `bun run fetch:opencode`.
+  - from: build/opencode/${os}-${arch}
+    to: bin
+  - from: resources/licenses
+    to: licenses
 directories:
   output: dist
 mac:

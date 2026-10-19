@@ -94,7 +94,20 @@ export type AgentPhase = "idle" | "starting" | "ready" | "restarting" | "blocked
 
 export type CapabilityState = "ready" | "setup-required" | "unavailable";
 
-export type AgentProviderId = "codex" | "claude";
+export const AGENT_PROVIDERS = ["codex", "claude", "gemini", "opencode"] as const;
+export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
+
+export function isAgentProvider(value: unknown): value is AgentProviderId {
+  return typeof value === "string" && AGENT_PROVIDERS.includes(value as AgentProviderId);
+}
+
+/** Human-facing provider names. OpenCode is bundled with Sahkarmi and has free models. */
+export const PROVIDER_LABELS: Record<AgentProviderId, string> = {
+  codex: "ChatGPT (Codex)",
+  claude: "Claude",
+  gemini: "Gemini",
+  opencode: "OpenCode (free)",
+};
 export type AgentProviderState =
   | "not-started"
   | "checking"
@@ -134,7 +147,9 @@ export type AgentAuthState =
   | { kind: "signed-out" }
   | { kind: "unsupported"; accountType: string }
   | { kind: "chatgpt"; email: string | null }
-  | { kind: "claude"; email: string | null };
+  | { kind: "claude"; email: string | null }
+  | { kind: "gemini"; email: string | null }
+  | { kind: "opencode"; email: string | null };
 
 export interface AccountUsageWindow {
   usedPercent: number;
@@ -192,6 +207,11 @@ export const AGENT_MODELS = [
   "claude-fable-5",
   "claude-opus-5",
   "claude-sonnet-5",
+  "gemini-auto",
+  "gemini-pro",
+  "gemini-flash",
+  "opencode-free",
+  "opencode-default",
 ] as const;
 export type AgentModelId = (typeof AGENT_MODELS)[number];
 
@@ -240,6 +260,21 @@ export function isAgentModel(value: unknown): value is AgentModelId {
 export function isClaudeModel(model: AgentModelId): boolean {
   return model.startsWith("claude-");
 }
+
+export function providerForModel(model: AgentModelId): AgentProviderId {
+  if (model.startsWith("claude-")) return "claude";
+  if (model.startsWith("gemini-")) return "gemini";
+  if (model.startsWith("opencode-")) return "opencode";
+  return "codex";
+}
+
+/** The model a new coworker gets when this provider is the one available. */
+export const DEFAULT_MODEL_FOR_PROVIDER: Record<AgentProviderId, AgentModelId> = {
+  codex: "gpt-5.6-luna",
+  claude: "claude-opus-5",
+  gemini: "gemini-auto",
+  opencode: "opencode-free",
+};
 
 export function isReasoningEffort(value: unknown): value is AgentReasoningEffort {
   return (

@@ -60,16 +60,27 @@ nothing blocks while you are away.
 - Logo: `build/logo.svg`; app icons in `build/icon.icns`, `build/icon.ico` and `build/icons/*.png`
   (16–1024 px).
 
-## Install and set up a provider
+## AI providers (free AI works out of the box)
 
-Sahkarmi uses your existing local login for one of these CLIs. It does not copy tokens.
+| Provider | How Sahkarmi uses it | Cost |
+| --- | --- | --- |
+| **OpenCode (built in)** | Bundled inside the installer, nothing to install. Free models, no login. | Free |
+| **Gemini** | Your installed Gemini CLI and its Google sign-in, API key or Vertex AI | Free tier |
+| **Claude** | Your installed Claude Code CLI and its login | Your plan |
+| **ChatGPT (Codex)** | Your installed Codex CLI and its ChatGPT login | Your plan |
 
-- **Claude Code:** `curl -fsSL https://claude.ai/install.sh | bash`, then `claude auth login`.
-- **Codex CLI:** `curl -fsSL https://chatgpt.com/codex/install.sh | sh`, then `codex login`.
+Sahkarmi detects every installed CLI and **reuses its existing login**. It never copies tokens. Any
+extra provider you sign in to inside OpenCode (`opencode auth login`: API keys, Copilot and more)
+shows up as "Your OpenCode model".
 
-On Windows install the native CLI so `claude` or `codex` is on `PATH` (Claude Code also needs Git
-for Windows). Choose the default provider on first launch or later in **Settings → AI providers &
-permissions**.
+Optional installs:
+
+- Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (Windows: `irm https://claude.ai/install.ps1 | iex`), then `claude auth login`
+- Codex: `npm install -g @openai/codex`, then `codex login`
+- Gemini CLI: `npm install -g @google/gemini-cli`, then run `gemini` once and sign in with Google
+
+Gemini CLI and OpenCode are driven over the open [Agent Client Protocol](https://agentclientprotocol.com);
+Sahkarmi's browser, approval and team tools reach them through a loopback-only MCP bridge.
 
 ## Development
 

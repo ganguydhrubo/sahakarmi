@@ -100,6 +100,8 @@ describe("Sahkarmi connected desktop shell", () => {
                 message: null,
                 email: "claude@example.com",
               },
+              { id: "gemini", state: "not-installed", version: null, message: null },
+              { id: "opencode", state: "not-installed", version: null, message: null },
             ],
             capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
             message: null,
@@ -279,9 +281,10 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 
     const providers = screen.getByRole("radiogroup", { name: "Default provider" });
-    const codex = within(providers).getByRole("radio", { name: /Codex.*Available/ });
-    expect(codex).toHaveFocus();
-    await fireEvent.click(within(providers).getByRole("radio", { name: /Claude.*Available/ }));
+    // OpenCode is listed first but not installed in this fixture, so Claude gets focus.
+    const claude = within(providers).getByRole("radio", { name: /Claude.*Available/ });
+    expect(claude).toHaveFocus();
+    await fireEvent.click(claude);
     await fireEvent.click(screen.getByRole("button", { name: "Continue with Claude" }));
     expect(window.sahkarmi.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
     expect(await screen.findByRole("heading", { name: "Chief" })).toBeInTheDocument();
@@ -324,7 +327,7 @@ describe("Sahkarmi connected desktop shell", () => {
 
     expect(codex).toBeEnabled();
     expect(claude).toBeEnabled();
-    expect(codex).toHaveFocus();
+    expect(within(providers).getByRole("radio", { name: /OpenCode.*Checking/ })).toHaveFocus();
 
     await fireEvent.click(claude);
     expect(claude).toBeChecked();
@@ -406,10 +409,10 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(
       within(await screen.findByRole("radiogroup", { name: "Default provider" })).getByRole(
         "radio",
-        { name: /Codex.*Available/ },
+        { name: /Claude.*Available/ },
       ),
     ).toBeChecked();
-    await fireEvent.click(screen.getByRole("button", { name: "Continue with Codex" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Continue with Claude" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not save setup.");
     expect(screen.queryByRole("heading", { name: "Chief" })).not.toBeInTheDocument();
   });
@@ -907,7 +910,7 @@ describe("Sahkarmi connected desktop shell", () => {
 
     await fireEvent.click(trigger);
     const picker = screen.getByRole("dialog", { name: "Choose agent model" });
-    const codex = within(picker).getByRole("tab", { name: /^Codex:/ });
+    const codex = within(picker).getByRole("tab", { name: /^ChatGPT \(Codex\):/ });
     await fireEvent.keyDown(codex, { key: "ArrowUp" });
     const claude = within(picker).getByRole("tab", { name: /^Claude:/ });
     expect(claude).toHaveFocus();
@@ -950,7 +953,7 @@ describe("Sahkarmi connected desktop shell", () => {
       within(settings).getByRole("button", { name: "Agent model: Claude Opus 5" }),
     );
     picker = within(settings).getByRole("dialog", { name: "Choose agent model" });
-    await fireEvent.click(within(picker).getByRole("tab", { name: /^Codex:/ }));
+    await fireEvent.click(within(picker).getByRole("tab", { name: /^ChatGPT \(Codex\):/ }));
     await fireEvent.click(within(picker).getByRole("option", { name: "Sol" }));
     await fireEvent.change(thinking, { target: { value: "xhigh" } });
     await waitFor(() =>
@@ -1012,7 +1015,7 @@ describe("Sahkarmi connected desktop shell", () => {
     const trigger = await screen.findByRole("button", { name: "Onboarding model: Luna" });
     await fireEvent.click(trigger);
     const picker = screen.getByRole("dialog", { name: "Choose agent model" });
-    expect(within(picker).getByRole("tab", { name: /^Codex: 0.144.1/ })).toBeEnabled();
+    expect(within(picker).getByRole("tab", { name: /^ChatGPT \(Codex\): 0.144.1/ })).toBeEnabled();
     const claude = within(picker).getByRole("tab", {
       name: "Claude: Claude CLI was not found.",
     });

@@ -12,8 +12,8 @@ import {
   isAgentModel,
   isAvatarColor,
   isAvatarShape,
-  isClaudeModel,
   isReasoningEffort,
+  providerForModel,
   type UpdateBotInput,
   type WorkspaceState,
   type WorkspaceSummary,
@@ -109,6 +109,10 @@ export class BotStore {
     this.#downloadsRoot = join(sahkarmiRoot, "Downloads");
   }
 
+  get userDataPath(): string {
+    return dirname(this.#statePath);
+  }
+
   get sharedRoot(): string {
     return this.#sharedRoot;
   }
@@ -198,7 +202,7 @@ export class BotStore {
     if (input.description !== undefined) bot.description = input.description.trim().slice(0, 2_000);
     if (input.notifications !== undefined) bot.notifications = input.notifications;
     if (input.model !== undefined) {
-      if (isClaudeModel(input.model) !== isClaudeModel(bot.model)) bot.threadId = null;
+      if (providerForModel(input.model) !== providerForModel(bot.model)) bot.threadId = null;
       bot.model = input.model;
     }
     if (input.reasoningEffort !== undefined) bot.reasoningEffort = input.reasoningEffort;
