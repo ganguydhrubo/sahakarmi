@@ -1,0 +1,99 @@
+name: Upstream watch
+
+# Every Monday: check whether OpenCode, the AI CLIs/SDKs or upstream OpenBot have moved on.
+#  - OpenCode (bundled, MIT): opens a pull request that bumps OPENCODE_VERSION.
+#  - Claude Agent SDK, Codex CLI, Gemini CLI: Dependabot bumps the SDK; CLIs are listed in the issue.
+#  - OpenBot (upstream): v0.1.12+ is PolyForm Noncommercial, so its code is NEVER merged.
+#    The issue lists new upstream releases so features can be re-implemented independently.
+on:
+  schedule:
+    - cron: "30 3 * * 1" # 09:00 IST every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect versions
+        id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current="$(grep -oE 'OPENCODE_VERSION = "[^"]+"' scripts/fetch-opencode.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+          latest="$(npm view opencode-ai version)"
+          sdk_current="$(node -e 'console.log(require("./package.json").dependencies["@anthropic-ai/claude-agent-sdk"].replace(/^[^0-9]*/, ""))')"
+          sdk_latest="$(npm view @anthropic-ai/claude-agent-sdk version)"
+          codex_latest="$(npm view @openai/codex version)"
+          gemini_latest="$(npm view @google/gemini-cli version)"
+          openbot_latest="$(gh api repos/nightly-labs/openbot/releases/latest --jq '.tag_name + " (" + (.published_at | split("T")[0]) + ")"' || echo unknown)"
+          openbot_url="$(gh api repos/nightly-labs/openbot/releases/latest --jq .html_url || echo https://github.com/nightly-labs/openbot/releases)"
+          {
+            echo "current=$current"; echo "latest=$latest"
+            echo "sdk_current=$sdk_current"; echo "sdk_latest=$sdk_latest"
+            echo "codex_latest=$codex_latest"; echo "gemini_latest=$gemini_latest"
+            echo "openbot_latest=$openbot_latest"; echo "openbot_url=$openbot_url"
+          } >> "$GITHUB_OUTPUT"
+          echo "OpenCode $current -> $latest | SDK $sdk_current -> $sdk_latest | Codex $codex_latest | Gemini $gemini_latest | OpenBot $openbot_latest"
+
+      - name: Bump bundled OpenCode (pull request)
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT: ${{ steps.versions.outputs.current }}
+          LATEST: ${{ steps.versions.outputs.latest }}
+        run: |
+          set -euo pipefail
+          branch="chore/opencode-$LATEST"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "Branch $branch already exists; skipping."; exit 0
+          fi
+          git config user.name "sahkarmi-bot"
+          git config user.email "sahkarmi-bot@users.noreply.github.com"
+          git checkout -b "$branch"
+          sed -i "s/OPENCODE_VERSION = \"$CURRENT\"/OPENCODE_VERSION = \"$LATEST\"/" scripts/fetch-opencode.ts
+          sed -i "s/OpenCode $CURRENT/OpenCode $LATEST/g" README.md CHANGELOG.md docs/*.md 2>/dev/null || true
+          git commit -am "Bump bundled OpenCode to $LATEST"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Bump bundled OpenCode to $LATEST" \
+            --body "Automated by the Upstream watch workflow. OpenCode $CURRENT -> $LATEST (MIT). CI builds the installers with the new binary; merge when green, then release."
+
+      - name: Report in a tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ toJSON(steps.versions.outputs) }}
+        run: |
+          set -euo pipefail
+          title="Upstream watch: AI models and OpenBot"
+          body="$(cat <<MD
+          Weekly check ($(date -u +%Y-%m-%d)).
+
+          | Component | Sahkarmi uses | Latest |
+          |---|---|---|
+          | OpenCode (bundled, MIT) | $(echo "$V" | jq -r .current) | $(echo "$V" | jq -r .latest) |
+          | Claude Agent SDK | $(echo "$V" | jq -r .sdk_current) | $(echo "$V" | jq -r .sdk_latest) (Dependabot opens the bump PR) |
+          | Codex CLI (user installs) | – | $(echo "$V" | jq -r .codex_latest) |
+          | Gemini CLI (user installs) | – | $(echo "$V" | jq -r .gemini_latest) |
+          | OpenBot upstream | v0.1.11 base (Apache-2.0) | $(echo "$V" | jq -r .openbot_latest) |
+
+          OpenBot releases after v0.1.11 are PolyForm Noncommercial: read the release notes for ideas only, never copy code. $(echo "$V" | jq -r .openbot_url)
+
+          New model names (Claude, ChatGPT, Gemini) arrive through the CLIs themselves; Sahkarmi asks each CLI for its model list at start-up, so a CLI update is enough. Bump the fallback names in src/shared/ipc.ts only when a provider retires a model.
+          MD
+          )"
+          number="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body" --label maintenance || gh issue create --title "$title" --body "$body"
+          fi

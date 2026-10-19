@@ -900,7 +900,7 @@ export function App() {
           <Show when={permissionsOpen()}>
             <InitialSetup
               reviewing
-              state={setupState() ?? { completed: true, preferredProvider: "codex" }}
+              state={setupState() ?? { completed: true, preferredProvider: "opencode" }}
               agentStatus={agentStatus()}
               platform={appInfo()?.platform ?? "darwin"}
               onSave={saveSetup}

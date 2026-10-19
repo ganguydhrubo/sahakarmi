@@ -55,6 +55,7 @@ import {
 } from "../shared/ipc";
 import { AgentInitializationGate } from "./agent-initialization";
 import { notificationForAgentEvent } from "./agent-notifications";
+import { AppLog } from "./app-log";
 import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
 import { readSetupState, writeSetupState } from "./setup-store";
 import { handleTrusted } from "./trusted-ipc";
@@ -78,6 +79,7 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+const appLog = new AppLog(app.getPath("userData"));
 let mainWindow: BrowserWindow | null = null;
 let browserHost: BrowserHost | null = null;
 let agentService: AgentService | null = null;
@@ -498,7 +500,7 @@ if (!hasSingleInstanceLock) {
         browserHost,
         readComputerUsePrerequisites,
         30_000,
-        setupState.preferredProvider ?? "codex",
+        setupState.preferredProvider ?? "opencode",
         new ApprovalStore(app.getPath("userData")),
       );
       const service = agentService;
@@ -519,6 +521,15 @@ if (!hasSingleInstanceLock) {
         beforeInstall: prepareForShutdown,
       });
       service.on("event", forwardAgentEvent);
+      service.on("event", (event) => {
+        if (event.type === "error")
+          appLog.write(
+            "error",
+            `${event.code}${event.botId ? ` (${event.botId})` : ""}: ${event.message}`,
+          );
+        else if (event.type === "status")
+          appLog.write("info", `agent status: ${event.status.phase}`, event.status.providers);
+      });
       updateService.on("status", forwardUpdateStatus);
       updateService.start();
       const agentInitialization = new AgentInitializationGate(() => service.initialize());
@@ -546,6 +557,7 @@ if (!hasSingleInstanceLock) {
         )
         .catch((error) => {
           console.error("Unable to initialize the local agent backend:", error);
+          appLog.write("error", "Unable to initialize the local agent backend", error);
         });
 
       app.on("activate", () => {
@@ -560,6 +572,7 @@ if (!hasSingleInstanceLock) {
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Sahkarmi failed to start:", error);
+      appLog.write("error", "Sahkarmi failed to start", error);
       dialog.showErrorBox(
         "Sahkarmi couldn’t start",
         `${message}\n\nYour local data was not reset or overwritten. See the troubleshooting guide for recovery steps.`,

@@ -93,6 +93,34 @@ describe.sequential("ACP providers (bundled OpenCode)", () => {
     expect(log).toContainEqual(expect.objectContaining({ method: "permission-answered" }));
   });
 
+  it("moves the never-run team to the provider chosen in setup even when another AI is connected", async () => {
+    // Gemini CLI (same fake ACP agent, API-key login) and OpenCode are both connected.
+    process.env.SAHKARMI_GEMINI_PATH = process.env.SAHKARMI_OPENCODE_PATH;
+    process.env.GEMINI_API_KEY = "test-key";
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex");
+    await service.initialize();
+    expect(service.getStatus().phase).toBe("ready");
+    expect(service.getStatus().providers?.find((p) => p.id === "gemini")?.state).toBe("available");
+    // Codex (the stale preference) is missing, so the team landed on the first connected AI.
+    expect(new Set(service.listBots().map((bot) => bot.model))).toEqual(new Set(["gemini-auto"]));
+
+    // The owner picks "OpenCode (free, built in)" on the setup screen.
+    await service.setPreferredProvider("opencode");
+    expect(new Set(service.listBots().map((bot) => bot.model))).toEqual(new Set(["opencode-free"]));
+    expect(service.getStatus().auth).toEqual({ kind: "opencode", email: null });
+    expect((await service.createBot()).model).toBe("opencode-free");
+
+    // A coworker the owner already pointed somewhere else, or that has run, is left alone.
+    await service.updateBot({ botId: "asha-accounts", model: "gemini-flash" });
+    await service.setPreferredProvider("gemini");
+    await service.setPreferredProvider("opencode");
+    expect(service.listBots().find((bot) => bot.id === "asha-accounts")?.model).toBe(
+      "opencode-free",
+    );
+  });
+
   it("keeps the conversation after a restart from Sahkarmi's own transcript", async () => {
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
