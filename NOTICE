@@ -17,6 +17,11 @@ Modifications by the Sahkarmi authors include: rebranding, a new visual identity
 the three-pane coworker layout, workspaces, default coworkers, approvals,
 schedules, shared files, tool-call cards, browser take-over, and EN/HI/BN UI.
 
+Bundled software:
+  OpenCode 1.19.3 — MIT License, Copyright (c) 2025 opencode
+  (https://github.com/sst/opencode). Shipped unmodified as resources/bin/opencode;
+  licence text in resources/licenses/OpenCode-LICENSE.txt.
+
 Bundled fonts (SIL Open Font License 1.1, see resources/fonts/OFL.txt):
   Mukta — Ek Type
   Baloo 2 — Ek Type

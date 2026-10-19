@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, join, win32 } from "node:path";
+import { extname, join, resolve, win32 } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -16,6 +16,13 @@ export interface CodexCliInfo {
 export interface ClaudeCliInfo {
   executable: string;
   version: string;
+}
+
+/** Any CLI found on this machine or bundled with Sahkarmi (Gemini CLI, OpenCode). */
+export interface AcpCliInfo {
+  executable: string;
+  version: string;
+  bundled: boolean;
 }
 
 export class CodexCliError extends Error {
@@ -99,6 +106,76 @@ export async function resolveClaudeCli(): Promise<ClaudeCliInfo> {
   );
 }
 
+export async function resolveGeminiCli(): Promise<AcpCliInfo> {
+  const candidates = await collectCandidates("gemini", process.env.SAHKARMI_GEMINI_PATH);
+  for (const candidate of candidates) {
+    if (!(await isExecutable(candidate))) continue;
+    try {
+      return {
+        executable: candidate,
+        version: parseSemver(await readCliVersion(candidate), "Gemini CLI"),
+        bundled: false,
+      };
+    } catch {
+      // Try the next executable candidate.
+    }
+  }
+  throw new CodexCliError(
+    "Gemini CLI was not found. Install it with `npm install -g @google/gemini-cli`, run `gemini` once to sign in with Google (free tier), then restart Sahkarmi.",
+    "missing",
+  );
+}
+
+/**
+ * OpenCode ships inside Sahkarmi (resources/bin) so free models work with no install.
+ * A user-installed `opencode` on PATH is used only when no bundled copy exists.
+ */
+export async function resolveOpenCodeCli(
+  bundledCandidates: string[] = bundledOpenCodePaths(),
+): Promise<AcpCliInfo> {
+  const override = process.env.SAHKARMI_OPENCODE_PATH?.trim();
+  const bundled = override ? [] : bundledCandidates;
+  const candidates = override
+    ? [override]
+    : [...bundled, ...(await collectCandidates("opencode", undefined))];
+  for (const candidate of candidates) {
+    if (!(await isExecutable(candidate))) continue;
+    try {
+      return {
+        executable: candidate,
+        version: parseSemver(await readCliVersion(candidate), "OpenCode"),
+        bundled: bundled.includes(candidate),
+      };
+    } catch {
+      // Try the next executable candidate.
+    }
+  }
+  throw new CodexCliError(
+    "OpenCode was not found. Reinstall Sahkarmi, or install it with `npm install -g opencode-ai`.",
+    "missing",
+  );
+}
+
+export function bundledOpenCodePaths(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  resourcesPath: string | undefined = (process as { resourcesPath?: string }).resourcesPath,
+): string[] {
+  const binary = platform === "win32" ? "opencode.exe" : "opencode";
+  const builderOs = platform === "darwin" ? "mac" : platform === "win32" ? "win" : "linux";
+  const paths: string[] = [];
+  if (resourcesPath) paths.push(join(resourcesPath, "bin", binary));
+  // Development checkout: `bun run fetch:opencode` downloads it here.
+  paths.push(resolve("build", "opencode", `${builderOs}-${arch}`, binary));
+  return paths;
+}
+
+function parseSemver(output: string, label: string): string {
+  const match = output.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) throw new CodexCliError(`Unable to read the ${label} version.`, "invalid");
+  return `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}`;
+}
+
 export function parseCodexVersion(output: string): string {
   const match = output.match(/(?:codex-cli\s+)?(\d+)\.(\d+)\.(\d+)/i);
   if (!match) throw new CodexCliError("Unable to read the Codex CLI version.", "invalid");
@@ -121,7 +198,7 @@ function isMinimumVersion(version: string): boolean {
 }
 
 async function collectCandidates(
-  command: "codex" | "claude",
+  command: string,
   configuredPath: string | undefined,
 ): Promise<string[]> {
   const candidates: string[] = [];
@@ -161,7 +238,7 @@ async function collectCandidates(
 }
 
 export function windowsFallbackPaths(
-  command: "codex" | "claude",
+  command: string,
   userHome = homedir(),
   environment: NodeJS.ProcessEnv = process.env,
 ): string[] {
@@ -191,10 +268,16 @@ export function windowsFallbackPaths(
   return paths;
 }
 
-function posixFallbackPaths(command: "codex" | "claude"): string[] {
+function posixFallbackPaths(command: string): string[] {
   const paths = [join(homedir(), ".local", "bin", command)];
   if (command === "claude") paths.push(join(homedir(), ".claude", "local", "claude"));
-  paths.push(`/opt/homebrew/bin/${command}`, `/usr/local/bin/${command}`);
+  if (command === "opencode") paths.push(join(homedir(), ".opencode", "bin", "opencode"));
+  paths.push(
+    join(homedir(), ".npm-global", "bin", command),
+    join(homedir(), ".bun", "bin", command),
+    `/opt/homebrew/bin/${command}`,
+    `/usr/local/bin/${command}`,
+  );
   return paths;
 }
 

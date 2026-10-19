@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import type { AgentProviderId, AppSetupState } from "../shared/ipc";
+import { type AgentProviderId, type AppSetupState, isAgentProvider } from "../shared/ipc";
 
 interface StoredSetup {
   version: 2;
@@ -14,12 +14,12 @@ export async function readSetupState(path: string): Promise<AppSetupState> {
     const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<StoredSetup>;
     if (
       parsed.version !== 2 ||
-      (parsed.preferredProvider !== "codex" && parsed.preferredProvider !== "claude") ||
+      !isAgentProvider(parsed.preferredProvider) ||
       typeof parsed.completedAt !== "string"
     ) {
       return { ...EMPTY_SETUP };
     }
-    return { completed: true, preferredProvider: parsed.preferredProvider };
+    return { completed: true, preferredProvider: parsed.preferredProvider ?? null };
   } catch (error) {
     if (isMissing(error) || error instanceof SyntaxError) return { ...EMPTY_SETUP };
     throw error;

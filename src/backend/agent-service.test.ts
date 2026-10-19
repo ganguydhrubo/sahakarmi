@@ -23,6 +23,9 @@ beforeEach(async () => {
   process.env.SAHKARMI_FAKE_CODEX_LOG = logPath;
   process.env.SAHKARMI_CODEX_PATH = await createFakeCodex(root);
   process.env.SAHKARMI_CLAUDE_PATH = join(root, "missing-claude");
+  // Keep tests hermetic: never spawn a real bundled OpenCode or installed Gemini CLI.
+  process.env.SAHKARMI_GEMINI_PATH = join(root, "missing-gemini");
+  process.env.SAHKARMI_OPENCODE_PATH = join(root, "missing-opencode");
 });
 
 afterEach(async () => {
@@ -33,6 +36,8 @@ afterEach(async () => {
   if (originalClaudePath === undefined) delete process.env.SAHKARMI_CLAUDE_PATH;
   else process.env.SAHKARMI_CLAUDE_PATH = originalClaudePath;
   delete process.env.SAHKARMI_FAKE_CODEX_LOG;
+  delete process.env.SAHKARMI_GEMINI_PATH;
+  delete process.env.SAHKARMI_OPENCODE_PATH;
   delete process.env.SAHKARMI_FAKE_AGENT_TOOL;
   delete process.env.SAHKARMI_FAKE_TOOL_CALL;
   delete process.env.SAHKARMI_FAKE_TOOL_ITEM;
@@ -215,6 +220,8 @@ describe.sequential("AgentService", () => {
           email: "codex@example.com",
         },
         { id: "claude", state: "not-installed", version: null },
+        { id: "gemini", state: "not-installed", version: null },
+        { id: "opencode", state: "not-installed", version: null },
       ],
       capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
     });
@@ -284,6 +291,8 @@ describe.sequential("AgentService", () => {
           version: "2.1.231",
           email: "claude@example.com",
         },
+        { id: "gemini", state: "not-installed" },
+        { id: "opencode", state: "not-installed" },
       ],
     });
     await service.setPreferredProvider("codex");

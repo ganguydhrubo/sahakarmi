@@ -8,6 +8,7 @@ import type {
   MacPermissionId,
   MacPermissionsState,
 } from "../../../shared/ipc";
+import { PROVIDER_LABELS } from "../../../shared/ipc";
 import { ProviderPicker, type ProviderPickerOption } from "./ProviderPicker";
 
 interface InitialSetupProps {
@@ -19,18 +20,15 @@ interface InitialSetupProps {
   onClose?: () => void;
 }
 
+// OpenCode is bundled with Sahkarmi and has free models, so it is listed first.
 const PROVIDERS: Array<{
   id: AgentProviderId;
   name: string;
 }> = [
-  {
-    id: "codex",
-    name: "Codex",
-  },
-  {
-    id: "claude",
-    name: "Claude",
-  },
+  { id: "opencode", name: "OpenCode (free, built in)" },
+  { id: "claude", name: "Claude" },
+  { id: "codex", name: "ChatGPT (Codex)" },
+  { id: "gemini", name: "Gemini" },
 ];
 
 const PERMISSIONS: Array<{
@@ -252,7 +250,7 @@ function permissionLabel(state: MacPermissionsState["screenRecording"]): string 
 }
 
 function providerName(provider: AgentProviderId | null): string {
-  return provider === "claude" ? "Claude" : "Codex";
+  return provider ? PROVIDER_LABELS[provider] : "your AI provider";
 }
 
 function fallbackProviderState(status: AgentStatus): AgentProviderState {

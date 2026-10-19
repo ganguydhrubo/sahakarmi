@@ -30,7 +30,7 @@ export function SettingsView(props: SettingsViewProps) {
 
   const account = () => {
     const auth = props.agentStatus.auth;
-    return auth.kind === "chatgpt" || auth.kind === "claude" ? (auth.email ?? auth.kind) : null;
+    return "email" in auth ? (auth.email ?? auth.kind) : null;
   };
 
   return (
