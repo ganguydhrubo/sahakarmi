@@ -1,6 +1,6 @@
-# Releasing OpenBot
+# Releasing Sahkarmi
 
-OpenBot updates are published through GitHub Releases and installed with `electron-updater`.
+Sahkarmi updates are published through GitHub Releases and installed with `electron-updater`.
 macOS requires every auto-updatable build to be signed with a Developer ID Application certificate.
 The release workflow also notarizes and staples the application before publishing it. Windows x64
 builds use an unsigned NSIS installer for now. GitHub Actions builds both platforms; release packages
@@ -8,7 +8,7 @@ are not built on a developer machine.
 
 ## One-time GitHub setup
 
-Create the `release` environment in `NorbertBodziony/openbot`, then add these environment secrets:
+Create the `release` environment in `ganguydhrubo/sahkarmi`, then add these environment secrets:
 
 - `CSC_LINK` — a base64-encoded Developer ID Application `.p12` file.
 - `CSC_KEY_PASSWORD` — the `.p12` export password.
@@ -31,7 +31,7 @@ Start from a clean, up-to-date `main` branch. For the first release, `package.js
 `CHANGELOG.md` are already prepared as `0.1.0`; after CI passes, create its annotated tag directly:
 
 ```bash
-git tag -a v0.1.0 -m "OpenBot v0.1.0"
+git tag -a v0.1.0 -m "Sahkarmi v0.1.0"
 git push origin v0.1.0
 ```
 
@@ -52,7 +52,7 @@ git add package.json CHANGELOG.md
 git commit -m "release: prepare vX.Y.Z"
 git push origin main
 bun run release:preflight
-git tag -a vX.Y.Z -m "OpenBot vX.Y.Z"
+git tag -a vX.Y.Z -m "Sahkarmi vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
@@ -69,9 +69,9 @@ The workflow:
 7. publishes one non-draft GitHub Release only after both platform jobs pass.
 
 Users can verify a downloaded artifact with
-`gh attestation verify <file> --repo NorbertBodziony/openbot`.
+`gh attestation verify <file> --repo ganguydhrubo/sahkarmi`.
 
-Installed OpenBot builds check for updates shortly after launch and every four hours. Updates are
+Installed Sahkarmi builds check for updates shortly after launch and every four hours. Updates are
 never downloaded without a user action. The account popover shows the current state and lets the user
 download an available version, then restart into it.
 
@@ -85,7 +85,7 @@ Before creating the first tag or any later release:
 1. run `bun run release:preflight` and resolve every reported signing or repository gate;
 2. confirm the `release` environment contains all five secrets above;
 3. run `bun install --frozen-lockfile` and `bun run check` from a clean clone;
-4. run `bun run package:verify` and launch the generated `dist/mac-arm64/OpenBot.app`;
+4. run `bun run package:verify` and launch the generated `dist/mac-arm64/Sahkarmi.app`;
 5. confirm that the Windows x64 job passes on `main`; it builds and launches the Windows package on
    a GitHub-hosted Windows runner;
 6. smoke-test sign-in/setup, chat streaming, queues, attachments, agent messaging, browser control,

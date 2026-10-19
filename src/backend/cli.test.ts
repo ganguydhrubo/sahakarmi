@@ -74,7 +74,7 @@ describe("Windows CLI fallback paths", () => {
   );
 
   it.runIf(process.platform === "win32")("reports a CLI that exists but cannot start", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-cli-test-"));
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-cli-test-"));
     temporaryPaths.push(root);
     const appData = join(root, "User Name", "AppData", "Roaming");
     await mkdir(join(appData, "npm"), { recursive: true });
@@ -90,7 +90,7 @@ describe("Windows CLI fallback paths", () => {
 });
 
 async function createWindowsNpmShims(): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "openbot-cli-test-"));
+  const root = await mkdtemp(join(tmpdir(), "sahkarmi-cli-test-"));
   temporaryPaths.push(root);
   const appData = join(root, "User Name", "AppData", "Roaming");
   const npmDirectory = join(appData, "npm");

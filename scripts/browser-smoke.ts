@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptsRoot = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptsRoot);
-const outputRoot = await mkdtemp(join(tmpdir(), "openbot-browser-build-"));
+const outputRoot = await mkdtemp(join(tmpdir(), "sahkarmi-browser-build-"));
 try {
   const outputPath = join(outputRoot, "browser-smoke.mjs");
   const buildCode = await run(process.execPath, [

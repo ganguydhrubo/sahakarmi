@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { isTrustedRendererUrl } from "./trusted-renderer";
 
 describe("trusted IPC renderer boundary", () => {
-  it("accepts only the packaged OpenBot application origin", () => {
-    expect(isTrustedRendererUrl("openbot-app://app/index.html", undefined)).toBe(true);
-    expect(isTrustedRendererUrl("openbot-app://other/index.html", undefined)).toBe(false);
+  it("accepts only the packaged Sahkarmi application origin", () => {
+    expect(isTrustedRendererUrl("sahkarmi-app://app/index.html", undefined)).toBe(true);
+    expect(isTrustedRendererUrl("sahkarmi-app://other/index.html", undefined)).toBe(false);
     expect(isTrustedRendererUrl("https://app.example/index.html", undefined)).toBe(false);
     expect(isTrustedRendererUrl(null, undefined)).toBe(false);
   });

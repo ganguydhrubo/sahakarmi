@@ -10,7 +10,7 @@ let root: string;
 let store: MailboxStore;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "openbot-mailbox-test-"));
+  root = await mkdtemp(join(tmpdir(), "sahkarmi-mailbox-test-"));
   store = new MailboxStore(join(root, "user-data"), join(root, "Shared"));
   await store.initialize();
 });
@@ -65,14 +65,30 @@ describe("MailboxStore", () => {
     });
   });
 
-  it("rolls back a failed enqueue without losing its attachment draft", async () => {
-    const original = join(root, "retry.txt");
-    const userData = join(root, "user-data");
-    await writeFile(original, "retry me\n");
-    const [draft] = await store.prepareAttachments([original]);
+  // chmod cannot make a directory unwritable for root (e.g. in CI containers).
+  it.skipIf(process.getuid?.() === 0)(
+    "rolls back a failed enqueue without losing its attachment draft",
+    async () => {
+      const original = join(root, "retry.txt");
+      const userData = join(root, "user-data");
+      await writeFile(original, "retry me\n");
+      const [draft] = await store.prepareAttachments([original]);
 
-    await chmod(userData, 0o500);
-    try {
+      await chmod(userData, 0o500);
+      try {
+        await expect(
+          store.enqueue({
+            sender: { kind: "user" },
+            recipientBotIds: ["chief"],
+            text: "",
+            draftIds: [draft.id],
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await chmod(userData, 0o700);
+      }
+
+      expect(store.listQueue("chief").deliveries).toEqual([]);
       await expect(
         store.enqueue({
           sender: { kind: "user" },
@@ -80,21 +96,9 @@ describe("MailboxStore", () => {
           text: "",
           draftIds: [draft.id],
         }),
-      ).rejects.toThrow();
-    } finally {
-      await chmod(userData, 0o700);
-    }
-
-    expect(store.listQueue("chief").deliveries).toEqual([]);
-    await expect(
-      store.enqueue({
-        sender: { kind: "user" },
-        recipientBotIds: ["chief"],
-        text: "",
-        draftIds: [draft.id],
-      }),
-    ).resolves.toMatchObject({ deliveries: [{ recipientBotId: "chief" }] });
-  });
+      ).resolves.toMatchObject({ deliveries: [{ recipientBotId: "chief" }] });
+    },
+  );
 
   it("fails closed instead of overwriting an unsupported mailbox state", async () => {
     const statePath = join(root, "user-data", "mailbox.json");

@@ -90,11 +90,11 @@ const ONBOARDING_CHOICES = [
   "Sales & outreach",
   "Something else",
 ];
-const SETTINGS_PANEL_STORAGE_KEY = "openbot:settings-panel-width";
+const SETTINGS_PANEL_STORAGE_KEY = "sahkarmi:settings-panel-width";
 const SETTINGS_PANEL_DEFAULT = 296;
 const SETTINGS_PANEL_MIN = 180;
 const SETTINGS_PANEL_MAX = 1600;
-const BROWSER_PANEL_STORAGE_KEY = "openbot:browser-panel-width";
+const BROWSER_PANEL_STORAGE_KEY = "sahkarmi:browser-panel-width";
 const BROWSER_PANEL_DEFAULT = 380;
 const BROWSER_PANEL_MIN = 220;
 const BROWSER_PANEL_MAX = 1600;
@@ -1053,7 +1053,7 @@ export function Conversation(props: ConversationProps) {
   };
 
   onMount(() => {
-    const unsubscribeImport = window.openbot.agent.onAttachmentImport((event) => {
+    const unsubscribeImport = window.sahkarmi.agent.onAttachmentImport((event) => {
       if (event.type === "started") {
         const botId = props.bot?.id;
         if (botId) importTargetBots.set(event.requestId, botId);
@@ -1071,7 +1071,7 @@ export function Conversation(props: ConversationProps) {
           addAttachments(event.attachments, botId);
         } else {
           for (const attachment of event.attachments) {
-            void window.openbot.agent.discardDraftAttachment(attachment.id);
+            void window.sahkarmi.agent.discardDraftAttachment(attachment.id);
           }
         }
       }
@@ -1255,7 +1255,7 @@ export function Conversation(props: ConversationProps) {
     if (browserBoundsFrame !== undefined) cancelAnimationFrame(browserBoundsFrame);
     browserBoundsFrame = undefined;
     if (!visible) {
-      void window.openbot.browser.setVisible({ visible: false });
+      void window.sahkarmi.browser.setVisible({ visible: false });
       return;
     }
     browserVisibilityFrame = requestAnimationFrame(() => {
@@ -1278,7 +1278,7 @@ export function Conversation(props: ConversationProps) {
           return;
         }
         const bounds = browserSurface.getBoundingClientRect();
-        void window.openbot.browser.setVisible({
+        void window.sahkarmi.browser.setVisible({
           visible: true,
           bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
         });
@@ -1305,7 +1305,7 @@ export function Conversation(props: ConversationProps) {
     browserResizeObserver?.disconnect();
     if (browserWindowResizeHandler)
       window.removeEventListener("resize", browserWindowResizeHandler);
-    void window.openbot.browser.setVisible({ visible: false });
+    void window.sahkarmi.browser.setVisible({ visible: false });
   });
 
   function addAttachments(selected: DraftAttachment[], botId = props.bot?.id) {
@@ -1314,7 +1314,7 @@ export function Conversation(props: ConversationProps) {
     const available = Math.max(0, 10 - draft.attachments.length);
     const accepted = selected.slice(0, available);
     for (const attachment of selected.slice(available)) {
-      void window.openbot.agent.discardDraftAttachment(attachment.id);
+      void window.sahkarmi.agent.discardDraftAttachment(attachment.id);
     }
     setDrafts((current) => ({
       ...current,
@@ -1332,7 +1332,7 @@ export function Conversation(props: ConversationProps) {
     setAttachmentBusy(true);
     setComposerError(null);
     try {
-      addAttachments(await window.openbot.agent.chooseAttachments());
+      addAttachments(await window.sahkarmi.agent.chooseAttachments());
     } catch (error) {
       setComposerError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1379,7 +1379,7 @@ export function Conversation(props: ConversationProps) {
     setOpenReactionMessageId(null);
     setExpandedEmojiMessageId(null);
     try {
-      await window.openbot.agent.setMessageReaction({ botId, messageId: message.id, emoji });
+      await window.sahkarmi.agent.setMessageReaction({ botId, messageId: message.id, emoji });
     } catch (error) {
       setComposerError(error instanceof Error ? error.message : String(error));
     }
@@ -1414,7 +1414,7 @@ export function Conversation(props: ConversationProps) {
     updateCurrentDraft({
       attachments: currentDraft().attachments.filter((attachment) => attachment.id !== id),
     });
-    void window.openbot.agent.discardDraftAttachment(id);
+    void window.sahkarmi.agent.discardDraftAttachment(id);
   }
 
   async function openBrowserAddress() {
@@ -1422,7 +1422,7 @@ export function Conversation(props: ConversationProps) {
     if (!value) return;
     const url = /^https?:\/\//i.test(value) ? value : `https://${value}`;
     try {
-      const tab = await window.openbot.browser.open({
+      const tab = await window.sahkarmi.browser.open({
         url,
         ownerThreadId: props.bot?.threadId ?? null,
         ownerBotId: props.bot?.id ?? null,
@@ -1436,7 +1436,7 @@ export function Conversation(props: ConversationProps) {
 
   async function openMessageLink(url: string) {
     try {
-      await window.openbot.openUrl(url);
+      await window.sahkarmi.openUrl(url);
     } catch {
       setComposerError("Could not open the link.");
     }
@@ -1449,7 +1449,7 @@ export function Conversation(props: ConversationProps) {
 
   function hideBrowserPanel() {
     setActiveRightPanel("none");
-    void window.openbot.browser.setVisible({ visible: false });
+    void window.sahkarmi.browser.setVisible({ visible: false });
   }
 
   function setActiveRightPanel(mode: RightPanelMode) {
@@ -1492,7 +1492,7 @@ export function Conversation(props: ConversationProps) {
   }
 
   function attachmentAction(attachment: AttachmentSummary, action: "open" | "reveal") {
-    void window.openbot.agent
+    void window.sahkarmi.agent
       .openAttachment({ attachmentId: attachment.id, action })
       .catch((error) => setComposerError(error instanceof Error ? error.message : String(error)));
   }
@@ -1689,7 +1689,7 @@ export function Conversation(props: ConversationProps) {
                 </strong>
                 <p>
                   {props.agentStatus.message ??
-                    "Install and sign in to Codex CLI or Claude CLI, then restart OpenBot."}
+                    "Install and sign in to Codex CLI or Claude CLI, then restart Sahkarmi."}
                 </p>
               </div>
               <Show

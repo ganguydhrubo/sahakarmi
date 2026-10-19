@@ -7,9 +7,9 @@ import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 const FUSE_DISABLED = 48;
 const FUSE_ENABLED = 49;
 
-const appPath = resolve(process.argv[2] ?? "dist/mac-arm64/OpenBot.app");
+const appPath = resolve(process.argv[2] ?? "dist/mac-arm64/Sahkarmi.app");
 const contentsPath = resolve(appPath, "Contents");
-const executablePath = resolve(contentsPath, "MacOS/OpenBot");
+const executablePath = resolve(contentsPath, "MacOS/Sahkarmi");
 const resourcesPath = resolve(contentsPath, "Resources");
 const plistPath = resolve(contentsPath, "Info.plist");
 
@@ -25,9 +25,9 @@ const plist = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", plistPath
   string,
   unknown
 >;
-expectEqual(plist.CFBundleDisplayName, "OpenBot", "display name");
-expectEqual(plist.CFBundleExecutable, "OpenBot", "executable name");
-expectEqual(plist.CFBundleIdentifier, "app.openbot.desktop", "bundle identifier");
+expectEqual(plist.CFBundleDisplayName, "Sahkarmi", "display name");
+expectEqual(plist.CFBundleExecutable, "Sahkarmi", "executable name");
+expectEqual(plist.CFBundleIdentifier, "app.sahkarmi.desktop", "bundle identifier");
 expectEqual(plist.CFBundleIconFile, "icon.icns", "application icon");
 expectEqual(plist.LSMinimumSystemVersion, "12.0", "minimum macOS version");
 if (!plist.ElectronAsarIntegrity) throw new Error("ASAR integrity metadata is missing.");
@@ -60,7 +60,7 @@ await verifyLaunch(executablePath);
 
 console.log(`Verified ${appPath}`);
 console.log(
-  `OpenBot ${String(packageJson.version)} · ARM64 · icon · licenses · ASAR integrity · hardened fuses · launch`,
+  `Sahkarmi ${String(packageJson.version)} · ARM64 · icon · licenses · ASAR integrity · hardened fuses · launch`,
 );
 
 function expectEqual(actual: unknown, expected: unknown, label: string): void {
@@ -74,9 +74,9 @@ function run(command: string, args: string[]): string {
 }
 
 async function verifyLaunch(executable: string): Promise<void> {
-  const userDataPath = await mkdtemp(join(tmpdir(), "openbot-package-smoke-"));
+  const userDataPath = await mkdtemp(join(tmpdir(), "sahkarmi-package-smoke-"));
   const child = spawn(executable, [`--user-data-dir=${userDataPath}`], {
-    env: { ...process.env, OPENBOT_CODEX_PATH: join(userDataPath, "missing-codex") },
+    env: { ...process.env, SAHKARMI_CODEX_PATH: join(userDataPath, "missing-codex") },
     stdio: ["ignore", "ignore", "pipe"],
   });
   let stderr = "";
@@ -91,7 +91,7 @@ async function verifyLaunch(executable: string): Promise<void> {
         child.once("exit", (code, signal) => {
           reject(
             new Error(
-              `Packaged OpenBot exited during launch (${signal ?? `code ${String(code)}`}): ${stderr.trim()}`,
+              `Packaged Sahkarmi exited during launch (${signal ?? `code ${String(code)}`}): ${stderr.trim()}`,
             ),
           );
         });
@@ -116,7 +116,7 @@ async function verifyLaunch(executable: string): Promise<void> {
 
 async function verifySecondInstanceExits(executable: string, userDataPath: string): Promise<void> {
   const second = spawn(executable, [`--user-data-dir=${userDataPath}`], {
-    env: { ...process.env, OPENBOT_CODEX_PATH: join(userDataPath, "missing-codex") },
+    env: { ...process.env, SAHKARMI_CODEX_PATH: join(userDataPath, "missing-codex") },
     stdio: "ignore",
   });
   const result = await Promise.race([
@@ -127,11 +127,11 @@ async function verifySecondInstanceExits(executable: string, userDataPath: strin
   ]);
   if (!result) {
     second.kill("SIGKILL");
-    throw new Error("A second OpenBot instance did not exit.");
+    throw new Error("A second Sahkarmi instance did not exit.");
   }
   if (result.code !== 0 || result.signal) {
     throw new Error(
-      `A second OpenBot instance exited unexpectedly (${result.signal ?? `code ${String(result.code)}`}).`,
+      `A second Sahkarmi instance exited unexpectedly (${result.signal ?? `code ${String(result.code)}`}).`,
     );
   }
 }

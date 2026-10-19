@@ -49,8 +49,8 @@ const FALLBACK_UPDATE_STATUS: UpdateStatus = {
 
 type PromptEvent = Extract<AgentEvent, { type: "prompt" }>;
 
-const LEFT_PANEL_STORAGE_KEY = "openbot:left-panel-width";
-const LEFT_PANEL_COLLAPSED_STORAGE_KEY = "openbot:left-panel-collapsed";
+const LEFT_PANEL_STORAGE_KEY = "sahkarmi:left-panel-width";
+const LEFT_PANEL_COLLAPSED_STORAGE_KEY = "sahkarmi:left-panel-collapsed";
 const LEFT_PANEL_DEFAULT = 275;
 const LEFT_PANEL_MIN = 220;
 const LEFT_PANEL_MAX = 360;
@@ -140,8 +140,8 @@ export function App() {
   });
 
   onMount(() => {
-    const unsubscribe = window.openbot.agent.onEvent(handleAgentEvent);
-    const unsubscribeUpdate = window.openbot.update.onEvent(setUpdateStatus);
+    const unsubscribe = window.sahkarmi.agent.onEvent(handleAgentEvent);
+    const unsubscribeUpdate = window.sahkarmi.update.onEvent(setUpdateStatus);
     onCleanup(() => {
       unsubscribe();
       unsubscribeUpdate();
@@ -149,43 +149,43 @@ export function App() {
       for (const timer of recentReplyTimers.values()) clearTimeout(timer);
       recentReplyTimers.clear();
     });
-    void window.openbot.update
+    void window.sahkarmi.update
       .getStatus()
       .then(setUpdateStatus)
       .catch(() => undefined);
-    void window.openbot
+    void window.sahkarmi
       .getSetupState()
       .then(setSetupState)
       .finally(() => setSetupLoaded(true));
 
     void Promise.all([
-      window.openbot
+      window.sahkarmi
         .getAppInfo()
         .then(setAppInfo)
-        .catch(() => setAppInfo({ name: "OpenBot", version: "unavailable", platform: "darwin" })),
-      window.openbot.agent
+        .catch(() => setAppInfo({ name: "Sahkarmi", version: "unavailable", platform: "darwin" })),
+      window.sahkarmi.agent
         .getStatus()
         .then(setAgentStatus)
         .catch(() => undefined),
-      window.openbot.agent
+      window.sahkarmi.agent
         .listModels()
         .then(setModelOptions)
         .catch(() => undefined),
-      window.openbot.agent
+      window.sahkarmi.agent
         .listBots()
         .then(applyStoredBots)
         .catch((error) => {
           setAgentStatus((current) => ({ ...current, message: String(error) }));
         }),
     ]);
-    void window.openbot.browser
+    void window.sahkarmi.browser
       .listTabs()
       .then((tabs) => {
         setBrowserTabs(tabs);
         setActiveBrowserTabId((current) => current ?? tabs[0]?.id ?? null);
       })
       .catch(() => undefined);
-    void window.openbot.browser
+    void window.sahkarmi.browser
       .getControlState()
       .then(setBrowserControlState)
       .catch(() => undefined);
@@ -196,8 +196,8 @@ export function App() {
     agentStatus().phase;
     if (!botId) return;
     void Promise.all([
-      window.openbot.agent.readConversation(botId),
-      window.openbot.agent.listQueue(botId),
+      window.sahkarmi.agent.readConversation(botId),
+      window.sahkarmi.agent.listQueue(botId),
     ])
       .then(([snapshot, queue]) => {
         setQueues((current) => ({ ...current, [botId]: queue }));
@@ -211,7 +211,7 @@ export function App() {
       case "status":
         setAgentStatus(event.status);
         if (event.status.phase === "ready") {
-          void window.openbot.agent
+          void window.sahkarmi.agent
             .listModels()
             .then(setModelOptions)
             .catch(() => undefined);
@@ -350,7 +350,7 @@ export function App() {
     if (creatingAgent()) return;
     setCreatingAgent(true);
     try {
-      const stored = await window.openbot.agent.createBot();
+      const stored = await window.sahkarmi.agent.createBot();
       const newAgent = createMutable(toBotProfile(stored));
       setBotList((current) => [newAgent, ...current.filter((item) => item.id !== newAgent.id)]);
       setLiveMessages((current) => ({ ...current, [newAgent.id]: [] }));
@@ -404,16 +404,16 @@ export function App() {
   }
 
   function activateBrowserTab(tabId: string) {
-    void window.openbot.browser.activate(tabId);
+    void window.sahkarmi.browser.activate(tabId);
   }
 
   function closeBrowserTab(tabId: string) {
-    void window.openbot.browser.close(tabId);
+    void window.sahkarmi.browser.close(tabId);
   }
 
   async function updateBot(botId: string, updates: Omit<UpdateBotInput, "botId">) {
     try {
-      const stored = await window.openbot.agent.updateBot({ botId, ...updates });
+      const stored = await window.sahkarmi.agent.updateBot({ botId, ...updates });
       const existing = botList().find((bot) => bot.id === botId);
       if (existing) Object.assign(existing, toBotProfile(stored));
       else setBotList((current) => [...current, createMutable(toBotProfile(stored))]);
@@ -430,7 +430,7 @@ export function App() {
 
   async function deleteBot(botId: string) {
     try {
-      await window.openbot.agent.deleteBot(botId);
+      await window.sahkarmi.agent.deleteBot(botId);
       const remaining = botList().filter((bot) => bot.id !== botId);
       setBotList(remaining);
       setActiveBotId((current) => (current === botId ? (remaining[0]?.id ?? "") : current));
@@ -470,7 +470,7 @@ export function App() {
     replyToMessageId: string | null = null,
   ): Promise<boolean> {
     try {
-      await window.openbot.agent.sendMessage({
+      await window.sahkarmi.agent.sendMessage({
         botId,
         text: body.trim(),
         attachmentDraftIds,
@@ -516,7 +516,7 @@ export function App() {
     const prompt = bot ? pendingPrompts()[bot.id] : undefined;
     if (!bot || !prompt) return false;
     try {
-      await window.openbot.agent.respondToPrompt({ requestId: prompt.requestId, answers });
+      await window.sahkarmi.agent.respondToPrompt({ requestId: prompt.requestId, answers });
       setPendingPrompts((current) => ({ ...current, [bot.id]: undefined }));
       return true;
     } catch (error) {
@@ -528,7 +528,7 @@ export function App() {
   function cancelQueuedMessage(deliveryId: string) {
     const bot = activeBot();
     if (!bot) return;
-    void window.openbot.agent
+    void window.sahkarmi.agent
       .cancelQueuedMessage({ botId: bot.id, deliveryId })
       .catch((error) => appendUiError(bot.id, error, "Cancel failed"));
   }
@@ -536,7 +536,7 @@ export function App() {
   function resumeQueue() {
     const bot = activeBot();
     if (!bot) return;
-    void window.openbot.agent
+    void window.sahkarmi.agent
       .setQueuePaused({ botId: bot.id, paused: false })
       .catch((error) => appendUiError(bot.id, error, "Resume failed"));
   }
@@ -545,13 +545,13 @@ export function App() {
     const bot = activeBot();
     const turnId = bot ? activeTurns()[bot.id] : null;
     if (!bot || !turnId) return;
-    void window.openbot.agent
+    void window.sahkarmi.agent
       .interrupt({ botId: bot.id, turnId })
       .catch((error) => appendUiError(bot.id, error, "Stop failed"));
   }
 
   async function refreshAccountUsage(): Promise<AccountUsage> {
-    const usage = await window.openbot.agent.getUsage();
+    const usage = await window.sahkarmi.agent.getUsage();
     setAccountUsage(usage);
     return usage;
   }
@@ -605,7 +605,7 @@ export function App() {
   }
 
   async function saveSetup(preferredProvider: AgentProviderId): Promise<void> {
-    const state = await window.openbot.saveSetup({ preferredProvider });
+    const state = await window.sahkarmi.saveSetup({ preferredProvider });
     setSetupState(state);
     setPermissionsOpen(false);
   }
@@ -613,20 +613,20 @@ export function App() {
   async function runUpdateAction(): Promise<void> {
     const phase = updateStatus().phase;
     if (phase === "ready") {
-      await window.openbot.update.install();
+      await window.sahkarmi.update.install();
       return;
     }
     const status =
       phase === "available"
-        ? await window.openbot.update.download()
-        : await window.openbot.update.check();
+        ? await window.sahkarmi.update.download()
+        : await window.sahkarmi.update.check();
     setUpdateStatus(status);
   }
 
   return (
     <Show
       when={setupLoaded() && appInfo() !== null}
-      fallback={<div class="initial-setup-screen" role="status" aria-label="Loading OpenBot" />}
+      fallback={<div class="initial-setup-screen" role="status" aria-label="Loading Sahkarmi" />}
     >
       <Show
         when={setupState()?.completed}
@@ -659,7 +659,7 @@ export function App() {
               onDeleteBot={deleteBot}
               onRefreshUsage={refreshAccountUsage}
               onUpdateAction={runUpdateAction}
-              onOpenExternal={(destination) => window.openbot.openExternal(destination)}
+              onOpenExternal={(destination) => window.sahkarmi.openExternal(destination)}
               onOpenPermissions={() => setPermissionsOpen(true)}
               onCollapse={() => setSidebarCollapsed(true)}
             />
@@ -706,7 +706,7 @@ export function App() {
             onActivateBrowserTab={activateBrowserTab}
             onCloseBrowserTab={closeBrowserTab}
             onToggleLeftSidebar={() => setSidebarCollapsed(false)}
-            onOpenAgentSetup={() => window.openbot.openExternal("agent-setup")}
+            onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
             onStop={stopActiveTurn}
           />
           <Show when={permissionsOpen()}>

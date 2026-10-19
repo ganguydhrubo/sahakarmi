@@ -4,7 +4,7 @@ import {
   type AttachmentImportEvent,
   type ImportAttachmentsInput,
   IPC_CHANNELS,
-  type OpenBotDesktopApi,
+  type SahkarmiDesktopApi,
   type UpdateStatus,
 } from "../shared/ipc";
 
@@ -61,7 +61,7 @@ window.addEventListener("paste", (event) => {
   }
 });
 
-const openbotApi: OpenBotDesktopApi = {
+const sahkarmiApi: SahkarmiDesktopApi = {
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.getAppInfo),
   getSetupState: () => ipcRenderer.invoke(IPC_CHANNELS.getSetupState),
   saveSetup: (input) => ipcRenderer.invoke(IPC_CHANNELS.saveSetup, input),
@@ -75,7 +75,7 @@ const openbotApi: OpenBotDesktopApi = {
     getUsage: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetUsage),
     listModels: () => ipcRenderer.invoke(IPC_CHANNELS.agentListModels),
     listBots: () => ipcRenderer.invoke(IPC_CHANNELS.agentListBots),
-    createBot: () => ipcRenderer.invoke(IPC_CHANNELS.agentCreateBot),
+    createBot: (workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.agentCreateBot, workspaceId),
     updateBot: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentUpdateBot, input),
     deleteBot: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentDeleteBot, botId),
     readConversation: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentReadConversation, botId),
@@ -108,6 +108,34 @@ const openbotApi: OpenBotDesktopApi = {
     listTabs: () => ipcRenderer.invoke(IPC_CHANNELS.browserListTabs),
     getControlState: () => ipcRenderer.invoke(IPC_CHANNELS.browserGetControlState),
     setVisible: (input) => ipcRenderer.invoke(IPC_CHANNELS.browserSetVisible, input),
+    getTakeover: () => ipcRenderer.invoke(IPC_CHANNELS.browserGetTakeover),
+    takeOver: () => ipcRenderer.invoke(IPC_CHANNELS.browserTakeOver),
+    handBack: (note) => ipcRenderer.invoke(IPC_CHANNELS.browserHandBack, note ?? null),
+  },
+  team: {
+    listWorkspaces: () => ipcRenderer.invoke(IPC_CHANNELS.teamListWorkspaces),
+    createWorkspace: (name) => ipcRenderer.invoke(IPC_CHANNELS.teamCreateWorkspace, name),
+    renameWorkspace: (workspaceId, name) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamRenameWorkspace, { workspaceId, name }),
+    setActiveWorkspace: (workspaceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamSetActiveWorkspace, workspaceId),
+  },
+  approvals: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.approvalsList),
+    decide: (input) => ipcRenderer.invoke(IPC_CHANNELS.approvalsDecide, input),
+  },
+  schedules: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.schedulesList),
+    create: (input) => ipcRenderer.invoke(IPC_CHANNELS.schedulesCreate, input),
+    setEnabled: (scheduleId, enabled) =>
+      ipcRenderer.invoke(IPC_CHANNELS.schedulesSetEnabled, { scheduleId, enabled }),
+    delete: (scheduleId) => ipcRenderer.invoke(IPC_CHANNELS.schedulesDelete, scheduleId),
+    runNow: (scheduleId) => ipcRenderer.invoke(IPC_CHANNELS.schedulesRunNow, scheduleId),
+  },
+  files: {
+    list: (directory) => ipcRenderer.invoke(IPC_CHANNELS.filesList, directory ?? ""),
+    add: (directory) => ipcRenderer.invoke(IPC_CHANNELS.filesAdd, directory ?? ""),
+    open: (input) => ipcRenderer.invoke(IPC_CHANNELS.filesOpen, input),
   },
   update: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.updateGetStatus),
@@ -126,4 +154,4 @@ const openbotApi: OpenBotDesktopApi = {
   },
 };
 
-contextBridge.exposeInMainWorld("openbot", openbotApi);
+contextBridge.exposeInMainWorld("sahkarmi", sahkarmiApi);

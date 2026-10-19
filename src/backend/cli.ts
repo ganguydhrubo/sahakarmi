@@ -29,7 +29,7 @@ export class CodexCliError extends Error {
 }
 
 export async function resolveCodexCli(): Promise<CodexCliInfo> {
-  const candidates = await collectCandidates("codex", process.env.OPENBOT_CODEX_PATH);
+  const candidates = await collectCandidates("codex", process.env.SAHKARMI_CODEX_PATH);
   const failures: CodexCliError[] = [];
 
   for (const candidate of candidates) {
@@ -40,7 +40,7 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
       const version = parseCodexVersion(stdout);
       if (!isMinimumVersion(version)) {
         throw new CodexCliError(
-          `Codex CLI ${version} is too old. OpenBot requires 0.144.1 or newer.`,
+          `Codex CLI ${version} is too old. Sahkarmi requires 0.144.1 or newer.`,
           "outdated",
         );
       }
@@ -65,13 +65,13 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
   }
 
   throw new CodexCliError(
-    "Codex CLI was not found. Install Codex, run `codex login`, then restart OpenBot.",
+    "Codex CLI was not found. Install Codex, run `codex login`, then restart Sahkarmi.",
     "missing",
   );
 }
 
 export async function resolveClaudeCli(): Promise<ClaudeCliInfo> {
-  const candidates = await collectCandidates("claude", process.env.OPENBOT_CLAUDE_PATH);
+  const candidates = await collectCandidates("claude", process.env.SAHKARMI_CLAUDE_PATH);
   let foundCandidate = false;
 
   for (const candidate of candidates) {
@@ -94,7 +94,7 @@ export async function resolveClaudeCli(): Promise<ClaudeCliInfo> {
   }
 
   throw new CodexCliError(
-    "Claude CLI was not found. Install Claude Code, run `claude auth login`, then restart OpenBot.",
+    "Claude CLI was not found. Install Claude Code, run `claude auth login`, then restart Sahkarmi.",
     "missing",
   );
 }

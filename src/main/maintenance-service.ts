@@ -21,18 +21,18 @@ interface MaintenanceContext {
   parentWindow: BrowserWindow | null;
 }
 
-export async function exportOpenBotData(
+export async function exportSahkarmiData(
   context: Pick<MaintenanceContext, "service" | "mailbox" | "parentWindow">,
 ): Promise<ExportResult> {
   const destination = await chooseExportDestination(
     context.parentWindow,
-    `OpenBot-backup-${new Date().toISOString().slice(0, 10)}.zip`,
+    `Sahkarmi-backup-${new Date().toISOString().slice(0, 10)}.zip`,
     [{ name: "ZIP archive", extensions: ["zip"] }],
   );
   if (!destination) return { saved: false };
 
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "openbot-export-"));
-  const exportRoot = join(temporaryRoot, "OpenBot Backup");
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "sahkarmi-export-"));
+  const exportRoot = join(temporaryRoot, "Sahkarmi Backup");
   const archiveCandidate = `${destination}.${randomUUID()}.tmp.zip`;
   try {
     await mkdir(exportRoot, { recursive: true, mode: 0o700 });
@@ -45,7 +45,7 @@ export async function exportOpenBotData(
     const manifest = {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
-      application: { name: "OpenBot", version: app.getVersion() },
+      application: { name: "Sahkarmi", version: app.getVersion() },
       scope: {
         includes: ["agent profiles", "conversation snapshots", "queues", "attachments"],
         excludes: ["Codex credentials", "browser cookies", "agent workspace files"],
@@ -55,7 +55,7 @@ export async function exportOpenBotData(
       queues,
     };
     await writeFile(
-      join(exportRoot, "openbot-data.json"),
+      join(exportRoot, "sahkarmi-data.json"),
       `${JSON.stringify(manifest, null, 2)}\n`,
       { encoding: "utf8", mode: 0o600 },
     );
@@ -99,7 +99,7 @@ export async function exportDiagnostics(
 ): Promise<ExportResult> {
   const destination = await chooseExportDestination(
     context.parentWindow,
-    `OpenBot-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
+    `Sahkarmi-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
     [{ name: "JSON document", extensions: ["json"] }],
   );
   if (!destination) return { saved: false };
@@ -184,6 +184,7 @@ async function chooseExportDestination(
 function toBackupBot(bot: BotSummary): Omit<BotSummary, "workspacePath"> {
   return {
     id: bot.id,
+    workspaceId: bot.workspaceId,
     name: bot.name,
     role: bot.role,
     description: bot.description,

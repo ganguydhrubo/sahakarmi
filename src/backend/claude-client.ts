@@ -49,6 +49,7 @@ interface ActiveTurn {
   itemId: string;
   text: string;
   assistantMessages: Map<string, string>;
+  toolUses: Map<string, { name: string; input: unknown }>;
 }
 
 interface ThreadRuntime {
@@ -196,7 +197,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       }
       return this.#requestUserInput(threadId, toolInput, options.toolUseID ?? randomUUID());
     };
-    const mcpServers = this.#createOpenBotServers(threadId);
+    const mcpServers = this.#createSahkarmiServers(threadId);
     const claudeQuery = this.#createQuery({
       prompt: input,
       options: {
@@ -217,7 +218,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         additionalDirectories: config.additionalDirectories,
         canUseTool,
         mcpServers,
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "openbot/0.1.0" },
+        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "sahkarmi/0.1.0" },
       },
     });
     const runtime: ThreadRuntime = {
@@ -256,6 +257,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       itemId: `${turnId}:assistant`,
       text: "",
       assistantMessages: new Map<string, string>(),
+      toolUses: new Map<string, { name: string; input: unknown }>(),
     };
     runtime.activeTurn = activeTurn;
     this.emit("notification", {
@@ -307,9 +309,28 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       return;
     }
 
+    if (message.type === "user") {
+      if (message.parent_tool_use_id !== null) return;
+      const turn = runtime.activeTurn;
+      if (!turn) return;
+      for (const result of toolResultBlocks(message.message)) {
+        const use = turn.toolUses.get(result.toolUseId);
+        if (!use) continue;
+        this.#emitToolItem(runtime, turn.id, result.toolUseId, use, true, result);
+      }
+      return;
+    }
+
     if (message.type === "assistant") {
       if (message.parent_tool_use_id !== null) return;
       const turn = runtime.activeTurn;
+      if (turn) {
+        for (const block of toolUseBlocks(message.message)) {
+          if (turn.toolUses.has(block.id)) continue;
+          turn.toolUses.set(block.id, { name: block.name, input: block.input });
+          this.#emitToolItem(runtime, turn.id, block.id, block, false, null);
+        }
+      }
       const text = messageText(message.message);
       if (!turn || !text) return;
       turn.assistantMessages.set(message.uuid, text);
@@ -338,6 +359,31 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         ? "completed"
         : "failed";
     this.#completeTurn(runtime, status, "errors" in message ? message.errors.join("\n") : null);
+  }
+
+  #emitToolItem(
+    runtime: ThreadRuntime,
+    turnId: string,
+    id: string,
+    use: { name: string; input: unknown },
+    completed: boolean,
+    result: { text: string; isError: boolean } | null,
+  ): void {
+    this.emit("notification", {
+      method: completed ? "item/completed" : "item/started",
+      params: {
+        threadId: runtime.id,
+        turnId,
+        item: {
+          id: `tool:${id}`,
+          type: "toolUse",
+          tool: use.name,
+          arguments: use.input,
+          status: completed ? (result?.isError ? "failed" : "completed") : "inProgress",
+          output: result?.text ?? null,
+        },
+      },
+    });
   }
 
   #appendDelta(runtime: ThreadRuntime, delta: string): void {
@@ -415,32 +461,32 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return { thread: { id: threadId, turns } };
   }
 
-  #createOpenBotServers(threadId: string) {
+  #createSahkarmiServers(threadId: string) {
     const call = (namespace: string, name: string, args: unknown) =>
       this.#callDynamicTool(threadId, namespace, name, args);
     return {
-      openbot_browser: createSdkMcpServer({
-        name: "openbot_browser",
+      sahkarmi_browser: createSdkMcpServer({
+        name: "sahkarmi_browser",
         version: "0.1.0",
         tools: [
           tool(
             "open",
-            "Open an HTTP(S) URL in OpenBot's private browser.",
+            "Open an HTTP(S) URL in Sahkarmi's private browser.",
             { url: z.string() },
-            (args) => call("openbot_browser", "open", args),
+            (args) => call("sahkarmi_browser", "open", args),
           ),
-          tool("list_tabs", "List OpenBot browser tabs.", {}, (args) =>
-            call("openbot_browser", "list_tabs", args),
+          tool("list_tabs", "List Sahkarmi browser tabs.", {}, (args) =>
+            call("sahkarmi_browser", "list_tabs", args),
           ),
           tool(
             "snapshot",
             "Read a browser page and get element references.",
             { tabId: z.string() },
-            (args) => call("openbot_browser", "snapshot", args),
+            (args) => call("sahkarmi_browser", "snapshot", args),
           ),
           tool(
             "act",
-            "Click, type, press a key, scroll, navigate, or reload in OpenBot's browser.",
+            "Click, type, press a key, scroll, navigate, or reload in Sahkarmi's browser.",
             {
               tabId: z.string(),
               revision: z.number().int(),
@@ -453,33 +499,50 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
                 deltaY: z.number().optional(),
               }),
             },
-            (args) => call("openbot_browser", "act", args),
+            (args) => call("sahkarmi_browser", "act", args),
           ),
           tool("screenshot", "Capture the visible browser page.", { tabId: z.string() }, (args) =>
-            call("openbot_browser", "screenshot", args),
+            call("sahkarmi_browser", "screenshot", args),
           ),
-          tool("close_tab", "Close an OpenBot browser tab.", { tabId: z.string() }, (args) =>
-            call("openbot_browser", "close_tab", args),
+          tool("close_tab", "Close an Sahkarmi browser tab.", { tabId: z.string() }, (args) =>
+            call("sahkarmi_browser", "close_tab", args),
           ),
         ],
       }),
-      openbot: createSdkMcpServer({
-        name: "openbot",
+      sahkarmi: createSdkMcpServer({
+        name: "sahkarmi",
         version: "0.1.0",
         tools: [
-          tool("list_agents", "List OpenBot agents that can receive local messages.", {}, (args) =>
-            call("openbot", "list_agents", args),
+          tool("list_agents", "List Sahkarmi agents that can receive local messages.", {}, (args) =>
+            call("sahkarmi", "list_agents", args),
+          ),
+          tool(
+            "request_approval",
+            "Ask the owner to approve an action BEFORE doing it (payments, messages to customers, publishing, form submissions, deleting or sharing data). Returns immediately; the decision arrives later as a message.",
+            {
+              title: z.string().min(1).max(200),
+              details: z.string().max(8_000),
+              category: z.enum(["payment", "message", "submission", "data", "other"]),
+              amount: z.string().max(60).nullable().optional(),
+            },
+            (args) => call("sahkarmi", "request_approval", args),
+          ),
+          tool(
+            "request_browser_takeover",
+            "Ask the owner to take over the browser for login, OTP/2FA, CAPTCHA or a payment page. Returns immediately; you are messaged when control is handed back.",
+            { reason: z.string().min(1).max(300) },
+            (args) => call("sahkarmi", "request_browser_takeover", args),
           ),
           tool(
             "send_message",
-            "Send an asynchronous message or local files to OpenBot teammates.",
+            "Send an asynchronous message or local files to Sahkarmi coworkers.",
             {
               recipientBotIds: z.array(z.string()).min(1).max(32),
               text: z.string().min(1).max(100_000),
               paths: z.array(z.string()).max(10).optional(),
               replyToMessageId: z.string().nullable().optional(),
             },
-            (args) => call("openbot", "send_message", args),
+            (args) => call("sahkarmi", "send_message", args),
           ),
         ],
       }),
@@ -655,6 +718,42 @@ function messageText(message: unknown): string {
     .filter((block) => block.type === "text" && typeof block.text === "string")
     .map((block) => block.text as string)
     .join("\n");
+}
+
+function toolUseBlocks(message: unknown): Array<{ id: string; name: string; input: unknown }> {
+  if (!isRecord(message) || !Array.isArray(message.content)) return [];
+  return message.content
+    .filter(isRecord)
+    .filter(
+      (block) =>
+        (block.type === "tool_use" || block.type === "server_tool_use") &&
+        typeof block.id === "string" &&
+        typeof block.name === "string",
+    )
+    .map((block) => ({ id: block.id as string, name: block.name as string, input: block.input }));
+}
+
+function toolResultBlocks(
+  message: unknown,
+): Array<{ toolUseId: string; text: string; isError: boolean }> {
+  if (!isRecord(message) || !Array.isArray(message.content)) return [];
+  return message.content
+    .filter(isRecord)
+    .filter((block) => block.type === "tool_result" && typeof block.tool_use_id === "string")
+    .map((block) => ({
+      toolUseId: block.tool_use_id as string,
+      text:
+        typeof block.content === "string"
+          ? block.content
+          : Array.isArray(block.content)
+            ? block.content
+                .filter(isRecord)
+                .map((part) => (typeof part.text === "string" ? part.text : ""))
+                .filter(Boolean)
+                .join("\n")
+            : "",
+      isError: block.is_error === true,
+    }));
 }
 
 function dynamicContent(value: unknown): CallToolResult["content"] {

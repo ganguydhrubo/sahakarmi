@@ -1,9 +1,9 @@
 /// <reference types="vite/client" />
 
-import type { OpenBotDesktopApi } from "../../shared/ipc";
+import type { SahkarmiDesktopApi } from "../../shared/ipc";
 
 declare global {
   interface Window {
-    openbot: OpenBotDesktopApi;
+    sahkarmi: SahkarmiDesktopApi;
   }
 }

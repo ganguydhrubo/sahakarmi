@@ -1,6 +1,7 @@
 import type { ConversationMessage, ConversationSnapshot } from "../shared/ipc";
 import type { DeliveryContext } from "./mailbox-store";
 import type { ThreadResponse } from "./protocol";
+import { toolCallFromItem } from "./tool-calls";
 
 export function snapshotFromThread(
   botId: string,
@@ -52,6 +53,20 @@ export function snapshotFromThread(
           });
         }
       }
+      const tool = toolCallFromItem(item, true);
+      if (tool && typeof item.id === "string") {
+        messages.push({
+          id: item.id,
+          turnId: turn.id,
+          author: "assistant",
+          text: "",
+          createdAt,
+          status: "completed",
+          itemType: "toolCall",
+          tool,
+        });
+        continue;
+      }
       if (item.type === "agentMessage" && typeof item.id === "string" && item.text) {
         messages.push({
           id: item.id,
@@ -102,6 +117,7 @@ export function sortConversationMessages(messages: ConversationMessage[]): void 
 function turnMessageRank(message: ConversationMessage): number {
   if (message.exchange?.direction === "incoming" || message.author === "user") return 0;
   if (message.author === "assistant" && message.itemType === "commentary") return 1;
+  if (message.author === "assistant" && message.itemType === "toolCall") return 1;
   if (message.exchange?.direction === "outgoing") return 2;
   if (message.author === "assistant") return 3;
   return 2;

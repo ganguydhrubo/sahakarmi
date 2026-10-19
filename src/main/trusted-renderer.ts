@@ -6,7 +6,7 @@ export function isTrustedRendererUrl(
   try {
     const senderUrl = new URL(frameUrl);
     if (developmentUrl) return senderUrl.origin === new URL(developmentUrl).origin;
-    return senderUrl.protocol === "openbot-app:" && senderUrl.host === "app";
+    return senderUrl.protocol === "sahkarmi-app:" && senderUrl.host === "app";
   } catch {
     return false;
   }

@@ -15,16 +15,80 @@ import {
   isClaudeModel,
   isReasoningEffort,
   type UpdateBotInput,
+  type WorkspaceState,
+  type WorkspaceSummary,
 } from "../shared/ipc";
 import { isRecord } from "./protocol";
 
 type StoredBot = BotSummary;
 
 interface StoredState {
-  version: 1;
+  version: 2;
   examplesInitialized: boolean;
+  activeWorkspaceId: string;
+  workspaces: WorkspaceSummary[];
   bots: StoredBot[];
 }
+
+export const DEFAULT_WORKSPACE_ID = "my-business";
+
+interface DefaultCoworker {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  avatarShape: BotAvatarShape;
+  avatarColor: BotAvatarColor;
+}
+
+/** The starter team. Names and roles are editable; avatars are abstract shapes, never photos. */
+export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
+  {
+    id: "asha-accounts",
+    name: "Asha",
+    role: "Accounts",
+    description:
+      "Handles invoices, GST-ready bookkeeping, payment follow-ups and reconciliations. Uses INR (₹) and Indian number formatting (lakh/crore). Never makes or schedules a payment without an approval.",
+    avatarShape: "hex",
+    avatarColor: "orange",
+  },
+  {
+    id: "vikram-sales",
+    name: "Vikram",
+    role: "Sales",
+    description:
+      "Researches leads, drafts outreach and WhatsApp/email follow-ups, keeps the pipeline sheet current and prepares quotations. Asks for approval before contacting any customer.",
+    avatarShape: "wedge",
+    avatarColor: "blue",
+  },
+  {
+    id: "meera-support",
+    name: "Meera",
+    role: "Support",
+    description:
+      "Triages customer queries, drafts polite replies in English, Hindi or Bengali, tracks tickets and escalates anything urgent. Asks for approval before sending replies to customers.",
+    avatarShape: "pebble",
+    avatarColor: "green",
+  },
+  {
+    id: "arjun-research",
+    name: "Arjun",
+    role: "Research",
+    description:
+      "Does market, competitor, supplier and compliance research for Indian businesses, cites sources and summarises findings into the Shared folder.",
+    avatarShape: "squircle",
+    avatarColor: "violet",
+  },
+  {
+    id: "kavya-content",
+    name: "Kavya",
+    role: "Content",
+    description:
+      "Writes social posts, product descriptions, blogs and festival campaigns in English, Hindi and Bengali, matching the brand voice. Asks for approval before publishing anything.",
+    avatarShape: "cloud",
+    avatarColor: "yellow",
+  },
+];
 
 export const DEFAULT_AGENT_MODEL: AgentModelId = "gpt-5.6-luna";
 export const DEFAULT_REASONING_EFFORT: AgentReasoningEffort = "medium";
@@ -34,15 +98,15 @@ export class BotStore {
   readonly #botsRoot: string;
   readonly #sharedRoot: string;
   readonly #downloadsRoot: string;
-  #state: StoredState = { version: 1, examplesInitialized: false, bots: [] };
+  #state: StoredState = emptyState();
   #writeQueue: Promise<void> = Promise.resolve();
 
   constructor(userDataPath: string, homePath: string) {
-    const openbotRoot = join(homePath, "OpenBot");
+    const sahkarmiRoot = join(homePath, "Sahkarmi");
     this.#statePath = join(userDataPath, "bots.json");
-    this.#botsRoot = join(openbotRoot, "Bots");
-    this.#sharedRoot = join(openbotRoot, "Shared");
-    this.#downloadsRoot = join(openbotRoot, "Downloads");
+    this.#botsRoot = join(sahkarmiRoot, "Coworkers");
+    this.#sharedRoot = join(sahkarmiRoot, "Shared");
+    this.#downloadsRoot = join(sahkarmiRoot, "Downloads");
   }
 
   get sharedRoot(): string {
@@ -63,6 +127,19 @@ export class BotStore {
 
     this.#state = await this.#readState();
     if (!this.#state.examplesInitialized) {
+      for (const coworker of DEFAULT_COWORKERS) {
+        if (this.#state.bots.some((bot) => bot.id === coworker.id)) continue;
+        const record = this.#createRecord(
+          coworker.id,
+          coworker.name,
+          coworker.role,
+          coworker.description,
+        );
+        record.avatarShape = coworker.avatarShape;
+        record.avatarColor = coworker.avatarColor;
+        this.#state.bots.push(record);
+        await mkdir(record.workspacePath, { recursive: true, mode: 0o700 });
+      }
       this.#state.examplesInitialized = true;
     }
     await this.#persist();
@@ -72,8 +149,42 @@ export class BotStore {
     return this.#state.bots.map((bot) => ({ ...bot }));
   }
 
-  async createBot(): Promise<BotSummary> {
-    const record = this.#createRecord(`bot-${randomUUID()}`, "New agent", "New teammate");
+  workspaces(): WorkspaceState {
+    return {
+      workspaces: this.#state.workspaces.map((workspace) => ({ ...workspace })),
+      activeWorkspaceId: this.#state.activeWorkspaceId,
+    };
+  }
+
+  async createWorkspace(name: string): Promise<WorkspaceState> {
+    const workspace: WorkspaceSummary = {
+      id: `ws-${randomUUID()}`,
+      name: requiredText(name, "Workspace name", 60),
+      createdAt: new Date().toISOString(),
+    };
+    this.#state.workspaces.push(workspace);
+    this.#state.activeWorkspaceId = workspace.id;
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  async renameWorkspace(workspaceId: string, name: string): Promise<WorkspaceState> {
+    const workspace = this.#requireWorkspace(workspaceId);
+    workspace.name = requiredText(name, "Workspace name", 60);
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  async setActiveWorkspace(workspaceId: string): Promise<WorkspaceState> {
+    this.#requireWorkspace(workspaceId);
+    this.#state.activeWorkspaceId = workspaceId;
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  async createBot(workspaceId = this.#state.activeWorkspaceId): Promise<BotSummary> {
+    this.#requireWorkspace(workspaceId);
+    const record = this.#createRecord(`bot-${randomUUID()}`, "New coworker", "", "", workspaceId);
     this.#state.bots.unshift(record);
     await mkdir(record.workspacePath, { recursive: true, mode: 0o700 });
     await this.#persist();
@@ -82,7 +193,7 @@ export class BotStore {
 
   async updateBot(input: UpdateBotInput): Promise<BotSummary> {
     const bot = this.#requireBot(input.botId);
-    if (input.name !== undefined) bot.name = requiredText(input.name, "Agent name", 80);
+    if (input.name !== undefined) bot.name = requiredText(input.name, "Coworker name", 80);
     if (input.role !== undefined) bot.role = input.role.trim().slice(0, 120);
     if (input.description !== undefined) bot.description = input.description.trim().slice(0, 2_000);
     if (input.notifications !== undefined) bot.notifications = input.notifications;
@@ -113,7 +224,7 @@ export class BotStore {
       return { ...existing };
     }
 
-    const record = this.#createRecord(id, name ?? titleFromId(id), role ?? "Local teammate");
+    const record = this.#createRecord(id, name ?? titleFromId(id), role ?? "Coworker");
     this.#state.bots.push(record);
     await mkdir(record.workspacePath, { recursive: true, mode: 0o700 });
     await this.#persist();
@@ -139,25 +250,50 @@ export class BotStore {
       const parsed: unknown = JSON.parse(await readFile(this.#statePath, "utf8"));
       if (
         !isRecord(parsed) ||
-        parsed.version !== 1 ||
+        (parsed.version !== 1 && parsed.version !== 2) ||
         typeof parsed.examplesInitialized !== "boolean" ||
-        !Array.isArray(parsed.bots) ||
-        !parsed.bots.every(isStoredBot)
+        !Array.isArray(parsed.bots)
       ) {
         throw new Error(
-          "Agent state is corrupt or from a newer OpenBot version; refusing to overwrite it.",
+          "Coworker state is corrupt or from a newer Sahkarmi version; refusing to overwrite it.",
         );
       }
 
-      const bots = parsed.bots.map((bot) => ({ ...bot }));
-      if (new Set(bots.map((bot) => bot.id)).size !== bots.length) {
-        throw new Error("Agent state contains duplicate bot ids; refusing to overwrite it.");
+      const workspaces =
+        parsed.version === 2 && Array.isArray(parsed.workspaces)
+          ? parsed.workspaces.filter(isStoredWorkspace).map((workspace) => ({ ...workspace }))
+          : [];
+      if (workspaces.length === 0) workspaces.push(defaultWorkspace());
+      const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+      const fallbackWorkspaceId = workspaces[0]?.id ?? DEFAULT_WORKSPACE_ID;
+      // Version 1 files predate workspaces; their coworkers join the first workspace.
+      const bots: unknown[] = parsed.bots.map((bot: unknown) =>
+        isRecord(bot) && (typeof bot.workspaceId !== "string" || !workspaceIds.has(bot.workspaceId))
+          ? { ...bot, workspaceId: fallbackWorkspaceId }
+          : bot,
+      );
+      if (!bots.every(isStoredBot)) {
+        throw new Error(
+          "Coworker state is corrupt or from a newer Sahkarmi version; refusing to overwrite it.",
+        );
       }
-      return { version: 1, examplesInitialized: parsed.examplesInitialized, bots };
+      const storedBots = bots as StoredBot[];
+      if (new Set(storedBots.map((bot) => bot.id)).size !== storedBots.length) {
+        throw new Error("Coworker state contains duplicate ids; refusing to overwrite it.");
+      }
+      const activeWorkspaceId =
+        typeof parsed.activeWorkspaceId === "string" && workspaceIds.has(parsed.activeWorkspaceId)
+          ? parsed.activeWorkspaceId
+          : fallbackWorkspaceId;
+      return {
+        version: 2,
+        examplesInitialized: parsed.examplesInitialized,
+        activeWorkspaceId,
+        workspaces,
+        bots: storedBots.map((bot) => ({ ...bot })),
+      };
     } catch (error) {
-      if (isRecord(error) && error.code === "ENOENT") {
-        return { version: 1, examplesInitialized: false, bots: [] };
-      }
+      if (isRecord(error) && error.code === "ENOENT") return emptyState();
       throw error;
     }
   }
@@ -175,10 +311,17 @@ export class BotStore {
     await this.#writeQueue;
   }
 
-  #createRecord(id: string, name: string, role: string, description = ""): StoredBot {
+  #createRecord(
+    id: string,
+    name: string,
+    role: string,
+    description = "",
+    workspaceId = this.#state.workspaces[0]?.id ?? DEFAULT_WORKSPACE_ID,
+  ): StoredBot {
     validateBotId(id);
     return {
       id,
+      workspaceId,
       name,
       role,
       description,
@@ -194,11 +337,41 @@ export class BotStore {
     };
   }
 
+  #requireWorkspace(id: string): WorkspaceSummary {
+    const workspace = this.#state.workspaces.find((candidate) => candidate.id === id);
+    if (!workspace) throw new Error(`Unknown workspace: ${id}`);
+    return workspace;
+  }
+
   #requireBot(id: string): StoredBot {
     const bot = this.#state.bots.find((candidate) => candidate.id === id);
     if (!bot) throw new Error(`Unknown bot: ${id}`);
     return bot;
   }
+}
+
+function defaultWorkspace(): WorkspaceSummary {
+  return { id: DEFAULT_WORKSPACE_ID, name: "My Business", createdAt: new Date().toISOString() };
+}
+
+function emptyState(): StoredState {
+  return {
+    version: 2,
+    examplesInitialized: false,
+    activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+    workspaces: [defaultWorkspace()],
+    bots: [],
+  };
+}
+
+function isStoredWorkspace(value: unknown): value is WorkspaceSummary {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    typeof value.name === "string" &&
+    typeof value.createdAt === "string"
+  );
 }
 
 function requiredText(value: string, label: string, maxLength: number): string {
@@ -229,6 +402,7 @@ function isStoredBot(value: unknown): value is StoredBot {
     isRecord(value) &&
     typeof value.id === "string" &&
     isValidBotId(value.id) &&
+    typeof value.workspaceId === "string" &&
     typeof value.name === "string" &&
     typeof value.role === "string" &&
     typeof value.description === "string" &&

@@ -41,12 +41,12 @@ for (const name of [
 }
 
 if (failures.length > 0) {
-  console.error("OpenBot release preflight failed:\n");
+  console.error("Sahkarmi release preflight failed:\n");
   for (const failure of failures) console.error(`- ${failure}`);
   console.error("\nNo release tag was created.");
   process.exitCode = 1;
 } else {
-  console.log(`OpenBot v${packageJson.version} release preflight passed.`);
+  console.log(`Sahkarmi v${packageJson.version} release preflight passed.`);
 }
 
 function run(command: string, args: string[]): string {

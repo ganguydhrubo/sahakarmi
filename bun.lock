@@ -6,6 +6,9 @@
       "name": "openbot",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.228",
+        "@fontsource/baloo-2": "5.2.7",
+        "@fontsource/hind-siliguri": "5.2.7",
+        "@fontsource/mukta": "5.2.8",
         "electron-updater": "6.8.9",
         "solid-js": "1.9.14",
         "zod": "4.4.3",
@@ -199,6 +202,12 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
 
     "@exodus/bytes": ["@exodus/bytes@1.15.1", "", { "peerDependencies": { "@noble/hashes": "^1.8.0 || ^2.0.0" }, "optionalPeers": ["@noble/hashes"] }, "sha512-S6mL0yNB/Abt9Ei4tq8gDhcczc4S3+vQ4ra7vxnAf+YHC02srtqxKKZghx2Dq6p0e66THKwR6r8N6P95wEty7Q=="],
+
+    "@fontsource/baloo-2": ["@fontsource/baloo-2@5.2.7", "", {}, "sha512-RllEWCvjw0PqLey6hbNI2M8gdZy2CFCIHXXNIXC4V4xsRQeOgZ3OMx3uQ1u4LjJ16BGytZD6wE/VFU9st0VdDg=="],
+
+    "@fontsource/hind-siliguri": ["@fontsource/hind-siliguri@5.2.7", "", {}, "sha512-U/hVX5jtUbETFWyCxTsW/ZkxRS5xn2GP0IVx+m+eQeK8a/lw0Wp6lU6+Y2cJAd9phLo+eGTzKoG+6ahsYJaPBQ=="],
+
+    "@fontsource/mukta": ["@fontsource/mukta@5.2.8", "", {}, "sha512-A+tHog4o2C3LfnG6NeqKjt/7ohJJKMoy7/cXNNj1TNLBqmReXiNk+IZi+Ac6TpYcYjeP1PYwHbsk9Jcxj+9i4Q=="],
 
     "@hono/node-server": ["@hono/node-server@2.1.0", "", { "peerDependencies": { "hono": "^4" } }, "sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg=="],
 

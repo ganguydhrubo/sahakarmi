@@ -39,6 +39,23 @@ export const IPC_CHANNELS = {
   browserListTabs: "browser:list-tabs",
   browserGetControlState: "browser:get-control-state",
   browserSetVisible: "browser:set-visible",
+  browserGetTakeover: "browser:get-takeover",
+  browserTakeOver: "browser:take-over",
+  browserHandBack: "browser:hand-back",
+  teamListWorkspaces: "team:list-workspaces",
+  teamCreateWorkspace: "team:create-workspace",
+  teamRenameWorkspace: "team:rename-workspace",
+  teamSetActiveWorkspace: "team:set-active-workspace",
+  approvalsList: "approvals:list",
+  approvalsDecide: "approvals:decide",
+  schedulesList: "schedules:list",
+  schedulesCreate: "schedules:create",
+  schedulesSetEnabled: "schedules:set-enabled",
+  schedulesDelete: "schedules:delete",
+  schedulesRunNow: "schedules:run-now",
+  filesList: "files:list",
+  filesAdd: "files:add",
+  filesOpen: "files:open",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -153,6 +170,7 @@ export interface AgentStatus {
 
 export interface BotSummary {
   id: string;
+  workspaceId: string;
   name: string;
   role: string;
   description: string;
@@ -249,6 +267,114 @@ export interface UpdateBotInput {
   avatarColor?: BotAvatarColor;
 }
 
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface WorkspaceState {
+  workspaces: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}
+
+/** Live status shown as a dot next to each coworker in the team list. */
+export type CoworkerStatus = "idle" | "working" | "waiting" | "error";
+
+export const APPROVAL_CATEGORIES = ["payment", "message", "submission", "data", "other"] as const;
+export type ApprovalCategory = (typeof APPROVAL_CATEGORIES)[number];
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+export interface ApprovalRequest {
+  id: string;
+  botId: string;
+  title: string;
+  details: string;
+  category: ApprovalCategory;
+  amount: string | null;
+  status: ApprovalStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  note: string | null;
+}
+
+export interface DecideApprovalInput {
+  approvalId: string;
+  decision: "approved" | "rejected";
+  note?: string | null;
+}
+
+export const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+export type Weekday = (typeof WEEKDAYS)[number];
+
+export type ScheduleCadence =
+  | { kind: "once"; at: string }
+  | { kind: "hourly" }
+  | { kind: "daily"; time: string }
+  | { kind: "weekdays"; time: string }
+  | { kind: "weekly"; day: Weekday; time: string };
+
+export interface ScheduledTask {
+  id: string;
+  botId: string;
+  text: string;
+  cadence: ScheduleCadence;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+}
+
+export interface CreateScheduleInput {
+  botId: string;
+  text: string;
+  cadence: ScheduleCadence;
+}
+
+export interface SharedFileEntry {
+  name: string;
+  /** Path relative to the shared folder, using "/" separators. */
+  path: string;
+  kind: "file" | "directory";
+  size: number;
+  modifiedAt: string;
+}
+
+export interface SharedFolderListing {
+  root: string;
+  directory: string;
+  entries: SharedFileEntry[];
+}
+
+export interface OpenSharedFileInput {
+  path: string;
+  action: "open" | "reveal";
+}
+
+export type ToolCallKind = "command" | "file" | "browser" | "web" | "coworker" | "approval" | "tool";
+
+export interface ToolCallSummary {
+  name: string;
+  kind: ToolCallKind;
+  status: "running" | "completed" | "failed";
+  input: string | null;
+  output: string | null;
+}
+
+export interface BrowserTakeoverRequest {
+  id: string;
+  botId: string;
+  reason: string;
+  createdAt: string;
+}
+
+export interface BrowserTakeoverState {
+  /** True while the human is driving the browser; coworker browser tools are paused. */
+  humanInControl: boolean;
+  /** Coworkers that asked the human to take over (login, 2FA, CAPTCHA, payment page). */
+  requests: BrowserTakeoverRequest[];
+}
+
 export type ConversationMessageAuthor = "user" | "assistant" | "agent" | "system";
 
 export type AttachmentKind = "image" | "file";
@@ -332,6 +458,7 @@ export interface ConversationMessage {
   delivery?: Pick<QueueDelivery, "id" | "status" | "position">;
   exchange?: AgentExchangeSummary;
   reaction?: MessageReaction | null;
+  tool?: ToolCallSummary;
 }
 
 export const MESSAGE_REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "😮"] as const;
@@ -447,6 +574,10 @@ export type AgentEvent =
     }
   | { type: "browser-changed"; tabs: BrowserTab[]; activeTabId: string | null }
   | { type: "browser-control-changed"; state: BrowserControlState }
+  | { type: "browser-takeover-changed"; state: BrowserTakeoverState }
+  | { type: "workspaces-changed"; state: WorkspaceState }
+  | { type: "approvals-changed"; approvals: ApprovalRequest[] }
+  | { type: "schedules-changed"; schedules: ScheduledTask[] }
   | { type: "error"; botId?: string; code: string; message: string };
 
 export interface BrowserTab {
@@ -512,7 +643,7 @@ export interface AgentDesktopApi {
   getUsage: () => Promise<AccountUsage>;
   listModels: () => Promise<AgentModelOption[]>;
   listBots: () => Promise<BotSummary[]>;
-  createBot: () => Promise<BotSummary>;
+  createBot: (workspaceId?: string) => Promise<BotSummary>;
   updateBot: (input: UpdateBotInput) => Promise<BotSummary>;
   deleteBot: (botId: string) => Promise<void>;
   readConversation: (botId: string) => Promise<ConversationSnapshot>;
@@ -537,6 +668,35 @@ export interface BrowserDesktopApi {
   listTabs: () => Promise<BrowserTab[]>;
   getControlState: () => Promise<BrowserControlState>;
   setVisible: (input: BrowserVisibilityInput) => Promise<void>;
+  getTakeover: () => Promise<BrowserTakeoverState>;
+  takeOver: () => Promise<BrowserTakeoverState>;
+  handBack: (note?: string | null) => Promise<BrowserTakeoverState>;
+}
+
+export interface TeamDesktopApi {
+  listWorkspaces: () => Promise<WorkspaceState>;
+  createWorkspace: (name: string) => Promise<WorkspaceState>;
+  renameWorkspace: (workspaceId: string, name: string) => Promise<WorkspaceState>;
+  setActiveWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
+}
+
+export interface ApprovalsDesktopApi {
+  list: () => Promise<ApprovalRequest[]>;
+  decide: (input: DecideApprovalInput) => Promise<ApprovalRequest>;
+}
+
+export interface SchedulesDesktopApi {
+  list: () => Promise<ScheduledTask[]>;
+  create: (input: CreateScheduleInput) => Promise<ScheduledTask>;
+  setEnabled: (scheduleId: string, enabled: boolean) => Promise<ScheduledTask>;
+  delete: (scheduleId: string) => Promise<void>;
+  runNow: (scheduleId: string) => Promise<void>;
+}
+
+export interface FilesDesktopApi {
+  list: (directory?: string) => Promise<SharedFolderListing>;
+  add: (directory?: string) => Promise<SharedFolderListing>;
+  open: (input: OpenSharedFileInput) => Promise<void>;
 }
 
 export interface UpdateDesktopApi {
@@ -552,7 +712,7 @@ export interface MaintenanceDesktopApi {
   exportDiagnostics: () => Promise<ExportResult>;
 }
 
-export interface OpenBotDesktopApi {
+export interface SahkarmiDesktopApi {
   getAppInfo: () => Promise<AppInfo>;
   getSetupState: () => Promise<AppSetupState>;
   saveSetup: (input: SaveSetupInput) => Promise<AppSetupState>;
@@ -562,6 +722,10 @@ export interface OpenBotDesktopApi {
   openUrl: (url: string) => Promise<void>;
   agent: AgentDesktopApi;
   browser: BrowserDesktopApi;
+  team: TeamDesktopApi;
+  approvals: ApprovalsDesktopApi;
+  schedules: SchedulesDesktopApi;
+  files: FilesDesktopApi;
   update: UpdateDesktopApi;
   maintenance: MaintenanceDesktopApi;
 }

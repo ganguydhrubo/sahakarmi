@@ -1,5 +1,5 @@
-appId: app.openbot.desktop
-productName: OpenBot
+appId: in.sahkarmi.desktop
+productName: Sahkarmi
 asar: true
 artifactName: ${productName}-${version}-${arch}.${ext}
 electronUpdaterCompatibility: ">=2.16"
@@ -15,8 +15,8 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
 publish:
   provider: github
-  owner: NorbertBodziony
-  repo: openbot
+  owner: ganguydhrubo
+  repo: sahkarmi
 files:
   - out/**/*
   - package.json
@@ -34,7 +34,7 @@ mac:
   minimumSystemVersion: "12.0"
   notarize: true
   hardenedRuntime: true
-  icon: build/icon.svg
+  icon: build/icon.icns
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
   darkModeSupport: true
@@ -56,7 +56,7 @@ win:
         - x64
 dmg:
   title: ${productName} ${version}
-  backgroundColor: "#0b0d0e"
+  backgroundColor: "#0F1220"
   contents:
     - x: 145
       y: 180

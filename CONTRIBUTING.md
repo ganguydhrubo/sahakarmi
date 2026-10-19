@@ -1,6 +1,6 @@
-# Contributing to OpenBot
+# Contributing to Sahkarmi
 
-Thanks for helping improve OpenBot. Small, focused pull requests with clear verification are the
+Thanks for helping improve Sahkarmi. Small, focused pull requests with clear verification are the
 easiest to review.
 
 ## Before opening an issue
@@ -8,14 +8,14 @@ easiest to review.
 - Search existing issues first.
 - Use the security process in `SECURITY.md` for vulnerabilities.
 - Remove credentials, private file paths, conversation contents, and personal data from diagnostics.
-- Include the OpenBot version, macOS version, Mac architecture, provider, CLI version, and
+- Include the Sahkarmi version, macOS version, Mac architecture, provider, CLI version, and
   reproduction steps for bugs.
 
 ## Development setup
 
 ```bash
-git clone https://github.com/NorbertBodziony/openbot.git
-cd openbot
+git clone https://github.com/ganguydhrubo/sahkarmi.git
+cd sahkarmi
 bun install --frozen-lockfile
 bun run check
 bun run dev
@@ -43,7 +43,7 @@ Preserve the following boundaries and their tests:
 - Electron sandboxing, context isolation, navigation policy, and IPC sender validation.
 - Attachment realpath, MIME, size, quota, and managed-protocol checks.
 - Queue serialization, idempotency, crash reconciliation, and atomic persistence.
-- The remote browser session's lack of preload and `window.openbot` access.
+- The remote browser session's lack of preload and `window.sahkarmi` access.
 - Secret redaction and agent child-process cleanup.
 
 Full agent access is intentional today, but new privileges or network surfaces still require an

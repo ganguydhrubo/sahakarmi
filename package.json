@@ -1,29 +1,30 @@
 {
-  "name": "openbot",
-  "productName": "OpenBot",
-  "version": "0.1.11",
-  "description": "A local-first multi-agent desktop workspace for Codex and Claude.",
+  "name": "sahkarmi",
+  "productName": "Sahkarmi",
+  "version": "0.2.0",
+  "description": "Sahkarmi (सहकर्मी) — AI coworkers for Indian businesses. A local-first desktop app where each coworker has its own workspace, browser, memory and task queue.",
   "author": {
-    "name": "Norbert Bodziony",
-    "url": "https://x.com/norbertbodziony"
+    "name": "Dhrubo Ganguly",
+    "email": "gangulydhrubo@gmail.com"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NorbertBodziony/openbot.git"
+    "url": "git+https://github.com/ganguydhrubo/sahkarmi.git"
   },
   "bugs": {
-    "url": "https://github.com/NorbertBodziony/openbot/issues"
+    "url": "https://github.com/ganguydhrubo/sahkarmi/issues"
   },
-  "homepage": "https://github.com/NorbertBodziony/openbot#readme",
+  "homepage": "https://github.com/ganguydhrubo/sahkarmi#readme",
   "keywords": [
-    "ai-agents",
-    "bun",
-    "claude-code",
-    "codex",
-    "electron",
+    "ai-coworkers",
+    "india",
     "local-first",
-    "solidjs"
+    "electron",
+    "solidjs",
+    "claude",
+    "codex",
+    "agents"
   ],
   "private": true,
   "type": "module",
@@ -74,6 +75,9 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
     "@electron/fuses": "1.8.0",
+    "@fontsource/baloo-2": "5.2.7",
+    "@fontsource/hind-siliguri": "5.2.7",
+    "@fontsource/mukta": "5.2.8",
     "@solidjs/testing-library": "0.8.10",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/jest-dom": "7.0.1",
@@ -87,5 +91,10 @@
     "vite": "7.3.6",
     "vite-plugin-solid": "2.11.14",
     "vitest": "4.1.10"
-  }
+  },
+  "contributors": [
+    {
+      "name": "Norbert Bodziony (original OpenBot author, Apache-2.0 upstream)"
+    }
+  ]
 }

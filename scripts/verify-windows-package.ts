@@ -14,7 +14,7 @@ if (process.platform !== "win32") {
 const requireUpdateMetadata = process.argv.includes("--require-update-metadata");
 const appPathArgument = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
 const appPath = resolve(appPathArgument ?? "dist/win-unpacked");
-const executablePath = resolve(appPath, "OpenBot.exe");
+const executablePath = resolve(appPath, "Sahkarmi.exe");
 const resourcesPath = resolve(appPath, "resources");
 
 await Promise.all([
@@ -50,8 +50,8 @@ const versionInfo = JSON.parse(
       "[pscustomobject]@{ ProductName = $value.ProductName; FileDescription = $value.FileDescription; ProductVersion = $value.ProductVersion } | ConvertTo-Json -Compress",
   ]),
 ) as Record<string, unknown>;
-expectEqual(versionInfo.ProductName, "OpenBot", "product name");
-expectEqual(versionInfo.FileDescription, "OpenBot", "file description");
+expectEqual(versionInfo.ProductName, "Sahkarmi", "product name");
+expectEqual(versionInfo.FileDescription, "Sahkarmi", "file description");
 if (!String(versionInfo.ProductVersion).startsWith(packageJson.version)) {
   throw new Error(
     `Unexpected product version: ${String(versionInfo.ProductVersion)} (expected ${packageJson.version})`,
@@ -90,7 +90,7 @@ await verifyLaunch(executablePath);
 
 console.log(`Verified ${appPath}`);
 console.log(
-  `OpenBot ${packageJson.version} · Windows x64 · metadata · licenses · ASAR integrity · hardened fuses · launch`,
+  `Sahkarmi ${packageJson.version} · Windows x64 · metadata · licenses · ASAR integrity · hardened fuses · launch`,
 );
 
 function expectEqual(actual: unknown, expected: unknown, label: string): void {
@@ -108,12 +108,12 @@ function powerShellLiteral(value: string): string {
 }
 
 async function verifyLaunch(executable: string): Promise<void> {
-  const userDataPath = await mkdtemp(join(tmpdir(), "openbot-package-smoke-"));
+  const userDataPath = await mkdtemp(join(tmpdir(), "sahkarmi-package-smoke-"));
   const child = spawn(executable, [`--user-data-dir=${userDataPath}`], {
     env: {
       ...process.env,
-      OPENBOT_CODEX_PATH: join(userDataPath, "missing-codex.exe"),
-      OPENBOT_CLAUDE_PATH: join(userDataPath, "missing-claude.exe"),
+      SAHKARMI_CODEX_PATH: join(userDataPath, "missing-codex.exe"),
+      SAHKARMI_CLAUDE_PATH: join(userDataPath, "missing-claude.exe"),
     },
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
@@ -130,7 +130,7 @@ async function verifyLaunch(executable: string): Promise<void> {
         child.once("exit", (code, signal) => {
           reject(
             new Error(
-              `Packaged OpenBot exited during launch (${signal ?? `code ${String(code)}`}): ${stderr.trim()}`,
+              `Packaged Sahkarmi exited during launch (${signal ?? `code ${String(code)}`}): ${stderr.trim()}`,
             ),
           );
         });
@@ -165,8 +165,8 @@ async function verifySecondInstanceExits(executable: string, userDataPath: strin
   const second = spawn(executable, [`--user-data-dir=${userDataPath}`], {
     env: {
       ...process.env,
-      OPENBOT_CODEX_PATH: join(userDataPath, "missing-codex.exe"),
-      OPENBOT_CLAUDE_PATH: join(userDataPath, "missing-claude.exe"),
+      SAHKARMI_CODEX_PATH: join(userDataPath, "missing-codex.exe"),
+      SAHKARMI_CLAUDE_PATH: join(userDataPath, "missing-claude.exe"),
     },
     stdio: "ignore",
     windowsHide: true,
@@ -179,11 +179,11 @@ async function verifySecondInstanceExits(executable: string, userDataPath: strin
   ]);
   if (!result) {
     second.kill();
-    throw new Error("A second OpenBot instance did not exit.");
+    throw new Error("A second Sahkarmi instance did not exit.");
   }
   if (result.code !== 0 || result.signal) {
     throw new Error(
-      `A second OpenBot instance exited unexpectedly (${result.signal ?? `code ${String(result.code)}`}).`,
+      `A second Sahkarmi instance exited unexpectedly (${result.signal ?? `code ${String(result.code)}`}).`,
     );
   }
 }

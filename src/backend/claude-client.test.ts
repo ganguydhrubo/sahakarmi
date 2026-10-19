@@ -16,7 +16,7 @@ afterEach(async () => {
 
 describe("ClaudeAgentClient", () => {
   it("streams a Claude SDK turn through the App Server event contract", async () => {
-    root = await mkdtemp(join(tmpdir(), "openbot-claude-client-"));
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-client-"));
     const executable = join(root, "claude");
     await writeFile(
       executable,
@@ -155,7 +155,7 @@ async function createHarness(): Promise<{
   output: TestQueue<SDKMessage>;
   threadId: string;
 }> {
-  root = await mkdtemp(join(tmpdir(), "openbot-claude-client-"));
+  root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-client-"));
   const output = new TestQueue<SDKMessage>();
   const generator = output[Symbol.asyncIterator]() as Query;
   Object.assign(generator, {

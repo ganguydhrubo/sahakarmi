@@ -18,7 +18,7 @@ import type {
   BrowserTab,
   BrowserVisibilityInput,
 } from "../shared/ipc";
-import { persistentBrowserUrl, xLoginUrlForLanding } from "./browser-state";
+import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
 
@@ -35,7 +35,6 @@ interface InternalTab {
   ownerBotId: string | null;
   revision: number;
   queue: Promise<unknown>;
-  xLoginRedirected: boolean;
 }
 
 interface StoredBrowserState {
@@ -73,13 +72,13 @@ type BrowserAction =
   | { type: "forward" }
   | { type: "reload" };
 
-export const OPENBOT_BROWSER_NAMESPACE = "openbot_browser";
+export const SAHKARMI_BROWSER_NAMESPACE = "sahkarmi_browser";
 
 export const BROWSER_DYNAMIC_TOOLS = [
   {
     type: "namespace",
-    name: OPENBOT_BROWSER_NAMESPACE,
-    description: "Operate OpenBot's private, persistent local browser.",
+    name: SAHKARMI_BROWSER_NAMESPACE,
+    description: "Operate Sahkarmi's private, persistent local browser.",
     tools: [
       functionTool("open", "Open an HTTP(S) URL in a new tab.", {
         type: "object",
@@ -158,7 +157,7 @@ export class BrowserHost {
     this.#window = window;
     this.#downloadsRoot = downloadsRoot;
     this.#statePath = statePath;
-    this.#session = session.fromPartition("persist:openbot-browser", { cache: true });
+    this.#session = session.fromPartition("persist:sahkarmi-browser", { cache: true });
     this.#configureSession();
   }
 
@@ -413,7 +412,6 @@ export class BrowserHost {
       ownerBotId,
       revision: 0,
       queue: Promise.resolve(),
-      xLoginRedirected: false,
     };
   }
 
@@ -461,10 +459,7 @@ export class BrowserHost {
     const contents = tab.view.webContents;
     const changed = () => this.#emitChanged();
     contents.on("did-start-loading", changed);
-    contents.on("did-stop-loading", () => {
-      changed();
-      void this.#redirectXLandingToLogin(tab);
-    });
+    contents.on("did-stop-loading", changed);
     contents.on("page-title-updated", changed);
     contents.on("did-navigate", (_event, url) => {
       if (isPersistableBrowserUrl(url)) tab.requestedUrl = persistentBrowserUrl(url);
@@ -485,18 +480,6 @@ export class BrowserHost {
       if (isAllowedMainUrl(url)) void this.open(url, tab.ownerThreadId, tab.ownerBotId);
       return { action: "deny" };
     });
-  }
-
-  async #redirectXLandingToLogin(tab: InternalTab): Promise<void> {
-    if (tab.xLoginRedirected) return;
-    const currentUrl = tab.view.webContents.getURL();
-    const loginUrl = xLoginUrlForLanding(currentUrl);
-    if (!loginUrl) return;
-    await delay(1_000);
-    if (tab.xLoginRedirected || tab.view.webContents.getURL() !== currentUrl) return;
-    tab.xLoginRedirected = true;
-    tab.requestedUrl = loginUrl;
-    await tab.view.webContents.loadURL(loginUrl, browserLoadOptions()).catch(() => undefined);
   }
 
   async #readSnapshot(tab: InternalTab, revision: number): Promise<BrowserSnapshot> {
@@ -846,10 +829,10 @@ function snapshotScript(revision: number): string {
         return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
       })
       .slice(0, 500);
-    document.querySelectorAll('[data-openbot-ref]').forEach((node) => node.removeAttribute('data-openbot-ref'));
+    document.querySelectorAll('[data-sahkarmi-ref]').forEach((node) => node.removeAttribute('data-sahkarmi-ref'));
     const elements = nodes.map((node, index) => {
       const ref = revision + ':' + index;
-      node.setAttribute('data-openbot-ref', ref);
+      node.setAttribute('data-sahkarmi-ref', ref);
       const name = (node.getAttribute('aria-label') || node.getAttribute('title') || node.getAttribute('placeholder') || node.innerText || node.value || '').trim().slice(0, 500);
       return {
         ref,
@@ -873,7 +856,7 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
     case "click": {
       const point = await contents.executeJavaScript(
         `(() => {
-          const node = document.querySelector('[data-openbot-ref=${JSON.stringify(action.ref)}]');
+          const node = document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]');
           if (!(node instanceof HTMLElement)) throw new Error('Element reference is no longer available.');
           node.scrollIntoView({ block: 'center', inline: 'center' });
           node.focus();
@@ -889,7 +872,7 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
       if (!isInputPoint(point)) throw new Error("Element does not have a clickable position.");
       if (point.direct === true) {
         await contents.executeJavaScript(
-          `document.querySelector('[data-openbot-ref=${JSON.stringify(action.ref)}]')?.click()`,
+          `document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]')?.click()`,
           true,
         );
         return;
@@ -920,7 +903,7 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
     case "type": {
       await contents.executeJavaScript(
         `(() => {
-          const node = document.querySelector('[data-openbot-ref=${JSON.stringify(action.ref)}]');
+          const node = document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]');
           if (!(node instanceof HTMLElement)) throw new Error('Element reference is no longer available.');
           node.focus();
           if ('value' in node) {

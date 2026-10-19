@@ -25,7 +25,7 @@ const BOTS: BotSummary[] = [
     avatarShape: "blob",
     avatarColor: "orange",
     threadId: "thread-chief",
-    workspacePath: "/tmp/OpenBot/Bots/chief",
+    workspacePath: "/tmp/Sahkarmi/Bots/chief",
     preview: "No messages yet",
     updatedAt: null,
   },
@@ -40,7 +40,7 @@ const BOTS: BotSummary[] = [
     avatarShape: "cloud",
     avatarColor: "violet",
     threadId: null,
-    workspacePath: "/tmp/OpenBot/Bots/sales-outbound",
+    workspacePath: "/tmp/Sahkarmi/Bots/sales-outbound",
     preview: "No messages yet",
     updatedAt: null,
   },
@@ -54,18 +54,18 @@ async function confirmOnboardingModel(): Promise<void> {
   await screen.findByRole("listbox", { name: "What do you want me helping with most?" });
 }
 
-describe("OpenBot connected desktop shell", () => {
+describe("Sahkarmi connected desktop shell", () => {
   beforeEach(() => {
     emitAgentEvent = undefined;
     emitAttachmentImport = undefined;
     emitUpdateStatus = undefined;
     window.localStorage.clear();
-    Object.defineProperty(window, "openbot", {
+    Object.defineProperty(window, "sahkarmi", {
       configurable: true,
       value: {
         getAppInfo: vi
           .fn()
-          .mockResolvedValue({ name: "OpenBot", version: "0.1.0", platform: "darwin" }),
+          .mockResolvedValue({ name: "Sahkarmi", version: "0.1.0", platform: "darwin" }),
         getSetupState: vi.fn().mockResolvedValue({ completed: true, preferredProvider: "codex" }),
         saveSetup: vi.fn().mockImplementation(async ({ preferredProvider }) => ({
           completed: true,
@@ -244,7 +244,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("requires a provider choice before starting agents", async () => {
-    vi.mocked(window.openbot.getSetupState).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.getSetupState).mockResolvedValueOnce({
       completed: false,
       preferredProvider: null,
     });
@@ -259,16 +259,16 @@ describe("OpenBot connected desktop shell", () => {
     expect(codex).toHaveFocus();
     await fireEvent.click(within(providers).getByRole("radio", { name: /Claude.*Available/ }));
     await fireEvent.click(screen.getByRole("button", { name: "Continue with Claude" }));
-    expect(window.openbot.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
+    expect(window.sahkarmi.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
     expect(await screen.findByRole("heading", { name: "Chief" })).toBeInTheDocument();
   });
 
   it("lets the user choose a provider while provider checks are running", async () => {
-    vi.mocked(window.openbot.getSetupState).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.getSetupState).mockResolvedValueOnce({
       completed: false,
       preferredProvider: null,
     });
-    vi.mocked(window.openbot.agent.getStatus).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValueOnce({
       phase: "starting",
       cliVersion: null,
       auth: { kind: "unknown" },
@@ -340,7 +340,7 @@ describe("OpenBot connected desktop shell", () => {
 
     expect(claude).toBeChecked();
     await fireEvent.click(screen.getByRole("button", { name: "Continue with Claude" }));
-    expect(window.openbot.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
+    expect(window.sahkarmi.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
   });
 
   it("lets the user review providers and permissions from the account menu", async () => {
@@ -358,14 +358,14 @@ describe("OpenBot connected desktop shell", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     await fireEvent.click(within(providers).getByRole("radio", { name: /Claude.*Available/ }));
     await fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(window.openbot.saveSetup).toHaveBeenLastCalledWith({ preferredProvider: "claude" });
+    expect(window.sahkarmi.saveSetup).toHaveBeenLastCalledWith({ preferredProvider: "claude" });
     expect(
       screen.queryByRole("dialog", { name: "Providers & permissions" }),
     ).not.toBeInTheDocument();
   });
 
   it("opens the create-agent picker for a new user with no agents", async () => {
-    vi.mocked(window.openbot.agent.listBots).mockResolvedValueOnce([]);
+    vi.mocked(window.sahkarmi.agent.listBots).mockResolvedValueOnce([]);
     render(() => <App />);
 
     expect(await screen.findByRole("option", { name: "Create new agent" })).toBeInTheDocument();
@@ -373,11 +373,11 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("keeps agents disabled when setup persistence fails", async () => {
-    vi.mocked(window.openbot.getSetupState).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.getSetupState).mockResolvedValueOnce({
       completed: false,
       preferredProvider: null,
     });
-    vi.mocked(window.openbot.saveSetup).mockRejectedValueOnce(new Error("Could not save setup."));
+    vi.mocked(window.sahkarmi.saveSetup).mockRejectedValueOnce(new Error("Could not save setup."));
     render(() => <App />);
 
     expect(
@@ -392,15 +392,15 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("requests optional macOS permissions and shows the new state", async () => {
-    vi.mocked(window.openbot.getSetupState).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.getSetupState).mockResolvedValueOnce({
       completed: false,
       preferredProvider: null,
     });
-    vi.mocked(window.openbot.getMacPermissions).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.getMacPermissions).mockResolvedValueOnce({
       screenRecording: "not-determined",
       accessibility: "not-determined",
     });
-    vi.mocked(window.openbot.requestMacPermission).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.requestMacPermission).mockResolvedValueOnce({
       screenRecording: "granted",
       accessibility: "not-determined",
     });
@@ -410,10 +410,10 @@ describe("OpenBot connected desktop shell", () => {
     const action = row?.querySelector("button");
     expect(action).not.toBeNull();
     await fireEvent.click(action as HTMLButtonElement);
-    expect(window.openbot.requestMacPermission).toHaveBeenCalledWith("screen-recording");
+    expect(window.sahkarmi.requestMacPermission).toHaveBeenCalledWith("screen-recording");
     expect(action).toHaveTextContent("Allowed");
 
-    vi.mocked(window.openbot.getMacPermissions).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.getMacPermissions).mockResolvedValueOnce({
       screenRecording: "granted",
       accessibility: "granted",
     });
@@ -425,12 +425,12 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("hides macOS permissions on other platforms", async () => {
-    vi.mocked(window.openbot.getSetupState).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.getSetupState).mockResolvedValueOnce({
       completed: false,
       preferredProvider: null,
     });
-    vi.mocked(window.openbot.getAppInfo).mockResolvedValueOnce({
-      name: "OpenBot",
+    vi.mocked(window.sahkarmi.getAppInfo).mockResolvedValueOnce({
+      name: "Sahkarmi",
       version: "0.1.0",
       platform: "win32",
     });
@@ -438,7 +438,7 @@ describe("OpenBot connected desktop shell", () => {
 
     expect(await screen.findByRole("dialog", { name: "Choose your provider" })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Mac permissions")).not.toBeInTheDocument());
-    expect(window.openbot.getMacPermissions).not.toHaveBeenCalled();
+    expect(window.sahkarmi.getMacPermissions).not.toHaveBeenCalled();
   });
 
   it("uses the backend bot list and shows local onboarding for a real empty snapshot", async () => {
@@ -463,12 +463,12 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("guides signed-out users before enabling chat", async () => {
-    vi.mocked(window.openbot.agent.getStatus).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValueOnce({
       phase: "blocked",
       cliVersion: "0.144.1",
       auth: { kind: "signed-out" },
       capabilities: { chat: "unavailable", browser: "ready", computerUse: "unavailable" },
-      message: "Run `codex login`, then restart OpenBot.",
+      message: "Run `codex login`, then restart Sahkarmi.",
       fullAccess: true,
     });
     render(() => <App />);
@@ -477,7 +477,7 @@ describe("OpenBot connected desktop shell", () => {
     expect(screen.queryByRole("listbox", { name: /helping with most/i })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Message Chief")).toHaveAttribute("contenteditable", "false");
     fireEvent.click(screen.getByRole("button", { name: "Setup guide" }));
-    await waitFor(() => expect(window.openbot.openExternal).toHaveBeenCalledWith("agent-setup"));
+    await waitFor(() => expect(window.sahkarmi.openExternal).toHaveBeenCalledWith("agent-setup"));
   });
 
   it("shows a compact account menu with weekly usage and contact actions", async () => {
@@ -486,7 +486,7 @@ describe("OpenBot connected desktop shell", () => {
     expect(accountButton).toHaveTextContent("norbert@example.com");
 
     fireEvent.click(accountButton);
-    await waitFor(() => expect(window.openbot.agent.getUsage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(window.sahkarmi.agent.getUsage).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Weekly usage")).toBeInTheDocument();
     expect(screen.getByText("59%")).toBeInTheDocument();
     expect(screen.queryByText(/ChatGPT Pro/i)).not.toBeInTheDocument();
@@ -498,15 +498,15 @@ describe("OpenBot connected desktop shell", () => {
 
     await screen.findByRole("menuitem", { name: "Send feedback" });
     fireEvent.click(screen.getByRole("menuitem", { name: "Send feedback" }));
-    await waitFor(() => expect(window.openbot.openExternal).toHaveBeenCalledWith("feedback"));
+    await waitFor(() => expect(window.sahkarmi.openExternal).toHaveBeenCalledWith("feedback"));
 
     fireEvent.click(accountButton);
     fireEvent.click(screen.getByRole("menuitem", { name: "Message" }));
-    await waitFor(() => expect(window.openbot.openExternal).toHaveBeenCalledWith("message"));
+    await waitFor(() => expect(window.sahkarmi.openExternal).toHaveBeenCalledWith("message"));
   });
 
   it("shows an available update, downloads it, and exposes restart to install", async () => {
-    vi.mocked(window.openbot.update.getStatus).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.update.getStatus).mockResolvedValueOnce({
       phase: "available",
       currentVersion: "0.1.0",
       availableVersion: "0.2.0",
@@ -519,7 +519,7 @@ describe("OpenBot connected desktop shell", () => {
     expect(await screen.findByText("Update")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /Download update/ }));
-    await waitFor(() => expect(window.openbot.update.download).toHaveBeenCalledOnce());
+    await waitFor(() => expect(window.sahkarmi.update.download).toHaveBeenCalledOnce());
 
     emitUpdateStatus?.({
       phase: "ready",
@@ -530,11 +530,11 @@ describe("OpenBot connected desktop shell", () => {
       message: null,
     });
     fireEvent.click(await screen.findByRole("menuitem", { name: /Restart to update/ }));
-    await waitFor(() => expect(window.openbot.update.install).toHaveBeenCalledOnce());
+    await waitFor(() => expect(window.sahkarmi.update.install).toHaveBeenCalledOnce());
   });
 
   it("renders loaded history without replaying entrance animations", async () => {
-    vi.mocked(window.openbot.agent.readConversation).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.agent.readConversation).mockResolvedValueOnce({
       botId: "chief",
       threadId: "thread-chief",
       activeTurnId: null,
@@ -555,7 +555,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("renders message links and opens them in the embedded browser", async () => {
-    vi.mocked(window.openbot.agent.readConversation).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.agent.readConversation).mockResolvedValueOnce({
       botId: "chief",
       threadId: "thread-chief",
       activeTurnId: null,
@@ -584,12 +584,12 @@ describe("OpenBot connected desktop shell", () => {
     expect(screen.queryByText("https://about.fb.com/news/")).not.toBeInTheDocument();
 
     await fireEvent.click(metaLink);
-    expect(window.openbot.openUrl).toHaveBeenCalledWith("https://about.fb.com/news/");
-    expect(window.openbot.browser.open).not.toHaveBeenCalled();
+    expect(window.sahkarmi.openUrl).toHaveBeenCalledWith("https://about.fb.com/news/");
+    expect(window.sahkarmi.browser.open).not.toHaveBeenCalled();
   });
 
   it("refreshes stored history when Codex becomes ready after the window opens", async () => {
-    vi.mocked(window.openbot.agent.getStatus).mockResolvedValue({
+    vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValue({
       phase: "starting",
       cliVersion: "0.144.1",
       auth: { kind: "unknown" },
@@ -597,7 +597,7 @@ describe("OpenBot connected desktop shell", () => {
       message: "Starting local Codex…",
       fullAccess: true,
     });
-    vi.mocked(window.openbot.agent.readConversation)
+    vi.mocked(window.sahkarmi.agent.readConversation)
       .mockResolvedValueOnce({
         botId: "chief",
         threadId: "thread-chief",
@@ -636,7 +636,7 @@ describe("OpenBot connected desktop shell", () => {
     });
 
     expect(await screen.findByText("Restored after Codex became ready")).toBeInTheDocument();
-    expect(window.openbot.agent.readConversation).toHaveBeenCalledTimes(2);
+    expect(window.sahkarmi.agent.readConversation).toHaveBeenCalledTimes(2);
   });
 
   it("filters and switches backend bots", async () => {
@@ -672,7 +672,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.keyDown(leftResizer, { key: "ArrowRight" });
     expect(leftResizer).toHaveAttribute("aria-valuenow", "287");
     expect(leftResizer.closest(".app-frame")).toHaveStyle("--left-panel-width: 287px");
-    expect(window.localStorage.getItem("openbot:left-panel-width")).toBe("287");
+    expect(window.localStorage.getItem("sahkarmi:left-panel-width")).toBe("287");
 
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
     const rightResizer = screen.getByRole("separator", { name: "Resize right panel" });
@@ -681,7 +681,7 @@ describe("OpenBot connected desktop shell", () => {
     expect(screen.getByRole("main", { name: "Conversation" })).toHaveStyle(
       "--settings-panel-width: 308px",
     );
-    expect(window.localStorage.getItem("openbot:settings-panel-width")).toBe("308");
+    expect(window.localStorage.getItem("sahkarmi:settings-panel-width")).toBe("308");
 
     await fireEvent.dblClick(rightResizer);
     expect(rightResizer).toHaveAttribute("aria-valuenow", "296");
@@ -710,12 +710,12 @@ describe("OpenBot connected desktop shell", () => {
     );
 
     await fireEvent.click(within(picker).getByRole("tab", { name: /^Claude:/ }));
-    expect(window.openbot.agent.updateBot).not.toHaveBeenCalled();
+    expect(window.sahkarmi.agent.updateBot).not.toHaveBeenCalled();
     expect(within(picker).getByText("2.1.231 (Claude Code)")).toBeInTheDocument();
     await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
 
     await waitFor(() =>
-      expect(window.openbot.agent.updateBot).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
         botId: "chief",
         model: "claude-opus-5",
         reasoningEffort: "medium",
@@ -731,7 +731,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("shows unavailable providers without allowing their models", async () => {
-    vi.mocked(window.openbot.agent.getStatus).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValueOnce({
       phase: "ready",
       cliVersion: "0.144.1",
       auth: { kind: "chatgpt", email: "norbert@example.com" },
@@ -758,11 +758,11 @@ describe("OpenBot connected desktop shell", () => {
     );
     expect(within(picker).getByText("Claude CLI was not found.")).toBeInTheDocument();
     expect(within(picker).getByRole("option", { name: "Claude Opus 5, default" })).toBeDisabled();
-    expect(window.openbot.agent.updateBot).not.toHaveBeenCalled();
+    expect(window.sahkarmi.agent.updateBot).not.toHaveBeenCalled();
   });
 
   it("rolls back a failed header model change and reports the error", async () => {
-    vi.mocked(window.openbot.agent.updateBot).mockRejectedValueOnce(new Error("Provider failed"));
+    vi.mocked(window.sahkarmi.agent.updateBot).mockRejectedValueOnce(new Error("Provider failed"));
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await screen.findByRole("button", { name: "Onboarding model: Luna" });
@@ -843,7 +843,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.click(within(picker).getByRole("tab", { name: /^Claude:/ }));
     await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
     await waitFor(() =>
-      expect(window.openbot.agent.updateBot).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
         botId: "chief",
         model: "claude-opus-5",
         reasoningEffort: "medium",
@@ -861,7 +861,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.click(within(picker).getByRole("option", { name: "Sol" }));
     await fireEvent.change(thinking, { target: { value: "xhigh" } });
     await waitFor(() =>
-      expect(window.openbot.agent.updateBot).toHaveBeenLastCalledWith({
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenLastCalledWith({
         botId: "chief",
         reasoningEffort: "xhigh",
       }),
@@ -888,7 +888,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.click(within(picker).getByRole("tab", { name: /^Claude:/ }));
     await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
     await waitFor(() =>
-      expect(window.openbot.agent.updateBot).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
         botId: "sales-outbound",
         model: "claude-opus-5",
         reasoningEffort: "medium",
@@ -897,7 +897,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("shows provider availability during onboarding", async () => {
-    vi.mocked(window.openbot.agent.getStatus).mockResolvedValueOnce({
+    vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValueOnce({
       phase: "ready",
       cliVersion: "0.144.1",
       auth: { kind: "chatgpt", email: "norbert@example.com" },
@@ -965,7 +965,7 @@ describe("OpenBot connected desktop shell", () => {
     ).not.toBeInTheDocument();
     expect(frame).toHaveClass("app-frame-sidebar-collapsed");
     expect(frame).toHaveStyle("--left-panel-width: 0px");
-    expect(window.localStorage.getItem("openbot:left-panel-collapsed")).toBe("true");
+    expect(window.localStorage.getItem("sahkarmi:left-panel-collapsed")).toBe("true");
     const restoreSidebar = screen.getByRole("button", { name: "Show sidebar" });
     expect(restoreSidebar).toHaveClass("sidebar-icon-button");
     expect(restoreSidebar).toHaveAttribute("aria-expanded", "false");
@@ -978,7 +978,7 @@ describe("OpenBot connected desktop shell", () => {
       "275",
     );
     expect(frame).not.toHaveClass("app-frame-sidebar-collapsed");
-    expect(window.localStorage.getItem("openbot:left-panel-collapsed")).toBe("false");
+    expect(window.localStorage.getItem("sahkarmi:left-panel-collapsed")).toBe("false");
     expect(screen.getByRole("button", { name: "Hide sidebar" })).toHaveAttribute(
       "aria-expanded",
       "true",
@@ -1050,7 +1050,7 @@ describe("OpenBot connected desktop shell", () => {
     );
     expect(screen.queryByRole("button", { name: "Hide browser panel" })).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
-    expect(window.openbot.browser.open).toHaveBeenCalledWith({
+    expect(window.sahkarmi.browser.open).toHaveBeenCalledWith({
       url: "https://www.google.com",
       ownerThreadId: "thread-chief",
       ownerBotId: "chief",
@@ -1118,11 +1118,11 @@ describe("OpenBot connected desktop shell", () => {
     const surface = document.querySelector(".browser-surface");
     if (!(surface instanceof HTMLElement)) throw new Error("Browser surface was not rendered.");
     await waitFor(() =>
-      expect(window.openbot.browser.setVisible).toHaveBeenCalledWith(
+      expect(window.sahkarmi.browser.setVisible).toHaveBeenCalledWith(
         expect.objectContaining({ visible: true }),
       ),
     );
-    vi.mocked(window.openbot.browser.setVisible).mockClear();
+    vi.mocked(window.sahkarmi.browser.setVisible).mockClear();
     vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({
       x: 640,
       y: 73,
@@ -1138,7 +1138,7 @@ describe("OpenBot connected desktop shell", () => {
     window.dispatchEvent(new Event("resize"));
 
     await waitFor(() =>
-      expect(window.openbot.browser.setVisible).toHaveBeenLastCalledWith({
+      expect(window.sahkarmi.browser.setVisible).toHaveBeenLastCalledWith({
         visible: true,
         bounds: { x: 640, y: 73, width: 380, height: 600 },
       }),
@@ -1175,7 +1175,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.input(composer);
     await fireEvent.keyDown(composer, { key: "Enter" });
     await waitFor(() =>
-      expect(window.openbot.agent.sendMessage).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith({
         botId: "chief",
         text: "Run this Monday",
         attachmentDraftIds: [],
@@ -1185,7 +1185,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("shows the first queued message and closes onboarding when the send event arrives", async () => {
-    vi.mocked(window.openbot.agent.sendMessage).mockImplementationOnce(async (input) => {
+    vi.mocked(window.sahkarmi.agent.sendMessage).mockImplementationOnce(async (input) => {
       emitAgentEvent?.({
         type: "conversation",
         snapshot: {
@@ -1262,7 +1262,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.input(composer);
     await fireEvent.keyDown(composer, { key: "Enter" });
     await waitFor(() =>
-      expect(window.openbot.agent.sendMessage).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith({
         botId: "chief",
         text: "Yes, today please",
         attachmentDraftIds: [],
@@ -1302,7 +1302,7 @@ describe("OpenBot connected desktop shell", () => {
     await screen.findByText("Ready to ship.");
     await fireEvent.click(screen.getByRole("button", { name: "Add reaction" }));
     await fireEvent.click(screen.getByRole("menuitemradio", { name: "React with ❤️" }));
-    expect(window.openbot.agent.setMessageReaction).toHaveBeenCalledWith({
+    expect(window.sahkarmi.agent.setMessageReaction).toHaveBeenCalledWith({
       botId: "chief",
       messageId: "assistant-actions",
       emoji: "❤️",
@@ -1484,7 +1484,7 @@ describe("OpenBot connected desktop shell", () => {
             id: "user-open",
             turnId: "turn-open",
             author: "user",
-            text: "Open x.com",
+            text: "Open example.in",
             createdAt: "2026-08-12T10:00:00.000Z",
             status: "completed",
           },
@@ -1492,7 +1492,7 @@ describe("OpenBot connected desktop shell", () => {
             id: "commentary-open",
             turnId: "turn-open",
             author: "assistant",
-            text: "I’ll open x.com in the OpenBot browser.",
+            text: "I’ll open example.in in the Sahkarmi browser.",
             createdAt: "2026-08-12T10:00:01.000Z",
             status: "completed",
             itemType: "commentary",
@@ -1510,7 +1510,7 @@ describe("OpenBot connected desktop shell", () => {
             id: "answer-open",
             turnId: "turn-open",
             author: "assistant",
-            text: "Opened x.com.",
+            text: "Opened example.in.",
             createdAt: "2026-08-12T10:00:03.000Z",
             status: "completed",
             itemType: "final_answer",
@@ -1521,14 +1521,14 @@ describe("OpenBot connected desktop shell", () => {
 
     const thinkingLabel = await screen.findByText("Thinking");
     const details = thinkingLabel.closest("details");
-    expect(screen.getByText("I’ll open x.com in the OpenBot browser.")).not.toBeVisible();
+    expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).not.toBeVisible();
     expect(screen.getByText("Checking that the page loaded.")).not.toBeVisible();
-    expect(screen.getByText("Opened x.com.")).toBeVisible();
+    expect(screen.getByText("Opened example.in.")).toBeVisible();
     expect(screen.getAllByText("Thinking")).toHaveLength(1);
 
     await fireEvent.click(thinkingLabel);
     expect(details).toHaveAttribute("open");
-    expect(screen.getByText("I’ll open x.com in the OpenBot browser.")).toBeVisible();
+    expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).toBeVisible();
 
     emitAgentEvent?.({
       type: "conversation",
@@ -1542,7 +1542,7 @@ describe("OpenBot connected desktop shell", () => {
             id: "user-open",
             turnId: "turn-open",
             author: "user",
-            text: "Open x.com",
+            text: "Open example.in",
             createdAt: "2026-08-12T10:00:00.000Z",
             status: "completed",
           },
@@ -1550,7 +1550,7 @@ describe("OpenBot connected desktop shell", () => {
             id: "answer-open",
             turnId: "turn-open",
             author: "assistant",
-            text: "Opened x.com.",
+            text: "Opened example.in.",
             createdAt: "2026-08-12T10:00:03.000Z",
             status: "completed",
             itemType: "final_answer",
@@ -1559,11 +1559,11 @@ describe("OpenBot connected desktop shell", () => {
       },
     });
     await waitFor(() => expect(screen.getByText("Thinking").closest("details")).toBe(details));
-    expect(screen.getByText("I’ll open x.com in the OpenBot browser.")).toBeVisible();
+    expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).toBeVisible();
   });
 
   it("keeps text and attachments when enqueue fails", async () => {
-    vi.mocked(window.openbot.agent.sendMessage).mockRejectedValueOnce(
+    vi.mocked(window.sahkarmi.agent.sendMessage).mockRejectedValueOnce(
       new Error("Mailbox unavailable"),
     );
     render(() => <App />);
@@ -1577,7 +1577,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("supports picker and attachment-only messages", async () => {
-    vi.mocked(window.openbot.agent.chooseAttachments).mockResolvedValueOnce([
+    vi.mocked(window.sahkarmi.agent.chooseAttachments).mockResolvedValueOnce([
       attachment("draft-1", "brief.pdf", "pdf"),
     ]);
     render(() => <App />);
@@ -1588,7 +1588,7 @@ describe("OpenBot connected desktop shell", () => {
     expect(await screen.findByText("brief.pdf")).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await waitFor(() =>
-      expect(window.openbot.agent.sendMessage).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith({
         botId: "chief",
         text: "",
         attachmentDraftIds: ["draft-1"],
@@ -1675,8 +1675,8 @@ describe("OpenBot connected desktop shell", () => {
       },
     });
     await fireEvent.click(screen.getByRole("button", { name: "Cancel queued message 1" }));
-    expect(window.openbot.agent.cancelQueuedMessage).toHaveBeenCalled();
-    expect(window.openbot.agent.setQueuePaused).toHaveBeenCalledWith({
+    expect(window.sahkarmi.agent.cancelQueuedMessage).toHaveBeenCalled();
+    expect(window.sahkarmi.agent.setQueuePaused).toHaveBeenCalledWith({
       botId: "chief",
       paused: false,
     });
@@ -1688,7 +1688,7 @@ describe("OpenBot connected desktop shell", () => {
     await confirmOnboardingModel();
     await fireEvent.click(screen.getByRole("option", { name: /Work & projects/ }));
     await waitFor(() =>
-      expect(window.openbot.agent.updateBot).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
         botId: "chief",
         role: "Work & projects",
         description:
@@ -1698,14 +1698,14 @@ describe("OpenBot connected desktop shell", () => {
       }),
     );
     await waitFor(() =>
-      expect(window.openbot.agent.sendMessage).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith({
         botId: "chief",
         text: "Focus on my work and projects. Help me plan, organize, and execute them proactively.",
         attachmentDraftIds: [],
       }),
     );
-    expect(vi.mocked(window.openbot.agent.updateBot).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(window.openbot.agent.sendMessage).mock.invocationCallOrder[0] ?? Number.MAX_VALUE,
+    expect(vi.mocked(window.sahkarmi.agent.updateBot).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(window.sahkarmi.agent.sendMessage).mock.invocationCallOrder[0] ?? Number.MAX_VALUE,
     );
   });
 
@@ -1714,7 +1714,7 @@ describe("OpenBot connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
     await confirmOnboardingModel();
     await fireEvent.click(await screen.findByRole("option", { name: /Something else/ }));
-    expect(window.openbot.agent.sendMessage).not.toHaveBeenCalled();
+    expect(window.sahkarmi.agent.sendMessage).not.toHaveBeenCalled();
 
     const customAnswer = screen.getByRole("textbox", { name: "Custom answer" });
     expect(customAnswer).toHaveFocus();
@@ -1722,7 +1722,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.keyDown(customAnswer, { key: "Enter" });
 
     await waitFor(() =>
-      expect(window.openbot.agent.updateBot).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
         botId: "chief",
         role: "Plan product launches",
         description: "Primary focus: Plan product launches.",
@@ -1730,7 +1730,7 @@ describe("OpenBot connected desktop shell", () => {
         reasoningEffort: "medium",
       }),
     );
-    expect(window.openbot.agent.sendMessage).toHaveBeenCalledWith({
+    expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith({
       botId: "chief",
       text: "My main focus for you is: Plan product launches. Treat this as your ongoing specialty.",
       attachmentDraftIds: [],
@@ -1761,7 +1761,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.input(answer, { target: { value: "Acme" } });
     await fireEvent.click(screen.getByRole("button", { name: "Send answer" }));
     await waitFor(() =>
-      expect(window.openbot.agent.respondToPrompt).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.respondToPrompt).toHaveBeenCalledWith({
         requestId: "prompt-1",
         answers: { account: ["Acme"] },
       }),
@@ -1769,7 +1769,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("renders persistent outgoing and incoming agent exchanges", async () => {
-    vi.mocked(window.openbot.agent.readConversation).mockImplementation(async (botId) => ({
+    vi.mocked(window.sahkarmi.agent.readConversation).mockImplementation(async (botId) => ({
       botId,
       threadId: "thread-1",
       activeTurnId: null,
@@ -1813,7 +1813,7 @@ describe("OpenBot connected desktop shell", () => {
   });
 
   it("shows an incoming agent marker without duplicating raw collaborator input", async () => {
-    vi.mocked(window.openbot.agent.readConversation).mockImplementation(async (botId) => ({
+    vi.mocked(window.sahkarmi.agent.readConversation).mockImplementation(async (botId) => ({
       botId,
       threadId: "thread-chief",
       activeTurnId: null,
@@ -1869,7 +1869,7 @@ describe("OpenBot connected desktop shell", () => {
 
   it("does not let a late history refresh overwrite a newer streamed snapshot", async () => {
     let resolveHistory: ((snapshot: ConversationSnapshot) => void) | undefined;
-    vi.mocked(window.openbot.agent.readConversation).mockImplementation(
+    vi.mocked(window.sahkarmi.agent.readConversation).mockImplementation(
       (botId) =>
         new Promise<ConversationSnapshot>((resolve) => {
           resolveHistory = resolve;
@@ -1929,7 +1929,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.input(name, { target: { value: "Coordinator" } });
     await fireEvent.blur(name);
     await waitFor(() =>
-      expect(window.openbot.agent.updateBot).toHaveBeenCalledWith({
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
         botId: "chief",
         name: "Coordinator",
       }),
@@ -1958,7 +1958,7 @@ describe("OpenBot connected desktop shell", () => {
     await fireEvent.click(await screen.findByRole("button", { name: "Preview brief.pdf" }));
     expect(screen.getByRole("dialog", { name: "brief.pdf" })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Show in Finder" }));
-    expect(window.openbot.agent.openAttachment).toHaveBeenCalledWith({
+    expect(window.sahkarmi.agent.openAttachment).toHaveBeenCalledWith({
       attachmentId: "file-1",
       action: "reveal",
     });
@@ -1985,7 +1985,7 @@ describe("OpenBot connected desktop shell", () => {
     expect(screen.getByRole("alertdialog", { name: "Delete Sales Outbound?" })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() =>
-      expect(window.openbot.agent.deleteBot).toHaveBeenCalledWith("sales-outbound"),
+      expect(window.sahkarmi.agent.deleteBot).toHaveBeenCalledWith("sales-outbound"),
     );
     await waitFor(() => expect(sales).not.toBeInTheDocument());
   });
@@ -1999,6 +1999,6 @@ function attachment(id: string, name: string, kind: "image" | "pdf") {
     kind: kind === "image" ? ("image" as const) : ("file" as const),
     mimeType: kind === "image" ? "image/png" : "application/pdf",
     previewKind: kind,
-    previewUrl: `openbot-attachment://file/${id}`,
+    previewUrl: `sahkarmi-attachment://file/${id}`,
   };
 }

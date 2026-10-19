@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentEvent } from "../shared/ipc";
 import { AgentService } from "./agent-service";
+import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
 import { MailboxStore } from "./mailbox-store";
@@ -13,40 +14,168 @@ import { MailboxStore } from "./mailbox-store";
 let root: string;
 let logPath: string;
 let service: AgentService | null = null;
-const originalCodexPath = process.env.OPENBOT_CODEX_PATH;
-const originalClaudePath = process.env.OPENBOT_CLAUDE_PATH;
+const originalCodexPath = process.env.SAHKARMI_CODEX_PATH;
+const originalClaudePath = process.env.SAHKARMI_CLAUDE_PATH;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "openbot-agent-test-"));
+  root = await mkdtemp(join(tmpdir(), "sahkarmi-agent-test-"));
   logPath = join(root, "protocol.jsonl");
-  process.env.OPENBOT_FAKE_CODEX_LOG = logPath;
-  process.env.OPENBOT_CODEX_PATH = await createFakeCodex(root);
-  process.env.OPENBOT_CLAUDE_PATH = join(root, "missing-claude");
+  process.env.SAHKARMI_FAKE_CODEX_LOG = logPath;
+  process.env.SAHKARMI_CODEX_PATH = await createFakeCodex(root);
+  process.env.SAHKARMI_CLAUDE_PATH = join(root, "missing-claude");
 });
 
 afterEach(async () => {
   await service?.stop();
   service = null;
-  if (originalCodexPath === undefined) delete process.env.OPENBOT_CODEX_PATH;
-  else process.env.OPENBOT_CODEX_PATH = originalCodexPath;
-  if (originalClaudePath === undefined) delete process.env.OPENBOT_CLAUDE_PATH;
-  else process.env.OPENBOT_CLAUDE_PATH = originalClaudePath;
-  delete process.env.OPENBOT_FAKE_CODEX_LOG;
-  delete process.env.OPENBOT_FAKE_AGENT_TOOL;
-  delete process.env.OPENBOT_FAKE_AGENT_TOOL_PATHS;
-  delete process.env.OPENBOT_FAKE_THREAD_READ_DELAY;
-  delete process.env.OPENBOT_FAKE_AUTO_COMPLETE;
-  delete process.env.OPENBOT_FAKE_CONTEXT_USAGE;
-  delete process.env.OPENBOT_FAKE_COMPACTION_ERROR;
-  delete process.env.OPENBOT_FAKE_ARCHIVED_THREAD;
-  delete process.env.OPENBOT_FAKE_TURN_START_RESPONSE_DELAY;
-  delete process.env.OPENBOT_FAKE_WARNING;
+  if (originalCodexPath === undefined) delete process.env.SAHKARMI_CODEX_PATH;
+  else process.env.SAHKARMI_CODEX_PATH = originalCodexPath;
+  if (originalClaudePath === undefined) delete process.env.SAHKARMI_CLAUDE_PATH;
+  else process.env.SAHKARMI_CLAUDE_PATH = originalClaudePath;
+  delete process.env.SAHKARMI_FAKE_CODEX_LOG;
+  delete process.env.SAHKARMI_FAKE_AGENT_TOOL;
+  delete process.env.SAHKARMI_FAKE_TOOL_CALL;
+  delete process.env.SAHKARMI_FAKE_TOOL_ITEM;
+  delete process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS;
+  delete process.env.SAHKARMI_FAKE_THREAD_READ_DELAY;
+  delete process.env.SAHKARMI_FAKE_AUTO_COMPLETE;
+  delete process.env.SAHKARMI_FAKE_CONTEXT_USAGE;
+  delete process.env.SAHKARMI_FAKE_COMPACTION_ERROR;
+  delete process.env.SAHKARMI_FAKE_ARCHIVED_THREAD;
+  delete process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY;
+  delete process.env.SAHKARMI_FAKE_WARNING;
   await rm(root, { recursive: true, force: true });
 });
 
 describe.sequential("AgentService", () => {
+  it("files approvals from coworkers and queues the owner's decision back to them", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "request_approval",
+      arguments: {
+        title: "Pay Sharma Traders invoice #482",
+        details: "Due 25/10. UPI to sharma@okaxis.",
+        category: "payment",
+        amount: "₹18,500",
+      },
+    });
+    const { store, mailbox } = stores();
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    const events: AgentEvent[] = [];
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex", approvals);
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Clear this week's payables" });
+
+    await waitFor(() => service?.listApprovals().length === 1);
+    const [approval] = service.listApprovals();
+    expect(approval).toMatchObject({
+      botId: "asha-accounts",
+      category: "payment",
+      amount: "₹18,500",
+      status: "pending",
+    });
+    expect(events.some((event) => event.type === "approvals-changed")).toBe(true);
+
+    await service.decideApproval({
+      approvalId: approval?.id ?? "",
+      decision: "rejected",
+      note: "Wait for GST invoice",
+    });
+    expect(service.listApprovals()[0]?.status).toBe("rejected");
+    const queued = service.listQueue("asha-accounts").deliveries.at(-1);
+    expect(queued?.text).toContain("[Approval REJECTED]");
+    expect(queued?.text).toContain("Wait for GST invoice");
+    await expect(
+      service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" }),
+    ).rejects.toThrow("already decided");
+  });
+
+  it("pauses coworker browser tools while the owner has taken over", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi_browser",
+      tool: "list_tabs",
+      arguments: {},
+    });
+    const { store, mailbox } = stores();
+    let browserCalls = 0;
+    const browser = {
+      ...fakeBrowser(),
+      handleDynamicTool: async () => {
+        browserCalls += 1;
+        return { success: true, contentItems: [] };
+      },
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    expect(service.takeOverBrowser().humanInControl).toBe(true);
+    await service.sendMessage({ botId: "vikram-sales", text: "Check the CRM" });
+
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(JSON.stringify(reply?.result)).toContain("taken over the browser");
+    expect(browserCalls).toBe(0);
+    expect((await service.handBackBrowser()).humanInControl).toBe(false);
+  });
+
+  it("lets a coworker ask the owner to take over and resumes it on hand-back", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "request_browser_takeover",
+      arguments: { reason: "GST portal OTP" },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "File GSTR-1" });
+
+    await waitFor(() => service?.getTakeover().requests.length === 1);
+    expect(service.getTakeover().requests[0]).toMatchObject({
+      botId: "asha-accounts",
+      reason: "GST portal OTP",
+    });
+    service.takeOverBrowser();
+    await service.handBackBrowser("Logged in, OTP done");
+    expect(service.getTakeover()).toEqual({ humanInControl: false, requests: [] });
+    const resumed = service.listQueue("asha-accounts").deliveries.at(-1);
+    expect(resumed?.text).toContain("[Browser handed back]");
+    expect(resumed?.text).toContain("Logged in, OTP done");
+  });
+
+  it("shows tool calls as collapsible cards in the conversation", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_ITEM = JSON.stringify({
+      type: "commandExecution",
+      id: "cmd-1",
+      command: "ls ~/Sahkarmi/Shared",
+      aggregatedOutput: "invoices.xlsx",
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "arjun-research", text: "What's in Shared?" });
+
+    await waitFor(async () => {
+      const snapshot = await service?.readConversation("arjun-research");
+      return snapshot?.messages.some((message) => message.tool?.status === "completed");
+    });
+    const tool = (await service.readConversation("arjun-research")).messages.find(
+      (message) => message.id === "cmd-1",
+    )?.tool;
+    expect(tool).toEqual({
+      name: "Run command",
+      kind: "command",
+      status: "completed",
+      input: "ls ~/Sahkarmi/Shared",
+      output: "invoices.xlsx",
+    });
+  });
+
   it("does not surface the skills context-budget notice as an agent error", async () => {
-    process.env.OPENBOT_FAKE_WARNING =
+    process.env.SAHKARMI_FAKE_WARNING =
       "Skill descriptions were shortened to fit the skills context budget.";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
@@ -67,7 +196,7 @@ describe.sequential("AgentService", () => {
     );
   });
 
-  it("creates independent full-access threads with browser and OpenBot tools", async () => {
+  it("creates independent full-access threads with browser and Sahkarmi tools", async () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser(), () => ({
       screenRecording: true,
@@ -115,12 +244,12 @@ describe.sequential("AgentService", () => {
         approvalPolicy: "never",
         sandbox: "danger-full-access",
         ephemeral: false,
-        serviceName: "openbot",
+        serviceName: "sahkarmi",
       });
       expect(params.dynamicTools).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ type: "namespace", name: "openbot_browser" }),
-          expect.objectContaining({ type: "namespace", name: "openbot" }),
+          expect.objectContaining({ type: "namespace", name: "sahkarmi_browser" }),
+          expect.objectContaining({ type: "namespace", name: "sahkarmi" }),
         ]),
       );
     }
@@ -133,7 +262,7 @@ describe.sequential("AgentService", () => {
   });
 
   it("updates the active account and new-agent defaults with the preferred provider", async () => {
-    process.env.OPENBOT_CLAUDE_PATH = await createFakeClaude(root);
+    process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root);
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "claude");
 
@@ -185,7 +314,7 @@ describe.sequential("AgentService", () => {
   });
 
   it("starts the second provider when an agent selects its model", async () => {
-    process.env.OPENBOT_CLAUDE_PATH = await createFakeClaude(root);
+    process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root);
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -225,7 +354,7 @@ describe.sequential("AgentService", () => {
     const instructions = String(
       (start?.params as Record<string, unknown> | undefined)?.developerInstructions ?? "",
     );
-    expect(instructions).toContain('"title": "Research & writing"');
+    expect(instructions).toContain('"role": "Research & writing"');
     expect(instructions).toContain(
       '"description": "Researches topics and turns findings into clear writing."',
     );
@@ -281,7 +410,7 @@ describe.sequential("AgentService", () => {
   });
 
   it("waits for active queue drains before shutdown completes", async () => {
-    process.env.OPENBOT_FAKE_TURN_START_RESPONSE_DELAY = "2000";
+    process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY = "2000";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -294,8 +423,8 @@ describe.sequential("AgentService", () => {
   });
 
   it("compacts a pressured agent context before draining its next queued message", async () => {
-    process.env.OPENBOT_FAKE_AUTO_COMPLETE = "DONE";
-    process.env.OPENBOT_FAKE_CONTEXT_USAGE = "82000";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "DONE";
+    process.env.SAHKARMI_FAKE_CONTEXT_USAGE = "82000";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     const events: AgentEvent[] = [];
@@ -318,8 +447,8 @@ describe.sequential("AgentService", () => {
   });
 
   it("does not compact context below the safety threshold", async () => {
-    process.env.OPENBOT_FAKE_AUTO_COMPLETE = "DONE";
-    process.env.OPENBOT_FAKE_CONTEXT_USAGE = "79000";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "DONE";
+    process.env.SAHKARMI_FAKE_CONTEXT_USAGE = "79000";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -332,9 +461,9 @@ describe.sequential("AgentService", () => {
   });
 
   it("continues queued work when context compaction is unavailable", async () => {
-    process.env.OPENBOT_FAKE_AUTO_COMPLETE = "DONE";
-    process.env.OPENBOT_FAKE_CONTEXT_USAGE = "82000";
-    process.env.OPENBOT_FAKE_COMPACTION_ERROR = "1";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "DONE";
+    process.env.SAHKARMI_FAKE_CONTEXT_USAGE = "82000";
+    process.env.SAHKARMI_FAKE_COMPACTION_ERROR = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     const events: AgentEvent[] = [];
@@ -356,14 +485,14 @@ describe.sequential("AgentService", () => {
   });
 
   it("fans out an idempotent agent tool message with referenced files", async () => {
-    process.env.OPENBOT_FAKE_AGENT_TOOL = "1";
+    process.env.SAHKARMI_FAKE_AGENT_TOOL = "1";
     const notePath = join(root, "generated-note.txt");
     const imagePath = join(root, "generated-image.png");
     await Promise.all([
-      writeFile(notePath, "OPENBOT_SHARED_FILE_OK\n"),
+      writeFile(notePath, "SAHKARMI_SHARED_FILE_OK\n"),
       writeFile(imagePath, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
     ]);
-    process.env.OPENBOT_FAKE_AGENT_TOOL_PATHS = JSON.stringify([notePath, imagePath]);
+    process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS = JSON.stringify([notePath, imagePath]);
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -391,7 +520,7 @@ describe.sequential("AgentService", () => {
     expect(managedNote?.path).not.toBe(notePath);
     expect(managedImage?.path).not.toBe(imagePath);
     await expect(readFile(managedNote?.path ?? "", "utf8")).resolves.toBe(
-      "OPENBOT_SHARED_FILE_OK\n",
+      "SAHKARMI_SHARED_FILE_OK\n",
     );
 
     const chiefMessages = (await service.readConversation("chief")).messages;
@@ -444,7 +573,7 @@ describe.sequential("AgentService", () => {
   });
 
   it("reliably relays a completed teammate result back through a reply chain without loops", async () => {
-    process.env.OPENBOT_FAKE_AUTO_COMPLETE = "AUTO_WEATHER_RESULT";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "AUTO_WEATHER_RESULT";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -499,7 +628,7 @@ describe.sequential("AgentService", () => {
   });
 
   it("merges a late thread read with a newer active stream", async () => {
-    process.env.OPENBOT_FAKE_THREAD_READ_DELAY = "80";
+    process.env.SAHKARMI_FAKE_THREAD_READ_DELAY = "80";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -531,8 +660,8 @@ describe.sequential("AgentService", () => {
   });
 
   it("does not fail or replay a turn whose start response times out after lifecycle events", async () => {
-    process.env.OPENBOT_FAKE_AUTO_COMPLETE = "Finished despite the late response";
-    process.env.OPENBOT_FAKE_TURN_START_RESPONSE_DELAY = "2000";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Finished despite the late response";
+    process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY = "2000";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser(), null, 1000);
     const events: AgentEvent[] = [];
@@ -576,15 +705,15 @@ describe.sequential("AgentService", () => {
     const resume = (await protocolMessages()).find((message) => message.method === "thread/resume");
     expect(resume?.params).toMatchObject({
       dynamicTools: expect.arrayContaining([
-        expect.objectContaining({ type: "namespace", name: "openbot_browser" }),
-        expect.objectContaining({ type: "namespace", name: "openbot" }),
+        expect.objectContaining({ type: "namespace", name: "sahkarmi_browser" }),
+        expect.objectContaining({ type: "namespace", name: "sahkarmi" }),
       ]),
     });
     expect((await store.getOrCreate("chief")).threadId).toBe(threadId);
   });
 
   it("unarchives a stored Codex thread and resumes the queued delivery", async () => {
-    process.env.OPENBOT_FAKE_ARCHIVED_THREAD = "1";
+    process.env.SAHKARMI_FAKE_ARCHIVED_THREAD = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     const events: AgentEvent[] = [];
@@ -690,12 +819,12 @@ if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.144.1\\n");
   process.exit(0);
 }
-const log = process.env.OPENBOT_FAKE_CODEX_LOG;
+const log = process.env.SAHKARMI_FAKE_CODEX_LOG;
 let buffer = "";
 let threadCounter = 0;
 let turnCounter = 0;
 const turns = new Map();
-let archivedThread = process.env.OPENBOT_FAKE_ARCHIVED_THREAD === "1";
+let archivedThread = process.env.SAHKARMI_FAKE_ARCHIVED_THREAD === "1";
 const write = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -731,7 +860,7 @@ process.stdin.on("data", (chunk) => {
       if (message.method === "thread/read") {
         const capturedTurns = JSON.parse(JSON.stringify([...turns.values()]));
         const respond = () => write({ id: message.id, result: { thread: { id: message.params.threadId, turns: capturedTurns } } });
-        const delay = Number(process.env.OPENBOT_FAKE_THREAD_READ_DELAY || 0);
+        const delay = Number(process.env.SAHKARMI_FAKE_THREAD_READ_DELAY || 0);
         if (delay > 0) setTimeout(respond, delay);
         else respond();
       }
@@ -739,24 +868,33 @@ process.stdin.on("data", (chunk) => {
         const turnId = "turn-" + (++turnCounter);
         turns.set(turnId, { id: turnId, status: "inProgress", items: [] });
         const respondToStart = () => write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
-        const startResponseDelay = Number(process.env.OPENBOT_FAKE_TURN_START_RESPONSE_DELAY || 0);
+        const startResponseDelay = Number(process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY || 0);
         if (startResponseDelay > 0) setTimeout(respondToStart, startResponseDelay);
         else respondToStart();
         write({ method: "turn/started", params: { threadId: message.params.threadId, turn: { id: turnId } } });
-        if (process.env.OPENBOT_FAKE_WARNING) {
-          write({ method: "warning", params: { threadId: message.params.threadId, message: process.env.OPENBOT_FAKE_WARNING } });
+        if (process.env.SAHKARMI_FAKE_WARNING) {
+          write({ method: "warning", params: { threadId: message.params.threadId, message: process.env.SAHKARMI_FAKE_WARNING } });
         }
-        if (process.env.OPENBOT_FAKE_CONTEXT_USAGE) {
-          const totalTokens = Number(process.env.OPENBOT_FAKE_CONTEXT_USAGE);
+        if (process.env.SAHKARMI_FAKE_CONTEXT_USAGE) {
+          const totalTokens = Number(process.env.SAHKARMI_FAKE_CONTEXT_USAGE);
           write({ method: "thread/tokenUsage/updated", params: { threadId: message.params.threadId, turnId, tokenUsage: { total: { totalTokens }, last: { totalTokens }, modelContextWindow: 100000 } } });
         }
         write({ method: "item/agentMessage/delta", params: { threadId: message.params.threadId, turnId, itemId: "message-" + turnId, delta: "Streaming" } });
-        if (process.env.OPENBOT_FAKE_AGENT_TOOL === "1" && turnCounter === 1) {
-          setTimeout(() => write({ id: "agent-tool-1", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-1", namespace: "openbot", tool: "send_message", arguments: { recipientBotIds: ["sales-outbound", "inbox-manager"], text: "Please prepare your reports.", paths: JSON.parse(process.env.OPENBOT_FAKE_AGENT_TOOL_PATHS || "[]") } } }), 30);
+        if (process.env.SAHKARMI_FAKE_TOOL_CALL && turnCounter === 1) {
+          const call = JSON.parse(process.env.SAHKARMI_FAKE_TOOL_CALL);
+          setTimeout(() => write({ id: "agent-tool-custom", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-custom", ...call } }), 30);
         }
-        if (process.env.OPENBOT_FAKE_AUTO_COMPLETE) {
+        if (process.env.SAHKARMI_FAKE_TOOL_ITEM && turnCounter === 1) {
+          const item = JSON.parse(process.env.SAHKARMI_FAKE_TOOL_ITEM);
+          write({ method: "item/started", params: { threadId: message.params.threadId, turnId, item: { ...item, status: "inProgress" } } });
+          setTimeout(() => write({ method: "item/completed", params: { threadId: message.params.threadId, turnId, item: { ...item, status: "completed" } } }), 20);
+        }
+        if (process.env.SAHKARMI_FAKE_AGENT_TOOL === "1" && turnCounter === 1) {
+          setTimeout(() => write({ id: "agent-tool-1", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-1", namespace: "sahkarmi", tool: "send_message", arguments: { recipientBotIds: ["sales-outbound", "inbox-manager"], text: "Please prepare your reports.", paths: JSON.parse(process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS || "[]") } } }), 30);
+        }
+        if (process.env.SAHKARMI_FAKE_AUTO_COMPLETE) {
           setTimeout(() => {
-            const text = process.env.OPENBOT_FAKE_AUTO_COMPLETE;
+            const text = process.env.SAHKARMI_FAKE_AUTO_COMPLETE;
             const item = { type: "agentMessage", id: "message-" + turnId, text, phase: "final_answer" };
             const turn = turns.get(turnId);
             if (turn) {
@@ -769,7 +907,7 @@ process.stdin.on("data", (chunk) => {
         }
       }
       if (message.method === "thread/compact/start") {
-        if (process.env.OPENBOT_FAKE_COMPACTION_ERROR === "1") {
+        if (process.env.SAHKARMI_FAKE_COMPACTION_ERROR === "1") {
           write({ id: message.id, error: { code: -32601, message: "Compaction unavailable" } });
           newline = buffer.indexOf("\\n");
           continue;
