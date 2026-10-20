@@ -1,13 +1,37 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { AppInfo, CoworkerStatus, WorkspaceState } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
-import { t } from "../i18n";
+import { featureOn } from "../features";
+import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
 import { LogoMark } from "./Logo";
 import { StatusDot, statusLabel } from "./StatusDot";
 
-export type CenterView = "coworker" | "files" | "approvals" | "settings";
+export type CenterView =
+  | "coworker"
+  | "files"
+  | "approvals"
+  | "schedules"
+  | "usage"
+  | "business"
+  | "activity"
+  | "settings";
+
+const RAIL_ITEMS: Array<{
+  view: Exclude<CenterView, "coworker">;
+  label: MessageKey;
+  feature: string | null;
+  icon: () => JSX.Element;
+}> = [
+  { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
+  { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
+  { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
+  { view: "usage", label: "navUsage", feature: "model-usage", icon: UsageIcon },
+  { view: "business", label: "navBusiness", feature: "business-targets", icon: BusinessIcon },
+  { view: "activity", label: "navActivity", feature: null, icon: ActivityIcon },
+  { view: "settings", label: "settings", feature: null, icon: SettingsIcon },
+];
 
 interface SidebarProps {
   bots: BotProfile[];
@@ -104,6 +128,41 @@ function ApprovalsIcon() {
     <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
       <path d="M10 2.9 15.5 5v4.6c0 3.6-2.2 6.3-5.5 7.5-3.3-1.2-5.5-3.9-5.5-7.5V5L10 2.9Z" />
       <path d="m7.6 9.9 1.5 1.5 3.3-3.4" />
+    </svg>
+  );
+}
+
+function ScheduleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <circle cx="10" cy="10.5" r="6.5" />
+      <path d="M10 6.8v3.9l2.6 1.6M7.5 2.8h5" />
+    </svg>
+  );
+}
+
+function UsageIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path d="M3.5 16.5h13M5.5 13.5v-3M9 13.5V6.5M12.5 13.5v-5M16 13.5V4" />
+    </svg>
+  );
+}
+
+function BusinessIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <circle cx="10" cy="10" r="6.8" />
+      <circle cx="10" cy="10" r="3.6" />
+      <circle cx="10" cy="10" r=".9" />
+    </svg>
+  );
+}
+
+function ActivityIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path d="M2.8 10h3.4l2-5 3.6 10 2-5h3.4" />
     </svg>
   );
 }
@@ -420,42 +479,33 @@ export function Sidebar(props: SidebarProps) {
       </nav>
 
       <nav class="rail-nav" aria-label="Sahkarmi">
-        <button
-          type="button"
-          class="rail-nav-item"
-          classList={{ "rail-nav-active": props.view === "files" }}
-          aria-current={props.view === "files" ? "page" : undefined}
-          onClick={() => props.onSelectView("files")}
+        <For
+          each={RAIL_ITEMS.filter(
+            (item) =>
+              item.feature === null ||
+              featureOn(item.feature) ||
+              (item.feature === "business-targets" && featureOn("integrations")),
+          )}
         >
-          <FilesIcon />
-          <span>{t("sharedFiles")}</span>
-        </button>
-        <button
-          type="button"
-          class="rail-nav-item"
-          classList={{ "rail-nav-active": props.view === "approvals" }}
-          aria-current={props.view === "approvals" ? "page" : undefined}
-          onClick={() => props.onSelectView("approvals")}
-        >
-          <ApprovalsIcon />
-          <span>{t("approvals")}</span>
-          <Show when={props.pendingApprovals > 0}>
-            <span class="rail-badge">
-              {props.pendingApprovals}
-              <span class="sr-only"> {t("pending")}</span>
-            </span>
-          </Show>
-        </button>
-        <button
-          type="button"
-          class="rail-nav-item"
-          classList={{ "rail-nav-active": props.view === "settings" }}
-          aria-current={props.view === "settings" ? "page" : undefined}
-          onClick={() => props.onSelectView("settings")}
-        >
-          <SettingsIcon />
-          <span>{t("settings")}</span>
-        </button>
+          {(item) => (
+            <button
+              type="button"
+              class="rail-nav-item"
+              classList={{ "rail-nav-active": props.view === item.view }}
+              aria-current={props.view === item.view ? "page" : undefined}
+              onClick={() => props.onSelectView(item.view)}
+            >
+              {item.icon()}
+              <span>{t(item.label)}</span>
+              <Show when={item.view === "approvals" && props.pendingApprovals > 0}>
+                <span class="rail-badge">
+                  {props.pendingApprovals}
+                  <span class="sr-only"> {t("pending")}</span>
+                </span>
+              </Show>
+            </button>
+          )}
+        </For>
         <p class="rail-tagline">
           {t("tagline")}
           <Show when={props.appInfo}>

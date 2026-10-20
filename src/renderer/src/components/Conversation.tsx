@@ -44,7 +44,7 @@ import { SidebarToggleIcon } from "./Sidebar";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { TaskQueueStrip } from "./TaskQueueStrip";
 import { ToolCallCard } from "./ToolCallCard";
-import { VoiceInputButton } from "./VoiceInputButton";
+import { VoiceRecorder } from "./VoiceRecorder";
 
 interface ConversationProps {
   agentStatus: AgentStatus;
@@ -2144,13 +2144,18 @@ export function Conversation(props: ConversationProps) {
                 onChange={(model) => void selectAndConfirmModel(model)}
               />
             </Show>
-            <VoiceInputButton
+            <VoiceRecorder
               disabled={!agentReady() || submitting()}
-              onTranscript={(text) =>
-                updateCurrentDraft({
-                  text: currentDraft().text ? `${currentDraft().text.trimEnd()} ${text}` : text,
-                })
-              }
+              onAttach={(attachments, transcript) => {
+                addAttachments(attachments);
+                if (transcript) {
+                  updateCurrentDraft({
+                    text: currentDraft().text
+                      ? `${currentDraft().text.trimEnd()}\n${transcript}`
+                      : transcript,
+                  });
+                }
+              }}
               onError={setComposerError}
             />
             <button

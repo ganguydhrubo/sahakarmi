@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import { copyText } from "../clipboard";
 import { t } from "../i18n";
 import { type MarkdownBlock, type MarkdownList, parseMarkdown, tableToTsv } from "../markdown";
@@ -26,13 +27,12 @@ function Blocks(props: { blocks: MarkdownBlock[]; inline: RichMarkdownProps["inl
         <Switch>
           <Match when={block.type === "heading" && block}>
             {(heading) => (
-              <p
+              <Dynamic
+                component={`h${Math.min(heading().level + 2, 6)}`}
                 class={`md-heading md-heading-${Math.min(heading().level, 4)}`}
-                role="heading"
-                aria-level={heading().level + 2}
               >
                 {props.inline(heading().text)}
-              </p>
+              </Dynamic>
             )}
           </Match>
           <Match when={block.type === "paragraph" && block}>

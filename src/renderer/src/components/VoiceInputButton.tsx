@@ -7,7 +7,7 @@ interface SpeechRecognitionResultLike {
   0: { transcript: string };
 }
 
-interface SpeechRecognitionLike {
+export interface SpeechRecognitionLike {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -22,7 +22,7 @@ interface SpeechRecognitionLike {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
-function recognitionConstructor(): SpeechRecognitionConstructor | null {
+export function recognitionConstructor(): SpeechRecognitionConstructor | null {
   const scope = window as unknown as {
     SpeechRecognition?: SpeechRecognitionConstructor;
     webkitSpeechRecognition?: SpeechRecognitionConstructor;
