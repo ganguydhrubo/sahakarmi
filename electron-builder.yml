@@ -32,6 +32,11 @@ extraResources:
     to: bin
   - from: resources/licenses
     to: licenses
+  # Window and taskbar icon, set at runtime so the taskbar never falls back to a generic icon.
+  - from: build/icon.ico
+    to: icons/icon.ico
+  - from: build/icons/512x512.png
+    to: icons/icon.png
 directories:
   output: dist
 mac:

@@ -3,6 +3,13 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - taskbar logo
+
+### Fixed
+
+- The Sahkarmi logo now shows on the Windows taskbar and window (and on Linux). The icon ships
+  with the app and is set on the window directly, so Windows never falls back to a blank icon.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
