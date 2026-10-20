@@ -69,6 +69,25 @@ export function PermissionsSettings(props: { bots: BotProfile[] }) {
 
   return (
     <div class="permissions-settings">
+      <Show when={policy()}>
+        {(state) => (
+          <label class="auto-mode-toggle" classList={{ "auto-mode-on": state().autoMode }}>
+            <input
+              type="checkbox"
+              role="switch"
+              aria-checked={state().autoMode}
+              checked={state().autoMode}
+              onChange={(event) =>
+                void run(() => window.sahkarmi.permissions.setAutoMode(event.currentTarget.checked))
+              }
+            />
+            <span>
+              <strong>{t("autoModeTitle")}</strong>
+              <small>{t("autoModeHint")}</small>
+            </span>
+          </label>
+        )}
+      </Show>
       <p class="settings-meta">{t("permIntro")}</p>
       <Show when={error()}>
         <p class="center-view-error" role="alert">
