@@ -12,6 +12,7 @@ import "@fontsource/hind-siliguri/600.css";
 import { App } from "./App";
 import { applyStoredPreferences } from "./preferences";
 import "./styles.css";
+import "./routines.css";
 
 const root = document.getElementById("root");
 
