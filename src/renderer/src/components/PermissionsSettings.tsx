@@ -5,6 +5,7 @@ import {
   type PermissionCategory,
   type PermissionLevel,
   type PermissionPolicyState,
+  type SafetyLimits,
   SENSITIVE_PERMISSION_CATEGORIES,
 } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
@@ -17,6 +18,8 @@ const CATEGORY_KEYS: Record<PermissionCategory, MessageKey> = {
   file_create: "permFileCreate",
   file_modify: "permFileModify",
   file_delete: "permFileDelete",
+  destructive: "permDestructive",
+  credentials: "permCredentials",
   shell: "permShell",
   browser_navigation: "permBrowserNav",
   browser_interaction: "permBrowserAct",
@@ -36,9 +39,21 @@ const LEVEL_KEYS: Record<PermissionLevel, MessageKey> = {
   deny: "levelDeny",
 };
 
-export function permissionCategoryLabel(category: PermissionCategory): string {
-  return t(CATEGORY_KEYS[category]);
+export function permissionCategoryLabel(category: PermissionCategory | "system"): string {
+  return t(category === "system" ? "categorySystem" : CATEGORY_KEYS[category]);
 }
+
+const LIMIT_FIELDS: Array<{
+  key: keyof SafetyLimits;
+  label: MessageKey;
+  min: number;
+  max: number;
+}> = [
+  { key: "maxToolCallsPerTurn", label: "limitToolCalls", min: 5, max: 1000 },
+  { key: "maxTurnMinutes", label: "limitMinutes", min: 1, max: 240 },
+  { key: "maxRepeatedCalls", label: "limitRepeats", min: 2, max: 50 },
+  { key: "maxOutboundPerHour", label: "limitOutbound", min: 1, max: 500 },
+];
 
 /** Mirrors the backend rule; the backend re-checks every change. */
 function levelsFor(category: PermissionCategory): PermissionLevel[] {
@@ -55,6 +70,7 @@ export function PermissionsSettings(props: { bots: BotProfile[] }) {
   const [grantHours, setGrantHours] = createSignal(2);
   const [grantUses, setGrantUses] = createSignal("5");
   const [grantNote, setGrantNote] = createSignal("");
+  const [limits, setLimits] = createSignal<SafetyLimits | null>(null);
 
   async function run(action: () => Promise<PermissionPolicyState>) {
     try {
@@ -65,7 +81,12 @@ export function PermissionsSettings(props: { bots: BotProfile[] }) {
     }
   }
 
-  onMount(() => void run(() => window.sahkarmi.permissions.get()));
+  onMount(
+    () =>
+      void run(() => window.sahkarmi.permissions.get()).then(() =>
+        setLimits(policy()?.limits ?? null),
+      ),
+  );
 
   return (
     <div class="permissions-settings">
@@ -120,6 +141,71 @@ export function PermissionsSettings(props: { bots: BotProfile[] }) {
                 </For>
               </tbody>
             </table>
+
+            <h3>{t("suggestOnlyTitle")}</h3>
+            <p class="settings-meta">{t("suggestOnlyIntro")}</p>
+            <ul class="suggest-only-list">
+              <For each={props.bots}>
+                {(bot) => (
+                  <li>
+                    <label class="activity-check">
+                      <input
+                        type="checkbox"
+                        checked={state().suggestOnlyBots.includes(bot.id)}
+                        onChange={(event) =>
+                          void run(() =>
+                            window.sahkarmi.permissions.setSuggestOnly(
+                              bot.id,
+                              event.currentTarget.checked,
+                            ),
+                          )
+                        }
+                      />
+                      <span>{bot.name}</span>
+                    </label>
+                  </li>
+                )}
+              </For>
+            </ul>
+
+            <h3>{t("safetyTitle")}</h3>
+            <p class="settings-meta">{t("safetyIntro")}</p>
+            <Show when={limits()}>
+              {(draft) => (
+                <form
+                  class="grant-form safety-limits"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void run(() => window.sahkarmi.permissions.setLimits(draft())).then(() =>
+                      setLimits(policy()?.limits ?? draft()),
+                    );
+                  }}
+                >
+                  <For each={LIMIT_FIELDS}>
+                    {(field) => (
+                      <label>
+                        <span>{t(field.label)}</span>
+                        <input
+                          type="number"
+                          min={field.min}
+                          max={field.max}
+                          value={draft()[field.key]}
+                          onInput={(event) =>
+                            setLimits({
+                              ...draft(),
+                              [field.key]: Number(event.currentTarget.value),
+                            })
+                          }
+                        />
+                      </label>
+                    )}
+                  </For>
+                  <button type="submit" class="button-primary">
+                    {t("limitsSave")}
+                  </button>
+                </form>
+              )}
+            </Show>
 
             <h3>{t("grantTitle")}</h3>
             <p class="settings-meta">{t("grantIntro")}</p>

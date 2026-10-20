@@ -235,6 +235,8 @@ export const LABELS = {
   thinkingSteps: "{count} kadam",
   elapsed: "{time} se",
   retryAttempt: "Koshish {attempt}/{max}",
+  outcomeTools: "{count} tool chale, sab theek",
+  outcomeToolsFailed: "{count} tool chale, {failed} mein error aaya",
 } as const;
 
 /** Titles shown on in-conversation error notices. Keys are the app's internal codes. */
@@ -251,6 +253,8 @@ export const ERROR_TITLES: Record<string, string> = {
   resume: "Queue phir se shuru nahi ho payi",
   schedule: "Schedule set nahi ho paya",
   stop: "Kaam rok nahi paye",
+  task_limit: "Safety limit par kaam roka gaya",
+  injection_flagged: "Web content mein shak wali baat mili",
 };
 
 export function format(template: string, values: Record<string, string | number>): string {

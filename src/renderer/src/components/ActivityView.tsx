@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import {
+  type AuditIntegrity,
   PERMISSION_CATEGORIES,
   type PermissionAuditEntry,
   type PermissionCategory,
@@ -15,22 +16,29 @@ const DECISION_LABELS: Record<PermissionAuditEntry["decision"], MessageKey> = {
   approved: "approved",
   rejected: "rejected",
   "timed-out": "decisionTimedOut",
+  stopped: "decisionStopped",
+  flagged: "decisionFlagged",
 };
 
 /** The permission audit log: what coworkers tried, and what the policy or the owner decided. */
 export function ActivityView(props: { bots: BotProfile[] }) {
   const [entries, setEntries] = createSignal<PermissionAuditEntry[]>([]);
-  const [category, setCategory] = createSignal<PermissionCategory | "">("");
+  const [category, setCategory] = createSignal<PermissionCategory | "system" | "">("");
   const [onlyBlocked, setOnlyBlocked] = createSignal(false);
+  const [integrity, setIntegrity] = createSignal<AuditIntegrity | null>(null);
 
-  const load = async () => setEntries(await window.sahkarmi.permissions.audit());
+  const load = async () => {
+    setEntries(await window.sahkarmi.permissions.audit());
+    setIntegrity(await window.sahkarmi.permissions.verifyAudit());
+  };
   onMount(() => void load());
 
   const visible = createMemo(() =>
     entries().filter(
       (entry) =>
         (!category() || entry.category === category()) &&
-        (!onlyBlocked() || ["denied", "rejected", "timed-out"].includes(entry.decision)),
+        (!onlyBlocked() ||
+          ["denied", "rejected", "timed-out", "stopped", "flagged"].includes(entry.decision)),
     ),
   );
 
@@ -89,16 +97,27 @@ export function ActivityView(props: { bots: BotProfile[] }) {
       </header>
       <div class="center-view-body">
         <p class="center-view-intro">{t("activityIntro")}</p>
+        <Show when={integrity()}>
+          {(check) => (
+            <p
+              class={`audit-integrity ${check().ok ? "audit-integrity-ok" : "audit-integrity-broken"}`}
+              role={check().ok ? undefined : "alert"}
+            >
+              {check().ok ? t("auditIntact", { count: String(check().entries) }) : t("auditBroken")}
+            </p>
+          )}
+        </Show>
         <div class="activity-filters">
           <label>
             <span>{t("activityCategory")}</span>
             <select
               value={category()}
               onChange={(event) =>
-                setCategory(event.currentTarget.value as PermissionCategory | "")
+                setCategory(event.currentTarget.value as PermissionCategory | "system" | "")
               }
             >
               <option value="">{t("activityAll")}</option>
+              <option value="system">{permissionCategoryLabel("system")}</option>
               <For each={PERMISSION_CATEGORIES}>
                 {(value) => <option value={value}>{permissionCategoryLabel(value)}</option>}
               </For>

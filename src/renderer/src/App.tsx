@@ -48,6 +48,7 @@ import { type CenterView, Sidebar } from "./components/Sidebar";
 import { UpdateControl } from "./components/UpdateControl";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 import { loadFeatures } from "./features";
+import { t } from "./i18n";
 
 // Views opened from the rail load on demand, keeping start-up lean.
 const ActivityView = lazy(() =>
@@ -200,6 +201,25 @@ export function App() {
     return bot ? [...(liveMessages()[bot.id] ?? []), ...(uiErrors()[bot.id] ?? [])] : [];
   });
 
+  const [emergencyStop, setEmergencyStop] = createSignal(false);
+
+  async function setStop(active: boolean) {
+    if (active && !window.confirm(t("stopConfirm"))) return;
+    try {
+      const policy = await window.sahkarmi.permissions.emergencyStop(active);
+      setEmergencyStop(policy.emergencyStop.active);
+    } catch (error) {
+      if (activeBotId()) appendUiError(activeBotId(), error, ERROR_TITLES.stop);
+    }
+  }
+
+  onMount(() => {
+    void window.sahkarmi.permissions
+      .get()
+      .then((policy) => setEmergencyStop(policy.emergencyStop?.active === true))
+      .catch(() => undefined);
+  });
+
   onMount(() => {
     const unsubscribe = window.sahkarmi.agent.onEvent(handleAgentEvent);
     void window.sahkarmi.team
@@ -334,6 +354,9 @@ export function App() {
       case "approvals-changed":
         setApprovals(event.approvals);
         return;
+      case "permissions-changed":
+        setEmergencyStop(event.policy.emergencyStop.active);
+        return;
       case "schedules-changed":
         setSchedules(event.schedules);
         return;
@@ -355,7 +378,8 @@ export function App() {
         setPendingPrompts((current) => ({ ...current, [event.botId]: event }));
         return;
       case "error":
-        if (event.botId) appendUiError(event.botId, event.message, ERROR_TITLES.error);
+        if (event.botId)
+          appendUiError(event.botId, event.message, ERROR_TITLES[event.code] ?? ERROR_TITLES.error);
     }
   }
 
@@ -879,6 +903,8 @@ export function App() {
               onCreateWorkspace={createWorkspace}
               onRenameWorkspace={renameWorkspace}
               onCollapse={() => setSidebarCollapsed(true)}
+              emergencyStop={emergencyStop()}
+              onEmergencyStop={() => void setStop(true)}
             />
             <PanelResizer
               class="left-panel-resizer"
@@ -892,6 +918,14 @@ export function App() {
               onResize={setLeftPanelWidth}
               onResizeEnd={(value) => savePanelWidth(LEFT_PANEL_STORAGE_KEY, value)}
             />
+          </Show>
+          <Show when={emergencyStop()}>
+            <div class="emergency-banner" role="alert">
+              <span>{t("stopBanner")}</span>
+              <button type="button" onClick={() => void setStop(false)}>
+                {t("stopLift")}
+              </button>
+            </div>
           </Show>
           <Suspense fallback={<section class="center-view" aria-busy="true" />}>
             <Switch>

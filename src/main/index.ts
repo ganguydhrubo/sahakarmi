@@ -344,6 +344,29 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.permissionsAudit, () => permissions.audit());
   handleTrusted(IPC_CHANNELS.permissionsClearAudit, () => permissions.clearAudit());
+  handleTrusted(IPC_CHANNELS.permissionsVerifyAudit, () => permissions.verifyAudit());
+  handleTrusted(IPC_CHANNELS.permissionsSetSuggestOnly, (input: unknown) => {
+    if (!isObject(input) || typeof input.enabled !== "boolean") {
+      throw new Error("Invalid suggest-only update.");
+    }
+    const botId = requireString(input.botId, "botId");
+    if (!service.listBots().some((bot) => bot.id === botId)) throw new Error("Unknown coworker.");
+    return permissions.setSuggestOnly(botId, input.enabled);
+  });
+  handleTrusted(IPC_CHANNELS.permissionsSetLimits, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid limits.");
+    return permissions.setLimits({
+      maxToolCallsPerTurn: Number(input.maxToolCallsPerTurn),
+      maxTurnMinutes: Number(input.maxTurnMinutes),
+      maxRepeatedCalls: Number(input.maxRepeatedCalls),
+      maxOutboundPerHour: Number(input.maxOutboundPerHour),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.safetyEmergencyStop, async (active: unknown) => {
+    if (typeof active !== "boolean") throw new Error("Invalid emergency stop request.");
+    await service.emergencyStop(active);
+    return permissions.get();
+  });
 
   handleTrusted(IPC_CHANNELS.usageOverview, () => service.usageOverview());
   handleTrusted(IPC_CHANNELS.usageRefresh, () => service.refreshUsage());
@@ -526,6 +549,11 @@ function configureApplicationMenu(service: AgentService, updater: UpdateService)
       {
         role: "appMenu",
         submenu: [
+          {
+            label: "Emergency stop (block all actions)",
+            accelerator: "CmdOrCtrl+Shift+Escape",
+            click: () => void service.emergencyStop(true),
+          },
           {
             label: "Stop all agents",
             accelerator: "CommandOrControl+.",

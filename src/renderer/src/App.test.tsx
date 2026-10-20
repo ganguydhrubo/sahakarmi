@@ -20,6 +20,8 @@ const POLICY: PermissionPolicyState = {
     file_create: "workspace",
     file_modify: "workspace",
     file_delete: "ask",
+    destructive: "ask",
+    credentials: "ask",
     shell: "ask",
     browser_navigation: "auto",
     browser_interaction: "auto",
@@ -33,6 +35,14 @@ const POLICY: PermissionPolicyState = {
     app_updates: "auto",
   },
   grants: [],
+  suggestOnlyBots: [],
+  limits: {
+    maxToolCallsPerTurn: 80,
+    maxTurnMinutes: 30,
+    maxRepeatedCalls: 6,
+    maxOutboundPerHour: 20,
+  },
+  emergencyStop: { active: false, since: null },
 };
 
 const USAGE: UsageOverview = {
@@ -312,6 +322,10 @@ describe("Sahkarmi connected desktop shell", () => {
           revokeGrant: vi.fn().mockResolvedValue(POLICY),
           audit: vi.fn().mockResolvedValue([]),
           clearAudit: vi.fn().mockResolvedValue(undefined),
+          setSuggestOnly: vi.fn().mockResolvedValue(POLICY),
+          setLimits: vi.fn().mockResolvedValue(POLICY),
+          verifyAudit: vi.fn().mockResolvedValue({ ok: true, entries: 0, brokenAt: null }),
+          emergencyStop: vi.fn().mockResolvedValue(POLICY),
         },
         usage: {
           overview: vi.fn().mockResolvedValue(USAGE),

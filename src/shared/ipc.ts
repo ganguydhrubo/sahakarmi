@@ -62,6 +62,10 @@ export const IPC_CHANNELS = {
   permissionsRevokeGrant: "permissions:revoke-grant",
   permissionsAudit: "permissions:audit",
   permissionsClearAudit: "permissions:clear-audit",
+  permissionsSetSuggestOnly: "permissions:set-suggest-only",
+  permissionsSetLimits: "permissions:set-limits",
+  permissionsVerifyAudit: "permissions:verify-audit",
+  safetyEmergencyStop: "safety:emergency-stop",
   usageOverview: "usage:overview",
   usageRefresh: "usage:refresh",
   usageClear: "usage:clear",
@@ -515,6 +519,8 @@ export const PERMISSION_CATEGORIES = [
   "file_create",
   "file_modify",
   "file_delete",
+  "destructive",
+  "credentials",
   "shell",
   "browser_navigation",
   "browser_interaction",
@@ -538,6 +544,8 @@ export type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
 
 /** High-impact categories: never "auto"; only ask, deny, or a narrow time-limited grant. */
 export const SENSITIVE_PERMISSION_CATEGORIES: readonly PermissionCategory[] = [
+  "destructive",
+  "credentials",
   "external_messages",
   "publication",
   "business_actions",
@@ -558,9 +566,33 @@ export interface PermissionGrant {
   createdAt: string;
 }
 
+/** Hard limits enforced by the app on every coworker task (not by the AI's instructions). */
+export interface SafetyLimits {
+  /** Tool calls allowed in one task before it is stopped. */
+  maxToolCallsPerTurn: number;
+  /** Minutes one task may run before it is stopped. */
+  maxTurnMinutes: number;
+  /** The same action repeated this many times in a row counts as a loop and stops the task. */
+  maxRepeatedCalls: number;
+  /** Messages, posts, orders and payments allowed per coworker per hour (even if pre-approved). */
+  maxOutboundPerHour: number;
+}
+
 export interface PermissionPolicyState {
   levels: Record<PermissionCategory, PermissionLevel>;
   grants: PermissionGrant[];
+  /** Coworkers that may only read and research, and must describe changes instead of making them. */
+  suggestOnlyBots: string[];
+  limits: SafetyLimits;
+  /** While active, every tool call of every coworker is blocked. */
+  emergencyStop: { active: boolean; since: string | null };
+}
+
+export interface AuditIntegrity {
+  ok: boolean;
+  entries: number;
+  /** Index (0 = newest) of the first entry whose hash does not match, or null. */
+  brokenAt: number | null;
 }
 
 export interface PermissionAuditEntry {
@@ -568,13 +600,17 @@ export interface PermissionAuditEntry {
   at: string;
   botId: string | null;
   provider: string;
-  category: PermissionCategory;
+  /** "system" marks safety events (task stopped, loop, injection, emergency stop, log cleared). */
+  category: PermissionCategory | "system";
   /** Short, redacted description of the action (no secrets). */
   action: string;
   level: PermissionLevel;
   effective: "allow" | "ask" | "deny";
-  decision: "allowed" | "denied" | "approved" | "rejected" | "timed-out";
+  decision: "allowed" | "denied" | "approved" | "rejected" | "timed-out" | "stopped" | "flagged";
   reason: string;
+  /** Hash chain: sha256(prevHash + entry). Editing or removing an entry breaks the chain. */
+  prevHash?: string;
+  hash?: string;
 }
 
 export interface AddPermissionGrantInput {
@@ -836,6 +872,8 @@ export interface RespondToPromptInput {
 
 export type AgentEvent =
   | { type: "status"; status: AgentStatus }
+  /** Permission settings or the emergency stop changed. */
+  | { type: "permissions-changed"; policy: PermissionPolicyState }
   /** The provider will retry the current request after a transient error (real event). */
   | {
       type: "turn-retrying";
@@ -994,6 +1032,11 @@ export interface PermissionsDesktopApi {
   revokeGrant: (grantId: string) => Promise<PermissionPolicyState>;
   audit: () => Promise<PermissionAuditEntry[]>;
   clearAudit: () => Promise<void>;
+  setSuggestOnly: (botId: string, enabled: boolean) => Promise<PermissionPolicyState>;
+  setLimits: (limits: SafetyLimits) => Promise<PermissionPolicyState>;
+  verifyAudit: () => Promise<AuditIntegrity>;
+  /** Stops every running task and blocks all tool calls (true), or lifts the stop (false). */
+  emergencyStop: (active: boolean) => Promise<PermissionPolicyState>;
 }
 
 export interface UsageDesktopApi {

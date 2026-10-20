@@ -1,5 +1,5 @@
 import type { QueueSnapshot, ToolCallSummary } from "../../shared/ipc";
-import type { ActivityCategory, ActivityPhase } from "./activity-hinglish";
+import { type ActivityCategory, type ActivityPhase, format, LABELS } from "./activity-hinglish";
 import type { BotMessage } from "./data";
 
 /** Observable facts about one coworker. Nothing here is inferred from elapsed time. */
@@ -41,6 +41,18 @@ const IDLE: ActivityState = {
   key: "idle",
 };
 
+/** Real counts from the last turn's tool cards, so "done" never hides a failed step. */
+export function toolTally(messages: BotMessage[]): string | null {
+  const lastTurn = [...messages].reverse().find((message) => message.turnId)?.turnId;
+  if (!lastTurn) return null;
+  const tools = messages.filter((message) => message.turnId === lastTurn && message.tool);
+  if (tools.length === 0) return null;
+  const failed = tools.filter((message) => message.tool?.status === "failed").length;
+  return failed
+    ? format(LABELS.outcomeToolsFailed, { count: tools.length, failed })
+    : format(LABELS.outcomeTools, { count: tools.length });
+}
+
 export function isActivePhase(phase: ActivityPhase): boolean {
   return !["idle", "completed", "cancelled", "failed"].includes(phase);
 }
@@ -63,7 +75,11 @@ export function deriveActivity(input: ActivityInput): ActivityState {
           : input.outcome.status === "interrupted"
             ? "cancelled"
             : "failed";
-      return { ...state(phase), key: `${phase}:${input.outcome.at}` };
+      return {
+        ...state(phase),
+        detail: toolTally(input.messages),
+        key: `${phase}:${input.outcome.at}`,
+      };
     }
     return IDLE;
   }

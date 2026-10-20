@@ -169,7 +169,7 @@ export function ActivityIndicator(props: {
             <span class="activity-elapsed">{elapsed()}</span>
           </Show>
         </div>
-        <Show when={active() && (secondary() || detail())}>
+        <Show when={(active() && secondary()) || detail()}>
           <div class="activity-secondary-row">
             <Show when={secondary()} keyed>
               {(text) => <span class="activity-secondary">{text}</span>}

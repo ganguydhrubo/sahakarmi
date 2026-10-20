@@ -251,6 +251,29 @@ export const workspaceEn = {
   activitySeedha: "Seedha (plain)",
   activityStyleHint:
     "Coworker status lines are always in Hinglish. Masti adds playful lines like “Jugaad dhoondha ja raha hai…” only while a coworker is thinking; anything it actually does is always described plainly.",
+  permDestructive: "Destructive commands (wipe data, force-push, reset)",
+  permCredentials: "Passwords, keys, OTPs and .env files",
+  decisionStopped: "Stopped",
+  decisionFlagged: "Flagged",
+  categorySystem: "Safety",
+  safetyTitle: "Safety limits",
+  safetyIntro:
+    "Hard limits enforced by the app, outside the AI's memory, so they cannot be forgotten or talked away. A task that breaks one is stopped and its queue paused.",
+  limitToolCalls: "Tool calls per task",
+  limitMinutes: "Minutes per task",
+  limitRepeats: "Same action repeated (loop)",
+  limitOutbound: "Messages, posts, orders or payments per coworker per hour",
+  limitsSave: "Save limits",
+  suggestOnlyTitle: "Suggest-only coworkers",
+  suggestOnlyIntro:
+    "A suggest-only coworker can read and research but every change is blocked; it describes what it would do instead. Good for new coworkers or anything near production.",
+  emergencyStopLabel: "Stop everything",
+  stopAllHint: "Emergency stop: interrupts every task and blocks all actions until you resume",
+  stopConfirm: "Stop every coworker now and block all actions?",
+  stopBanner: "Emergency stop is on. No coworker can run any action.",
+  stopLift: "Lift emergency stop",
+  auditIntact: "Log integrity verified ({count} entries, hash chain intact)",
+  auditBroken: "Log integrity check FAILED: an entry was changed or removed outside the app",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -501,6 +524,29 @@ export const workspaceHi: WorkspaceDictionary = {
   activitySeedha: "सीधा (सादा)",
   activityStyleHint:
     "सहकर्मी की स्टेटस लाइनें हमेशा हिंग्लिश (रोमन लिपि) में रहती हैं. मस्ती सिर्फ़ सोचते समय “Jugaad dhoondha ja raha hai…” जैसी मज़ेदार लाइनें दिखाती है; असली काम हमेशा सीधे शब्दों में बताया जाता है.",
+  permDestructive: "विनाशकारी कमांड (डेटा मिटाना, force-push, reset)",
+  permCredentials: "पासवर्ड, कुंजियाँ, OTP और .env फ़ाइलें",
+  decisionStopped: "रोका गया",
+  decisionFlagged: "चिह्नित",
+  categorySystem: "सुरक्षा",
+  safetyTitle: "सुरक्षा सीमाएँ",
+  safetyIntro:
+    "ऐप द्वारा लागू सख़्त सीमाएँ, AI की याददाश्त के बाहर, ताकि भूली या बातों से हटाई न जा सकें। कोई सीमा टूटने पर काम रोका जाता है और कतार रुक जाती है।",
+  limitToolCalls: "प्रति काम टूल कॉल",
+  limitMinutes: "प्रति काम मिनट",
+  limitRepeats: "एक ही काम बार-बार (लूप)",
+  limitOutbound: "प्रति सहकर्मी प्रति घंटा संदेश, पोस्ट, ऑर्डर या भुगतान",
+  limitsSave: "सीमाएँ सहेजें",
+  suggestOnlyTitle: "सिर्फ़ सुझाव देने वाले सहकर्मी",
+  suggestOnlyIntro:
+    "ऐसा सहकर्मी पढ़ और खोज सकता है, पर हर बदलाव रोका जाता है; वह बताता है कि क्या करता। नए सहकर्मियों या प्रोडक्शन के पास के काम के लिए अच्छा।",
+  emergencyStopLabel: "सब रोकें",
+  stopAllHint: "आपातकालीन रोक: हर काम रोकता है और आपके फिर शुरू करने तक सभी क्रियाएँ बंद",
+  stopConfirm: "अभी हर सहकर्मी को रोकें और सभी क्रियाएँ बंद करें?",
+  stopBanner: "आपातकालीन रोक चालू है। कोई सहकर्मी कोई क्रिया नहीं कर सकता।",
+  stopLift: "आपातकालीन रोक हटाएँ",
+  auditIntact: "लॉग की अखंडता जाँची गई ({count} प्रविष्टियाँ, हैश चेन सही)",
+  auditBroken: "लॉग अखंडता जाँच विफल: ऐप के बाहर कोई प्रविष्टि बदली या हटाई गई",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -748,4 +794,27 @@ export const workspaceBn: WorkspaceDictionary = {
   activitySeedha: "সোজা (সাধারণ)",
   activityStyleHint:
     "সহকর্মীর স্ট্যাটাস সবসময় হিংলিশে (রোমান হরফে) থাকে। মস্তি শুধু ভাবার সময় “Jugaad dhoondha ja raha hai…” ধরনের মজার লাইন দেখায়; আসল কাজ সবসময় সোজা ভাষায় বলা হয়।",
+  permDestructive: "ধ্বংসাত্মক কমান্ড (ডেটা মোছা, force-push, reset)",
+  permCredentials: "পাসওয়ার্ড, কী, OTP এবং .env ফাইল",
+  decisionStopped: "থামানো হয়েছে",
+  decisionFlagged: "চিহ্নিত",
+  categorySystem: "নিরাপত্তা",
+  safetyTitle: "নিরাপত্তা সীমা",
+  safetyIntro:
+    "অ্যাপ নিজে এই কঠোর সীমা প্রয়োগ করে, AI-এর স্মৃতির বাইরে, তাই ভুলে যাওয়া বা কথায় সরানো যায় না। সীমা ভাঙলে কাজ থামে এবং সারি বিরতিতে যায়।",
+  limitToolCalls: "প্রতি কাজে টুল কল",
+  limitMinutes: "প্রতি কাজে মিনিট",
+  limitRepeats: "একই কাজ বারবার (লুপ)",
+  limitOutbound: "প্রতি সহকর্মী প্রতি ঘণ্টায় বার্তা, পোস্ট, অর্ডার বা পেমেন্ট",
+  limitsSave: "সীমা সংরক্ষণ করুন",
+  suggestOnlyTitle: "শুধু পরামর্শ দেওয়া সহকর্মী",
+  suggestOnlyIntro:
+    "এমন সহকর্মী পড়তে ও খুঁজতে পারে, কিন্তু প্রতিটি পরিবর্তন আটকানো হয়; সে কী করত তা বর্ণনা করে। নতুন সহকর্মী বা প্রোডাকশনের কাছের কাজে ভালো।",
+  emergencyStopLabel: "সব থামান",
+  stopAllHint: "জরুরি স্টপ: প্রতিটি কাজ থামায় এবং আবার চালু না করা পর্যন্ত সব কাজ বন্ধ রাখে",
+  stopConfirm: "এখনই সব সহকর্মীকে থামিয়ে সব কাজ বন্ধ করবেন?",
+  stopBanner: "জরুরি স্টপ চালু আছে। কোনো সহকর্মী কোনো কাজ করতে পারবে না।",
+  stopLift: "জরুরি স্টপ তুলে নিন",
+  auditIntact: "লগের অখণ্ডতা যাচাই হয়েছে ({count}টি এন্ট্রি, হ্যাশ চেইন ঠিক আছে)",
+  auditBroken: "লগ অখণ্ডতা যাচাই ব্যর্থ: অ্যাপের বাইরে কোনো এন্ট্রি বদলানো বা মোছা হয়েছে",
 };

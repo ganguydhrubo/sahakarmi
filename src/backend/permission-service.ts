@@ -1,23 +1,28 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   type AddPermissionGrantInput,
+  type AuditIntegrity,
   PERMISSION_CATEGORIES,
   type PermissionAuditEntry,
   type PermissionCategory,
   type PermissionGrant,
   type PermissionLevel,
   type PermissionPolicyState,
+  type SafetyLimits,
 } from "../shared/ipc";
 import { JsonFile } from "./json-file";
 import {
   allowedLevels,
   DEFAULT_PERMISSION_LEVELS,
+  DEFAULT_SAFETY_LIMITS,
   decide,
+  OUTBOUND_CATEGORIES,
   type PermissionDecision,
   type PermissionRequest,
   redact,
   sanitizeLevels,
+  sanitizeLimits,
 } from "./permission-policy";
 import { isRecord } from "./protocol";
 
@@ -25,6 +30,9 @@ interface PolicyFileState {
   version: 1;
   levels: Record<string, string>;
   grants: PermissionGrant[];
+  suggestOnlyBots?: string[];
+  limits?: Partial<SafetyLimits>;
+  emergencyStop?: { active: boolean; since: string | null };
 }
 
 interface AuditFileState {
@@ -34,6 +42,50 @@ interface AuditFileState {
 
 const MAX_AUDIT_ENTRIES = 1_000;
 const MAX_GRANT_HOURS = 24 * 7;
+const HOUR_MS = 3_600_000;
+const GENESIS_HASH = "0".repeat(64);
+
+function defaultPolicy(): PermissionPolicyState {
+  return {
+    levels: { ...DEFAULT_PERMISSION_LEVELS },
+    grants: [],
+    suggestOnlyBots: [],
+    limits: { ...DEFAULT_SAFETY_LIMITS },
+    emergencyStop: { active: false, since: null },
+  };
+}
+
+/** sha256 over the previous hash and every field of the entry except its own hash. */
+export function hashAuditEntry(entry: PermissionAuditEntry, prevHash: string): string {
+  const { hash: _hash, prevHash: _prev, ...fields } = entry;
+  const ordered = Object.keys(fields)
+    .sort()
+    .map((key) => [key, fields[key as keyof typeof fields]]);
+  return createHash("sha256").update(prevHash).update(JSON.stringify(ordered)).digest("hex");
+}
+
+/**
+ * Checks the hash chain (entries are newest first). Entries written before the chain existed
+ * have no hash and are skipped; the oldest kept entry may point at one already rotated out.
+ */
+export function verifyAuditChain(entries: PermissionAuditEntry[]): AuditIntegrity {
+  let olderHash: string | null = null;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index] as PermissionAuditEntry;
+    if (!entry.hash || !entry.prevHash) {
+      if (olderHash !== null) return { ok: false, entries: entries.length, brokenAt: index };
+      continue;
+    }
+    if (olderHash !== null && entry.prevHash !== olderHash) {
+      return { ok: false, entries: entries.length, brokenAt: index };
+    }
+    if (hashAuditEntry(entry, entry.prevHash) !== entry.hash) {
+      return { ok: false, entries: entries.length, brokenAt: index };
+    }
+    olderHash = entry.hash;
+  }
+  return { ok: true, entries: entries.length, brokenAt: null };
+}
 
 /**
  * Asks the owner and resolves with their decision. Implemented by AgentService through the
@@ -57,9 +109,12 @@ export interface AuthorizeResult {
 export class PermissionService {
   readonly #policyFile: JsonFile<PolicyFileState>;
   readonly #auditFile: JsonFile<AuditFileState>;
-  #policy: PermissionPolicyState = { levels: { ...DEFAULT_PERMISSION_LEVELS }, grants: [] };
+  #policy: PermissionPolicyState = defaultPolicy();
   #audit: PermissionAuditEntry[] = [];
   #asker: PermissionAsker | null = null;
+  #onChange: ((policy: PermissionPolicyState) => void) | null = null;
+  /** Outbound actions per coworker (timestamps). Kept apart from the audit so clearing it cannot reset the cap. */
+  readonly #outbound = new Map<string, number[]>();
   readonly #now: () => Date;
 
   constructor(userDataPath: string, now: () => Date = () => new Date()) {
@@ -76,6 +131,14 @@ export class PermissionService {
     this.#policy = {
       levels: sanitizeLevels(stored.levels),
       grants: stored.grants.filter((grant) => PERMISSION_CATEGORIES.includes(grant.category)),
+      suggestOnlyBots: Array.isArray(stored.suggestOnlyBots)
+        ? stored.suggestOnlyBots.filter((id) => typeof id === "string")
+        : [],
+      limits: sanitizeLimits(stored.limits),
+      emergencyStop:
+        stored.emergencyStop?.active === true
+          ? { active: true, since: stored.emergencyStop.since ?? null }
+          : { active: false, since: null },
     };
     this.#pruneGrants();
     const audit = await this.#auditFile.read(() => ({ version: 1, entries: [] }), isAuditFileState);
@@ -86,12 +149,65 @@ export class PermissionService {
     this.#asker = asker;
   }
 
+  /** Called after any settings change, so open windows can refresh. */
+  setChangeListener(listener: (policy: PermissionPolicyState) => void): void {
+    this.#onChange = listener;
+  }
+
   get(): PermissionPolicyState {
     this.#pruneGrants();
     return {
       levels: { ...this.#policy.levels },
       grants: this.#policy.grants.map((grant) => ({ ...grant })),
+      suggestOnlyBots: [...this.#policy.suggestOnlyBots],
+      limits: { ...this.#policy.limits },
+      emergencyStop: { ...this.#policy.emergencyStop },
     };
+  }
+
+  limits(): SafetyLimits {
+    return { ...this.#policy.limits };
+  }
+
+  isStopped(): boolean {
+    return this.#policy.emergencyStop.active;
+  }
+
+  isSuggestOnly(botId: string): boolean {
+    return this.#policy.suggestOnlyBots.includes(botId);
+  }
+
+  async setSuggestOnly(botId: string, enabled: boolean): Promise<PermissionPolicyState> {
+    const others = this.#policy.suggestOnlyBots.filter((id) => id !== botId);
+    this.#policy.suggestOnlyBots = enabled ? [...others, botId] : others;
+    await this.#persistPolicy();
+    await this.recordEvent({
+      botId,
+      action: enabled ? "Suggest-only mode on" : "Suggest-only mode off",
+      decision: "allowed",
+      reason: "Changed by the owner.",
+    });
+    return this.get();
+  }
+
+  async setLimits(limits: SafetyLimits): Promise<PermissionPolicyState> {
+    this.#policy.limits = sanitizeLimits(limits);
+    await this.#persistPolicy();
+    return this.get();
+  }
+
+  async setEmergencyStop(active: boolean): Promise<PermissionPolicyState> {
+    this.#policy.emergencyStop = active
+      ? { active: true, since: this.#now().toISOString() }
+      : { active: false, since: null };
+    await this.#persistPolicy();
+    await this.recordEvent({
+      botId: null,
+      action: active ? "Emergency stop" : "Emergency stop lifted",
+      decision: active ? "stopped" : "allowed",
+      reason: "Changed by the owner.",
+    });
+    return this.get();
   }
 
   async setLevel(
@@ -143,9 +259,55 @@ export class PermissionService {
     return this.#audit.map((entry) => ({ ...entry }));
   }
 
+  verifyAudit(): AuditIntegrity {
+    return verifyAuditChain(this.#audit);
+  }
+
+  /**
+   * Clearing keeps one anchor entry chained to the last hash, so a cleared log is visible as
+   * such instead of looking like nothing ever happened.
+   */
   async clearAudit(): Promise<void> {
+    const removed = this.#audit.length;
+    const lastHash = this.#audit[0]?.hash ?? GENESIS_HASH;
     this.#audit = [];
-    await this.#auditFile.write({ version: 1, entries: [] });
+    await this.#append(
+      {
+        id: randomUUID(),
+        at: this.#now().toISOString(),
+        botId: null,
+        provider: "app",
+        category: "system",
+        action: `Audit log cleared (${removed} entries)`,
+        level: "ask",
+        effective: "allow",
+        decision: "allowed",
+        reason: "Cleared by the owner.",
+      },
+      lastHash,
+    );
+  }
+
+  /** Safety events that are not a permission request: task stopped, loop, injection flagged. */
+  async recordEvent(input: {
+    botId: string | null;
+    provider?: string;
+    action: string;
+    decision: PermissionAuditEntry["decision"];
+    reason: string;
+  }): Promise<void> {
+    await this.#append({
+      id: randomUUID(),
+      at: this.#now().toISOString(),
+      botId: input.botId,
+      provider: input.provider ?? "app",
+      category: "system",
+      action: redact(input.action),
+      level: "ask",
+      effective: input.decision === "allowed" ? "allow" : "deny",
+      decision: input.decision,
+      reason: redact(input.reason, 400),
+    });
   }
 
   /** Effective decision without side effects (used by tests and the UI preview). */
@@ -161,6 +323,40 @@ export class PermissionService {
   async authorize(request: PermissionRequest, workspaceRoots: string[]): Promise<AuthorizeResult> {
     const safeRequest = { ...request, action: redact(request.action) };
     const decision = this.evaluate(safeRequest, workspaceRoots);
+    if (decision.effective !== "deny" && this.#overOutboundCap(safeRequest)) {
+      const capped: PermissionDecision = {
+        ...decision,
+        effective: "deny",
+        reason: `Hourly limit reached: at most ${this.#policy.limits.maxOutboundPerHour} messages, posts, orders or payments per coworker per hour.`,
+        grant: null,
+      };
+      await this.#record(safeRequest, capped, "denied");
+      return { allowed: false, reason: capped.reason };
+    }
+    const result = await this.#authorizeDecided(safeRequest, decision);
+    if (result.allowed) this.#countOutbound(safeRequest);
+    return result;
+  }
+
+  #overOutboundCap(request: PermissionRequest): boolean {
+    if (!OUTBOUND_CATEGORIES.includes(request.category)) return false;
+    const key = request.botId ?? "*";
+    const since = this.#now().getTime() - HOUR_MS;
+    const recent = (this.#outbound.get(key) ?? []).filter((at) => at > since);
+    this.#outbound.set(key, recent);
+    return recent.length >= this.#policy.limits.maxOutboundPerHour;
+  }
+
+  #countOutbound(request: PermissionRequest): void {
+    if (!OUTBOUND_CATEGORIES.includes(request.category)) return;
+    const key = request.botId ?? "*";
+    this.#outbound.set(key, [...(this.#outbound.get(key) ?? []), this.#now().getTime()]);
+  }
+
+  async #authorizeDecided(
+    safeRequest: PermissionRequest,
+    decision: PermissionDecision,
+  ): Promise<AuthorizeResult> {
     if (decision.effective === "allow") {
       if (decision.grant) {
         await this.#consumeGrant(decision.grant.id);
@@ -210,7 +406,7 @@ export class PermissionService {
     decision: PermissionDecision,
     outcome: PermissionAuditEntry["decision"],
   ): Promise<void> {
-    this.#audit.unshift({
+    await this.#append({
       id: randomUUID(),
       at: this.#now().toISOString(),
       botId: request.botId,
@@ -220,8 +416,15 @@ export class PermissionService {
       level: decision.level,
       effective: decision.effective,
       decision: outcome,
-      reason: decision.reason,
+      reason: request.escalate ? `${decision.reason} [escalated]` : decision.reason,
     });
+  }
+
+  async #append(entry: PermissionAuditEntry, prevHash?: string): Promise<void> {
+    const previous = prevHash ?? this.#audit[0]?.hash ?? GENESIS_HASH;
+    const chained = { ...entry, prevHash: previous };
+    chained.hash = hashAuditEntry(chained, previous);
+    this.#audit.unshift(chained);
     this.#audit = this.#audit.slice(0, MAX_AUDIT_ENTRIES);
     await this.#auditFile.write({ version: 1, entries: this.#audit });
   }
@@ -240,7 +443,11 @@ export class PermissionService {
       version: 1,
       levels: { ...this.#policy.levels },
       grants: this.#policy.grants,
+      suggestOnlyBots: this.#policy.suggestOnlyBots,
+      limits: this.#policy.limits,
+      emergencyStop: this.#policy.emergencyStop,
     });
+    this.#onChange?.(this.get());
   }
 }
 

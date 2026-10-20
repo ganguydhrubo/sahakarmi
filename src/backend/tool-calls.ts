@@ -152,3 +152,30 @@ function clip(value: string | null): string | null {
   if (!value) return null;
   return value.length > MAX_FIELD_LENGTH ? `${value.slice(0, MAX_FIELD_LENGTH)}\n…` : value;
 }
+
+/**
+ * Full output of a tool that brings in content the owner did not write (web pages, search
+ * results, MCP servers). Returns null for local tools. Used for prompt-injection screening.
+ */
+export function untrustedText(item: ThreadItem): string | null {
+  if (!isToolItem(item)) return null;
+  if (item.type === "webSearch") return serialize(item.results ?? item.action ?? null);
+  if (item.type === "commandExecution" || item.type === "fileChange") return null;
+  const namespace = stringField(item.namespace) ?? stringField(item.server);
+  const tool = stringField(item.tool) ?? stringField(item.name) ?? "tool";
+  const kind = toolKind(namespace, tool);
+  if (kind !== "browser" && kind !== "web" && item.type !== "mcpToolCall") return null;
+  return resultText(item);
+}
+
+/** Stable identity of a tool call's name and input, for loop detection. */
+export function toolSignature(item: ThreadItem): string {
+  const input =
+    item.type === "commandExecution"
+      ? (stringField(item.command) ?? joinCommand(item.command))
+      : item.type === "fileChange"
+        ? serialize(item.changes)
+        : serialize(item.arguments ?? item.input ?? item.query);
+  const name = stringField(item.tool) ?? stringField(item.name) ?? item.type;
+  return `${item.type}:${name}:${(input ?? "").slice(0, 2_000)}`;
+}

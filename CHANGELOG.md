@@ -3,6 +3,33 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-10-20
+
+### Added: guardrails against known AI-agent failures
+
+These are enforced by the app, outside the AI's context window, so a long conversation, a
+compaction or a clever prompt cannot remove them. See `docs/AGENT-SAFETY-REPORT.md`.
+
+- **Destructive commands always ask.** `rm -rf`, `DROP`/`TRUNCATE`/`DELETE FROM`, force-push,
+  `reset --hard`, `prisma migrate reset`, `supabase db reset`, volume and cloud deletes,
+  `terraform destroy`, `kubectl delete` and similar are a new category that can never be automatic.
+- **Secrets always ask.** Reading `.env`, SSH/cloud keys or credential files, printing environment
+  secrets, and typing into password, OTP, PIN or CVV fields need approval with every provider.
+- **Emergency stop** ("Stop everything" in the sidebar, Ctrl/Cmd+Shift+Esc): interrupts every task,
+  pauses every queue and blocks all actions until you lift it. It stays on after a restart.
+- **Suggest-only coworkers:** a coworker can read and research but every change is blocked.
+- **Per-task limits:** tool calls per task, minutes per task, and loop detection (the same action
+  repeated). A task that hits one is stopped and its queue paused. All configurable.
+- **Hourly cap** on messages, posts, orders and payments per coworker, even when pre-approved.
+- **Prompt-injection defence:** browser content is labelled as untrusted data. When web or external
+  content contains instruction-like text, the task switches to strict mode: every change asks.
+  After any web read, actions that could send data out ask first.
+- **Tamper-evident activity log:** entries are hash-chained, and the Activity view shows whether the
+  chain is intact. Clearing the log leaves a marker entry.
+- "Task done" shows real counts of tools that ran and failed.
+- Coworker instructions now cover grounded answers (only from `Shared/Policies`), never claiming
+  to be human, verifying after every change, and never improvising destructive fixes.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added

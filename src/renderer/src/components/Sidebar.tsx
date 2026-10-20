@@ -51,6 +51,8 @@ interface SidebarProps {
   onCreateWorkspace: (name: string) => Promise<void>;
   onRenameWorkspace: (workspaceId: string, name: string) => Promise<void>;
   onCollapse: () => void;
+  emergencyStop: boolean;
+  onEmergencyStop: () => void;
 }
 
 interface BotContextMenu {
@@ -506,6 +508,19 @@ export function Sidebar(props: SidebarProps) {
             </button>
           )}
         </For>
+        <button
+          type="button"
+          class="rail-nav-item rail-stop"
+          title={t("stopAllHint")}
+          disabled={props.emergencyStop}
+          onClick={props.onEmergencyStop}
+        >
+          <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+            <path d="M7 2.5h6L17.5 7v6L13 17.5H7L2.5 13V7z" />
+            <path d="M7.5 10h5" />
+          </svg>
+          <span>{t("emergencyStopLabel")}</span>
+        </button>
         <p class="rail-tagline">
           {t("tagline")}
           <Show when={props.appInfo}>
