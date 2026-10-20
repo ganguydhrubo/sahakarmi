@@ -15,6 +15,7 @@ export type CenterView =
   | "schedules"
   | "usage"
   | "business"
+  | "marketplace"
   | "activity"
   | "settings";
 
@@ -29,6 +30,7 @@ const RAIL_ITEMS: Array<{
   { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
   { view: "usage", label: "navUsage", feature: "model-usage", icon: UsageIcon },
   { view: "business", label: "navBusiness", feature: "business-targets", icon: BusinessIcon },
+  { view: "marketplace", label: "navMarketplace", feature: "marketplace", icon: MarketplaceIcon },
   { view: "activity", label: "navActivity", feature: null, icon: ActivityIcon },
   { view: "settings", label: "settings", feature: null, icon: SettingsIcon },
 ];
@@ -111,6 +113,14 @@ function DeleteIcon() {
         stroke-linecap="round"
         stroke-linejoin="round"
       />
+    </svg>
+  );
+}
+
+function MarketplaceIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path d="M3.5 7.5 4.6 3.8h10.8l1.1 3.7M3.5 7.5c0 1.2 1 2.1 2.2 2.1s2.1-.9 2.1-2.1c0 1.2 1 2.1 2.2 2.1s2.1-.9 2.1-2.1c0 1.2 1 2.1 2.2 2.1s2.2-.9 2.2-2.1M3.5 7.5h13M4.8 9.4v6.8h10.4V9.4M8.3 16.2v-3.6h3.4v3.6" />
     </svg>
   );
 }

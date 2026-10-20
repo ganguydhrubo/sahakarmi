@@ -119,6 +119,12 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     false,
   ),
   feature(
+    "marketplace",
+    "Marketplace",
+    "Add ready-made coworkers and install skills in one click.",
+    "workspace",
+  ),
+  feature(
     "business-targets",
     "Business targets",
     "Your own goals, tracked separately from any platform data.",
