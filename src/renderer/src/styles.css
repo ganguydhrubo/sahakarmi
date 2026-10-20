@@ -7658,3 +7658,241 @@ ol.md-list {
 .md-table tbody tr:last-child td {
   border-bottom: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   Live agent activity (Hinglish). Fixed height so rotating lines never shift layout.
+   --------------------------------------------------------------------------- */
+
+.agent-activity-entry {
+  height: 62px;
+  align-items: flex-start;
+}
+
+.agent-activity-avatar {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.agent-activity-card {
+  display: flex;
+  width: min(420px, calc(100% - 44px));
+  min-width: 0;
+  max-width: min(560px, 100%);
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.08);
+  border-radius: 14px;
+  background:
+    linear-gradient(100deg, rgb(var(--primary-rgb) / 0.08), transparent 60%),
+    rgb(var(--ink-rgb) / 0.04);
+  padding: 7px 12px 8px;
+  box-shadow: inset 0 1px 0 rgb(var(--ink-rgb) / 0.03);
+}
+
+.agent-activity-row,
+.activity-secondary-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.activity-mark {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  place-items: center;
+}
+
+.activity-spinner {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  animation: activity-spin 1.6s linear infinite;
+}
+
+.activity-spinner i {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.activity-spinner i:nth-child(1) {
+  top: 0;
+  left: 4.5px;
+}
+
+.activity-spinner i:nth-child(2) {
+  right: 0;
+  bottom: 1px;
+  background: var(--warning-fill);
+  opacity: 0.85;
+}
+
+.activity-spinner i:nth-child(3) {
+  bottom: 1px;
+  left: 0;
+  background: var(--indigo-accent);
+  opacity: 0.7;
+}
+
+.activity-outcome-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+
+.activity-phase-completed .activity-mark {
+  color: var(--success);
+}
+
+.activity-phase-cancelled .activity-mark,
+.activity-phase-failed .activity-mark {
+  color: var(--danger);
+}
+
+.activity-primary-wrap {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.activity-primary {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: activity-fade 220ms ease-out;
+}
+
+.agent-activity-active .activity-primary {
+  background: linear-gradient(
+    90deg,
+    var(--text-primary) 0%,
+    var(--text-primary) 40%,
+    var(--primary-ink) 50%,
+    var(--text-primary) 60%,
+    var(--text-primary) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation:
+    activity-fade 220ms ease-out,
+    activity-shimmer 2.6s linear infinite;
+}
+
+.activity-elapsed {
+  flex: none;
+  border-radius: 999px;
+  background: rgb(var(--ink-rgb) / 0.07);
+  padding: 0 7px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+
+.activity-secondary-row {
+  padding-left: 24px;
+}
+
+.activity-secondary {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: activity-fade 260ms ease-out;
+}
+
+.activity-detail {
+  overflow: hidden;
+  max-width: 45%;
+  flex: none;
+  border-radius: 6px;
+  background: rgb(var(--ink-rgb) / 0.06);
+  padding: 0 6px;
+  color: var(--text-secondary);
+  font:
+    11px / 18px ui-monospace,
+    "Cascadia Mono",
+    Consolas,
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes activity-fade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes activity-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .agent-activity-card {
+    max-width: calc(100% - 44px);
+  }
+
+  .activity-detail {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-spinner,
+  .activity-primary,
+  .activity-secondary,
+  .agent-activity-active .activity-primary {
+    animation: none;
+  }
+
+  .agent-activity-active .activity-primary {
+    background: none;
+    color: var(--text-primary);
+  }
+}
+
+.agent-activity-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 380px) {
+  .activity-detail {
+    display: none;
+  }
+}

@@ -1,5 +1,6 @@
 import { Show } from "solid-js";
 import type { ToolCallKind, ToolCallSummary } from "../../../shared/ipc";
+import { LABELS } from "../activity-hinglish";
 import { t } from "../i18n";
 
 const KIND_GLYPHS: Record<ToolCallKind, string> = {
@@ -17,10 +18,10 @@ const KIND_GLYPHS: Record<ToolCallKind, string> = {
 export function ToolCallCard(props: { tool: ToolCallSummary }) {
   const statusText = () =>
     props.tool.status === "running"
-      ? t("toolRunning")
+      ? LABELS.toolRunning
       : props.tool.status === "failed"
-        ? t("toolFailed")
-        : t("toolDone");
+        ? LABELS.toolFailed
+        : LABELS.toolDone;
   const preview = () => props.tool.input?.split("\n")[0]?.slice(0, 90) ?? "";
   return (
     <article class={`tool-card tool-card-${props.tool.status}`}>

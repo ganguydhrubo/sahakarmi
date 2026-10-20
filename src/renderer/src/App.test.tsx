@@ -759,9 +759,13 @@ describe("Sahkarmi connected desktop shell", () => {
     ]);
     render(() => <App />);
     expect(
-      await screen.findByRole("button", { name: "Sales Outbound, New coworker, Waiting for you" }),
+      await screen.findByRole("button", {
+        name: "Sales Outbound, New coworker, Aapka intezaar hai",
+      }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Chief, New coworker, Idle" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Chief, New coworker, Free hai" }),
+    ).toBeInTheDocument();
   });
 
   it("downloads an available update from Settings", async () => {
@@ -899,7 +903,7 @@ describe("Sahkarmi connected desktop shell", () => {
       });
 
     render(() => <App />);
-    await screen.findByText("Connecting to agent CLIs…");
+    await screen.findByText("AI tools se connection ho raha hai…");
     emitAgentEvent?.({
       type: "status",
       status: {
@@ -1092,7 +1096,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await waitFor(() => expect(trigger).toBeDisabled());
     expect(trigger).toHaveAttribute(
       "title",
-      "Wait for the current work to finish before changing models.",
+      "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein.",
     );
 
     emitAgentEvent?.({
@@ -1646,7 +1650,10 @@ describe("Sahkarmi connected desktop shell", () => {
       threadId: "thread-chief",
       turnId: "turn-live",
     });
-    const workingIndicator = await screen.findByRole("status", { name: "Chief is working" });
+    const workingIndicator = await screen.findByRole("status", { name: /^Chief: / });
+    // A real turn started, so the line describes work in progress in Hinglish, never "Working".
+    expect(workingIndicator).toHaveAccessibleName(/^Chief: .*(kaam|ho rahi|ho raha|receive)/i);
+    expect(workingIndicator).not.toHaveTextContent(/Working/);
 
     emitAgentEvent?.({
       type: "conversation",
@@ -1703,7 +1710,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(streamingAnswer.closest(".message-entry")).toHaveClass("message-entry-animated");
     expect(streamingBubble).toHaveClass("bot-bubble-streaming");
     expect(screen.queryByText("Typing…")).not.toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Chief is working" })).toBe(workingIndicator);
+    expect(screen.getByRole("status", { name: /^Chief: / })).toBe(workingIndicator);
 
     emitAgentEvent?.({
       type: "conversation-delta",
@@ -1718,7 +1725,7 @@ describe("Sahkarmi connected desktop shell", () => {
     const updatedStreamingAnswer = await screen.findByText("I am on it now");
     expect(updatedStreamingAnswer.closest(".bot-bubble")).toBe(streamingBubble);
     expect(screen.getByText("Do the work").closest(".message-entry")).toBe(firstMessageEntry);
-    expect(screen.getByRole("status", { name: "Chief is working" })).toBe(workingIndicator);
+    expect(screen.getByRole("status", { name: /^Chief: / })).toBe(workingIndicator);
 
     for (const [revision, text] of [
       [5, "I am on it now, first buffered delta"],
@@ -1762,11 +1769,99 @@ describe("Sahkarmi connected desktop shell", () => {
       turnId: "turn-live",
       status: "completed",
     });
-    await waitFor(() =>
-      expect(screen.queryByRole("status", { name: "Chief is working" })).not.toBeInTheDocument(),
+    // The real outcome is shown briefly, then the indicator hides and its timers stop.
+    expect(await screen.findByRole("status", { name: "Chief: Kaam poora ho gaya!" })).toBe(
+      workingIndicator,
     );
+    await waitFor(() => expect(workingIndicator).toHaveAttribute("aria-hidden", "true"), {
+      timeout: 5_000,
+    });
     expect(document.querySelector(".agent-activity-entry")).toBe(workingIndicator);
-    expect(workingIndicator).toHaveAttribute("aria-hidden", "true");
+  }, 15_000);
+
+  it("describes real tool, retry and cancel events in Hinglish, per coworker", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const createdAt = "2026-08-12T10:00:00.000Z";
+    const userMessage = {
+      id: "req",
+      turnId: "turn-tool",
+      author: "user" as const,
+      text: "Tests chalao",
+      createdAt,
+      status: "completed" as const,
+      delivery: { id: "req", status: "running" as const, position: null },
+    };
+    emitAgentEvent?.({
+      type: "turn-started",
+      botId: "chief",
+      threadId: "thread-chief",
+      turnId: "turn-tool",
+    });
+    emitAgentEvent?.({
+      type: "conversation",
+      snapshot: {
+        botId: "chief",
+        threadId: "thread-chief",
+        activeTurnId: "turn-tool",
+        revision: 2,
+        messages: [
+          userMessage,
+          {
+            id: "tool-1",
+            turnId: "turn-tool",
+            author: "assistant",
+            text: "",
+            createdAt,
+            status: "streaming",
+            itemType: "toolCall",
+            tool: {
+              name: "Run command",
+              kind: "command",
+              status: "running",
+              input: "npm test",
+              output: null,
+            },
+          },
+        ],
+      },
+    });
+    const indicator = await screen.findByRole("status", {
+      name: "Chief: Tests aur build check ho rahe hain…",
+    });
+    expect(indicator).toHaveTextContent("npm test");
+
+    // A provider-reported retry replaces the line; the next real progress clears it.
+    emitAgentEvent?.({
+      type: "turn-retrying",
+      botId: "chief",
+      attempt: 2,
+      maxRetries: 10,
+      delayMs: 2000,
+    });
+    expect(
+      await screen.findByRole("status", { name: "Chief: Ek baar phir try ho raha hai…" }),
+    ).toHaveTextContent("Koshish 2/10");
+
+    // Another coworker's activity never leaks into this one.
+    emitAgentEvent?.({
+      type: "turn-started",
+      botId: "sales-outbound",
+      threadId: "thread-sales",
+      turnId: "turn-sales",
+    });
+    expect(screen.getByRole("status", { name: /^Chief: / })).toBe(indicator);
+
+    emitAgentEvent?.({
+      type: "turn-completed",
+      botId: "chief",
+      threadId: "thread-chief",
+      turnId: "turn-tool",
+      status: "interrupted",
+    });
+    expect(
+      await screen.findByRole("status", { name: "Chief: Task cancel kar diya gaya hai." }),
+    ).toBe(indicator);
   });
 
   it("groups commentary into a collapsed thinking disclosure", async () => {
@@ -1819,12 +1914,12 @@ describe("Sahkarmi connected desktop shell", () => {
       },
     });
 
-    const thinkingLabel = await screen.findByText("Thinking");
+    const thinkingLabel = await screen.findByText("Soch-vichaar");
     const details = thinkingLabel.closest("details");
     expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).not.toBeVisible();
     expect(screen.getByText("Checking that the page loaded.")).not.toBeVisible();
     expect(screen.getByText("Opened example.in.")).toBeVisible();
-    expect(screen.getAllByText("Thinking")).toHaveLength(1);
+    expect(screen.getAllByText("Soch-vichaar")).toHaveLength(1);
 
     await fireEvent.click(thinkingLabel);
     expect(details).toHaveAttribute("open");
@@ -1858,7 +1953,7 @@ describe("Sahkarmi connected desktop shell", () => {
         ],
       },
     });
-    await waitFor(() => expect(screen.getByText("Thinking").closest("details")).toBe(details));
+    await waitFor(() => expect(screen.getByText("Soch-vichaar").closest("details")).toBe(details));
     expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).toBeVisible();
   });
 

@@ -1756,6 +1756,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
   }
 
+  #emitRetrying(botId: string, params: unknown): void {
+    const value = (key: string) => (isRecord(params) ? finiteNumberOrNull(params[key]) : null);
+    this.#emit({
+      type: "turn-retrying",
+      botId,
+      attempt: value("attempt"),
+      maxRetries: value("maxRetries"),
+      delayMs: value("delayMs"),
+    });
+  }
+
   #recordAdapterUsage(threadId: string | null, botId: string | null, params: unknown): void {
     if (!this.#usage) return;
     const provider = threadId ? this.#providerForThread(threadId) : null;
@@ -1967,8 +1978,22 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         if (client) void this.#refreshUsage(client).catch(() => undefined);
         return;
       }
+      case "sahkarmi/retrying": {
+        if (botId) this.#emitRetrying(botId, params);
+        return;
+      }
       case "error":
       case "warning": {
+        // Codex marks transient errors it will retry by itself; show that as a retry, not a failure.
+        if (
+          notification.method === "error" &&
+          botId &&
+          isRecord(params) &&
+          params.willRetry === true
+        ) {
+          this.#emitRetrying(botId, params);
+          return;
+        }
         const message = getString(params, "message") ?? notification.method;
         if (notification.method === "warning" && isNonActionableCodexWarning(message)) return;
         this.#emitError(`agent_${notification.method}`, message, botId);

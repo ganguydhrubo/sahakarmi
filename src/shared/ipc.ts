@@ -836,6 +836,14 @@ export interface RespondToPromptInput {
 
 export type AgentEvent =
   | { type: "status"; status: AgentStatus }
+  /** The provider will retry the current request after a transient error (real event). */
+  | {
+      type: "turn-retrying";
+      botId: string;
+      attempt: number | null;
+      maxRetries: number | null;
+      delayMs: number | null;
+    }
   | { type: "usage-changed"; usage: AccountUsage }
   | { type: "bots-changed"; bots: BotSummary[] }
   | { type: "conversation"; snapshot: ConversationSnapshot }

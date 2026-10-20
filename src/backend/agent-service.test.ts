@@ -51,6 +51,7 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_ARCHIVED_THREAD;
   delete process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY;
   delete process.env.SAHKARMI_FAKE_WARNING;
+  delete process.env.SAHKARMI_FAKE_RETRY;
   await rm(root, { recursive: true, force: true });
 });
 
@@ -248,6 +249,25 @@ describe.sequential("AgentService", () => {
     expect(reply?.result).toEqual({ decision: "decline" });
     expect(permissions.audit()[0]?.decision).toBe("timed-out");
     await waitFor(() => service?.listApprovals()[0]?.status === "rejected");
+  });
+
+  it("reports a provider retry as a retry, not as an error", async () => {
+    process.env.SAHKARMI_FAKE_RETRY = "1";
+    const { store, mailbox } = stores();
+    const events: AgentEvent[] = [];
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Reconcile payables" });
+    await waitFor(() => events.some((event) => event.type === "turn-retrying"));
+    expect(events.find((event) => event.type === "turn-retrying")).toMatchObject({
+      botId: "asha-accounts",
+    });
+    expect(
+      events.some(
+        (event) => event.type === "error" && event.message.includes("stream disconnected"),
+      ),
+    ).toBe(false);
   });
 
   it("pauses coworker browser tools while the owner has taken over", async () => {
@@ -1037,6 +1057,9 @@ process.stdin.on("data", (chunk) => {
         if (startResponseDelay > 0) setTimeout(respondToStart, startResponseDelay);
         else respondToStart();
         write({ method: "turn/started", params: { threadId: message.params.threadId, turn: { id: turnId } } });
+        if (process.env.SAHKARMI_FAKE_RETRY) {
+          write({ method: "error", params: { threadId: message.params.threadId, turnId, willRetry: true, error: { message: "stream disconnected" } } });
+        }
         if (process.env.SAHKARMI_FAKE_WARNING) {
           write({ method: "warning", params: { threadId: message.params.threadId, message: process.env.SAHKARMI_FAKE_WARNING } });
         }

@@ -341,6 +341,17 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     if (message.type === "rate_limit_event" || message.type === "result") {
       this.#emitUsage(runtime, message);
     }
+    if (message.type === "system" && message.subtype === "api_retry") {
+      this.emit("notification", {
+        method: "sahkarmi/retrying",
+        params: {
+          threadId: runtime.id,
+          attempt: message.attempt,
+          maxRetries: message.max_retries,
+          delayMs: message.retry_delay_ms,
+        },
+      });
+    }
     if (message.type === "stream_event" && message.parent_tool_use_id === null) {
       const event = message.event as unknown;
       const delta = isRecord(event) ? event.delta : null;

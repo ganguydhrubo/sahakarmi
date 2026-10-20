@@ -1,4 +1,13 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import type {
   AgentEvent,
   AgentModelId,
@@ -21,12 +30,15 @@ import type {
   UpdateBotInput,
 } from "../../../shared/ipc";
 import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
+import { deriveActivity, isActivePhase } from "../activity";
+import { format, LABELS } from "../activity-hinglish";
 import { copyText } from "../clipboard";
 import type { BotMessage, BotProfile } from "../data";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
 import { featureOn } from "../features";
 import { t } from "../i18n";
 import { markdownToPlainText } from "../markdown";
+import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
@@ -67,6 +79,12 @@ interface ConversationProps {
   browserControlState: BrowserControlState;
   leftSidebarCollapsed: boolean;
   prompt: Extract<AgentEvent, { type: "prompt" }> | undefined;
+  /** A provider said it will retry the current request (real retry event). */
+  activityRetry?: { attempt: number | null; maxRetries: number | null } | null;
+  /** Outcome of the coworker's latest turn, from the turn-completed event. */
+  turnOutcome?: { status: "completed" | "interrupted" | "failed"; at: number } | null;
+  /** A tool call of this coworker is paused in Approvals. */
+  waitingForApproval?: boolean;
   onCloseAgentPicker: () => void;
   onCreateAgent: () => void;
   onSelectAgent: (botId: string) => void;
@@ -126,18 +144,18 @@ const BROWSER_PANEL_MAX = 1600;
 const CONVERSATION_PANEL_MIN = 96;
 
 const BROWSER_ACTION_LABELS: Record<BrowserControlAction, string> = {
-  open: "Opening a page…",
-  "list-tabs": "Checking tabs…",
-  snapshot: "Reading the page…",
-  click: "Clicking…",
-  type: "Typing…",
-  key: "Using the keyboard…",
-  scroll: "Scrolling…",
-  back: "Going back…",
-  forward: "Going forward…",
-  reload: "Reloading…",
-  screenshot: "Taking a screenshot…",
-  "close-tab": "Closing a tab…",
+  open: "Page khola ja raha hai…",
+  "list-tabs": "Tabs check ho rahe hain…",
+  snapshot: "Page padha ja raha hai…",
+  click: "Click ho raha hai…",
+  type: "Type ho raha hai…",
+  key: "Keyboard se action ho raha hai…",
+  scroll: "Page scroll ho raha hai…",
+  back: "Pichhle page par ja rahe hain…",
+  forward: "Agle page par ja rahe hain…",
+  reload: "Page reload ho raha hai…",
+  screenshot: "Screenshot liya ja raha hai…",
+  "close-tab": "Tab band ho raha hai…",
 };
 
 const AVATAR_COLOR_LABELS: Record<BotAvatarColor, string> = {
@@ -825,43 +843,16 @@ function escapeExpression(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function AgentActivityIndicator(props: {
-  bot: BotProfile | undefined;
-  state: "Queued" | "Working" | null;
-}) {
-  return (
-    <div
-      class="agent-activity-entry"
-      classList={{ "agent-activity-entry-visible": props.state !== null }}
-      role="status"
-      aria-hidden={props.state === null}
-      aria-label={
-        props.state ? `${props.bot?.name ?? "Agent"} is ${props.state.toLowerCase()}` : undefined
-      }
-    >
-      <AgentAvatar bot={props.bot} class="agent-activity-avatar" />
-      <div class="agent-activity-bubble" aria-hidden="true">
-        <span>{props.state ?? "Working"}</span>
-        <span class="agent-activity-dots">
-          <i />
-          <i />
-          <i />
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function ThinkingDisclosure(props: { message: BotMessage }) {
   const stepCount = () => props.message.items?.length ?? 0;
   return (
     <article class="thinking-entry">
       <details class="thinking-disclosure">
-        <summary aria-label="Show thinking details">
+        <summary aria-label={`${LABELS.thinking}: details dekhein`}>
           <span class="thinking-mark" aria-hidden="true">
             <ThinkingIcon />
           </span>
-          <span>Thinking</span>
+          <span>{LABELS.thinking}</span>
           <Show when={props.message.streaming}>
             <span class="thinking-live-dots" aria-hidden="true">
               <i />
@@ -870,7 +861,7 @@ function ThinkingDisclosure(props: { message: BotMessage }) {
             </span>
           </Show>
           <Show when={!props.message.streaming && stepCount() > 1}>
-            <small>{stepCount()} steps</small>
+            <small>{format(LABELS.thinkingSteps, { count: stepCount() })}</small>
           </Show>
           <span class="thinking-chevron" aria-hidden="true">
             <ChevronIcon />
@@ -1038,6 +1029,37 @@ export function Conversation(props: ConversationProps) {
       return "Queued";
     }
     return null;
+  });
+  // Live activity: derived from real events; the clock only ticks while something is shown.
+  const [activityNow, setActivityNow] = createSignal(Date.now());
+  const activity = createMemo(() =>
+    deriveActivity({
+      queue: props.queue,
+      activeTurnId: props.activeTurnId,
+      messages: props.messages,
+      retry: props.activityRetry ?? null,
+      waitingForUser: Boolean(props.prompt),
+      waitingForApproval: props.waitingForApproval === true,
+      outcome: props.turnOutcome ?? null,
+      now: activityNow(),
+    }),
+  );
+  const [activeSince, setActiveSince] = createSignal<number | null>(null);
+  createEffect(() => {
+    const active = isActivePhase(activity().phase);
+    if (active && activeSince() === null) setActiveSince(Date.now());
+    if (!active && activeSince() !== null) setActiveSince(null);
+  });
+  createEffect(
+    on(
+      () => props.turnOutcome?.at,
+      () => setActivityNow(Date.now()),
+    ),
+  );
+  createEffect(() => {
+    if (activity().phase === "idle") return;
+    const timer = window.setInterval(() => setActivityNow(Date.now()), 1_000);
+    onCleanup(() => window.clearInterval(timer));
   });
   const takeoverRequests = createMemo(() =>
     props.takeover.requests.map((request) => ({
@@ -1805,7 +1827,7 @@ export function Conversation(props: ConversationProps) {
                 <strong>
                   {props.agentStatus.phase === "starting" ||
                   props.agentStatus.phase === "restarting"
-                    ? "Connecting to agent CLIs…"
+                    ? "AI tools se connection ho raha hai…"
                     : "Agent CLI setup required"}
                 </strong>
                 <p>
@@ -2006,7 +2028,12 @@ export function Conversation(props: ConversationProps) {
               );
             }}
           </For>
-          <AgentActivityIndicator bot={props.bot} state={agentActivity()} />
+          <ActivityIndicator
+            bot={props.bot}
+            activity={activity()}
+            now={activityNow()}
+            activeSince={activeSince()}
+          />
           <Show when={props.prompt}>
             {(prompt) => (
               <PromptCard questions={prompt().questions} onSubmit={props.onAnswerPrompt} />
@@ -2138,7 +2165,7 @@ export function Conversation(props: ConversationProps) {
                 disabled={!agentReady() || agentActivity() === "Working"}
                 disabledReason={
                   agentActivity() === "Working"
-                    ? "Wait for the current work to finish before changing models."
+                    ? "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein."
                     : "Models are available after an AI provider connects."
                 }
                 onChange={(model) => void selectAndConfirmModel(model)}
@@ -2588,7 +2615,7 @@ export function Conversation(props: ConversationProps) {
                     disabled={!agentReady() || agentActivity() === "Working"}
                     disabledReason={
                       agentActivity() === "Working"
-                        ? "Wait for the current work to finish before changing models."
+                        ? "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein."
                         : "Models are available after an agent CLI connects."
                     }
                     onChange={(model) => void selectAndConfirmModel(model)}

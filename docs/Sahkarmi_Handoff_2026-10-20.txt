@@ -88,6 +88,21 @@ B2. APP — branch feat/workspace-upgrade  (commits e339b78 … 221ac93)
       permission-audit.json, usage.json, features.json,
       business-targets.json (all versioned; existing files untouched).
 
+B3. HINGLISH LIVE ACTIVITY — same branch feat/workspace-upgrade
+    Report: docs/HINGLISH-ACTIVITY-REPORT.md
+    - Claude Code-style live status under the chat, 100% Roman-script
+      Hinglish ("Tests aur build check ho rahe hain…", "Kaam poora ho gaya!"),
+      driven only by real events (tool start/finish, streaming, approvals,
+      real provider retries, turn outcome). Status dots, tool cards, task
+      strip, browser actions and error titles converted too.
+    - NOTE: Sahkarmi has no direct Groq integration; Groq works only via
+      OpenCode ("opencode auth login" → Groq), and the activity system covers it.
+    - Tests 222 passed / 3 skipped.
+
+UPDATE: the website (B1) WAS DEPLOYED later on 20/10/2026 — main = edab054,
+"Verify live site" job PASSED on https://sahkarmi.site (social buttons live).
+Pending website items now start at step 3 (Search Console).
+
 --------------------------------------------------------------------------------
 C. PENDING — WHAT YOU (OR THE NEXT SESSION) MUST DO, IN ORDER
 --------------------------------------------------------------------------------
