@@ -108,12 +108,11 @@ describe("FeatureRegistry", () => {
 });
 
 describe("BusinessStore", () => {
-  it("reports Fiverr honestly and keeps owner targets separate", async () => {
+  it("lists only usable integrations and keeps owner targets separate", async () => {
     const store = new BusinessStore(root);
     await store.initialize();
-    expect(store.integrations().find((i) => i.id === "fiverr")).toMatchObject({
-      support: "not-supported",
-    });
+    expect(store.integrations().length).toBeGreaterThan(0);
+    expect(store.integrations().some((i) => i.support === "not-supported")).toBe(false);
     const [saved] = await store.saveTarget({
       title: "Diwali orders",
       metric: "Orders",
