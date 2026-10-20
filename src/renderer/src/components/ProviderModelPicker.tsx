@@ -29,8 +29,12 @@ const CLI_NAMES: Record<AgentProviderId, string> = {
   opencode: "OpenCode",
 };
 
+/** Popover height incl. margin, used to decide whether it opens above or below the trigger. */
+const POPOVER_HEIGHT = 380;
+
 export function ProviderModelPicker(props: ProviderModelPickerProps) {
   const [open, setOpen] = createSignal(false);
+  const [openUpward, setOpenUpward] = createSignal(false);
   const [railProvider, setRailProvider] = createSignal<AgentProviderId>(
     providerForModel(props.value),
   );
@@ -70,7 +74,12 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
 
   function setPickerOpen(next: boolean): void {
     if (props.disabled) return;
-    if (next) setRailProvider(activeProvider());
+    if (next) {
+      setRailProvider(activeProvider());
+      // The composer sits at the bottom of the window: open upward when there is no room below.
+      const rect = root?.getBoundingClientRect();
+      setOpenUpward(rect !== undefined && window.innerHeight - rect.bottom < POPOVER_HEIGHT);
+    }
     setOpen(next);
   }
 
@@ -152,6 +161,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
       <Show when={open()}>
         <div
           class="provider-model-popover"
+          classList={{ "provider-model-popover-up": openUpward() }}
           role="dialog"
           aria-label="Choose agent model"
           onKeyDown={(event) => {
