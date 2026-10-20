@@ -39,8 +39,13 @@ class FakeLogin extends EventEmitter {
 }
 
 async function fakeCli(name: string, version: string): Promise<string> {
-  const path = join(root, name);
-  await writeFile(path, `#!/bin/sh\necho "${version}"\n`);
+  const path = join(root, process.platform === "win32" ? `${name} mock.cmd` : name);
+  await writeFile(
+    path,
+    process.platform === "win32"
+      ? `@echo off\r\necho ${version}\r\n`
+      : `#!/bin/sh\necho "${version}"\n`,
+  );
   await chmod(path, 0o755);
   return path;
 }
@@ -61,7 +66,17 @@ describe("ProviderSetup", () => {
 
     const done = setup.connect("claude");
     await vi.waitFor(() => expect(spawnImpl).toHaveBeenCalled());
-    expect(spawnImpl.mock.calls[0]?.[1]).toEqual(["auth", "login"]);
+    if (process.platform === "win32") {
+      expect(spawnImpl.mock.calls[0]?.[1]).toEqual([
+        "/d",
+        "/s",
+        "/c",
+        expect.stringContaining('"auth" "login"'),
+      ]);
+      expect(spawnImpl.mock.calls[0]?.[2]).toMatchObject({ windowsVerbatimArguments: true });
+    } else {
+      expect(spawnImpl.mock.calls[0]?.[1]).toEqual(["auth", "login"]);
+    }
     login.stdout.write(
       "Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true\nPaste code here if prompted > ",
     );

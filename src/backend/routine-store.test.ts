@@ -98,6 +98,10 @@ describe("RoutineStore", () => {
   it("keeps run history on disk and closes runs interrupted by a restart", async () => {
     const store = new RoutineStore(root);
     await store.initialize();
+    let waiting: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      waiting = resolve;
+    });
     let released = false;
     let release: (() => void) | null = null;
     store.start({
@@ -106,6 +110,7 @@ describe("RoutineStore", () => {
       },
       waitFor: () =>
         new Promise((resolve) => {
+          waiting();
           const done = () => resolve({ ok: true, reply: "late", error: null });
           if (released) done();
           else release = done;
@@ -119,7 +124,7 @@ describe("RoutineStore", () => {
     });
     await store.runNow(state.routines[0]?.id ?? "");
     await expect(store.runNow(state.routines[0]?.id ?? "")).rejects.toThrow("already running");
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await started;
     const file = JSON.parse(await readFile(join(root, "routines.json"), "utf8"));
     expect(file.runs[0].status).toBe("running");
 

@@ -543,9 +543,6 @@ export function App() {
     setBotList((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
     setLiveMessages((current) => ({ ...current, [profile.id]: [] }));
     setConversationLoaded((current) => ({ ...current, [profile.id]: true }));
-    setActiveBotId(profile.id);
-    setAgentPickerOpen(false);
-    setView("coworker");
   }
 
   /** The Tasks view lists recent work across the whole team, so it loads every queue. */

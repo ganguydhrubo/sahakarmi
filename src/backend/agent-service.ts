@@ -248,6 +248,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #pendingPrompts = new Map<RequestId, PendingPrompt>();
   readonly #itemTurns = new Map<string, string>();
   readonly #turnAssociations = new Map<string, Promise<void>>();
+  readonly #completionTasks = new Set<Promise<void>>();
   readonly #drainingBots = new Set<string>();
   readonly #scheduledDrains = new Set<string>();
   readonly #drainTasks = new Map<string, Promise<void>>();
@@ -597,13 +598,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#restartTimer = null;
     this.#clearCompactionRuntime();
     this.#pendingPrompts.clear();
-    this.#turnAssociations.clear();
     this.#scheduledDrains.clear();
     this.#browser.clearControls();
     const clients = [...this.#clients.values()];
     this.#clients.clear();
     await Promise.all(clients.map((client) => client.stop().catch(() => undefined)));
     await Promise.allSettled([...this.#drainTasks.values()]);
+    await Promise.allSettled([...this.#turnAssociations.values()]);
+    await Promise.allSettled([...this.#completionTasks]);
+    this.#turnAssociations.clear();
     this.#setStatus({ phase: "stopped", message: null });
   }
 
@@ -1934,7 +1937,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           this.#finishContextCompaction(botId, threadId, status);
           return;
         }
-        void this.#completeTurn(botId, threadId, turnId, status);
+        const completion = this.#completeTurn(botId, threadId, turnId, status).catch((error) => {
+          this.#emitError("turn_completion_failed", error, botId);
+        });
+        this.#completionTasks.add(completion);
+        void completion.finally(() => this.#completionTasks.delete(completion));
         return;
       }
       case "thread/tokenUsage/updated": {

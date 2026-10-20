@@ -141,7 +141,6 @@ function TasksIcon() {
   );
 }
 
-
 /** "Update ready → Restart" at the foot of the sidebar; wired to the normal update actions. */
 export function SidebarUpdateBar(props: { status: UpdateStatus; onAction: () => Promise<void> }) {
   const [failed, setFailed] = createSignal(false);

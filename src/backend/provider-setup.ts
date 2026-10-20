@@ -201,7 +201,19 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       url: null,
       progress: null,
     });
-    const child = spawnImpl(executable, args, {
+    const windowsShim = process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable);
+    const launchExecutable = windowsShim ? process.env.ComSpec || "cmd.exe" : executable;
+    // Arguments here are fixed provider login commands, never text from the user or browser.
+    const launchArgs = windowsShim
+      ? [
+          "/d",
+          "/s",
+          "/c",
+          `""${executable.replaceAll("%", "%%")}" ${args.map((arg) => `"${arg}"`).join(" ")}"`,
+        ]
+      : args;
+    const child = spawnImpl(launchExecutable, launchArgs, {
+      windowsVerbatimArguments: windowsShim,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       env: process.env,

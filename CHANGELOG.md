@@ -3,21 +3,23 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] - taskbar logo
+## [0.4.1] - 2026-10-20
+
+### taskbar logo
 
 ### Fixed
 
 - The Sahkarmi logo now shows on the Windows taskbar and window (and on Linux). The icon ships
   with the app and is set on the window directly, so Windows never falls back to a blank icon.
 
-## [Unreleased] - Business page
+### Business page
 
 ### Changed
 
 - The Business page only lists integrations coworkers can actually help with (GST portal,
   Tally / spreadsheets, Email). Fiverr and WhatsApp Business, which have no usable access, are gone.
 
-## [0.4.1] - 2026-10-20
+### Update handling
 
 ### Fixed
 
@@ -26,7 +28,7 @@ All notable changes to Sahkarmi are documented here. The project follows
 - On Mac builds without an Apple signature, which macOS will not let replace themselves, the
   update button now opens the new installer download instead of failing.
 
-## [Unreleased] - inline approvals
+### inline approvals
 
 ### Changed
 
@@ -36,7 +38,7 @@ All notable changes to Sahkarmi are documented here. The project follows
   --version`, `ls …; echo …`, PowerShell `Get-ChildItem … | Select-Object`) no longer ask. Anything
   that writes, redirects, deletes or runs something else still asks.
 
-## [Unreleased] - auto mode
+### auto mode
 
 ### Added
 
@@ -44,7 +46,7 @@ All notable changes to Sahkarmi are documented here. The project follows
   commands, browsing and downloads. Payments, sending messages, posting, orders, account changes
   and government forms still ask, and anything set to Block stays blocked.
 
-## [Unreleased] - marketplace
+### marketplace
 
 ### Added
 
@@ -57,7 +59,7 @@ All notable changes to Sahkarmi are documented here. The project follows
     coworkers are told to follow it when a task matches. **Remove** uninstalls it.
 - No install counts or ratings are shown, because none are collected.
 
-## [Unreleased] - tasks, header model picker, update bar
+### tasks, header model picker, update bar
 
 ### Added
 
@@ -76,7 +78,7 @@ All notable changes to Sahkarmi are documented here. The project follows
   "Connect an AI provider to choose a model" and offers a **Connect** button that opens
   Settings → AI and models.
 
-## [Unreleased] - one-click Connect and limit rings
+### one-click Connect and limit rings
 
 ### Added
 
@@ -95,7 +97,7 @@ All notable changes to Sahkarmi are documented here. The project follows
 - Settings → Features no longer shows "Checking…" forever; provider rows update as soon as each
   provider connects.
 
-## [Unreleased] - routines and calendar
+### routines and calendar
 
 ### Added
 
@@ -108,6 +110,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 - **Calendar** in Schedules: Day, Week and Month views of scheduled tasks and routines, plus an
   **Upcoming runs** list. Future entries come from the real schedules; past entries only show
   what actually ran. Busy days collapse into "+N more".
+
+### Audit follow-up
+
+- Clear theme selection with icons, a selected badge and contrasting borders. Stored appearance
+  is applied before rendering using a CSP-compatible startup script; native appearance stays in sync.
+- Agent shutdown waits for turn-completion writes before returning, protecting final replies and
+  preventing test cleanup from racing persistence. Storage errors remain visible.
 
 ## [0.4.0] - 2026-10-20
 

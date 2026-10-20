@@ -10,6 +10,7 @@ import {
   dialog,
   Menu,
   Notification,
+  nativeTheme,
   type OpenDialogOptions,
   protocol,
   session,
@@ -101,6 +102,9 @@ protocol.registerSchemesAsPrivileged([
 
 const appLog = new AppLog(app.getPath("userData"));
 let mainWindow: BrowserWindow | null = null;
+nativeTheme.on("updated", () => {
+  mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0");
+});
 let browserHost: BrowserHost | null = null;
 let agentService: AgentService | null = null;
 let mailboxStore: MailboxStore | null = null;
@@ -195,6 +199,12 @@ function registerIpcHandlers(
       throw new Error("Only HTTP(S) links can open in the external browser.");
     }
     return shell.openExternal(url.toString());
+  });
+  handleTrusted(IPC_CHANNELS.setTheme, (value: unknown) => {
+    if (value !== "system" && value !== "light" && value !== "dark")
+      throw new Error("Invalid theme.");
+    nativeTheme.themeSource = value;
+    mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0");
   });
   handleTrusted(IPC_CHANNELS.updateGetStatus, () => updater.getStatus());
   handleTrusted(IPC_CHANNELS.updateCheck, () => updater.checkForUpdates());
@@ -520,7 +530,7 @@ function createWindow(): BrowserWindow {
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: "#0F1220",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0",
     title: "Sahkarmi",
     ...(windowIcon() ? { icon: windowIcon() } : {}),
     ...(process.platform === "darwin"

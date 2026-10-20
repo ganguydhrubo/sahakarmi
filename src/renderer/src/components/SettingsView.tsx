@@ -15,9 +15,6 @@ import {
   language,
   setActivityStyle,
   setLanguage,
-  setTheme,
-  type ThemePreference,
-  theme,
 } from "../preferences";
 import { SETTINGS_SECTION_KEY } from "../settings-section";
 import { FeaturesSettings } from "./FeaturesSettings";
@@ -25,6 +22,7 @@ import { LogoMark } from "./Logo";
 import { ModelSuggestions } from "./ModelSuggestions";
 import { PermissionsSettings } from "./PermissionsSettings";
 import { ProviderConnect } from "./ProviderConnect";
+import { ThemeSelector } from "./ThemeSelector";
 import { UpdateControl } from "./UpdateControl";
 
 type SettingsSection =
@@ -74,12 +72,6 @@ interface SettingsViewProps {
 const ACTIVITY_STYLES: Array<{ value: ActivityStyle; label: MessageKey }> = [
   { value: "masti", label: "activityMasti" },
   { value: "seedha", label: "activitySeedha" },
-];
-
-const THEMES: Array<{ value: ThemePreference; label: () => string }> = [
-  { value: "system", label: () => t("themeSystem") },
-  { value: "light", label: () => t("themeLight") },
-  { value: "dark", label: () => t("themeDark") },
 ];
 
 export function SettingsView(props: SettingsViewProps) {
@@ -152,21 +144,7 @@ export function SettingsView(props: SettingsViewProps) {
           {panel("general", () => (
             <section class="settings-card">
               <h2>{t("appearance")}</h2>
-              <fieldset class="segmented">
-                <legend class="sr-only">{t("appearance")}</legend>
-                <For each={THEMES}>
-                  {(option) => (
-                    <button
-                      type="button"
-                      aria-pressed={theme() === option.value}
-                      classList={{ "segmented-active": theme() === option.value }}
-                      onClick={() => setTheme(option.value)}
-                    >
-                      {option.label()}
-                    </button>
-                  )}
-                </For>
-              </fieldset>
+              <ThemeSelector />
               <h2>{t("activityStyleTitle")}</h2>
               <fieldset class="segmented">
                 <legend class="sr-only">{t("activityStyleTitle")}</legend>
