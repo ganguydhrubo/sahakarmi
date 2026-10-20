@@ -142,7 +142,7 @@ export function ActivityIndicator(props: {
             <Show
               when={active()}
               fallback={
-                <svg viewBox="0 0 20 20" class="activity-outcome-icon">
+                <svg viewBox="0 0 20 20" class="activity-outcome-icon" aria-hidden="true">
                   <Show
                     when={props.activity.phase === "completed"}
                     fallback={<path d="M6 6l8 8M14 6l-8 8" />}
