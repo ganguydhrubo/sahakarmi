@@ -57,6 +57,30 @@ afterEach(async () => {
 });
 
 describe.sequential("AgentService", () => {
+  it.each([false, true])(
+    "preserves saved models when their provider is unavailable (reopen=%s)",
+    async (reopen) => {
+      const { store } = stores();
+      await store.initialize();
+      await store.updateBot({ botId: "vikram-sales", model: "claude-opus-5" });
+      const savedModels = store.list().map((bot) => ({ id: bot.id, model: bot.model }));
+      const reopened = reopen ? new BotStore(join(root, "user-data"), join(root, "home")) : store;
+      const mailbox = new MailboxStore(join(root, "user-data"), reopened.sharedRoot);
+      service = new AgentService(reopened, mailbox, fakeBrowser());
+      await service.initialize();
+      expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
+        "not-installed",
+      );
+      expect(service.listBots().map((bot) => ({ id: bot.id, model: bot.model }))).toEqual(
+        savedModels,
+      );
+      await service.refreshModels(true);
+      expect(service.listBots().map((bot) => ({ id: bot.id, model: bot.model }))).toEqual(
+        savedModels,
+      );
+    },
+  );
+
   it("publishes new models live, sends their raw ID and defers a changed CLI until idle", async () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
