@@ -3,6 +3,14 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - auto mode
+
+### Added
+
+- **Auto mode** (Settings → Permissions): coworkers stop asking for everyday work: files anywhere,
+  commands, browsing and downloads. Payments, sending messages, posting, orders, account changes
+  and government forms still ask, and anything set to Block stays blocked.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added

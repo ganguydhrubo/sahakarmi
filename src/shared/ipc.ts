@@ -62,6 +62,7 @@ export const IPC_CHANNELS = {
   permissionsRevokeGrant: "permissions:revoke-grant",
   permissionsAudit: "permissions:audit",
   permissionsClearAudit: "permissions:clear-audit",
+  permissionsSetAutoMode: "permissions:set-auto-mode",
   usageOverview: "usage:overview",
   usageRefresh: "usage:refresh",
   usageClear: "usage:clear",
@@ -561,6 +562,12 @@ export interface PermissionGrant {
 export interface PermissionPolicyState {
   levels: Record<PermissionCategory, PermissionLevel>;
   grants: PermissionGrant[];
+  /**
+   * Auto mode: everyday work (files anywhere, commands, browsing, downloads) never asks.
+   * Money, messages, publishing, orders, account changes and government forms still ask,
+   * and anything set to "Block" stays blocked.
+   */
+  autoMode: boolean;
 }
 
 export interface PermissionAuditEntry {
@@ -994,6 +1001,7 @@ export interface PermissionsDesktopApi {
   revokeGrant: (grantId: string) => Promise<PermissionPolicyState>;
   audit: () => Promise<PermissionAuditEntry[]>;
   clearAudit: () => Promise<void>;
+  setAutoMode: (enabled: boolean) => Promise<PermissionPolicyState>;
 }
 
 export interface UsageDesktopApi {
