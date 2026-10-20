@@ -3,6 +3,7 @@ import type { AgentStatus, AppInfo, UpdateStatus } from "../../../shared/ipc";
 import { LANGUAGE_OPTIONS, t } from "../i18n";
 import { language, setLanguage, setTheme, type ThemePreference, theme } from "../preferences";
 import { LogoMark } from "./Logo";
+import { UpdateControl } from "./UpdateControl";
 
 interface SettingsViewProps {
   appInfo: AppInfo | null;
@@ -104,12 +105,8 @@ export function SettingsView(props: SettingsViewProps) {
           </div>
           <Show when={props.updateStatus.phase !== "unsupported"}>
             <h2>{t("updates")}</h2>
-            <button type="button" onClick={() => run(props.onUpdateAction)}>
-              {t("checkUpdates")}
-            </button>
-            <Show when={props.updateStatus.message}>
-              <p class="settings-meta">{props.updateStatus.message}</p>
-            </Show>
+            <p class="settings-meta">{t("updateAutomatic")}</p>
+            <UpdateControl status={props.updateStatus} onAction={props.onUpdateAction} />
           </Show>
         </section>
 

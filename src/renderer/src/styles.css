@@ -6561,3 +6561,32 @@ fieldset.cadence-kinds {
   background: var(--brand-indigo);
   color: #fbf7f0;
 }
+
+.update-notice {
+  position: fixed;
+  bottom: 20px;
+  left: 24px;
+  z-index: 100;
+  max-width: 300px;
+  padding: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary, CanvasText);
+  border: 1px solid var(--border, currentColor);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px #0002;
+}
+.update-control {
+  display: grid;
+  gap: 8px;
+}
+.update-control progress {
+  width: 100%;
+  accent-color: #e8772e;
+}
+.update-control button {
+  cursor: pointer;
+}
+.update-control button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}

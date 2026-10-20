@@ -42,6 +42,7 @@ import { PanelResizer, readPanelWidth, savePanelWidth } from "./components/Panel
 import { SettingsView } from "./components/SettingsView";
 import { SharedFilesView } from "./components/SharedFilesView";
 import { type CenterView, Sidebar } from "./components/Sidebar";
+import { UpdateControl } from "./components/UpdateControl";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 
 const FALLBACK_STATUS: AgentStatus = {
@@ -158,7 +159,8 @@ export function App() {
   const [approvals, setApprovals] = createSignal<ApprovalRequest[]>([]);
   const [schedules, setSchedules] = createSignal<ScheduledTask[]>([]);
   const [takeover, setTakeover] = createSignal<BrowserTakeoverState>(EMPTY_TAKEOVER);
-  const pendingConversationSnapshots = new Map<string, ConversationSnapshot>();
+  const pendingConversationChanges: Array<{ botId: string; revision: number; apply: () => void }> =
+    [];
   const recentReplyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let conversationFrame: number | undefined;
 
@@ -350,25 +352,38 @@ export function App() {
   }
 
   function scheduleConversation(snapshot: ConversationSnapshot) {
-    const botId = snapshot.botId;
-    const appliedRevision = conversationRevisions()[botId] ?? -1;
-    const pendingRevision = pendingConversationSnapshots.get(botId)?.revision ?? -1;
-    if (snapshot.revision < Math.max(appliedRevision, pendingRevision)) return;
-    pendingConversationSnapshots.set(botId, snapshot);
+    // A full snapshot supersedes earlier queued changes for the same coworker.
+    // Coalescing also prevents an empty initial snapshot from animating loaded history.
+    for (let index = pendingConversationChanges.length - 1; index >= 0; index -= 1) {
+      const pending = pendingConversationChanges[index];
+      if (pending.botId === snapshot.botId && pending.revision <= snapshot.revision) {
+        pendingConversationChanges.splice(index, 1);
+      }
+    }
+    scheduleConversationChange(snapshot.botId, snapshot.revision, () =>
+      applyConversation(snapshot),
+    );
+  }
+
+  function scheduleConversationChange(botId: string, revision: number, apply: () => void) {
+    pendingConversationChanges.push({ botId, revision, apply });
     if (conversationFrame !== undefined) return;
     conversationFrame = requestAnimationFrame(() => {
       conversationFrame = undefined;
-      const snapshots = [...pendingConversationSnapshots.values()];
-      pendingConversationSnapshots.clear();
+      const changes = pendingConversationChanges.splice(0);
       batch(() => {
-        for (const pending of snapshots) applyConversation(pending);
+        // Preserve revision order while rendering streamed tokens only once per frame.
+        for (const change of changes) change.apply();
       });
     });
   }
 
   function applyConversationDelta(event: Extract<AgentEvent, { type: "conversation-delta" }>) {
+    scheduleConversationChange(event.botId, event.revision, () => applyConversationDeltaNow(event));
+  }
+
+  function applyConversationDeltaNow(event: Extract<AgentEvent, { type: "conversation-delta" }>) {
     if (event.revision <= (conversationRevisions()[event.botId] ?? -1)) return;
-    pendingConversationSnapshots.delete(event.botId);
     setConversationRevisions((current) => ({ ...current, [event.botId]: event.revision }));
 
     const existing = liveMessages()[event.botId]?.find((message) => message.id === event.messageId);
@@ -757,7 +772,7 @@ export function App() {
       return;
     }
     const status =
-      phase === "available"
+      phase === "available" || (phase === "error" && updateStatus().availableVersion)
         ? await window.sahkarmi.update.download()
         : await window.sahkarmi.update.check();
     setUpdateStatus(status);
@@ -784,6 +799,18 @@ export function App() {
           classList={{ "app-frame-sidebar-collapsed": leftPanelCollapsed() }}
           style={`--left-panel-width: ${leftPanelCollapsed() ? 0 : leftPanelWidth()}px`}
         >
+          <Show
+            when={
+              view() !== "settings" &&
+              ["available", "downloading", "ready", "error", "installing"].includes(
+                updateStatus().phase,
+              )
+            }
+          >
+            <aside class="update-notice" aria-label="Sahkarmi update">
+              <UpdateControl status={updateStatus()} onAction={runUpdateAction} />
+            </aside>
+          </Show>
           <Show when={!leftPanelCollapsed()}>
             <Sidebar
               bots={workspaceBots()}
