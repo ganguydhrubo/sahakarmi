@@ -19,3 +19,11 @@
 - Renderer regression verifies a new model appears in an already-open picker without changing selection until the owner selects it.
 - Repository lint, TypeScript, browser smoke and production build are release checks.
 - v0.5.0 / PR #9 stays parked.
+
+## Installed CLI metadata check
+
+A read-only local probe (no AI prompt) returned 7 Codex models from CLI 0.162.0, including gpt-6.1-sol and gpt-6-astra, and 5 Claude model rows from CLI 2.1.304, including claude-opus-5-5 and claude-sonnet-5-5. Duplicate IDs are deduplicated by the catalog merger.
+
+## Panel visual follow-up
+
+An isolated headless renderer preview with sample data checked 1440px and 1000px windows. It exposed a responsive container rule targeting the whole app width. The routines view now owns a named container so its inspector stacks when the available workspace is narrow. Screenshots are local verification artifacts, not screenshots of the owner's real coworkers.
