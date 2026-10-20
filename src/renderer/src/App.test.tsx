@@ -325,6 +325,11 @@ describe("Sahkarmi connected desktop shell", () => {
           applyManifest: vi.fn().mockResolvedValue([]),
           resetCatalogue: vi.fn().mockResolvedValue([]),
         },
+        marketplace: {
+          installedSkills: vi.fn().mockResolvedValue([]),
+          installSkill: vi.fn().mockImplementation(async (id: string) => [id]),
+          uninstallSkill: vi.fn().mockResolvedValue([]),
+        },
         business: {
           integrations: vi.fn().mockResolvedValue([]),
           listTargets: vi.fn().mockResolvedValue([]),
@@ -701,6 +706,41 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(screen.getByRole("button", { name: "English" }));
     await fireEvent.click(screen.getByRole("button", { name: "System" }));
     expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
+
+  it("adds a ready-made coworker and installs a skill from the Marketplace", async () => {
+    vi.mocked(window.sahkarmi.agent.updateBot).mockImplementation(async (input) => ({
+      ...BOTS[0],
+      ...input,
+      id: input.botId,
+    }));
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(await screen.findByRole("button", { name: /Marketplace/ }));
+    const card = (await screen.findByRole("heading", { name: "GST Accountant" })).closest("li");
+    if (!card) throw new Error("GST Accountant card not found");
+    await fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "+ Add" }));
+    await waitFor(() => expect(window.sahkarmi.agent.createBot).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          botId: "bot-new",
+          name: "GST Accountant",
+          role: "GST and bookkeeping",
+        }),
+      ),
+    );
+    expect(
+      await within(card as HTMLElement).findByRole("button", { name: "Open" }),
+    ).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Install Project Plan" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.marketplace.installSkill).toHaveBeenCalledWith("project-plan"),
+    );
+    expect(await screen.findByRole("button", { name: "Remove Project Plan" })).toBeInTheDocument();
+    expect(screen.queryByText(/installs/i)).toBeNull();
   });
 
   it("lists pending approvals with a badge and sends the owner's decision", async () => {

@@ -251,6 +251,20 @@ export const workspaceEn = {
   activitySeedha: "Seedha (plain)",
   activityStyleHint:
     "Coworker status lines are always in Hinglish. Masti adds playful lines like “Jugaad dhoondha ja raha hai…” only while a coworker is thinking; anything it actually does is always described plainly.",
+  navMarketplace: "Marketplace",
+  marketAgents: "Agents",
+  marketSkills: "Skills",
+  marketSearch: "Search",
+  marketAgentsIntro:
+    "Ready-made coworkers for Indian businesses. Add one and it joins your team with its job already set.",
+  marketSkillsIntro:
+    "Step-by-step playbooks your coworkers follow. Installing one saves it in Shared/Skills, where every coworker can read it.",
+  marketAdd: "Add",
+  marketAdding: "Adding…",
+  marketOpen: "Open",
+  marketInstall: "Install",
+  marketInstalled: "Installed",
+  marketRemove: "Remove",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -501,6 +515,20 @@ export const workspaceHi: WorkspaceDictionary = {
   activitySeedha: "सीधा (सादा)",
   activityStyleHint:
     "सहकर्मी की स्टेटस लाइनें हमेशा हिंग्लिश (रोमन लिपि) में रहती हैं. मस्ती सिर्फ़ सोचते समय “Jugaad dhoondha ja raha hai…” जैसी मज़ेदार लाइनें दिखाती है; असली काम हमेशा सीधे शब्दों में बताया जाता है.",
+  navMarketplace: "मार्केटप्लेस",
+  marketAgents: "सहकर्मी",
+  marketSkills: "स्किल्स",
+  marketSearch: "खोजें",
+  marketAgentsIntro:
+    "भारतीय कारोबार के लिए तैयार सहकर्मी. जोड़ते ही वह अपने काम के साथ आपकी टीम में आ जाता है.",
+  marketSkillsIntro:
+    "कदम-दर-कदम प्लेबुक जिन्हें आपके सहकर्मी अपनाते हैं. इंस्टॉल करने पर यह Shared/Skills में सेव होती है, जहाँ हर सहकर्मी इसे पढ़ सकता है.",
+  marketAdd: "जोड़ें",
+  marketAdding: "जोड़ रहे हैं…",
+  marketOpen: "खोलें",
+  marketInstall: "इंस्टॉल करें",
+  marketInstalled: "इंस्टॉल है",
+  marketRemove: "हटाएँ",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -748,4 +776,17 @@ export const workspaceBn: WorkspaceDictionary = {
   activitySeedha: "সোজা (সাধারণ)",
   activityStyleHint:
     "সহকর্মীর স্ট্যাটাস সবসময় হিংলিশে (রোমান হরফে) থাকে। মস্তি শুধু ভাবার সময় “Jugaad dhoondha ja raha hai…” ধরনের মজার লাইন দেখায়; আসল কাজ সবসময় সোজা ভাষায় বলা হয়।",
+  navMarketplace: "মার্কেটপ্লেস",
+  marketAgents: "সহকর্মী",
+  marketSkills: "স্কিল",
+  marketSearch: "খুঁজুন",
+  marketAgentsIntro: "ভারতীয় ব্যবসার জন্য তৈরি সহকর্মী। যোগ করলেই সে নিজের কাজ নিয়ে আপনার দলে চলে আসে।",
+  marketSkillsIntro:
+    "ধাপে ধাপে প্লেবুক, যা আপনার সহকর্মীরা মেনে চলে। ইনস্টল করলে এটি Shared/Skills-এ সেভ হয়, যেখানে প্রত্যেক সহকর্মী পড়তে পারে।",
+  marketAdd: "যোগ করুন",
+  marketAdding: "যোগ হচ্ছে…",
+  marketOpen: "খুলুন",
+  marketInstall: "ইনস্টল করুন",
+  marketInstalled: "ইনস্টল করা আছে",
+  marketRemove: "সরান",
 };
