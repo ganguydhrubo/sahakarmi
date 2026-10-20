@@ -1,0 +1,26 @@
+# Sahkarmi
+
+> Sahkarmi (सहकर्मी, "coworker") is a free, open-source desktop app, built in India, that gives a small business a team of AI coworkers. Each coworker has its own workspace, browser, memory and task queue, and asks the owner before payments, customer messages, publishing or form submissions. Tagline: "Your AI team. Made in India."
+
+Key facts:
+
+- Product category: AI coworker / AI productivity desktop app. Local-first: coworkers, chats, files and settings are stored on the user's computer; there is no Sahkarmi cloud account.
+- Platforms: Windows 10 and 11 (64-bit) is the main build; macOS (Apple silicon) and Linux (AppImage) builds are published on GitHub Releases.
+- Price: free. Free AI models are built in through bundled OpenCode (no login). Optional: reuse existing sign-ins of Codex CLI (ChatGPT), Claude Code and Gemini CLI on the same computer; paid plans are billed by those providers.
+- Default team (editable): Asha (Accounts), Vikram (Sales), Meera (Support), Arjun (Research), Kavya (Content).
+- Features: built-in browser per coworker with a "Take over" button for logins and OTPs, Approvals inbox, task queue, scheduled tasks, shared files folder, English / Hindi / Bengali interface.
+- Status: development preview. In the current release, approvals before risky actions rely on coworkers following their instructions.
+- Licence: Apache License 2.0. Based on OpenBot v0.1.11 by Norbert Bodziony.
+
+## Official links
+
+- [Website](https://sahkarmi.site/): product overview, explainer video, download and FAQ
+- [Download (GitHub Releases)](https://github.com/ganguydhrubo/sahakarmi/releases/latest): Windows installer and other builds
+- [Source code and README](https://github.com/ganguydhrubo/sahakarmi): full feature list, provider setup and privacy notes
+- [LinkedIn](https://www.linkedin.com/company/sahkarmi/): official company page
+- [Facebook](https://www.facebook.com/sahakarmi): official page
+
+## Contact
+
+- Email: hi@goliv.online
+- WhatsApp: +91 82408 01921

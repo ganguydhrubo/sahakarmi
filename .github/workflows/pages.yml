@@ -3,7 +3,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["website/**", ".github/workflows/pages.yml"]
+    paths: ["website/**", "scripts/check-website.mjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,12 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Check website files (SEO, structured data, links, translations)
+        run: node scripts/check-website.mjs
+
+      - name: Stamp the deployed commit
+        run: echo "${GITHUB_SHA}" > website/build.txt
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
@@ -39,3 +45,25 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
+  verify:
+    name: Verify live site
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # GitHub Pages caches for up to 10 minutes; wait until this commit is served.
+      - name: Check https://sahkarmi.site
+        run: node scripts/check-website.mjs --live https://sahkarmi.site/ --expect-build "${GITHUB_SHA}" --retries 36
+
+      # IndexNow tells Bing (and other IndexNow engines) the page changed. The key file is public by design.
+      - name: Notify IndexNow
+        continue-on-error: true
+        run: |
+          curl -sS -o /dev/null -w "IndexNow HTTP %{http_code}\n" -X POST "https://api.indexnow.org/indexnow" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -d '{"host":"sahkarmi.site","key":"6e6727cb6c8c260da983dc72a7515153","keyLocation":"https://sahkarmi.site/6e6727cb6c8c260da983dc72a7515153.txt","urlList":["https://sahkarmi.site/","https://sahkarmi.site/llms.txt"]}'

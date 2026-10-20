@@ -3,21 +3,203 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Sahkarmi · सहकर्मी — Your AI team. Made in India.</title>
-  <meta name="description" content="Sahkarmi gives your business a team of AI coworkers that work on your own PC, with their own browser. They ask before they pay, send or post. Free AI built in. Download for Windows." />
+  <title>Sahkarmi — AI coworker desktop app. Your AI team, made in India.</title>
+  <meta name="description" content="Sahkarmi is a free desktop app that gives your business a team of AI coworkers, each with its own workspace and browser. They ask before paying or posting. For Windows." />
+  <link rel="canonical" href="https://sahkarmi.site/" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <meta name="theme-color" content="#0F1220" />
-  <link rel="icon" type="image/png" href="assets/favicon.png" />
-  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-  <meta property="og:title" content="Sahkarmi — Your AI team. Made in India." />
-  <meta property="og:description" content="AI coworkers for Indian businesses. Free AI built in. Download for Windows." />
-  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
-  <meta property="og:url" content="https://sahkarmi.site/" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="application-name" content="Sahkarmi" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/icon-96.png" type="image/png" sizes="96x96" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+
+  <meta property="og:site_name" content="Sahkarmi" />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://sahkarmi.site/" />
+  <meta property="og:title" content="Sahkarmi — Your AI team. Made in India." />
+  <meta property="og:description" content="AI coworkers for Indian businesses that work on your own PC, each with its own browser. Free AI built in. Download for Windows." />
+  <meta property="og:locale" content="en_IN" />
+  <meta property="og:locale:alternate" content="hi_IN" />
+  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta property="og:image:secure_url" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Sahkarmi logo with the line: Your AI team. Made in India." />
+  <meta property="og:video" content="https://sahkarmi.site/assets/sahkarmi-explainer.mp4" />
+  <meta property="og:video:type" content="video/mp4" />
   <meta name="twitter:card" content="summary_large_image" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <meta name="twitter:title" content="Sahkarmi — Your AI team. Made in India." />
+  <meta name="twitter:description" content="AI coworkers for Indian businesses that work on your own PC, each with its own browser. Free AI built in." />
+  <meta name="twitter:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta name="twitter:image:alt" content="Sahkarmi logo with the line: Your AI team. Made in India." />
+
+  <link rel="preload" href="/assets/fonts/baloo-2-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/mukta-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://sahkarmi.site/#organization",
+        "name": "Sahkarmi",
+        "alternateName": "सहकर्मी",
+        "url": "https://sahkarmi.site/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://sahkarmi.site/assets/icon-512.png",
+          "width": 512,
+          "height": 512
+        },
+        "slogan": "Your AI team. Made in India.",
+        "email": "hi@goliv.online",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "hi@goliv.online",
+          "telephone": "+91-82408-01921",
+          "availableLanguage": ["English", "Hindi"]
+        },
+        "sameAs": [
+          "https://www.linkedin.com/company/sahkarmi/",
+          "https://www.facebook.com/sahakarmi",
+          "https://github.com/ganguydhrubo/sahakarmi"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://sahkarmi.site/#website",
+        "url": "https://sahkarmi.site/",
+        "name": "Sahkarmi",
+        "alternateName": "सहकर्मी",
+        "inLanguage": ["en-IN", "hi-IN"],
+        "publisher": { "@id": "https://sahkarmi.site/#organization" }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://sahkarmi.site/#app",
+        "name": "Sahkarmi",
+        "alternateName": "सहकर्मी",
+        "description": "A local-first desktop app where each AI coworker has its own workspace, browser, memory and task queue. Coworkers ask the owner before payments, customer messages, publishing and form submissions.",
+        "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "AI coworker / AI productivity",
+        "operatingSystem": "Windows 10, Windows 11, macOS (Apple silicon), Linux",
+        "url": "https://sahkarmi.site/",
+        "downloadUrl": "https://github.com/ganguydhrubo/sahakarmi/releases/latest",
+        "installUrl": "https://github.com/ganguydhrubo/sahakarmi/releases/latest",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "isAccessibleForFree": true,
+        "inLanguage": ["en", "hi", "bn"],
+        "screenshot": "https://sahkarmi.site/assets/shots/dark-asha-1440.webp",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+        "publisher": { "@id": "https://sahkarmi.site/#organization" },
+        "featureList": [
+          "A team of AI coworkers: Accounts, Sales, Support, Research and Content",
+          "Each coworker has its own workspace, browser, memory and task queue",
+          "Approvals inbox for payments, customer messages, publishing and form submissions",
+          "Take over the built-in browser for logins, OTP and CAPTCHA",
+          "Scheduled tasks: once, hourly, daily, weekdays or weekly",
+          "Shared files folder for the whole team",
+          "English, Hindi and Bengali interface",
+          "Free built-in AI through bundled OpenCode; optional ChatGPT (Codex), Claude and Gemini sign-ins"
+        ]
+      },
+      {
+        "@type": "VideoObject",
+        "@id": "https://sahkarmi.site/#video",
+        "name": "Sahkarmi in 2 minutes",
+        "duration": "PT1M57S",
+        "description": "A short Hindi explainer showing how Sahkarmi's AI coworkers work on your PC.",
+        "thumbnailUrl": "https://sahkarmi.site/assets/poster.jpg",
+        "contentUrl": "https://sahkarmi.site/assets/sahkarmi-explainer.mp4",
+        "uploadDate": "2026-10-20",
+        "inLanguage": "hi",
+        "publisher": { "@id": "https://sahkarmi.site/#organization" }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://sahkarmi.site/#faq",
+        "inLanguage": "en-IN",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is Sahkarmi free?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. The app is free and open source, and it includes free AI models through the bundled OpenCode, with no login or card. If you connect a paid plan such as ChatGPT or Claude, that provider bills you directly."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which computers does it run on?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Windows 10 and 11 (64-bit) is the main build. macOS (Apple silicon) and Linux (AppImage) builds are also published on GitHub Releases."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can a coworker pay, send or post without me?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Coworkers are instructed to stop and file an approval request before payments, messages to customers or vendors, publishing and form submissions, and you approve or reject each one. In the current preview this relies on the AI following those instructions, so watch new tasks closely and never share card details or OTPs with a coworker."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Where is my data stored?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "On your computer. Sahkarmi has no cloud account of its own. The text a coworker works on is sent to the AI provider you chose, under that provider’s privacy terms."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need ChatGPT, Claude or Gemini?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. The free built-in AI works without any account. If you already use Codex (ChatGPT), Claude Code or Gemini CLI on the same computer, Sahkarmi can use those logins too."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which languages does it support?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The app interface is in English, Hindi and Bengali, and coworkers reply in the language you write in."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Who makes Sahkarmi?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Sahkarmi is built in India. It started from the open-source OpenBot v0.1.11 by Norbert Bodziony (Apache License 2.0) and is developed in the open on GitHub."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
   <style>
+    /* Self-hosted fonts (SIL OFL 1.1, from @fontsource). Devanagari files load only when needed. */
+    @font-face { font-family: "Mukta"; font-style: normal; font-weight: 400; font-display: swap; src: url(/assets/fonts/mukta-latin-400-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+20B9, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Mukta"; font-style: normal; font-weight: 600; font-display: swap; src: url(/assets/fonts/mukta-latin-600-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+20B9, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Mukta"; font-style: normal; font-weight: 700; font-display: swap; src: url(/assets/fonts/mukta-latin-700-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+20B9, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Mukta"; font-style: normal; font-weight: 400; font-display: swap; src: url(/assets/fonts/mukta-devanagari-400-normal.woff2) format("woff2"); unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF; }
+    @font-face { font-family: "Mukta"; font-style: normal; font-weight: 600; font-display: swap; src: url(/assets/fonts/mukta-devanagari-600-normal.woff2) format("woff2"); unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF; }
+    @font-face { font-family: "Mukta"; font-style: normal; font-weight: 700; font-display: swap; src: url(/assets/fonts/mukta-devanagari-700-normal.woff2) format("woff2"); unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF; }
+    @font-face { font-family: "Baloo 2"; font-style: normal; font-weight: 700; font-display: swap; src: url(/assets/fonts/baloo-2-latin-700-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+20B9, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Baloo 2"; font-style: normal; font-weight: 800; font-display: swap; src: url(/assets/fonts/baloo-2-latin-800-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+20B9, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Baloo 2"; font-style: normal; font-weight: 700; font-display: swap; src: url(/assets/fonts/baloo-2-devanagari-700-normal.woff2) format("woff2"); unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF; }
+    @font-face { font-family: "Baloo 2"; font-style: normal; font-weight: 800; font-display: swap; src: url(/assets/fonts/baloo-2-devanagari-800-normal.woff2) format("woff2"); unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF; }
+
     :root {
       --saffron: #e8772e;
       --saffron-hi: #f2954f;
@@ -120,6 +302,58 @@
     .proof li { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: rgb(255 255 255 / 0.03); color: #e5e1f1; font-size: 15px; font-weight: 500; }
     .proof svg { width: 18px; height: 18px; flex: none; }
 
+    /* Content sections */
+    .section { padding: clamp(56px, 10vh, 96px) 0 0; }
+    .eyebrow { margin: 0; color: var(--saffron-hi); font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    html[lang="hi"] .eyebrow { letter-spacing: 0; text-transform: none; }
+    h2 { margin: 8px 0 0; font-family: var(--font-display); font-weight: 800; font-size: clamp(30px, 4.4vw, 46px); line-height: 1.08; letter-spacing: -0.02em; }
+    html[lang="hi"] h2 { line-height: 1.25; letter-spacing: 0; }
+    h3 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 21px; line-height: 1.2; }
+    .section-lead { max-width: 720px; margin: 14px 0 0; color: #d9d6e6; font-size: 18px; }
+    .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+    .shot { margin: 0; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--night-2); box-shadow: 0 30px 80px -30px rgb(0 0 0 / 0.7); }
+    .shot img { display: block; width: 100%; height: auto; }
+    .shot figcaption { padding: 10px 14px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 28px 0 0; padding: 0; list-style: none; }
+    .card { padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: rgb(255 255 255 / 0.03); }
+    .card p { margin: 8px 0 0; color: #d0cde0; font-size: 16px; }
+    .card .tag { display: inline-block; margin-bottom: 10px; padding: 2px 10px; border-radius: 999px; background: rgb(232 119 46 / 0.16); color: var(--saffron-hi); font-size: 13px; font-weight: 700; }
+    .steps { counter-reset: step; }
+    .steps .card::before { counter-increment: step; content: counter(step); display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 12px; border-radius: 50%; background: var(--saffron); color: var(--night); font: 800 17px var(--font-display); }
+    .table-wrap { margin: 28px 0 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 16px; }
+    th, td { padding: 14px 18px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    thead th { color: var(--muted); font-size: 14px; font-weight: 700; }
+    tbody tr:last-child td { border-bottom: 0; }
+    td:first-child { font-weight: 700; white-space: nowrap; }
+    .note { margin: 14px 0 0; color: var(--muted); font-size: 15px; }
+    .faq { margin: 24px 0 0; border-top: 1px solid var(--line); }
+    .faq details { border-bottom: 1px solid var(--line); }
+    .faq summary { display: flex; justify-content: space-between; gap: 16px; padding: 18px 2px; cursor: pointer; list-style: none; font-weight: 700; font-size: 18px; }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after { content: "+"; color: var(--saffron-hi); font: 800 22px/1 var(--font-display); transition: transform .3s var(--ease); }
+    .faq details[open] summary::after { transform: rotate(45deg); }
+    .faq details p { margin: 0 0 18px; max-width: 760px; color: #d0cde0; }
+    .inline-link { color: var(--saffron-hi); font-weight: 600; text-underline-offset: 3px; }
+
+    .one-col { grid-template-columns: 1fr; }
+    .skip { position: absolute; left: 16px; top: -60px; z-index: 10; padding: 10px 16px; border-radius: 10px; background: var(--paper); color: var(--night); font-weight: 700; text-decoration: none; }
+    .skip:focus { top: 12px; }
+
+    /* Community: official social profiles */
+    .community { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; margin-top: clamp(56px, 10vh, 96px); padding: clamp(22px, 3vw, 32px); border: 1px solid var(--line); border-radius: 24px; background: linear-gradient(120deg, rgb(232 119 46 / 0.12), rgb(59 74 140 / 0.18)); }
+    .community p { margin: 4px 0 0; color: #d0cde0; }
+    .social { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 0; list-style: none; }
+    .social a { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 11px 20px 11px 14px; border-radius: 999px; border: 1px solid rgb(251 247 240 / 0.22); background: rgb(15 18 32 / 0.55); color: var(--paper); text-decoration: none; font-weight: 700; font-size: 16px; transition: transform .25s var(--ease), background .25s, border-color .25s; }
+    .social a:hover { background: var(--paper); color: var(--night); border-color: var(--paper); transform: translateY(-2px); }
+    .social a:active { transform: translateY(0); }
+    .social .badge { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #fff; flex: none; }
+    .social .linkedin .badge { background: #0a66c2; }
+    .social .facebook .badge { background: #0866ff; border-radius: 50%; }
+    .social svg { width: 16px; height: 16px; }
+    @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .social, .social li, .social a { width: 100%; } .social a { justify-content: center; } td:first-child { white-space: normal; } }
+
     footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 26px; margin-top: clamp(40px, 8vh, 72px); padding: 26px 0 34px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
     footer a { display: inline-flex; align-items: center; gap: 8px; color: var(--paper); text-decoration: none; font-weight: 600; }
     footer a:hover { color: var(--saffron-hi); }
@@ -144,11 +378,12 @@
   </style>
 </head>
 <body>
+  <a class="skip" href="#main" data-i18n="skip">Skip to content</a>
   <div class="sky" aria-hidden="true"><div class="glow glow-saffron"></div><div class="glow glow-indigo"></div><div class="grain"></div></div>
 
   <div class="wrap">
     <header class="rise d1">
-      <a class="brand" href="#" aria-label="Sahkarmi home">
+      <a class="brand" href="/">
         <svg viewBox="0 0 120 120" aria-hidden="true">
           <defs><clipPath id="l"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs>
           <rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/>
@@ -169,7 +404,7 @@
       </div>
     </header>
 
-    <main>
+    <main id="main">
       <section class="hero">
         <p class="chip rise d2"><i aria-hidden="true"></i><span data-i18n="chip">AI coworkers for Indian businesses</span></p>
         <h1 class="rise d3">
@@ -203,12 +438,12 @@
           </g>
         </svg>
         <div class="frame" id="frame">
-          <video id="video" playsinline preload="none" poster="assets/poster.jpg">
-            <source src="assets/sahkarmi-explainer.mp4" type="video/mp4" />
+          <video id="video" playsinline preload="none" poster="/assets/poster.webp">
+            <source src="/assets/sahkarmi-explainer.mp4" type="video/mp4" />
           </video>
-          <button class="play" id="play" type="button" aria-label="Play the Sahkarmi video">
+          <button class="play" id="play" type="button">
             <span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4.5v15l13-7.5z"/></svg></span>
-            <small data-i18n="watch">Watch: Sahkarmi in 90 seconds</small>
+            <small data-i18n="watch">Watch: Sahkarmi in 2 minutes</small>
           </button>
         </div>
       </section>
@@ -225,12 +460,155 @@
           <li><svg viewBox="0 0 24 24" fill="none" stroke="#4bb37a" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 16 0 8 8 0 1 0-16 0M9 12h6M12 9v6"/></svg><span data-i18n="p3">English · हिन्दी · বাংলা</span></li>
         </ul>
       </section>
+
+      <section class="section" id="about" aria-labelledby="about-h">
+        <div class="split">
+          <div>
+            <p class="eyebrow" data-i18n="aboutEyebrow">What is Sahkarmi</p>
+            <h2 id="about-h" data-i18n="aboutH2">An AI team that works on your own computer</h2>
+            <p class="section-lead" data-i18n="aboutP1">Sahkarmi (सहकर्मी, “coworker”) is a free desktop app for small businesses and their owners. You get a team of AI coworkers. Each one has its own workspace, its own browser, its own memory and its own task queue.</p>
+            <p class="section-lead" data-i18n="aboutP2">Give them work in plain English, हिन्दी or বাংলা. They reply in your language and understand INR, lakh and crore, GST, IST and DD/MM/YYYY dates. You stay in control of anything that spends money or talks to customers.</p>
+          </div>
+          <figure class="shot">
+            <img src="/assets/shots/dark-asha-1440.webp" srcset="/assets/shots/dark-asha-480.webp 480w, /assets/shots/dark-asha-720.webp 720w, /assets/shots/dark-asha-1440.webp 1440w" sizes="(max-width: 860px) 100vw, 600px" width="1440" height="900" loading="lazy" decoding="async" alt="Sahkarmi app: the Team list on the left, Asha's conversation with tool steps in the middle and her task queue on top." />
+            <figcaption data-i18n="shot1">Asha (Accounts) working on payables, with her task queue and tool steps.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="team" aria-labelledby="team-h">
+        <p class="eyebrow" data-i18n="teamEyebrow">Who is on the team</p>
+        <h2 id="team-h" data-i18n="teamH2">Five coworkers to start. Rename them, add more.</h2>
+        <ul class="grid">
+          <li class="card"><span class="tag" data-i18n="asha">Accounts</span><h3>Asha</h3><p data-i18n="ashaP">Invoices, payables, reconciliation and GST paperwork.</p></li>
+          <li class="card"><span class="tag" data-i18n="vikram">Sales</span><h3>Vikram</h3><p data-i18n="vikramP">Leads, follow-ups, quotes and price lists.</p></li>
+          <li class="card"><span class="tag" data-i18n="meera">Support</span><h3>Meera</h3><p data-i18n="meeraP">Draft replies to customer questions and complaints.</p></li>
+          <li class="card"><span class="tag" data-i18n="arjun">Research</span><h3>Arjun</h3><p data-i18n="arjunP">Suppliers, competitors, prices and rules, with sources.</p></li>
+          <li class="card"><span class="tag" data-i18n="kavya">Content</span><h3>Kavya</h3><p data-i18n="kavyaP">Posts, product descriptions and catalogues.</p></li>
+        </ul>
+      </section>
+
+      <section class="section" id="how-it-works" aria-labelledby="how-h">
+        <p class="eyebrow" data-i18n="howEyebrow">How it works</p>
+        <h2 id="how-h" data-i18n="howH2">Ask. They work. You approve.</h2>
+        <ol class="grid steps">
+          <li class="card"><h3 data-i18n="how1">Give a task</h3><p data-i18n="how1P">Message a coworker, attach files or schedule it to repeat: once, hourly, daily, weekdays or weekly.</p></li>
+          <li class="card"><h3 data-i18n="how2">They do the work</h3><p data-i18n="how2P">Coworkers read files, browse in their own browser tab and pass work to each other. Every step is shown as it happens.</p></li>
+          <li class="card"><h3 data-i18n="how3">You stay in charge</h3><p data-i18n="how3P">Before a payment, a customer message, a post or a form submission, they file a request in your Approvals inbox. For logins and OTPs, you take over the browser.</p></li>
+        </ol>
+      </section>
+
+      <section class="section" id="features" aria-labelledby="feat-h">
+        <p class="eyebrow" data-i18n="featEyebrow">Inside the app</p>
+        <h2 id="feat-h" data-i18n="featH2">Built for real business work</h2>
+        <ul class="grid">
+          <li class="card"><h3 data-i18n="f1">Own browser per coworker</h3><p data-i18n="f1P">A built-in browser with a Take over button. While you are in control, coworkers pause.</p></li>
+          <li class="card"><h3 data-i18n="f2">Approvals inbox</h3><p data-i18n="f2P">Approve or reject with a note. The decision goes back to the coworker as a message.</p></li>
+          <li class="card"><h3 data-i18n="f3">Task queue</h3><p data-i18n="f3P">See what is queued, running and done. Pause, resume, cancel or stop.</p></li>
+          <li class="card"><h3 data-i18n="f4">Shared files</h3><p data-i18n="f4P">One folder the whole team can read and write, next to each coworker’s own folder.</p></li>
+          <li class="card"><h3 data-i18n="f5">Schedules</h3><p data-i18n="f5P">Daily reports, weekly follow-ups or a one-off reminder at a set time.</p></li>
+          <li class="card"><h3 data-i18n="f6">Three languages</h3><p data-i18n="f6P">The whole app in English, हिन्दी and বাংলা, with light and dark themes.</p></li>
+        </ul>
+      </section>
+
+      <section class="section" id="ai-providers" aria-labelledby="ai-h">
+        <p class="eyebrow" data-i18n="aiEyebrow">AI providers</p>
+        <h2 id="ai-h" data-i18n="aiH2">Free AI built in. Use your own sign-ins if you have them.</h2>
+        <p class="section-lead" data-i18n="aiLead">Sahkarmi finds the AI tools installed on your computer and reuses their existing login. It never copies your tokens.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col" data-i18n="thProvider">Provider</th><th scope="col" data-i18n="thHow">How Sahkarmi uses it</th><th scope="col" data-i18n="thCost">Cost</th></tr></thead>
+            <tbody>
+              <tr><td>OpenCode (built in)</td><td data-i18n="pOpen">Bundled in the installer. Free models, no login.</td><td data-i18n="pOpenC">Free</td></tr>
+              <tr><td>Gemini</td><td data-i18n="pGem">Your installed Gemini CLI and its Google sign-in or API key.</td><td data-i18n="pGemC">Free tier</td></tr>
+              <tr><td>Claude</td><td data-i18n="pCla">Your installed Claude Code and its login.</td><td data-i18n="pClaC">Your plan</td></tr>
+              <tr><td>ChatGPT (Codex)</td><td data-i18n="pCod">Your installed Codex CLI and its ChatGPT login.</td><td data-i18n="pCodC">Your plan</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note" data-i18n="aiNote">Free models and free tiers have usage limits set by their providers. Paid plans are billed by those providers, not by Sahkarmi.</p>
+      </section>
+
+      <section class="section" id="privacy" aria-labelledby="priv-h">
+        <div class="split">
+          <figure class="shot">
+            <img src="/assets/shots/light-approvals-hi-1440.webp" srcset="/assets/shots/light-approvals-hi-480.webp 480w, /assets/shots/light-approvals-hi-720.webp 720w, /assets/shots/light-approvals-hi-1440.webp 1440w" sizes="(max-width: 860px) 100vw, 600px" width="1440" height="900" loading="lazy" decoding="async" alt="The Approvals inbox in Hindi, with a pending payment request and Approve and Reject buttons." lang="en" />
+          </figure>
+          <div>
+            <p class="eyebrow" data-i18n="privEyebrow">Privacy and safety</p>
+            <h2 id="priv-h" data-i18n="privH2">Local-first, and honest about it</h2>
+            <ul class="grid one-col">
+              <li class="card"><p data-i18n="priv1">Your coworkers, chats, files and settings are stored on your computer. There is no Sahkarmi cloud account.</p></li>
+              <li class="card"><p data-i18n="priv2">When a coworker thinks, the text it needs is sent to the AI provider you chose (OpenCode, Gemini, Claude or ChatGPT) under that provider’s terms.</p></li>
+              <li class="card"><p data-i18n="priv3">Sahkarmi is a development preview. Coworkers can use files, commands and the network on your PC. Run tasks you trust and keep backups.</p></li>
+              <li class="card"><p data-i18n="priv4">The code is open source under the Apache License 2.0, so anyone can check what it does.</p></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="get-started" aria-labelledby="start-h">
+        <p class="eyebrow" data-i18n="startEyebrow">Get started</p>
+        <h2 id="start-h" data-i18n="startH2">Up and running in a few minutes</h2>
+        <ol class="grid steps">
+          <li class="card"><h3 data-i18n="s1">Download</h3><p data-i18n="s1P">Get the Windows installer (Windows 10 or 11, 64-bit) from the download button or GitHub Releases.</p></li>
+          <li class="card"><h3 data-i18n="s2">Install</h3><p data-i18n="s2P">The installer is not code-signed yet. If Windows SmartScreen warns you, choose More info → Run anyway.</p></li>
+          <li class="card"><h3 data-i18n="s3">Say namaste</h3><p data-i18n="s3P">Open Sahkarmi, pick a coworker and give the first task. The free built-in AI works right away.</p></li>
+        </ol>
+      </section>
+
+      <section class="section" id="faq" aria-labelledby="faq-h">
+        <p class="eyebrow" data-i18n="faqEyebrow">Questions</p>
+        <h2 id="faq-h" data-i18n="faqH2">Frequently asked questions</h2>
+        <div class="faq">
+        <details>
+          <summary data-i18n="q1">Is Sahkarmi free?</summary>
+          <p data-i18n="a1">Yes. The app is free and open source, and it includes free AI models through the bundled OpenCode, with no login or card. If you connect a paid plan such as ChatGPT or Claude, that provider bills you directly.</p>
+        </details>
+        <details>
+          <summary data-i18n="q2">Which computers does it run on?</summary>
+          <p data-i18n="a2">Windows 10 and 11 (64-bit) is the main build. macOS (Apple silicon) and Linux (AppImage) builds are also published on GitHub Releases.</p>
+        </details>
+        <details>
+          <summary data-i18n="q3">Can a coworker pay, send or post without me?</summary>
+          <p data-i18n="a3">Coworkers are instructed to stop and file an approval request before payments, messages to customers or vendors, publishing and form submissions, and you approve or reject each one. In the current preview this relies on the AI following those instructions, so watch new tasks closely and never share card details or OTPs with a coworker.</p>
+        </details>
+        <details>
+          <summary data-i18n="q4">Where is my data stored?</summary>
+          <p data-i18n="a4">On your computer. Sahkarmi has no cloud account of its own. The text a coworker works on is sent to the AI provider you chose, under that provider’s privacy terms.</p>
+        </details>
+        <details>
+          <summary data-i18n="q5">Do I need ChatGPT, Claude or Gemini?</summary>
+          <p data-i18n="a5">No. The free built-in AI works without any account. If you already use Codex (ChatGPT), Claude Code or Gemini CLI on the same computer, Sahkarmi can use those logins too.</p>
+        </details>
+        <details>
+          <summary data-i18n="q6">Which languages does it support?</summary>
+          <p data-i18n="a6">The app interface is in English, Hindi and Bengali, and coworkers reply in the language you write in.</p>
+        </details>
+        <details>
+          <summary data-i18n="q7">Who makes Sahkarmi?</summary>
+          <p data-i18n="a7">Sahkarmi is built in India. It started from the open-source OpenBot v0.1.11 by Norbert Bodziony (Apache License 2.0) and is developed in the open on GitHub.</p>
+        </details>
+        </div>
+      </section>
+
+      <section class="community" id="follow" aria-labelledby="follow-h">
+        <div>
+          <h2 id="follow-h" data-i18n="followH2">Follow Sahkarmi</h2>
+          <p data-i18n="followP">Product updates, new releases and tips for running your business with AI coworkers.</p>
+        </div>
+        <ul class="social">
+          <li><a class="linkedin" href="https://www.linkedin.com/company/sahkarmi/" target="_blank" rel="noopener noreferrer"><span class="badge"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854zm4.943 12.248V6.169H2.542v7.225zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248S2.4 3.226 2.4 3.934c0 .694.521 1.248 1.327 1.248zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016l.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225z"/></svg></span><span data-i18n="followLi">Follow Sahkarmi on LinkedIn</span></a></li>
+          <li><a class="facebook" href="https://www.facebook.com/sahakarmi" target="_blank" rel="noopener noreferrer"><span class="badge"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M16 8.049c0-4.446-3.582-8.05-8-8.05C3.58 0-.002 3.603-.002 8.05c0 4.017 2.926 7.347 6.75 7.951v-5.625h-2.03V8.05H6.75V6.275c0-2.017 1.195-3.131 3.022-3.131.876 0 1.791.157 1.791.157v1.98h-1.009c-.993 0-1.303.621-1.303 1.258v1.51h2.218l-.354 2.326H9.25V16c3.824-.604 6.75-3.934 6.75-7.951"/></svg></span><span data-i18n="followFb">Follow Sahkarmi on Facebook</span></a></li>
+        </ul>
+      </section>
     </main>
 
     <footer>
       <span data-i18n="talk">Talk to a human:</span>
       <a href="mailto:hi@goliv.online"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>hi@goliv.online</a>
-      <a href="https://wa.me/918240801921" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c1.6.7 2.3.8 3.1.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3z"/></svg>WhatsApp +91 82408 01921</a>
+      <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c1.6.7 2.3.8 3.1.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3z"/></svg>WhatsApp +91 82408 01921</a>
+      <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></svg><span data-i18n="source">Source code on GitHub</span></a>
       <span>© 2026 Sahkarmi</span>
     </footer>
   </div>
@@ -242,7 +620,7 @@
         h1a: "Your AI team.",
         h1b: "Made in India.",
         lead: "Asha does accounts. Vikram sells. Meera answers customers. They work on your own PC with their own browser — and ask you before they pay, send or post.",
-        watch: "Watch: Sahkarmi in 90 seconds",
+        watch: "Watch: Sahkarmi in 2 minutes",
         download: "Download for Windows — Free",
         mini: "Download",
         nologin: "Free AI built in. No login, no card.",
@@ -251,14 +629,104 @@
         p3: "English · हिन्दी · বাংলা",
         talk: "Talk to a human:",
         notWindows: "Windows app. Mac & Linux builds are on GitHub.",
-        title: "Sahkarmi · सहकर्मी — Your AI team. Made in India.",
+        title: "Sahkarmi — AI coworker desktop app. Your AI team, made in India.",
+        aboutEyebrow: "What is Sahkarmi",
+        aboutH2: "An AI team that works on your own computer",
+        aboutP1: "Sahkarmi (सहकर्मी, “coworker”) is a free desktop app for small businesses and their owners. You get a team of AI coworkers. Each one has its own workspace, its own browser, its own memory and its own task queue.",
+        aboutP2: "Give them work in plain English, हिन्दी or বাংলা. They reply in your language and understand INR, lakh and crore, GST, IST and DD/MM/YYYY dates. You stay in control of anything that spends money or talks to customers.",
+        shot1: "Asha (Accounts) working on payables, with her task queue and tool steps.",
+        teamEyebrow: "Who is on the team",
+        teamH2: "Five coworkers to start. Rename them, add more.",
+        asha: "Accounts",
+        ashaP: "Invoices, payables, reconciliation and GST paperwork.",
+        vikram: "Sales",
+        vikramP: "Leads, follow-ups, quotes and price lists.",
+        meera: "Support",
+        meeraP: "Draft replies to customer questions and complaints.",
+        arjun: "Research",
+        arjunP: "Suppliers, competitors, prices and rules, with sources.",
+        kavya: "Content",
+        kavyaP: "Posts, product descriptions and catalogues.",
+        howEyebrow: "How it works",
+        howH2: "Ask. They work. You approve.",
+        how1: "Give a task",
+        how1P: "Message a coworker, attach files or schedule it to repeat: once, hourly, daily, weekdays or weekly.",
+        how2: "They do the work",
+        how2P: "Coworkers read files, browse in their own browser tab and pass work to each other. Every step is shown as it happens.",
+        how3: "You stay in charge",
+        how3P: "Before a payment, a customer message, a post or a form submission, they file a request in your Approvals inbox. For logins and OTPs, you take over the browser.",
+        featEyebrow: "Inside the app",
+        featH2: "Built for real business work",
+        f1: "Own browser per coworker",
+        f1P: "A built-in browser with a Take over button. While you are in control, coworkers pause.",
+        f2: "Approvals inbox",
+        f2P: "Approve or reject with a note. The decision goes back to the coworker as a message.",
+        f3: "Task queue",
+        f3P: "See what is queued, running and done. Pause, resume, cancel or stop.",
+        f4: "Shared files",
+        f4P: "One folder the whole team can read and write, next to each coworker’s own folder.",
+        f5: "Schedules",
+        f5P: "Daily reports, weekly follow-ups or a one-off reminder at a set time.",
+        f6: "Three languages",
+        f6P: "The whole app in English, हिन्दी and বাংলা, with light and dark themes.",
+        aiEyebrow: "AI providers",
+        aiH2: "Free AI built in. Use your own sign-ins if you have them.",
+        aiLead: "Sahkarmi finds the AI tools installed on your computer and reuses their existing login. It never copies your tokens.",
+        thProvider: "Provider",
+        thHow: "How Sahkarmi uses it",
+        thCost: "Cost",
+        pOpen: "Bundled in the installer. Free models, no login.",
+        pOpenC: "Free",
+        pGem: "Your installed Gemini CLI and its Google sign-in or API key.",
+        pGemC: "Free tier",
+        pCla: "Your installed Claude Code and its login.",
+        pClaC: "Your plan",
+        pCod: "Your installed Codex CLI and its ChatGPT login.",
+        pCodC: "Your plan",
+        aiNote: "Free models and free tiers have usage limits set by their providers. Paid plans are billed by those providers, not by Sahkarmi.",
+        privEyebrow: "Privacy and safety",
+        privH2: "Local-first, and honest about it",
+        priv1: "Your coworkers, chats, files and settings are stored on your computer. There is no Sahkarmi cloud account.",
+        priv2: "When a coworker thinks, the text it needs is sent to the AI provider you chose (OpenCode, Gemini, Claude or ChatGPT) under that provider’s terms.",
+        priv3: "Sahkarmi is a development preview. Coworkers can use files, commands and the network on your PC. Run tasks you trust and keep backups.",
+        priv4: "The code is open source under the Apache License 2.0, so anyone can check what it does.",
+        startEyebrow: "Get started",
+        startH2: "Up and running in a few minutes",
+        s1: "Download",
+        s1P: "Get the Windows installer (Windows 10 or 11, 64-bit) from the download button or GitHub Releases.",
+        s2: "Install",
+        s2P: "The installer is not code-signed yet. If Windows SmartScreen warns you, choose More info → Run anyway.",
+        s3: "Say namaste",
+        s3P: "Open Sahkarmi, pick a coworker and give the first task. The free built-in AI works right away.",
+        faqEyebrow: "Questions",
+        faqH2: "Frequently asked questions",
+        q1: "Is Sahkarmi free?",
+        a1: "Yes. The app is free and open source, and it includes free AI models through the bundled OpenCode, with no login or card. If you connect a paid plan such as ChatGPT or Claude, that provider bills you directly.",
+        q2: "Which computers does it run on?",
+        a2: "Windows 10 and 11 (64-bit) is the main build. macOS (Apple silicon) and Linux (AppImage) builds are also published on GitHub Releases.",
+        q3: "Can a coworker pay, send or post without me?",
+        a3: "Coworkers are instructed to stop and file an approval request before payments, messages to customers or vendors, publishing and form submissions, and you approve or reject each one. In the current preview this relies on the AI following those instructions, so watch new tasks closely and never share card details or OTPs with a coworker.",
+        q4: "Where is my data stored?",
+        a4: "On your computer. Sahkarmi has no cloud account of its own. The text a coworker works on is sent to the AI provider you chose, under that provider’s privacy terms.",
+        q5: "Do I need ChatGPT, Claude or Gemini?",
+        a5: "No. The free built-in AI works without any account. If you already use Codex (ChatGPT), Claude Code or Gemini CLI on the same computer, Sahkarmi can use those logins too.",
+        q6: "Which languages does it support?",
+        a6: "The app interface is in English, Hindi and Bengali, and coworkers reply in the language you write in.",
+        q7: "Who makes Sahkarmi?",
+        a7: "Sahkarmi is built in India. It started from the open-source OpenBot v0.1.11 by Norbert Bodziony (Apache License 2.0) and is developed in the open on GitHub.",
+        followH2: "Follow Sahkarmi",
+        followP: "Product updates, new releases and tips for running your business with AI coworkers.",
+        followLi: "Follow Sahkarmi on LinkedIn",
+        followFb: "Follow Sahkarmi on Facebook",
+        source: "Source code on GitHub",
+        skip: "Skip to content",
       },
       hi: {
         chip: "भारतीय कारोबार के लिए AI सहकर्मी",
         h1a: "आपकी AI टीम.",
         h1b: "भारत में बनी.",
         lead: "आशा हिसाब-किताब सँभालती है. विक्रम बिक्री करता है. मीरा ग्राहकों को जवाब देती है. ये आपके अपने PC पर, अपने ब्राउज़र के साथ काम करते हैं — और पैसे भेजने, मैसेज करने या पोस्ट करने से पहले आपसे पूछते हैं.",
-        watch: "देखें: 90 सेकंड में सहकर्मी",
+        watch: "देखें: 2 मिनट में सहकर्मी",
         download: "Windows के लिए डाउनलोड करें — मुफ़्त",
         mini: "डाउनलोड",
         nologin: "मुफ़्त AI पहले से अंदर. न लॉगिन, न कार्ड.",
@@ -267,7 +735,97 @@
         p3: "English · हिन्दी · বাংলা",
         talk: "किसी इंसान से बात करें:",
         notWindows: "यह Windows ऐप है. Mac और Linux वर्ज़न GitHub पर हैं.",
-        title: "सहकर्मी — आपकी AI टीम. भारत में बनी.",
+        title: "सहकर्मी — AI सहकर्मी डेस्कटॉप ऐप. आपकी AI टीम, भारत में बनी.",
+        aboutEyebrow: "सहकर्मी क्या है",
+        aboutH2: "एक AI टीम, जो आपके अपने कंप्यूटर पर काम करती है",
+        aboutP1: "सहकर्मी छोटे कारोबारों और उनके मालिकों के लिए एक मुफ़्त डेस्कटॉप ऐप है. इसमें आपको AI सहकर्मियों की एक टीम मिलती है. हर सहकर्मी का अपना वर्कस्पेस, अपना ब्राउज़र, अपनी याददाश्त और अपनी काम की कतार होती है.",
+        aboutP2: "उन्हें सीधी हिन्दी, English या বাংলা में काम दें. वे आपकी भाषा में जवाब देते हैं और रुपये, लाख-करोड़, GST, IST और DD/MM/YYYY तारीखें समझते हैं. पैसे खर्च करने या ग्राहकों से बात करने वाले हर काम पर नियंत्रण आपका रहता है.",
+        shot1: "आशा (अकाउंट्स) भुगतान का हिसाब कर रही है — साथ में काम की कतार और हर कदम.",
+        teamEyebrow: "टीम में कौन है",
+        teamH2: "शुरुआत में पाँच सहकर्मी. नाम बदलें, और जोड़ें.",
+        asha: "अकाउंट्स",
+        ashaP: "बिल, भुगतान, मिलान और GST के कागज़.",
+        vikram: "सेल्स",
+        vikramP: "लीड, फ़ॉलो-अप, कोटेशन और रेट लिस्ट.",
+        meera: "सपोर्ट",
+        meeraP: "ग्राहकों के सवालों और शिकायतों के जवाब का ड्राफ़्ट.",
+        arjun: "रिसर्च",
+        arjunP: "सप्लायर, प्रतियोगी, दाम और नियम — स्रोत के साथ.",
+        kavya: "कंटेंट",
+        kavyaP: "पोस्ट, प्रोडक्ट विवरण और कैटलॉग.",
+        howEyebrow: "यह कैसे काम करता है",
+        howH2: "आप कहें. वे काम करें. आप मंज़ूरी दें.",
+        how1: "काम दें",
+        how1P: "किसी सहकर्मी को मैसेज करें, फ़ाइल जोड़ें, या काम को दोहराने के लिए समय तय करें: एक बार, हर घंटे, रोज़, कामकाजी दिन या हर हफ़्ते.",
+        how2: "वे काम करते हैं",
+        how2P: "सहकर्मी फ़ाइलें पढ़ते हैं, अपने ब्राउज़र टैब में काम करते हैं और आपस में काम बाँटते हैं. हर कदम आपको सामने दिखता है.",
+        how3: "फ़ैसला आपका",
+        how3P: "भुगतान, ग्राहक को मैसेज, पोस्ट या फ़ॉर्म जमा करने से पहले वे आपके अप्रूवल इनबॉक्स में अनुरोध भेजते हैं. लॉगिन और OTP के लिए ब्राउज़र आप ख़ुद सँभालते हैं.",
+        featEyebrow: "ऐप के अंदर",
+        featH2: "असली कारोबारी काम के लिए बना",
+        f1: "हर सहकर्मी का अपना ब्राउज़र",
+        f1P: "बिल्ट-इन ब्राउज़र और “Take over” बटन. जब आप चला रहे हों, सहकर्मी रुक जाते हैं.",
+        f2: "अप्रूवल इनबॉक्स",
+        f2P: "नोट के साथ मंज़ूर या नामंज़ूर करें. फ़ैसला सहकर्मी तक मैसेज बनकर पहुँचता है.",
+        f3: "काम की कतार",
+        f3P: "देखें क्या कतार में है, क्या चल रहा है, क्या पूरा हुआ. रोकें, फिर चलाएँ या रद्द करें.",
+        f4: "साझा फ़ाइलें",
+        f4P: "एक फ़ोल्डर जिसे पूरी टीम पढ़-लिख सकती है, साथ में हर सहकर्मी का अपना फ़ोल्डर.",
+        f5: "समय-सारणी",
+        f5P: "रोज़ की रिपोर्ट, हफ़्ते का फ़ॉलो-अप या तय समय पर एक बार का रिमाइंडर.",
+        f6: "तीन भाषाएँ",
+        f6P: "पूरा ऐप English, हिन्दी और বাংলা में, लाइट और डार्क थीम के साथ.",
+        aiEyebrow: "AI प्रदाता",
+        aiH2: "मुफ़्त AI पहले से अंदर. आपके पास अपना AI अकाउंट हो तो वह भी चलेगा.",
+        aiLead: "सहकर्मी आपके कंप्यूटर पर इंस्टॉल AI टूल ढूँढकर उनका मौजूदा लॉगिन इस्तेमाल करता है. आपके टोकन कभी कॉपी नहीं करता.",
+        thProvider: "प्रदाता",
+        thHow: "सहकर्मी इसे कैसे इस्तेमाल करता है",
+        thCost: "क़ीमत",
+        pOpen: "इंस्टॉलर के अंदर ही. मुफ़्त मॉडल, कोई लॉगिन नहीं.",
+        pOpenC: "मुफ़्त",
+        pGem: "आपका इंस्टॉल Gemini CLI और उसका Google साइन-इन या API key.",
+        pGemC: "फ़्री टियर",
+        pCla: "आपका इंस्टॉल Claude Code और उसका लॉगिन.",
+        pClaC: "आपका प्लान",
+        pCod: "आपका इंस्टॉल Codex CLI और उसका ChatGPT लॉगिन.",
+        pCodC: "आपका प्लान",
+        aiNote: "मुफ़्त मॉडल और फ़्री टियर की सीमाएँ उनके प्रदाता तय करते हैं. पेड प्लान का बिल वही प्रदाता भेजते हैं, सहकर्मी नहीं.",
+        privEyebrow: "गोपनीयता और सुरक्षा",
+        privH2: "लोकल-फ़र्स्ट, और इसके बारे में साफ़",
+        priv1: "आपके सहकर्मी, बातचीत, फ़ाइलें और सेटिंग्स आपके कंप्यूटर पर रहती हैं. सहकर्मी का कोई क्लाउड अकाउंट नहीं है.",
+        priv2: "जब कोई सहकर्मी सोचता है, तो ज़रूरी टेक्स्ट आपके चुने AI प्रदाता (OpenCode, Gemini, Claude या ChatGPT) को उनकी शर्तों के तहत भेजा जाता है.",
+        priv3: "सहकर्मी अभी डेवलपमेंट प्रीव्यू है. सहकर्मी आपके PC की फ़ाइलें, कमांड और इंटरनेट इस्तेमाल कर सकते हैं. भरोसे वाले काम ही चलाएँ और बैकअप रखें.",
+        priv4: "कोड Apache License 2.0 के तहत ओपन सोर्स है, इसलिए कोई भी जाँच सकता है कि यह क्या करता है.",
+        startEyebrow: "शुरू करें",
+        startH2: "कुछ ही मिनट में तैयार",
+        s1: "डाउनलोड करें",
+        s1P: "डाउनलोड बटन या GitHub Releases से Windows इंस्टॉलर लें (Windows 10 या 11, 64-bit).",
+        s2: "इंस्टॉल करें",
+        s2P: "इंस्टॉलर पर अभी कोड-साइनिंग नहीं है. Windows SmartScreen चेतावनी दे तो More info → Run anyway चुनें.",
+        s3: "नमस्ते कहें",
+        s3P: "सहकर्मी खोलें, कोई सहकर्मी चुनें और पहला काम दें. मुफ़्त AI तुरंत काम करता है.",
+        faqEyebrow: "सवाल",
+        faqH2: "अक्सर पूछे जाने वाले सवाल",
+        q1: "क्या सहकर्मी मुफ़्त है?",
+        a1: "हाँ. ऐप मुफ़्त और ओपन सोर्स है, और इसमें बंडल किए गए OpenCode के ज़रिए मुफ़्त AI मॉडल हैं — न लॉगिन, न कार्ड. अगर आप ChatGPT या Claude जैसा पेड प्लान जोड़ते हैं, तो उसका बिल वही प्रदाता भेजता है.",
+        q2: "यह किन कंप्यूटरों पर चलता है?",
+        a2: "मुख्य वर्ज़न Windows 10 और 11 (64-bit) के लिए है. macOS (Apple silicon) और Linux (AppImage) वर्ज़न भी GitHub Releases पर मिलते हैं.",
+        q3: "क्या कोई सहकर्मी मुझसे पूछे बिना भुगतान, मैसेज या पोस्ट कर सकता है?",
+        a3: "सहकर्मियों को निर्देश है कि भुगतान, ग्राहक या वेंडर को मैसेज, पोस्ट और फ़ॉर्म जमा करने से पहले रुकें और अप्रूवल का अनुरोध भेजें. हर अनुरोध को आप मंज़ूर या नामंज़ूर करते हैं. मौजूदा प्रीव्यू में यह AI के निर्देश मानने पर टिका है, इसलिए नए कामों पर नज़र रखें और कार्ड की जानकारी या OTP किसी सहकर्मी को न दें.",
+        q4: "मेरा डेटा कहाँ रहता है?",
+        a4: "आपके कंप्यूटर पर. सहकर्मी का अपना कोई क्लाउड अकाउंट नहीं है. सहकर्मी जिस टेक्स्ट पर काम करता है, वह आपके चुने AI प्रदाता को उनकी गोपनीयता शर्तों के तहत भेजा जाता है.",
+        q5: "क्या मुझे ChatGPT, Claude या Gemini चाहिए?",
+        a5: "नहीं. मुफ़्त AI बिना किसी अकाउंट के चलता है. अगर आप उसी कंप्यूटर पर पहले से Codex (ChatGPT), Claude Code या Gemini CLI इस्तेमाल करते हैं, तो सहकर्मी उन लॉगिन का भी इस्तेमाल कर सकता है.",
+        q6: "कौन-सी भाषाएँ चलती हैं?",
+        a6: "ऐप English, हिन्दी और বাংলা में है, और सहकर्मी उसी भाषा में जवाब देते हैं जिसमें आप लिखते हैं.",
+        q7: "सहकर्मी कौन बनाता है?",
+        a7: "सहकर्मी भारत में बना है. इसकी शुरुआत Norbert Bodziony के ओपन-सोर्स OpenBot v0.1.11 (Apache License 2.0) से हुई और इसका विकास GitHub पर खुले में होता है.",
+        followH2: "सहकर्मी को फ़ॉलो करें",
+        followP: "प्रोडक्ट अपडेट, नए वर्ज़न और AI सहकर्मियों के साथ कारोबार चलाने के सुझाव.",
+        followLi: "LinkedIn पर सहकर्मी को फ़ॉलो करें",
+        followFb: "Facebook पर सहकर्मी को फ़ॉलो करें",
+        source: "GitHub पर सोर्स कोड",
+        skip: "सामग्री पर जाएँ",
       },
     };
 
