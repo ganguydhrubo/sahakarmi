@@ -3,6 +3,27 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-10-20
+
+### Fixed
+
+- The provider chosen on the setup screen is now applied to the team: coworkers that have never
+  run move to that provider's default model (for example "Free model (no login)" after choosing
+  OpenCode), even when another AI such as Claude is also connected. Previously the team silently
+  stayed on the first AI that happened to connect, which looked like the model was not saved.
+- Fresh installs default to the bundled OpenCode instead of ChatGPT (Codex).
+- Each AI provider's status is shown as soon as it is known instead of after all four were tried,
+  so the model picker opens sooner.
+- macOS release build no longer fails with "GitHub Personal Access Token is not set".
+
+### Added
+
+- A plain-text log at `<app data>/logs/sahkarmi.log` (agent errors and provider status) for
+  diagnosing problems on a user's machine. Settings → Export diagnostics still works.
+- Weekly "Upstream watch" workflow: opens a pull request when a newer OpenCode is published,
+  and keeps a tracking issue with the latest Claude Agent SDK, Codex CLI, Gemini CLI and upstream
+  OpenBot releases (OpenBot code after v0.1.11 is noncommercial-licensed and is never merged).
+
 ## [0.3.0] - 2026-10-19
 
 ### Added
