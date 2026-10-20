@@ -464,7 +464,7 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: "#0F1220",
     title: "Sahkarmi",
-    ...(app.isPackaged ? {} : { icon: join(__dirname, "../../build/icons/512x512.png") }),
+    ...(windowIcon() ? { icon: windowIcon() } : {}),
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 13, y: 14 } }
       : {}),
@@ -511,6 +511,21 @@ function createWindow(): BrowserWindow {
   });
 
   return window;
+}
+
+/** The Sahkarmi logo for the window and taskbar (.ico on Windows for crisp small sizes). */
+function windowIcon(): string | undefined {
+  if (process.platform === "darwin") return undefined;
+  const candidates = app.isPackaged
+    ? [join(process.resourcesPath, "icons", process.platform === "win32" ? "icon.ico" : "icon.png")]
+    : [
+        join(
+          __dirname,
+          "../../build",
+          process.platform === "win32" ? "icon.ico" : "icons/512x512.png",
+        ),
+      ];
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 function loadRenderer(window: BrowserWindow): Promise<void> {
