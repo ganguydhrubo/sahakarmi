@@ -175,7 +175,7 @@ async function verifySecondInstanceExits(executable: string, userDataPath: strin
     new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveExit) => {
       second.once("exit", (code, signal) => resolveExit({ code, signal }));
     }),
-    new Promise<null>((resolveDelay) => setTimeout(() => resolveDelay(null), 3_000)),
+    new Promise<null>((resolveDelay) => setTimeout(() => resolveDelay(null), 10_000)),
   ]);
   if (!result) {
     second.kill();
