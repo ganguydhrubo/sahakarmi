@@ -57,6 +57,25 @@ All notable changes to Sahkarmi are documented here. The project follows
     coworkers are told to follow it when a task matches. **Remove** uninstalls it.
 - No install counts or ratings are shown, because none are collected.
 
+## [Unreleased] - tasks, header model picker, update bar
+
+### Added
+
+- **Tasks:** a new Tasks page with one "What do you want done?" box. Pick a coworker, type or
+  speak the task and send it; it is queued like a normal message and that coworker's chat opens.
+  Recent tasks across the whole team are listed below with their real status (Waiting, Working,
+  Done, Failed, Stopped), and clicking one opens its chat.
+- **Model in the chat header:** the coworker's model and reasoning level ("Luna · Medium") now
+  show in the chat header. Click to change either one.
+- **Update bar in the sidebar:** "Update ready → Restart", "Update available → Download" or the
+  download progress now sits at the foot of the sidebar.
+
+### Fixed
+
+- The model picker no longer looks silently broken before an AI provider is connected: it says
+  "Connect an AI provider to choose a model" and offers a **Connect** button that opens
+  Settings → AI and models.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added

@@ -19,6 +19,7 @@ import {
   type ThemePreference,
   theme,
 } from "../preferences";
+import { SETTINGS_SECTION_KEY } from "../settings-section";
 import { FeaturesSettings } from "./FeaturesSettings";
 import { LogoMark } from "./Logo";
 import { ModelSuggestions } from "./ModelSuggestions";
@@ -45,7 +46,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
   { id: "data", label: "dataPrivacy" },
   { id: "about", label: "about" },
 ];
-const SECTION_KEY = "sahkarmi:settings-section";
+const SECTION_KEY = SETTINGS_SECTION_KEY;
 
 function storedSection(): SettingsSection {
   try {
