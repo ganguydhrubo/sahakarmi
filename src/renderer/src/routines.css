@@ -431,6 +431,9 @@
 }
 
 /* A readable workflow canvas with a separate inspector, inspired by the panel reference. */
+.routines-view {
+  container: routines / inline-size;
+}
 .routines-view > .center-view-body {
   display: flex;
   flex-direction: column;
@@ -540,9 +543,11 @@
   overflow-y: auto;
   margin: 20px;
 }
-@container (max-width: 760px) {
+@container routines (max-width: 760px) {
   .routines-view .routine-details {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
     overflow-y: auto;
   }
   .routine-canvas,
