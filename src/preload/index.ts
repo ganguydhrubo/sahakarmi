@@ -4,6 +4,7 @@ import {
   type AttachmentImportEvent,
   type ImportAttachmentsInput,
   IPC_CHANNELS,
+  type ProviderSetupState,
   type SahkarmiDesktopApi,
   type UpdateStatus,
 } from "../shared/ipc";
@@ -176,6 +177,19 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => listener(status);
       ipcRenderer.on(IPC_CHANNELS.updateEvent, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.updateEvent, handler);
+    },
+  },
+  providerSetup: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.providerSetupList),
+    connect: (provider) => ipcRenderer.invoke(IPC_CHANNELS.providerSetupConnect, provider),
+    submitCode: (provider, code) =>
+      ipcRenderer.invoke(IPC_CHANNELS.providerSetupSubmitCode, { provider, code }),
+    check: (provider) => ipcRenderer.invoke(IPC_CHANNELS.providerSetupCheck, provider),
+    onEvent: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: ProviderSetupState) =>
+        listener(state);
+      ipcRenderer.on(IPC_CHANNELS.providerSetupEvent, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.providerSetupEvent, handler);
     },
   },
   maintenance: {

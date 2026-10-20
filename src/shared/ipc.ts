@@ -62,6 +62,11 @@ export const IPC_CHANNELS = {
   permissionsRevokeGrant: "permissions:revoke-grant",
   permissionsAudit: "permissions:audit",
   permissionsClearAudit: "permissions:clear-audit",
+  providerSetupList: "provider-setup:list",
+  providerSetupConnect: "provider-setup:connect",
+  providerSetupSubmitCode: "provider-setup:submit-code",
+  providerSetupCheck: "provider-setup:check",
+  providerSetupEvent: "provider-setup:event",
   usageOverview: "usage:overview",
   usageRefresh: "usage:refresh",
   usageClear: "usage:clear",
@@ -556,6 +561,36 @@ export interface PermissionGrant {
   usesLeft: number | null;
   note: string;
   createdAt: string;
+}
+
+/** Progress of a one-click "Connect" for an AI provider. */
+export interface ProviderSetupState {
+  provider: AgentProviderId;
+  /**
+   * installing: downloading the provider's tool. waiting: sign-in page is open in the browser.
+   * needs-code: paste the code the sign-in page shows. terminal: finish in the opened window.
+   */
+  phase:
+    | "idle"
+    | "installing"
+    | "waiting"
+    | "needs-code"
+    | "terminal"
+    | "checking"
+    | "connected"
+    | "failed";
+  message: string | null;
+  /** The provider's own sign-in link, shown in case the browser did not open. */
+  url: string | null;
+  progress: number | null;
+}
+
+export interface ProviderSetupDesktopApi {
+  list: () => Promise<ProviderSetupState[]>;
+  connect: (provider: AgentProviderId) => Promise<ProviderSetupState>;
+  submitCode: (provider: AgentProviderId, code: string) => Promise<ProviderSetupState>;
+  check: (provider: AgentProviderId) => Promise<ProviderSetupState>;
+  onEvent: (listener: (state: ProviderSetupState) => void) => () => void;
 }
 
 export interface PermissionPolicyState {
@@ -1062,6 +1097,7 @@ export interface SahkarmiDesktopApi {
   team: TeamDesktopApi;
   approvals: ApprovalsDesktopApi;
   permissions: PermissionsDesktopApi;
+  providerSetup: ProviderSetupDesktopApi;
   usage: UsageDesktopApi;
   features: FeaturesDesktopApi;
   business: BusinessDesktopApi;

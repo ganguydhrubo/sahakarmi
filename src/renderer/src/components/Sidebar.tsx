@@ -7,6 +7,7 @@ import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
 import { LogoMark } from "./Logo";
 import { StatusDot, statusLabel } from "./StatusDot";
+import { UsageRings } from "./UsageRings";
 
 export type CenterView =
   | "coworker"
@@ -506,6 +507,7 @@ export function Sidebar(props: SidebarProps) {
             </button>
           )}
         </For>
+        <UsageRings onOpenUsage={() => props.onSelectView("usage")} />
         <p class="rail-tagline">
           {t("tagline")}
           <Show when={props.appInfo}>
