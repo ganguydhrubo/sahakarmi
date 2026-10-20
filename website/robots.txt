@@ -1,0 +1,35 @@
+# robots.txt for https://sahkarmi.site — the public website of the Sahkarmi desktop app.
+#
+# Policy: the whole public site may be crawled by search engines, answer engines and other
+# crawlers. This keeps the behaviour the site had before this file existed (no robots.txt meant
+# "allow everything"). There are no private routes on this site; the app itself runs on the
+# owner's computer and is never served from here.
+#
+# Search and answer-engine crawlers covered by the rule below include Googlebot, Bingbot,
+# OAI-SearchBot (ChatGPT search), Claude-SearchBot, PerplexityBot, Applebot and DuckDuckBot.
+#
+# AI model-training crawlers are also allowed today (owner's current policy). To opt out of
+# training only, without affecting search visibility, uncomment the groups below:
+#
+# User-agent: GPTBot
+# Disallow: /
+#
+# User-agent: ClaudeBot
+# Disallow: /
+#
+# User-agent: Google-Extended
+# Disallow: /
+#
+# User-agent: Applebot-Extended
+# Disallow: /
+#
+# User-agent: meta-externalagent
+# Disallow: /
+#
+# User-agent: CCBot
+# Disallow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://sahkarmi.site/sitemap.xml
