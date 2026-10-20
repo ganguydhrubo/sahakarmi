@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Sahkarmi — AI coworker desktop app. Your AI team, made in India.</title>
-  <meta name="description" content="Sahkarmi is a free desktop app that gives your business a team of AI coworkers, each with its own workspace and browser. They ask before paying or posting. For Windows." />
+  <meta name="description" content="Free desktop app that gives your business a team of AI coworkers, each with its own workspace and browser. They ask before paying or posting. For Windows and Mac." />
   <link rel="canonical" href="https://sahkarmi.site/" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <meta name="theme-color" content="#0F1220" />
@@ -20,7 +20,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://sahkarmi.site/" />
   <meta property="og:title" content="Sahkarmi — Your AI team. Made in India." />
-  <meta property="og:description" content="AI coworkers for Indian businesses that work on your own PC, each with its own browser. Free AI built in. Download for Windows." />
+  <meta property="og:description" content="AI coworkers for Indian businesses that work on your own PC, each with its own browser. Free AI built in. For Windows and Mac." />
   <meta property="og:locale" content="en_IN" />
   <meta property="og:locale:alternate" content="hi_IN" />
   <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
@@ -298,6 +298,15 @@
     .download svg { width: 26px; height: 26px; flex: none; }
     .meta { margin: 0; color: var(--muted); font-size: 15px; text-align: center; }
     .meta a { color: var(--paper); }
+    .platforms { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 10px; margin: 0; color: var(--muted); font-size: 15px; }
+    .platforms a { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--paper); text-decoration: none; font-weight: 600; transition: background .25s, border-color .25s; }
+    .platforms a:hover { background: rgb(255 255 255 / 0.08); border-color: rgb(251 247 240 / 0.3); }
+    .platforms a[aria-current="true"] { border-color: var(--saffron); }
+    .mac-note { max-width: 560px; }
+    .os-icon { display: inline-flex; }
+    .os-icon svg { width: 100%; height: 100%; }
+    .download .os-icon { width: 26px; height: 26px; flex: none; }
+    .mini .os-icon { width: 16px; height: 16px; }
     .proof { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
     .proof li { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: rgb(255 255 255 / 0.03); color: #e5e1f1; font-size: 15px; font-weight: 500; }
     .proof svg { width: 18px; height: 18px; flex: none; }
@@ -393,8 +402,8 @@
         <span><b>Sahkarmi</b><small lang="hi">सहकर्मी</small></span>
       </a>
       <div class="actions">
-        <a class="mini" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" aria-label="Download for Windows">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.2 10.4 4v7.3H3zM11.3 3.9 21 2.5v8.8h-9.7zM3 12.2h7.4v7.3L3 18.3zM11.3 12.2H21V21l-9.7-1.4z"/></svg>
+        <a class="mini" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" aria-label="Download Sahkarmi">
+          <span class="os-icon" data-os-icon><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.2 10.4 4v7.3H3zM11.3 3.9 21 2.5v8.8h-9.7zM3 12.2h7.4v7.3L3 18.3zM11.3 12.2H21V21l-9.7-1.4z"/></svg></span>
           <span data-i18n="mini">Download</span>
         </a>
         <div class="lang" role="group" aria-label="Language">
@@ -450,10 +459,17 @@
 
       <section class="cta">
         <a class="download" id="download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/latest">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.2 10.4 4v7.3H3zM11.3 3.9 21 2.5v8.8h-9.7zM3 12.2h7.4v7.3L3 18.3zM11.3 12.2H21V21l-9.7-1.4z"/></svg>
-          <span data-i18n="download">Download for Windows — Free</span>
+          <span class="os-icon" data-os-icon><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.2 10.4 4v7.3H3zM11.3 3.9 21 2.5v8.8h-9.7zM3 12.2h7.4v7.3L3 18.3zM11.3 12.2H21V21l-9.7-1.4z"/></svg></span>
+          <span id="download-label" data-i18n="download">Download for Windows — Free</span>
         </a>
         <p class="meta"><span id="version">Windows 10 / 11</span> · <span data-i18n="nologin">Free AI built in. No login, no card.</span></p>
+        <p class="platforms">
+          <span data-i18n="allDownloads">All downloads:</span>
+          <a data-platform="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/latest">Windows 10 / 11</a>
+          <a data-platform="mac" href="https://github.com/ganguydhrubo/sahakarmi/releases/latest">macOS · Apple Silicon</a>
+          <a data-platform="linux" href="https://github.com/ganguydhrubo/sahakarmi/releases/latest">Linux · AppImage</a>
+        </p>
+        <p class="meta mac-note" id="mac-note" hidden><span data-i18n="macNote">Mac with Apple Silicon (M1 or newer), macOS 12+. First launch: right-click Sahkarmi in Applications → Open.</span></p>
         <ul class="proof">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="#f2954f" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i18n="p1">Runs on your PC</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="#f2b705" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="m9 12 2 2 4-4"/></svg><span data-i18n="p2">Asks before it pays</span></li>
@@ -551,7 +567,7 @@
         <p class="eyebrow" data-i18n="startEyebrow">Get started</p>
         <h2 id="start-h" data-i18n="startH2">Up and running in a few minutes</h2>
         <ol class="grid steps">
-          <li class="card"><h3 data-i18n="s1">Download</h3><p data-i18n="s1P">Get the Windows installer (Windows 10 or 11, 64-bit) from the download button or GitHub Releases.</p></li>
+          <li class="card"><h3 data-i18n="s1">Download</h3><p data-i18n="s1P">Get the installer for Windows 10/11 (64-bit) or a Mac with Apple Silicon from the download buttons above.</p></li>
           <li class="card"><h3 data-i18n="s2">Install</h3><p data-i18n="s2P">The installer is not code-signed yet. If Windows SmartScreen warns you, choose More info → Run anyway.</p></li>
           <li class="card"><h3 data-i18n="s3">Say namaste</h3><p data-i18n="s3P">Open Sahkarmi, pick a coworker and give the first task. The free built-in AI works right away.</p></li>
         </ol>
@@ -622,13 +638,16 @@
         lead: "Asha does accounts. Vikram sells. Meera answers customers. They work on your own PC with their own browser — and ask you before they pay, send or post.",
         watch: "Watch: Sahkarmi in 2 minutes",
         download: "Download for Windows — Free",
+        downloadMac: "Download for Mac — Free",
+        allDownloads: "All downloads:",
+        macNote: "Mac with Apple Silicon (M1 or newer), macOS 12+. First launch: right-click Sahkarmi in Applications → Open.",
         mini: "Download",
         nologin: "Free AI built in. No login, no card.",
         p1: "Runs on your PC",
         p2: "Asks before it pays",
         p3: "English · हिन्दी · বাংলা",
         talk: "Talk to a human:",
-        notWindows: "Windows app. Mac & Linux builds are on GitHub.",
+        notWindows: "Desktop app for Windows, Mac (Apple Silicon) and Linux.",
         title: "Sahkarmi — AI coworker desktop app. Your AI team, made in India.",
         aboutEyebrow: "What is Sahkarmi",
         aboutH2: "An AI team that works on your own computer",
@@ -693,7 +712,7 @@
         startEyebrow: "Get started",
         startH2: "Up and running in a few minutes",
         s1: "Download",
-        s1P: "Get the Windows installer (Windows 10 or 11, 64-bit) from the download button or GitHub Releases.",
+        s1P: "Get the installer for Windows 10/11 (64-bit) or a Mac with Apple Silicon from the download buttons above.",
         s2: "Install",
         s2P: "The installer is not code-signed yet. If Windows SmartScreen warns you, choose More info → Run anyway.",
         s3: "Say namaste",
@@ -728,13 +747,16 @@
         lead: "आशा हिसाब-किताब सँभालती है. विक्रम बिक्री करता है. मीरा ग्राहकों को जवाब देती है. ये आपके अपने PC पर, अपने ब्राउज़र के साथ काम करते हैं — और पैसे भेजने, मैसेज करने या पोस्ट करने से पहले आपसे पूछते हैं.",
         watch: "देखें: 2 मिनट में सहकर्मी",
         download: "Windows के लिए डाउनलोड करें — मुफ़्त",
+        downloadMac: "Mac के लिए डाउनलोड करें — मुफ़्त",
+        allDownloads: "सभी डाउनलोड:",
+        macNote: "Apple Silicon (M1 या नया) वाला Mac, macOS 12+. पहली बार खोलते समय: Applications में Sahkarmi पर राइट-क्लिक करें → Open.",
         mini: "डाउनलोड",
         nologin: "मुफ़्त AI पहले से अंदर. न लॉगिन, न कार्ड.",
         p1: "आपके PC पर चलता है",
         p2: "भुगतान से पहले पूछता है",
         p3: "English · हिन्दी · বাংলা",
         talk: "किसी इंसान से बात करें:",
-        notWindows: "यह Windows ऐप है. Mac और Linux वर्ज़न GitHub पर हैं.",
+        notWindows: "Windows, Mac (Apple Silicon) और Linux के लिए डेस्कटॉप ऐप.",
         title: "सहकर्मी — AI सहकर्मी डेस्कटॉप ऐप. आपकी AI टीम, भारत में बनी.",
         aboutEyebrow: "सहकर्मी क्या है",
         aboutH2: "एक AI टीम, जो आपके अपने कंप्यूटर पर काम करती है",
@@ -799,7 +821,7 @@
         startEyebrow: "शुरू करें",
         startH2: "कुछ ही मिनट में तैयार",
         s1: "डाउनलोड करें",
-        s1P: "डाउनलोड बटन या GitHub Releases से Windows इंस्टॉलर लें (Windows 10 या 11, 64-bit).",
+        s1P: "ऊपर के डाउनलोड बटन से Windows 10/11 (64-bit) या Apple Silicon वाले Mac का इंस्टॉलर लें.",
         s2: "इंस्टॉल करें",
         s2P: "इंस्टॉलर पर अभी कोड-साइनिंग नहीं है. Windows SmartScreen चेतावनी दे तो More info → Run anyway चुनें.",
         s3: "नमस्ते कहें",
@@ -833,34 +855,61 @@
       try { return new URLSearchParams(location.search).get("lang") || localStorage.getItem("sahkarmi-lang"); } catch { return null; }
     }
 
+    // Which desktop the visitor is on decides the big button; every platform stays listed below it.
+    function detectOs() {
+      const ua = navigator.userAgent || "";
+      if (/iPhone|iPad|iPod|Android/i.test(ua)) return "mobile";
+      const platform = navigator.userAgentData?.platform || navigator.platform || ua;
+      if (/mac/i.test(platform)) return "mac";
+      if (/win/i.test(platform)) return "win";
+      if (/linux/i.test(platform)) return "linux";
+      return "other";
+    }
+    const OS = detectOs();
+    const MAC_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="11" rx="2"/><path d="M2 19h20M10 19l.5-1.5h3L14 19"/></svg>';
+    if (OS === "mac") {
+      document.getElementById("download-label").dataset.i18n = "downloadMac";
+      for (const icon of document.querySelectorAll("[data-os-icon]")) icon.innerHTML = MAC_ICON;
+      document.getElementById("mac-note").hidden = false;
+    }
+    const currentPlatform = OS === "mac" ? "mac" : OS === "linux" ? "linux" : "win";
+    document.querySelector(`[data-platform="${currentPlatform}"]`)?.setAttribute("aria-current", "true");
+
     function setLang(lang) {
       const strings = STRINGS[lang] || STRINGS.en;
       document.documentElement.lang = lang;
       document.title = strings.title;
       for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = strings[el.dataset.i18n];
       for (const button of document.querySelectorAll("[data-lang]")) button.setAttribute("aria-pressed", String(button.dataset.lang === lang));
-      if (!isWindows()) document.getElementById("version").textContent = strings.notWindows;
+      if (OS !== "win" && OS !== "mac") document.getElementById("version").textContent = strings.notWindows;
+      else if (OS === "mac" && !releaseInfo) document.getElementById("version").textContent = "macOS 12+ · Apple Silicon";
       try { localStorage.setItem("sahkarmi-lang", lang); } catch {}
     }
 
-    function isWindows() {
-      const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
-      return /win/i.test(platform);
-    }
-
+    let releaseInfo = null;
     for (const button of document.querySelectorAll("[data-lang]")) button.addEventListener("click", () => setLang(button.dataset.lang));
     setLang(storedLang() === "hi" ? "hi" : (navigator.language || "").startsWith("hi") && !storedLang() ? "hi" : "en");
 
-    // Point the button straight at the newest Windows installer from GitHub Releases.
+    // Point every button straight at the newest installers on GitHub Releases. If a file is not
+    // attached yet (a release still building), the links keep pointing at the Releases page.
     fetch("https://api.github.com/repos/ganguydhrubo/sahakarmi/releases/latest")
       .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
       .then((release) => {
-        const exe = release.assets.find((asset) => /x64\.exe$/i.test(asset.name));
-        if (!exe) return;
-        for (const link of document.querySelectorAll("[data-download]")) link.href = exe.browser_download_url;
-        if (isWindows()) {
+        const find = (pattern) => release.assets.find((asset) => pattern.test(asset.name));
+        const files = { win: find(/x64\.exe$/i), mac: find(/arm64\.dmg$/i), linux: find(/\.AppImage$/i) };
+        for (const [platform, asset] of Object.entries(files)) {
+          if (!asset) continue;
+          const link = document.querySelector(`[data-platform="${platform}"]`);
+          if (link) link.href = asset.browser_download_url;
+        }
+        const primary = files[currentPlatform] ?? files.win;
+        if (!primary) return;
+        releaseInfo = release;
+        for (const link of document.querySelectorAll("[data-download]")) link.href = primary.browser_download_url;
+        if (OS === "win" || OS === "mac") {
+          const system = OS === "mac" ? "macOS 12+ · Apple Silicon" : "Windows 10 / 11";
           document.getElementById("version").textContent =
-            `${release.tag_name} · ${Math.round(exe.size / 1048576)} MB · Windows 10 / 11`;
+            `${release.tag_name} · ${Math.round(primary.size / 1048576)} MB · ${system}`;
         }
       })
       .catch(() => {});
