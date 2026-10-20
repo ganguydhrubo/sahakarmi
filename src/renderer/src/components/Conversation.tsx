@@ -14,6 +14,7 @@ import type {
   AgentModelOption,
   AgentReasoningEffort,
   AgentStatus,
+  ApprovalRequest,
   AttachmentSummary,
   BotAvatarColor,
   BotAvatarShape,
@@ -40,6 +41,7 @@ import { t } from "../i18n";
 import { markdownToPlainText } from "../markdown";
 import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
+import { ApprovalCard } from "./ApprovalsView";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
@@ -85,6 +87,13 @@ interface ConversationProps {
   turnOutcome?: { status: "completed" | "interrupted" | "failed"; at: number } | null;
   /** A tool call of this coworker is paused in Approvals. */
   waitingForApproval?: boolean;
+  /** This coworker's pending approvals, decided right here in the chat. */
+  pendingApprovals?: ApprovalRequest[];
+  onDecideApproval?: (
+    approvalId: string,
+    decision: "approved" | "rejected",
+    note: string,
+  ) => Promise<void>;
   onCloseAgentPicker: () => void;
   onCreateAgent: () => void;
   onSelectAgent: (botId: string) => void;
@@ -2034,6 +2043,22 @@ export function Conversation(props: ConversationProps) {
             now={activityNow()}
             activeSince={activeSince()}
           />
+          <Show when={props.pendingApprovals?.length && props.onDecideApproval}>
+            <ul class="approval-list inline-approvals" aria-label={t("approvals")}>
+              <For each={props.pendingApprovals}>
+                {(approval) => (
+                  <ApprovalCard
+                    approval={approval}
+                    bot={props.bot}
+                    onDecide={(id, decision, note) =>
+                      props.onDecideApproval?.(id, decision, note) ?? Promise.resolve()
+                    }
+                    onOpenCoworker={() => undefined}
+                  />
+                )}
+              </For>
+            </ul>
+          </Show>
           <Show when={props.prompt}>
             {(prompt) => (
               <PromptCard questions={prompt().questions} onSubmit={props.onAnswerPrompt} />
