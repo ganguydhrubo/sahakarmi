@@ -136,11 +136,29 @@ export function insideAny(path: string, roots: string[]): boolean {
 // -----------------------------------------------------------------------------
 // Classification of concrete tool calls
 
-const READ_ONLY_COMMAND =
-  /^\s*(ls|dir|pwd|cat|type|head|tail|less|more|wc|grep|rg|find|which|where|echo|date|whoami|tree|stat|file|git\s+(status|log|diff|show|branch)|npm\s+(ls|view)|python3?\s+--version|node\s+--version)\b[^|;&><]*$/i;
+const READ_ONLY_SEGMENT =
+  /^\s*(ls|dir|pwd|cat|type|head|tail|less|more|wc|grep|rg|find|which|where|echo|date|whoami|tree|stat|file|sort|uniq|cut|basename|dirname|realpath|git\s+(status|log|diff|show|branch|remote\s+-v|rev-parse)|npm\s+(ls|view)|Get-ChildItem|Get-Content|Get-Item|Get-Location|Get-Command|Get-Date|Test-Path|Resolve-Path|Select-Object|Select-String|Where-Object|Sort-Object|Measure-Object|Format-Table|Format-List|Write-Output|Write-Host|Out-String)\b[^<>`$]*$/i;
+
+/** "node --version", "python -V": nothing else on the segment. */
+const VERSION_SEGMENT = /^\s*[\w.-]+\s+(--version|-version|-v|-V)\s*$/;
+
+/**
+ * Read-only when every part of a chained or piped command only looks (ls; echo; git status |
+ * grep x). Redirection, substitution and anything else keep the command in "shell".
+ */
+function isReadOnlyCommand(command: string): boolean {
+  if (/[<>`]|\$\(/.test(command)) return false;
+  const segments = command.split(/;|&&|\|\||\|/).filter((part) => part.trim());
+  if (segments.length === 0) return false;
+  return segments.every(
+    (part) =>
+      VERSION_SEGMENT.test(part) ||
+      (READ_ONLY_SEGMENT.test(part) && !/-delete\b|-exec\b/i.test(part)),
+  );
+}
 
 export function classifyCommand(command: string): PermissionCategory {
-  if (READ_ONLY_COMMAND.test(command)) return "file_read";
+  if (isReadOnlyCommand(command)) return "file_read";
   if (/\b(rm|del|rmdir|Remove-Item)\b/i.test(command)) return "file_delete";
   return "shell";
 }

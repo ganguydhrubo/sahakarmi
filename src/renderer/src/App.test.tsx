@@ -742,6 +742,38 @@ describe("Sahkarmi connected desktop shell", () => {
     );
   });
 
+  it("shows a paused tool call in the coworker's chat and approves it there", async () => {
+    vi.mocked(window.sahkarmi.approvals.list).mockResolvedValue([
+      {
+        id: "ap2",
+        botId: "chief",
+        title: "Allow: npm install",
+        details: "Category: shell",
+        category: "other",
+        kind: "permission",
+        permissionCategory: "shell",
+        amount: null,
+        status: "pending",
+        createdAt: "2026-10-19T10:00:00.000Z",
+        decidedAt: null,
+        note: null,
+      },
+    ]);
+    vi.mocked(window.sahkarmi.approvals.decide).mockResolvedValue({} as never);
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const card = await screen.findByText("Allow: npm install");
+    expect(card.closest(".inline-approvals")).not.toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.approvals.decide).toHaveBeenCalledWith({
+        approvalId: "ap2",
+        decision: "approved",
+        note: null,
+      }),
+    );
+  });
+
   it("marks coworkers waiting for approval, working, or in error in the team list", async () => {
     vi.mocked(window.sahkarmi.approvals.list).mockResolvedValue([
       {
