@@ -213,6 +213,34 @@ async function main() {
     );
   }
 
+  // Download buttons must start the installer download, never open the GitHub Releases page.
+  const EXPECTED = { win: /-x64\.exe$/, mac: /-arm64\.dmg$/, linux: /\.AppImage$/ };
+  const downloadLinks = [...html.matchAll(/<a\b[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /\s(data-download|data-platform|data-platform-tile)[\s=>]/.test(tag));
+  check("download links found", downloadLinks.length >= 8, String(downloadLinks.length));
+  for (const tag of downloadLinks) {
+    const href = attr(tag, "href") ?? "";
+    const platform = attr(tag, "data-platform") ?? attr(tag, "data-platform-tile") ?? "win";
+    check(
+      `direct ${platform} installer link: ${href.split("/").pop()}`,
+      href.startsWith("https://github.com/ganguydhrubo/sahakarmi/releases/download/") &&
+        EXPECTED[platform]?.test(href),
+      href,
+    );
+  }
+  if (live) {
+    for (const href of new Set(downloadLinks.map((tag) => attr(tag, "href")))) {
+      const response = await fetch(href, { method: "HEAD", redirect: "manual" });
+      check(
+        `installer downloads directly: ${href.split("/").pop()}`,
+        response.status === 302 &&
+          /githubusercontent\.com/.test(response.headers.get("location") ?? ""),
+        String(response.status),
+      );
+    }
+  }
+
   // Local references
   const refs = new Set(
     [...html.matchAll(/(?:src|href|srcset|poster)="(\/[^"]*|assets\/[^"]*)"/g)].flatMap((m) =>
