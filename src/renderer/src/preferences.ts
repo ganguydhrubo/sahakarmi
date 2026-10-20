@@ -54,6 +54,7 @@ export function setTheme(next: ThemePreference): void {
   setThemeSignal(next);
   writeStored(THEME_KEY, next);
   applyTheme(next);
+  void window.sahkarmi?.setTheme?.(next)?.catch(() => undefined);
 }
 
 export function setLanguage(next: LanguageCode): void {
@@ -69,6 +70,7 @@ function applyTheme(next: ThemePreference): void {
 
 export function applyStoredPreferences(): void {
   applyTheme(theme());
+  void window.sahkarmi?.setTheme?.(theme())?.catch(() => undefined);
   document.documentElement.lang = language();
 }
 

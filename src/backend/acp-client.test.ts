@@ -282,9 +282,9 @@ async function waitFor(check: () => unknown): Promise<void> {
 
 /** A minimal ACP agent that behaves like OpenCode, including calling Sahkarmi's MCP tools. */
 async function createFakeAcpAgent(directory: string): Promise<string> {
-  const executable = join(directory, "opencode");
+  const scriptPath = join(directory, "opencode.js");
   await writeFile(
-    executable,
+    scriptPath,
     `#!/usr/bin/env node
 const fs = require("node:fs");
 if (process.argv.includes("--version")) { process.stdout.write("1.19.3\\n"); process.exit(0); }
@@ -344,6 +344,11 @@ process.stdin.on("data", (chunk) => {
 });
 `,
   );
-  await chmod(executable, 0o755);
-  return executable;
+  if (process.platform === "win32") {
+    const cmdPath = join(directory, "opencode.cmd");
+    await writeFile(cmdPath, `@node "%~dp0opencode.js" %*\r\n`);
+    return cmdPath;
+  }
+  await chmod(scriptPath, 0o755);
+  return scriptPath;
 }

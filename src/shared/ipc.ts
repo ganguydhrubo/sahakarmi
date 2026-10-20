@@ -1,4 +1,5 @@
 export const IPC_CHANNELS = {
+  setTheme: "app:set-theme",
   getAppInfo: "app:get-info",
   getSetupState: "app:get-setup-state",
   saveSetup: "app:save-setup",
@@ -1183,6 +1184,7 @@ export interface MaintenanceDesktopApi {
 }
 
 export interface SahkarmiDesktopApi {
+  setTheme?: (theme: "system" | "light" | "dark") => Promise<void>;
   getAppInfo: () => Promise<AppInfo>;
   getSetupState: () => Promise<AppSetupState>;
   saveSetup: (input: SaveSetupInput) => Promise<AppSetupState>;

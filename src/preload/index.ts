@@ -63,6 +63,7 @@ window.addEventListener("paste", (event) => {
 });
 
 const sahkarmiApi: SahkarmiDesktopApi = {
+  setTheme: (theme) => ipcRenderer.invoke(IPC_CHANNELS.setTheme, theme),
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.getAppInfo),
   getSetupState: () => ipcRenderer.invoke(IPC_CHANNELS.getSetupState),
   saveSetup: (input) => ipcRenderer.invoke(IPC_CHANNELS.saveSetup, input),

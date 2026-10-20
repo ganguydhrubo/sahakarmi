@@ -74,18 +74,37 @@ describe("MailboxStore", () => {
       await writeFile(original, "retry me\n");
       const [draft] = await store.prepareAttachments([original]);
 
-      await chmod(userData, 0o500);
-      try {
-        await expect(
-          store.enqueue({
-            sender: { kind: "user" },
-            recipientBotIds: ["chief"],
-            text: "",
-            draftIds: [draft.id],
-          }),
-        ).rejects.toThrow();
-      } finally {
-        await chmod(userData, 0o700);
+      if (process.platform === "win32") {
+        const stateFile = join(userData, "mailbox.json");
+        await writeFile(stateFile, "{}\n");
+        await chmod(stateFile, 0o444);
+        try {
+          await expect(
+            store.enqueue({
+              sender: { kind: "user" },
+              recipientBotIds: ["chief"],
+              text: "",
+              draftIds: [draft.id],
+            }),
+          ).rejects.toThrow();
+        } finally {
+          await chmod(stateFile, 0o666);
+          await rm(stateFile);
+        }
+      } else {
+        await chmod(userData, 0o500);
+        try {
+          await expect(
+            store.enqueue({
+              sender: { kind: "user" },
+              recipientBotIds: ["chief"],
+              text: "",
+              draftIds: [draft.id],
+            }),
+          ).rejects.toThrow();
+        } finally {
+          await chmod(userData, 0o700);
+        }
       }
 
       expect(store.listQueue("chief").deliveries).toEqual([]);
@@ -260,7 +279,14 @@ describe("MailboxStore", () => {
     const attachment = store.getDelivery(receipt.deliveries[0].id)?.managedAttachments[0];
     expect(attachment).toBeDefined();
     await rm(attachment?.path ?? "missing");
-    await symlink(outside, attachment?.path ?? "missing");
+    try {
+      await symlink(outside, attachment?.path ?? "missing");
+    } catch (error) {
+      if (process.platform === "win32" && (error as { code?: string })?.code === "EPERM") {
+        return; // Windows unprivileged environment does not allow symlink creation
+      }
+      throw error;
+    }
 
     await expect(store.resolveAttachment(attachment?.id ?? "")).resolves.toBeNull();
     await expect(store.listExportAttachments()).resolves.toEqual([]);

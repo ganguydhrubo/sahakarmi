@@ -69,9 +69,9 @@ function createClient(executable: string, timeout: number): CodexAppServerClient
 async function createFakeCodex(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "sahkarmi-fake-codex-"));
   temporaryRoots.push(root);
-  const executable = join(root, "codex");
+  const scriptPath = join(root, "codex.js");
   await writeFile(
-    executable,
+    scriptPath,
     `#!/usr/bin/env node
 let buffer = "";
 process.stdin.setEncoding("utf8");
@@ -102,6 +102,11 @@ process.stdin.on("data", (chunk) => {
 `,
     { mode: 0o700 },
   );
-  await chmod(executable, 0o700);
-  return executable;
+  if (process.platform === "win32") {
+    const cmdPath = join(root, "codex.cmd");
+    await writeFile(cmdPath, `@node "%~dp0codex.js" %*\r\n`);
+    return cmdPath;
+  }
+  await chmod(scriptPath, 0o700);
+  return scriptPath;
 }

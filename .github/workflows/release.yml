@@ -198,7 +198,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run Windows checks
-        run: bun run lint && bun run typecheck && bunx vitest run src/backend/cli.test.ts
+        run: bun run lint && bun run typecheck && bun run test
 
       - name: Build unsigned NSIS installer
         run: bun run dist:win

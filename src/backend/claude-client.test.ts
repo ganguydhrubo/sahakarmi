@@ -17,16 +17,27 @@ afterEach(async () => {
 describe("ClaudeAgentClient", () => {
   it("streams a Claude SDK turn through the App Server event contract", async () => {
     root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-client-"));
-    const executable = join(root, "claude");
-    await writeFile(
-      executable,
-      `#!/bin/sh
+    const executable =
+      process.platform === "win32" ? join(root, "claude.cmd") : join(root, "claude");
+    if (process.platform === "win32") {
+      await writeFile(
+        executable,
+        `@if "%1"=="auth" (
+  @echo {"loggedIn":true,"email":"claude@example.com","subscriptionType":"max"}
+)
+`,
+      );
+    } else {
+      await writeFile(
+        executable,
+        `#!/bin/sh
 if [ "$1" = "auth" ]; then
   printf '%s' '{"loggedIn":true,"email":"claude@example.com","subscriptionType":"max"}'
 fi
 `,
-    );
-    await chmod(executable, 0o755);
+      );
+      await chmod(executable, 0o755);
+    }
 
     const output = new TestQueue<SDKMessage>();
     let prompt: AsyncIterable<SDKUserMessage> | null = null;
