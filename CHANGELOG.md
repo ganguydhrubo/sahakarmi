@@ -3,6 +3,16 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - inline approvals
+
+### Changed
+
+- **Approve in the chat.** When a coworker is paused waiting for you, the Approve / Reject card now
+  appears right in that coworker's conversation. It is still listed in Approvals as well.
+- **Fewer pointless approvals.** Look-only commands chained together (`node --version; npm
+  --version`, `ls …; echo …`, PowerShell `Get-ChildItem … | Select-Object`) no longer ask. Anything
+  that writes, redirects, deletes or runs something else still asks.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
