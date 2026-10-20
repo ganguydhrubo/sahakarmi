@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { AppInfo, CoworkerStatus, WorkspaceState } from "../../../shared/ipc";
+import type { AppInfo, CoworkerStatus, UpdateStatus, WorkspaceState } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
@@ -10,6 +10,7 @@ import { StatusDot, statusLabel } from "./StatusDot";
 
 export type CenterView =
   | "coworker"
+  | "tasks"
   | "files"
   | "approvals"
   | "schedules"
@@ -24,6 +25,7 @@ const RAIL_ITEMS: Array<{
   feature: string | null;
   icon: () => JSX.Element;
 }> = [
+  { view: "tasks", label: "navTasks", feature: null, icon: TasksIcon },
   { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
   { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
   { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
@@ -51,6 +53,9 @@ interface SidebarProps {
   onCreateWorkspace: (name: string) => Promise<void>;
   onRenameWorkspace: (workspaceId: string, name: string) => Promise<void>;
   onCollapse: () => void;
+  /** Shown as a compact bar at the bottom of the sidebar while an update is on its way. */
+  updateStatus?: UpdateStatus;
+  onUpdateAction?: () => Promise<void>;
 }
 
 interface BotContextMenu {
@@ -112,6 +117,75 @@ function DeleteIcon() {
         stroke-linejoin="round"
       />
     </svg>
+  );
+}
+
+function TasksIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path d="m3.5 5.5 1.3 1.3 2.4-2.6M3.5 11l1.3 1.3 2.4-2.6M9.5 5.6h7M9.5 11.1h7M9.5 15.8h7" />
+    </svg>
+  );
+}
+
+/** "Update ready → Restart" at the foot of the sidebar; wired to the normal update actions. */
+export function SidebarUpdateBar(props: { status: UpdateStatus; onAction: () => Promise<void> }) {
+  const [failed, setFailed] = createSignal(false);
+  const phase = () => props.status.phase;
+  const label = () => {
+    switch (phase()) {
+      case "ready":
+        return t("updateBarReady");
+      case "downloading":
+        return t("updateBarDownloading", { progress: String(props.status.progress ?? 0) });
+      case "installing":
+        return t("updateBarInstalling");
+      default:
+        return t("updateBarAvailable");
+    }
+  };
+  const action = () =>
+    phase() === "ready"
+      ? t("updateBarRestart")
+      : phase() === "available"
+        ? t("updateBarDownload")
+        : null;
+  return (
+    <Show when={["available", "downloading", "ready", "installing"].includes(phase())}>
+      <div class="sidebar-update-bar" role="status">
+        <span class="sidebar-update-label">
+          {label()}
+          <Show when={props.status.availableVersion}>
+            {(version) => <small> v{version()}</small>}
+          </Show>
+        </span>
+        <Show when={action()}>
+          {(text) => (
+            <button
+              type="button"
+              class="sidebar-update-action"
+              onClick={() => {
+                setFailed(false);
+                void props.onAction().catch(() => setFailed(true));
+              }}
+            >
+              {text()}
+            </button>
+          )}
+        </Show>
+        <Show when={phase() === "downloading"}>
+          <progress
+            class="sidebar-update-progress"
+            max="100"
+            value={props.status.progress ?? 0}
+            aria-label={label()}
+          />
+        </Show>
+        <Show when={failed()}>
+          <small class="sidebar-update-error">{t("updateActionFailed")}</small>
+        </Show>
+      </div>
+    </Show>
   );
 }
 
@@ -506,6 +580,12 @@ export function Sidebar(props: SidebarProps) {
             </button>
           )}
         </For>
+        <Show when={props.updateStatus && props.onUpdateAction}>
+          <SidebarUpdateBar
+            status={props.updateStatus as UpdateStatus}
+            onAction={() => props.onUpdateAction?.() ?? Promise.resolve()}
+          />
+        </Show>
         <p class="rail-tagline">
           {t("tagline")}
           <Show when={props.appInfo}>
