@@ -15,6 +15,15 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 - Availability depends on the connected account and CLI. This does not replace independently installed CLI binaries; bundled runtimes update through Sahkarmi app releases.
 
+## [0.4.2] - 2026-10-21
+
+- Separate persistent icon navigation from the resizable coworker list; keep navigation usable
+  when the list is collapsed. Keep real provider usage rings low in the rail and update controls
+  at the foot of the coworker panel.
+- Widen the default coworker panel, keep search visible, and show conversation previews.
+- Arrange Routines around a readable workflow canvas with a separate right-hand inspector
+  and a compact routine switcher. The inspector stacks below the canvas on narrow windows.
+
 ## [0.4.1] - 2026-10-20
 
 ### taskbar logo
