@@ -37,6 +37,7 @@ import type {
   UpdateStatus,
   WorkspaceState,
 } from "../../shared/ipc";
+import type { MarketplaceAgent } from "../../shared/marketplace";
 import { ERROR_TITLES } from "./activity-hinglish";
 import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation } from "./components/Conversation";
@@ -55,6 +56,9 @@ const ActivityView = lazy(() =>
 );
 const BusinessView = lazy(() =>
   import("./components/BusinessView").then((module) => ({ default: module.BusinessView })),
+);
+const MarketplaceView = lazy(() =>
+  import("./components/MarketplaceView").then((module) => ({ default: module.MarketplaceView })),
 );
 const ModelUsageView = lazy(() =>
   import("./components/ModelUsageView").then((module) => ({ default: module.ModelUsageView })),
@@ -503,6 +507,25 @@ export function App() {
     }
   }
 
+  /** Creates a real coworker from a Marketplace entry, with its remit already set. */
+  async function addMarketplaceAgent(agent: MarketplaceAgent): Promise<void> {
+    const stored = await window.sahkarmi.agent.createBot(
+      workspaces().activeWorkspaceId || undefined,
+    );
+    const updated = await window.sahkarmi.agent.updateBot({
+      botId: stored.id,
+      name: agent.name,
+      role: agent.role,
+      description: agent.description,
+      avatarShape: agent.avatarShape,
+      avatarColor: agent.avatarColor,
+    });
+    const profile = createMutable(toBotProfile(updated));
+    setBotList((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
+    setLiveMessages((current) => ({ ...current, [profile.id]: [] }));
+    setConversationLoaded((current) => ({ ...current, [profile.id]: true }));
+  }
+
   function selectBot(botId: string) {
     const bot = botList().find((candidate) => candidate.id === botId);
     if (bot && bot.workspaceId !== workspaces().activeWorkspaceId) {
@@ -929,6 +952,13 @@ export function App() {
               </Match>
               <Match when={view() === "business"}>
                 <BusinessView bots={botList()} />
+              </Match>
+              <Match when={view() === "marketplace"}>
+                <MarketplaceView
+                  bots={workspaceBots()}
+                  onAddAgent={addMarketplaceAgent}
+                  onOpenCoworker={selectBot}
+                />
               </Match>
               <Match when={view() === "activity"}>
                 <ActivityView bots={botList()} />

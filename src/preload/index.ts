@@ -155,6 +155,12 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     saveTarget: (input) => ipcRenderer.invoke(IPC_CHANNELS.businessSaveTarget, input),
     deleteTarget: (targetId) => ipcRenderer.invoke(IPC_CHANNELS.businessDeleteTarget, targetId),
   },
+  marketplace: {
+    installedSkills: () => ipcRenderer.invoke(IPC_CHANNELS.marketplaceInstalledSkills),
+    installSkill: (skillId) => ipcRenderer.invoke(IPC_CHANNELS.marketplaceInstallSkill, skillId),
+    uninstallSkill: (skillId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.marketplaceUninstallSkill, skillId),
+  },
   schedules: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.schedulesList),
     create: (input) => ipcRenderer.invoke(IPC_CHANNELS.schedulesCreate, input),

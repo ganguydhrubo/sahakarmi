@@ -254,6 +254,21 @@ export const workspaceEn = {
   autoModeTitle: "Auto mode",
   autoModeHint:
     "Coworkers work without asking: files anywhere, commands, browsing and downloads. Payments, sending messages, posting, orders, account changes and government forms still ask you. Anything set to Block stays blocked.",
+
+  navMarketplace: "Marketplace",
+  marketAgents: "Agents",
+  marketSkills: "Skills",
+  marketSearch: "Search",
+  marketAgentsIntro:
+    "Ready-made coworkers for Indian businesses. Add one and it joins your team with its job already set.",
+  marketSkillsIntro:
+    "Step-by-step playbooks your coworkers follow. Installing one saves it in Shared/Skills, where every coworker can read it.",
+  marketAdd: "Add",
+  marketAdding: "Adding…",
+  marketOpen: "Open",
+  marketInstall: "Install",
+  marketInstalled: "Installed",
+  marketRemove: "Remove",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -507,6 +522,21 @@ export const workspaceHi: WorkspaceDictionary = {
   autoModeTitle: "ऑटो मोड",
   autoModeHint:
     "सहकर्मी बिना पूछे काम करते हैं: कहीं भी फ़ाइलें, कमांड, ब्राउज़िंग और डाउनलोड. भुगतान, संदेश भेजना, पोस्ट करना, ऑर्डर, अकाउंट बदलाव और सरकारी फ़ॉर्म के लिए अब भी आपसे पूछा जाएगा. जो ब्लॉक है वह ब्लॉक ही रहेगा.",
+
+  navMarketplace: "मार्केटप्लेस",
+  marketAgents: "सहकर्मी",
+  marketSkills: "स्किल्स",
+  marketSearch: "खोजें",
+  marketAgentsIntro:
+    "भारतीय कारोबार के लिए तैयार सहकर्मी. जोड़ते ही वह अपने काम के साथ आपकी टीम में आ जाता है.",
+  marketSkillsIntro:
+    "कदम-दर-कदम प्लेबुक जिन्हें आपके सहकर्मी अपनाते हैं. इंस्टॉल करने पर यह Shared/Skills में सेव होती है, जहाँ हर सहकर्मी इसे पढ़ सकता है.",
+  marketAdd: "जोड़ें",
+  marketAdding: "जोड़ रहे हैं…",
+  marketOpen: "खोलें",
+  marketInstall: "इंस्टॉल करें",
+  marketInstalled: "इंस्टॉल है",
+  marketRemove: "हटाएँ",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -757,4 +787,18 @@ export const workspaceBn: WorkspaceDictionary = {
   autoModeTitle: "অটো মোড",
   autoModeHint:
     "সহকর্মীরা জিজ্ঞেস না করেই কাজ করে: যেকোনো জায়গার ফাইল, কমান্ড, ব্রাউজিং ও ডাউনলোড। পেমেন্ট, বার্তা পাঠানো, পোস্ট, অর্ডার, অ্যাকাউন্ট পরিবর্তন ও সরকারি ফর্মের জন্য এখনও আপনাকে জিজ্ঞেস করা হবে। যা ব্লক করা আছে তা ব্লকই থাকবে।",
+
+  navMarketplace: "মার্কেটপ্লেস",
+  marketAgents: "সহকর্মী",
+  marketSkills: "স্কিল",
+  marketSearch: "খুঁজুন",
+  marketAgentsIntro: "ভারতীয় ব্যবসার জন্য তৈরি সহকর্মী। যোগ করলেই সে নিজের কাজ নিয়ে আপনার দলে চলে আসে।",
+  marketSkillsIntro:
+    "ধাপে ধাপে প্লেবুক, যা আপনার সহকর্মীরা মেনে চলে। ইনস্টল করলে এটি Shared/Skills-এ সেভ হয়, যেখানে প্রত্যেক সহকর্মী পড়তে পারে।",
+  marketAdd: "যোগ করুন",
+  marketAdding: "যোগ হচ্ছে…",
+  marketOpen: "খুলুন",
+  marketInstall: "ইনস্টল করুন",
+  marketInstalled: "ইনস্টল করা আছে",
+  marketRemove: "সরান",
 };

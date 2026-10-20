@@ -72,6 +72,9 @@ export const IPC_CHANNELS = {
   featuresApplyManifest: "features:apply-manifest",
   featuresResetCatalogue: "features:reset-catalogue",
   businessIntegrations: "business:integrations",
+  marketplaceInstalledSkills: "marketplace:installed-skills",
+  marketplaceInstallSkill: "marketplace:install-skill",
+  marketplaceUninstallSkill: "marketplace:uninstall-skill",
   businessListTargets: "business:list-targets",
   businessSaveTarget: "business:save-target",
   businessDeleteTarget: "business:delete-target",
@@ -1025,6 +1028,13 @@ export interface BusinessDesktopApi {
   deleteTarget: (targetId: string) => Promise<BusinessTarget[]>;
 }
 
+export interface MarketplaceDesktopApi {
+  /** Ids of catalog skills installed in Shared/Skills. */
+  installedSkills: () => Promise<string[]>;
+  installSkill: (skillId: string) => Promise<string[]>;
+  uninstallSkill: (skillId: string) => Promise<string[]>;
+}
+
 export interface ApprovalsDesktopApi {
   list: () => Promise<ApprovalRequest[]>;
   decide: (input: DecideApprovalInput) => Promise<ApprovalRequest>;
@@ -1073,6 +1083,7 @@ export interface SahkarmiDesktopApi {
   usage: UsageDesktopApi;
   features: FeaturesDesktopApi;
   business: BusinessDesktopApi;
+  marketplace: MarketplaceDesktopApi;
   schedules: SchedulesDesktopApi;
   files: FilesDesktopApi;
   update: UpdateDesktopApi;
