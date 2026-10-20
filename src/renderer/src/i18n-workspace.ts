@@ -293,6 +293,23 @@ export const workspaceEn = {
   updateBarDownload: "Download",
   updateBarDownloading: "Downloading update {progress}%",
   updateBarInstalling: "Installing update…",
+
+  connectIntro:
+    "Click Connect and sign in with the account where you have that AI plan. Your password is only ever typed on the provider's own page.",
+  connectCodexHint: "ChatGPT Plus, Pro or Business account",
+  connectClaudeHint: "Claude Pro or Max account",
+  connectGeminiHint: "Google account (free tier works)",
+  connectOpenCodeHint: "Built in. Free, no sign-in",
+  connectConnected: "Connected",
+  connectNotYet: "Not connected yet",
+  connectNotInstalled: "Not installed",
+  connectSignIn: "Sign-in needed",
+  connectButton: "Connect",
+  connectReconnect: "Reconnect",
+  connectCheck: "Check again",
+  connectOpenAgain: "Browser did not open? Open the sign-in page",
+  connectCodePlaceholder: "Paste the code from the sign-in page",
+  connectSubmitCode: "Finish sign-in",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -585,6 +602,23 @@ export const workspaceHi: WorkspaceDictionary = {
   updateBarDownload: "डाउनलोड",
   updateBarDownloading: "अपडेट डाउनलोड हो रहा है {progress}%",
   updateBarInstalling: "अपडेट इंस्टॉल हो रहा है…",
+
+  connectIntro:
+    "कनेक्ट दबाएँ और उसी अकाउंट से साइन इन करें जिसमें आपका AI प्लान है. पासवर्ड सिर्फ़ कंपनी के अपने पेज पर डाला जाता है.",
+  connectCodexHint: "ChatGPT Plus, Pro या Business अकाउंट",
+  connectClaudeHint: "Claude Pro या Max अकाउंट",
+  connectGeminiHint: "Google अकाउंट (फ़्री भी चलेगा)",
+  connectOpenCodeHint: "पहले से शामिल. फ़्री, साइन इन नहीं",
+  connectConnected: "कनेक्टेड",
+  connectNotYet: "अभी कनेक्ट नहीं",
+  connectNotInstalled: "इंस्टॉल नहीं",
+  connectSignIn: "साइन इन ज़रूरी",
+  connectButton: "कनेक्ट करें",
+  connectReconnect: "फिर से कनेक्ट करें",
+  connectCheck: "फिर जाँचें",
+  connectOpenAgain: "ब्राउज़र नहीं खुला? साइन-इन पेज खोलें",
+  connectCodePlaceholder: "साइन-इन पेज का कोड यहाँ पेस्ट करें",
+  connectSubmitCode: "साइन इन पूरा करें",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -873,4 +907,21 @@ export const workspaceBn: WorkspaceDictionary = {
   updateBarDownload: "ডাউনলোড",
   updateBarDownloading: "আপডেট ডাউনলোড হচ্ছে {progress}%",
   updateBarInstalling: "আপডেট ইনস্টল হচ্ছে…",
+
+  connectIntro:
+    "কানেক্ট চাপুন এবং যে অ্যাকাউন্টে আপনার AI প্ল্যান আছে সেটি দিয়ে সাইন ইন করুন। পাসওয়ার্ড শুধু কোম্পানির নিজের পেজেই দেওয়া হয়।",
+  connectCodexHint: "ChatGPT Plus, Pro বা Business অ্যাকাউন্ট",
+  connectClaudeHint: "Claude Pro বা Max অ্যাকাউন্ট",
+  connectGeminiHint: "Google অ্যাকাউন্ট (ফ্রি-ও চলবে)",
+  connectOpenCodeHint: "আগে থেকেই আছে। ফ্রি, সাইন ইন লাগে না",
+  connectConnected: "কানেক্টেড",
+  connectNotYet: "এখনও কানেক্ট হয়নি",
+  connectNotInstalled: "ইনস্টল করা নেই",
+  connectSignIn: "সাইন ইন দরকার",
+  connectButton: "কানেক্ট করুন",
+  connectReconnect: "আবার কানেক্ট করুন",
+  connectCheck: "আবার দেখুন",
+  connectOpenAgain: "ব্রাউজার খোলেনি? সাইন-ইন পেজ খুলুন",
+  connectCodePlaceholder: "সাইন-ইন পেজের কোড এখানে পেস্ট করুন",
+  connectSubmitCode: "সাইন ইন শেষ করুন",
 };

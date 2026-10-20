@@ -297,6 +297,8 @@ export function App() {
     switch (event.type) {
       case "status":
         setAgentStatus(event.status);
+        // Provider rows in Settings → Features depend on this status; keep them current.
+        void loadFeatures();
         if (event.status.phase === "ready") {
           void window.sahkarmi.agent
             .listModels()
