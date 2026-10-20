@@ -10,6 +10,7 @@ import {
   Show,
   Suspense,
   Switch,
+  untrack,
 } from "solid-js";
 import { createMutable } from "solid-js/store";
 import type {
@@ -48,6 +49,7 @@ import { type CenterView, Sidebar } from "./components/Sidebar";
 import { UpdateControl } from "./components/UpdateControl";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 import { loadFeatures } from "./features";
+import { rememberSettingsSection } from "./settings-section";
 
 // Views opened from the rail load on demand, keeping start-up lean.
 const ActivityView = lazy(() =>
@@ -61,6 +63,9 @@ const ModelUsageView = lazy(() =>
 );
 const SettingsView = lazy(() =>
   import("./components/SettingsView").then((module) => ({ default: module.SettingsView })),
+);
+const TasksView = lazy(() =>
+  import("./components/TasksView").then((module) => ({ default: module.TasksView })),
 );
 
 const FALLBACK_STATUS: AgentStatus = {
@@ -503,6 +508,23 @@ export function App() {
     }
   }
 
+  /** The Tasks view lists recent work across the whole team, so it loads every queue. */
+  createEffect(() => {
+    if (view() !== "tasks") return;
+    for (const bot of untrack(workspaceBots)) {
+      void window.sahkarmi.agent
+        .listQueue(bot.id)
+        .then((queue) => setQueues((current) => ({ ...current, [bot.id]: queue })))
+        .catch(() => undefined);
+    }
+  });
+
+  function openAiSettings() {
+    rememberSettingsSection("ai");
+    setAgentPickerOpen(false);
+    setView("settings");
+  }
+
   function selectBot(botId: string) {
     const bot = botList().find((candidate) => candidate.id === botId);
     if (bot && bot.workspaceId !== workspaces().activeWorkspaceId) {
@@ -848,6 +870,8 @@ export function App() {
           <Show
             when={
               view() !== "settings" &&
+              // With the sidebar open, its update bar shows progress; errors still float here.
+              (leftPanelCollapsed() || updateStatus().phase === "error") &&
               ["available", "downloading", "ready", "error", "installing"].includes(
                 updateStatus().phase,
               )
@@ -879,6 +903,8 @@ export function App() {
               onCreateWorkspace={createWorkspace}
               onRenameWorkspace={renameWorkspace}
               onCollapse={() => setSidebarCollapsed(true)}
+              updateStatus={updateStatus()}
+              onUpdateAction={runUpdateAction}
             />
             <PanelResizer
               class="left-panel-resizer"
@@ -895,6 +921,15 @@ export function App() {
           </Show>
           <Suspense fallback={<section class="center-view" aria-busy="true" />}>
             <Switch>
+              <Match when={view() === "tasks"}>
+                <TasksView
+                  bots={workspaceBots()}
+                  queues={queues()}
+                  defaultBotId={activeBot()?.id ?? ""}
+                  onSend={(botId, text) => sendMessageToBot(botId, text, [])}
+                  onOpenCoworker={selectBot}
+                />
+              </Match>
               <Match when={view() === "approvals"}>
                 <ApprovalsView
                   approvals={approvals()}
@@ -1008,6 +1043,7 @@ export function App() {
                     void window.sahkarmi.browser.handBack(note).then(setTakeover)
                   }
                   onToggleLeftSidebar={() => setSidebarCollapsed(false)}
+                  onOpenAiSettings={openAiSettings}
                   onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
                   onStop={stopActiveTurn}
                 />

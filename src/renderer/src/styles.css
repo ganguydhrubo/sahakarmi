@@ -7896,3 +7896,201 @@ ol.md-list {
     display: none;
   }
 }
+
+/* Tasks view: one box to hand work to any coworker, recent tasks below. */
+.task-box {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+  margin: 0 0 28px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.task-box textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.05em;
+  outline: none;
+}
+.task-box-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.task-box-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.task-box-coworker select {
+  max-width: 260px;
+}
+.tasks-recent-heading {
+  margin: 0 0 10px;
+  font-size: 0.8em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.task-list {
+  display: grid;
+  gap: 6px;
+  max-width: 760px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.task-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+}
+.task-row:hover {
+  border-color: var(--accent);
+}
+.task-row-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.task-row-copy strong {
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.task-row-copy small {
+  color: var(--text-secondary);
+}
+.task-status {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.task-status-running,
+.task-status-starting {
+  color: #1f7a45;
+}
+.task-status-failed {
+  color: var(--danger);
+}
+
+/* Chat header: current model and reasoning, click to change. */
+.header-model-root {
+  position: relative;
+}
+.header-model-button {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  max-width: 260px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.88em;
+}
+.header-model-button span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.header-model-chevron {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.header-model-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  width: 300px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+}
+.header-model-reasoning {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.header-model-connect {
+  margin: 0;
+  line-height: 1.5;
+}
+.link-button,
+.composer-connect-link {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+.composer-connect-link {
+  padding: 0 6px;
+  font-size: 0.88em;
+}
+
+/* Sidebar foot: "Update ready → Restart". */
+.sidebar-update-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0 4px;
+  padding: 9px 10px 9px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  font-size: 0.88em;
+  font-weight: 600;
+}
+.sidebar-update-label small {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.sidebar-update-action {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.sidebar-update-progress {
+  width: 100%;
+  height: 4px;
+}
+.sidebar-update-error {
+  width: 100%;
+  color: var(--danger);
+  font-weight: 400;
+}
