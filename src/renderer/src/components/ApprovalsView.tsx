@@ -73,7 +73,7 @@ export function ApprovalsView(props: ApprovalsViewProps) {
   );
 }
 
-function ApprovalCard(props: {
+export function ApprovalCard(props: {
   approval: ApprovalRequest;
   bot: BotProfile | undefined;
   onDecide: ApprovalsViewProps["onDecide"];

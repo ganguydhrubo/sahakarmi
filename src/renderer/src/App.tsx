@@ -972,6 +972,10 @@ export function App() {
                     (approval) =>
                       approval.kind === "permission" && approval.botId === activeBot()?.id,
                   )}
+                  pendingApprovals={pendingApprovals().filter(
+                    (approval) => approval.botId === activeBot()?.id,
+                  )}
+                  onDecideApproval={decideApproval}
                   activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
                   agentPickerOpen={agentPickerOpen()}
                   creatingAgent={creatingAgent()}

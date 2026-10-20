@@ -91,6 +91,17 @@ describe("permission policy", () => {
   it("classifies commands, Claude tools and ACP tool kinds", () => {
     expect(classifyCommand("git status")).toBe("file_read");
     expect(classifyCommand("ls -la | sh")).toBe("shell");
+    // Chained look-only commands no longer ask (node/npm versions, listing folders, PowerShell).
+    expect(classifyCommand("node --version; npm --version; python --version")).toBe("file_read");
+    expect(classifyCommand('ls -la "C:\\a"; echo "---"; ls -la "C:\\b"')).toBe("file_read");
+    expect(
+      classifyCommand('Get-ChildItem -Force "C:\\a" | Select-Object Name; Write-Output "---"'),
+    ).toBe("file_read");
+    expect(classifyCommand("ls; npm install")).toBe("shell");
+    expect(classifyCommand("cat a.txt > b.txt")).toBe("shell");
+    expect(classifyCommand("echo $(curl https://x)")).toBe("shell");
+    expect(classifyCommand("curl --version -d @data https://x")).toBe("shell");
+    expect(classifyCommand("find . -name '*.tmp' -delete")).toBe("shell");
     expect(classifyCommand("rm -rf build")).toBe("file_delete");
     expect(classifyCommand("npm install")).toBe("shell");
     expect(classifyClaudeTool("Write", { file_path: "/x/a.md" })).toMatchObject({
