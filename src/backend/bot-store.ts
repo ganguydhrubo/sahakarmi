@@ -152,8 +152,8 @@ export class BotStore {
   }
 
   /** Only default coworkers created by this store instance may receive an automatic first model. */
-  canAutoSelectModel(botId: string): boolean {
-    return this.#newDefaultBotIds.has(botId);
+  takeAutoModelSelection(botId: string): boolean {
+    return this.#newDefaultBotIds.delete(botId);
   }
 
   list(): BotSummary[] {

@@ -533,13 +533,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   /**
    * Moves idle coworkers (never ran, nothing queued) to `provider`'s default model.
-   * With `force: false` only coworkers whose own provider is not connected move.
+   * With `force: false` only new defaults receive one automatic initial selection.
    */
   async #adoptProvider(provider: AgentProvider, options: { force: boolean }): Promise<void> {
     if (!this.#clients.has(provider)) return;
     let changed = false;
     for (const bot of this.#store.list()) {
-      if (!options.force && !this.#store.canAutoSelectModel(bot.id)) continue;
+      if (!options.force && !this.#store.takeAutoModelSelection(bot.id)) continue;
       if (bot.threadId) continue;
       if (providerForModel(bot.model) === provider) continue;
       if (!options.force && this.#clients.has(providerForModel(bot.model))) continue;
