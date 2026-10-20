@@ -124,6 +124,15 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.approvalsList),
     decide: (input) => ipcRenderer.invoke(IPC_CHANNELS.approvalsDecide, input),
   },
+  permissions: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsGet),
+    setLevel: (category, level) =>
+      ipcRenderer.invoke(IPC_CHANNELS.permissionsSetLevel, { category, level }),
+    addGrant: (input) => ipcRenderer.invoke(IPC_CHANNELS.permissionsAddGrant, input),
+    revokeGrant: (grantId) => ipcRenderer.invoke(IPC_CHANNELS.permissionsRevokeGrant, grantId),
+    audit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsAudit),
+    clearAudit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsClearAudit),
+  },
   schedules: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.schedulesList),
     create: (input) => ipcRenderer.invoke(IPC_CHANNELS.schedulesCreate, input),

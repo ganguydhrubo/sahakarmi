@@ -56,6 +56,12 @@ export const IPC_CHANNELS = {
   filesList: "files:list",
   filesAdd: "files:add",
   filesOpen: "files:open",
+  permissionsGet: "permissions:get",
+  permissionsSetLevel: "permissions:set-level",
+  permissionsAddGrant: "permissions:add-grant",
+  permissionsRevokeGrant: "permissions:revoke-grant",
+  permissionsAudit: "permissions:audit",
+  permissionsClearAudit: "permissions:clear-audit",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -331,6 +337,89 @@ export interface ApprovalRequest {
   createdAt: string;
   decidedAt: string | null;
   note: string | null;
+  /**
+   * "action": a coworker asked before doing something (its turn continues later).
+   * "permission": the app paused a tool call until the owner decides.
+   */
+  kind?: "action" | "permission";
+  permissionCategory?: PermissionCategory;
+}
+
+/** Operations the permission engine distinguishes. Order is the Settings display order. */
+export const PERMISSION_CATEGORIES = [
+  "research",
+  "file_read",
+  "file_create",
+  "file_modify",
+  "file_delete",
+  "shell",
+  "browser_navigation",
+  "browser_interaction",
+  "downloads",
+  "external_messages",
+  "publication",
+  "business_actions",
+  "payments",
+  "account_settings",
+  "official_forms",
+  "app_updates",
+] as const;
+export type PermissionCategory = (typeof PERMISSION_CATEGORIES)[number];
+
+/**
+ * ask: owner approves each action · auto: allowed · workspace: allowed inside the coworker's
+ * folder and Shared, asked elsewhere · deny: always blocked.
+ */
+export const PERMISSION_LEVELS = ["ask", "auto", "workspace", "deny"] as const;
+export type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
+
+/** High-impact categories: never "auto"; only ask, deny, or a narrow time-limited grant. */
+export const SENSITIVE_PERMISSION_CATEGORIES: readonly PermissionCategory[] = [
+  "external_messages",
+  "publication",
+  "business_actions",
+  "payments",
+  "account_settings",
+  "official_forms",
+];
+
+export interface PermissionGrant {
+  id: string;
+  category: PermissionCategory;
+  /** null = any coworker. */
+  botId: string | null;
+  expiresAt: string;
+  /** null = unlimited uses until expiry. */
+  usesLeft: number | null;
+  note: string;
+  createdAt: string;
+}
+
+export interface PermissionPolicyState {
+  levels: Record<PermissionCategory, PermissionLevel>;
+  grants: PermissionGrant[];
+}
+
+export interface PermissionAuditEntry {
+  id: string;
+  at: string;
+  botId: string | null;
+  provider: string;
+  category: PermissionCategory;
+  /** Short, redacted description of the action (no secrets). */
+  action: string;
+  level: PermissionLevel;
+  effective: "allow" | "ask" | "deny";
+  decision: "allowed" | "denied" | "approved" | "rejected" | "timed-out";
+  reason: string;
+}
+
+export interface AddPermissionGrantInput {
+  category: PermissionCategory;
+  botId: string | null;
+  hours: number;
+  maxUses: number | null;
+  note: string;
 }
 
 export interface DecideApprovalInput {
@@ -722,6 +811,18 @@ export interface TeamDesktopApi {
   setActiveWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
 }
 
+export interface PermissionsDesktopApi {
+  get: () => Promise<PermissionPolicyState>;
+  setLevel: (
+    category: PermissionCategory,
+    level: PermissionLevel,
+  ) => Promise<PermissionPolicyState>;
+  addGrant: (input: AddPermissionGrantInput) => Promise<PermissionPolicyState>;
+  revokeGrant: (grantId: string) => Promise<PermissionPolicyState>;
+  audit: () => Promise<PermissionAuditEntry[]>;
+  clearAudit: () => Promise<void>;
+}
+
 export interface ApprovalsDesktopApi {
   list: () => Promise<ApprovalRequest[]>;
   decide: (input: DecideApprovalInput) => Promise<ApprovalRequest>;
@@ -766,6 +867,7 @@ export interface SahkarmiDesktopApi {
   browser: BrowserDesktopApi;
   team: TeamDesktopApi;
   approvals: ApprovalsDesktopApi;
+  permissions: PermissionsDesktopApi;
   schedules: SchedulesDesktopApi;
   files: FilesDesktopApi;
   update: UpdateDesktopApi;

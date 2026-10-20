@@ -34,6 +34,8 @@ interface InternalTab {
   ownerThreadId: string | null;
   ownerBotId: string | null;
   revision: number;
+  /** Accessible names from the latest snapshot, by element ref (used by permission checks). */
+  labels: Map<string, string>;
   queue: Promise<unknown>;
 }
 
@@ -411,6 +413,7 @@ export class BrowserHost {
       ownerThreadId,
       ownerBotId,
       revision: 0,
+      labels: new Map(),
       queue: Promise.resolve(),
     };
   }
@@ -490,7 +493,7 @@ export class BrowserHost {
     );
     if (!isRecord(raw)) throw new Error("Browser returned an invalid snapshot.");
     tab.revision = revision;
-    return {
+    const snapshot: BrowserSnapshot = {
       tabId: tab.id,
       revision,
       title: typeof raw.title === "string" ? raw.title.slice(0, 500) : "",
@@ -499,6 +502,23 @@ export class BrowserHost {
       elements: Array.isArray(raw.elements)
         ? raw.elements.filter(isSnapshotElement).slice(0, 500)
         : [],
+    };
+    tab.labels = new Map(
+      snapshot.elements.map((element) => [
+        element.ref,
+        `${element.name} ${element.role ?? ""} ${element.tag}`.trim(),
+      ]),
+    );
+    return snapshot;
+  }
+
+  /** What a browser action would touch: the element's label and the page address. */
+  describeTarget(tabId: string, ref: string | null): { label: string; url: string } {
+    const tab = this.#tabs.get(tabId);
+    if (!tab) return { label: "", url: "" };
+    return {
+      label: ref ? (tab.labels.get(ref) ?? "") : "",
+      url: tab.view.webContents.getURL(),
     };
   }
 

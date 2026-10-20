@@ -21,6 +21,7 @@ import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
 import { MailboxStore } from "../backend/mailbox-store";
+import { PermissionService } from "../backend/permission-service";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
 import {
@@ -48,6 +49,10 @@ import {
   type MacPermissionsState,
   type OpenAttachmentInput,
   type OpenSharedFileInput,
+  PERMISSION_CATEGORIES,
+  PERMISSION_LEVELS,
+  type PermissionCategory,
+  type PermissionLevel,
   type RespondToPromptInput,
   type SendMessageInput,
   type SetQueuePausedInput,
@@ -133,6 +138,7 @@ function registerIpcHandlers(
   initializeAgent: () => Promise<void>,
   schedules: ScheduleStore,
   sharedFiles: SharedFiles,
+  permissions: PermissionService,
 ): void {
   handleTrusted(IPC_CHANNELS.getAppInfo, (): AppInfo => {
     const platform = process.platform;
@@ -291,6 +297,38 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.approvalsDecide, (input: unknown) =>
     service.decideApproval(parseDecideApproval(input)),
   );
+
+  handleTrusted(IPC_CHANNELS.permissionsGet, () => permissions.get());
+  handleTrusted(IPC_CHANNELS.permissionsSetLevel, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid permission update.");
+    const category = requireString(input.category, "category") as PermissionCategory;
+    const level = requireString(input.level, "level") as PermissionLevel;
+    if (!PERMISSION_CATEGORIES.includes(category) || !PERMISSION_LEVELS.includes(level)) {
+      throw new Error("Invalid permission update.");
+    }
+    return permissions.setLevel(category, level);
+  });
+  handleTrusted(IPC_CHANNELS.permissionsAddGrant, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid pre-authorisation.");
+    const category = requireString(input.category, "category") as PermissionCategory;
+    if (!PERMISSION_CATEGORIES.includes(category)) throw new Error("Unknown permission category.");
+    const botId = typeof input.botId === "string" && input.botId ? input.botId : null;
+    if (botId && !service.listBots().some((bot) => bot.id === botId)) {
+      throw new Error("Unknown coworker.");
+    }
+    return permissions.addGrant({
+      category,
+      botId,
+      hours: Number(input.hours),
+      maxUses: input.maxUses === null || input.maxUses === undefined ? null : Number(input.maxUses),
+      note: typeof input.note === "string" ? input.note : "",
+    });
+  });
+  handleTrusted(IPC_CHANNELS.permissionsRevokeGrant, (grantId: unknown) =>
+    permissions.revokeGrant(requireString(grantId, "grantId")),
+  );
+  handleTrusted(IPC_CHANNELS.permissionsAudit, () => permissions.audit());
+  handleTrusted(IPC_CHANNELS.permissionsClearAudit, () => permissions.clearAudit());
 
   handleTrusted(IPC_CHANNELS.schedulesList, () => schedules.list());
   handleTrusted(IPC_CHANNELS.schedulesCreate, (input: unknown) => {
@@ -496,6 +534,7 @@ if (!hasSingleInstanceLock) {
       await browserHost.restore();
       const setupFile = join(app.getPath("userData"), SETUP_FILE);
       const setupState = await readSetupState(setupFile);
+      const permissions = new PermissionService(app.getPath("userData"));
       agentService = new AgentService(
         store,
         mailboxStore,
@@ -504,6 +543,7 @@ if (!hasSingleInstanceLock) {
         30_000,
         setupState.preferredProvider ?? "opencode",
         new ApprovalStore(app.getPath("userData")),
+        permissions,
       );
       const service = agentService;
       const schedules = new ScheduleStore(app.getPath("userData"));
@@ -526,6 +566,7 @@ if (!hasSingleInstanceLock) {
           supportsInstalledUpdates(process.platform) &&
           existsSync(join(process.resourcesPath, "app-update.yml")),
         beforeInstall: prepareForShutdown,
+        autoDownload: () => permissions.get().levels.app_updates === "auto",
       });
       service.on("event", forwardAgentEvent);
       service.on("event", (event) => {
@@ -549,6 +590,7 @@ if (!hasSingleInstanceLock) {
         () => agentInitialization.start(),
         schedules,
         sharedFiles,
+        permissions,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);

@@ -5,6 +5,7 @@ import {
   type ApprovalCategory,
   type ApprovalRequest,
   type DecideApprovalInput,
+  type PermissionCategory,
 } from "../shared/ipc";
 import { JsonFile } from "./json-file";
 import { isRecord } from "./protocol";
@@ -20,6 +21,8 @@ export interface CreateApprovalInput {
   details: string;
   category: ApprovalCategory;
   amount?: string | null;
+  kind?: "action" | "permission";
+  permissionCategory?: PermissionCategory;
 }
 
 const MAX_KEPT_DECIDED = 200;
@@ -38,6 +41,17 @@ export class ApprovalStore {
 
   async initialize(): Promise<void> {
     this.#state = await this.#file.read(() => ({ version: 1, approvals: [] }), isApprovalState);
+    // A paused tool call cannot survive a restart: close those requests honestly.
+    let changed = false;
+    for (const approval of this.#state.approvals) {
+      if (approval.kind === "permission" && approval.status === "pending") {
+        approval.status = "rejected";
+        approval.decidedAt = new Date().toISOString();
+        approval.note = "Expired: Sahkarmi restarted before a decision, so the action did not run.";
+        changed = true;
+      }
+    }
+    if (changed) await this.#persist();
   }
 
   list(): ApprovalRequest[] {
@@ -66,6 +80,9 @@ export class ApprovalStore {
       createdAt: new Date().toISOString(),
       decidedAt: null,
       note: null,
+      ...(input.kind === "permission"
+        ? { kind: "permission" as const, permissionCategory: input.permissionCategory }
+        : {}),
     };
     this.#state.approvals.unshift(approval);
     await this.#persist();

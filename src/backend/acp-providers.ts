@@ -9,6 +9,13 @@ import { isRecord } from "./protocol";
 /** Free model OpenCode uses by default; any "*-free" model is the fallback if it is renamed. */
 const OPENCODE_FREE_MODEL = "opencode/big-pickle";
 
+export const OPENCODE_PERMISSION_CONFIG = JSON.stringify({
+  edit: "ask",
+  bash: "ask",
+  webfetch: "ask",
+  external_directory: "ask",
+});
+
 export function createOpenCodeClient(cli: AcpCliInfo, transcriptRoot: string): AcpAgentClient {
   return new AcpAgentClient({
     provider: "opencode",
@@ -27,6 +34,9 @@ export function createOpenCodeClient(cli: AcpCliInfo, transcriptRoot: string): A
       requiresOpenaiAuth: false,
     }),
     modelValue: openCodeModelValue,
+    // Make OpenCode ask before edits, commands, web fetches and work outside its folder, so
+    // every such call reaches Sahkarmi's permission policy (session/request_permission).
+    env: { OPENCODE_PERMISSION: OPENCODE_PERMISSION_CONFIG },
   });
 }
 

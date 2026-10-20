@@ -192,10 +192,14 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   async #startThread(threadId: string, config: ThreadConfig, resume: boolean): Promise<void> {
     const input = new AsyncMessageQueue();
     const canUseTool: CanUseTool = async (toolName, toolInput, options) => {
-      if (toolName !== "AskUserQuestion") {
+      if (toolName === "AskUserQuestion") {
+        return this.#requestUserInput(threadId, toolInput, options.toolUseID ?? randomUUID());
+      }
+      // Sahkarmi's own MCP tools are checked where they run (browser actions, approvals).
+      if (toolName.startsWith("mcp__sahkarmi")) {
         return { behavior: "allow", updatedInput: toolInput } satisfies PermissionResult;
       }
-      return this.#requestUserInput(threadId, toolInput, options.toolUseID ?? randomUUID());
+      return this.#authorizeTool(threadId, toolName, toolInput);
     };
     const mcpServers = this.#createSahkarmiServers(threadId);
     const claudeQuery = this.#createQuery({
@@ -212,8 +216,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           append: config.developerInstructions,
         },
         settingSources: ["user", "project", "local"],
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
+        // Every tool call goes through canUseTool, where Sahkarmi's permission policy decides.
+        permissionMode: "default",
         includePartialMessages: true,
         additionalDirectories: config.additionalDirectories,
         canUseTool,
@@ -606,6 +610,28 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       }),
     );
     return { behavior: "allow", updatedInput: { questions: input.questions, answers } };
+  }
+
+  async #authorizeTool(
+    threadId: string,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): Promise<PermissionResult> {
+    try {
+      const verdict = await this.#callServerRequest("sahkarmi/permission", {
+        threadId,
+        source: "claude",
+        toolName,
+        input: toolInput,
+      });
+      if (isRecord(verdict) && verdict.allowed === true) {
+        return { behavior: "allow", updatedInput: toolInput };
+      }
+      const reason = isRecord(verdict) && typeof verdict.reason === "string" ? verdict.reason : "";
+      return { behavior: "deny", message: reason || "Blocked by the owner's permission settings." };
+    } catch (error) {
+      return { behavior: "deny", message: `Permission check failed: ${String(error)}` };
+    }
   }
 
   #callServerRequest(method: string, params: unknown): Promise<unknown> {
