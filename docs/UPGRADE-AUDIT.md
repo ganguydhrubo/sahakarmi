@@ -73,3 +73,5 @@ results, official SDK type definitions shipped in `node_modules`, and the bundle
 
 Not in scope this pass (reported honestly): remote signed feature catalogue, local/offline
 speech-to-text engine, smart automatic model routing across paid providers, image generation.
+
+Outcome of this plan, with per-feature verification status: see `docs/WORKSPACE-UPGRADE-REPORT.md`.
