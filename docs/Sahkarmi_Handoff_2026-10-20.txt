@@ -1,4 +1,117 @@
 ================================================================================
+REVISION 9 — CURRENT STATUS (20 October 2026, night)
+THIS SECTION SUPERSEDES REVISION 8 AND ALL OLDER STATUS CLAIMS BELOW.
+================================================================================
+
+ONE-LINE SUMMARY
+  Website upgrade is LIVE. App v0.4.0 is fully built and CI-green in
+  PR #8 but NOT merged and NOT released — 2 clicks from you make it live.
+
+--------------------------------------------------------------------------------
+A. WHAT IS LIVE RIGHT NOW (checked 20/10/2026)
+--------------------------------------------------------------------------------
+- WEBSITE https://sahkarmi.site — LIVE, new version (main = edab054).
+  "Verify live site" GitHub job PASSED against the real site:
+  LinkedIn + Facebook "Follow Sahkarmi" buttons, SEO tags, structured data,
+  robots.txt, sitemap.xml, llms.txt, 404 page, Hindi toggle, "2 minutes"
+  video label. IndexNow (Bing) pinged.
+  If your phone shows the old page: pull to refresh (cache up to 10 min).
+- APP: latest public release is still v0.3.3. Website Download = v0.3.3.
+- Tags on GitHub: v0.3.1, v0.3.2, v0.3.3. No v0.4.0 tag yet.
+
+--------------------------------------------------------------------------------
+B. READY BUT NOT LIVE: APP v0.4.0  (PR #8)
+--------------------------------------------------------------------------------
+PR:      https://github.com/ganguydhrubo/sahakarmi/pull/8
+Branch:  feat/workspace-upgrade (head 9147d55 before this handoff commit)
+CI:      ALL 4 GREEN — Check, Windows x64, Compatibility macos-15, macos-26
+Local:   Biome clean, typecheck clean, 224 tests passed / 3 skipped,
+         Electron browser smoke test passed, production build OK.
+Version: package.json 0.4.0 + CHANGELOG "## [0.4.0] - 2026-10-20" written.
+
+What v0.4.0 contains (details in CHANGELOG.md and docs/*-REPORT.md):
+ - Permissions enforced by the app on every tool call (Codex, Claude,
+   Gemini, OpenCode, built-in browser). Payments, messages, posting,
+   orders, account changes, govt forms can never be automatic.
+   Paused actions -> Approvals. Audit log -> Activity.
+ - Model usage page (every number labelled Verified/Estimated/
+   Unavailable/Stale + source).
+ - Live activity status in Roman-script Hinglish, Claude Code style,
+   driven only by real events (tools, streaming, approvals, real provider
+   retries, outcome) + elapsed timer.
+   NEW: "Masti" mode (default) — 24 playful desi lines while thinking
+   ("Jugaad dhoondha ja raha hai…", "Khichdi pak rahi hai…"); "Seedha" =
+   plain only. Switch: Settings -> General -> Live status style.
+   Real actions/waits/outcomes are always described plainly.
+ - Rich replies (tables, checklists, code + copy), voice notes, business
+   targets + honest integrations list (Fiverr: not supported), Features
+   page, Model suggestions (Labs, off), Schedules view, sectioned Settings.
+
+WHY IT IS NOT LIVE
+ - This session's safety setting blocked merging the PR ("merge without
+   review"), even after your approval, and later blocked reading PR status.
+   I did NOT bypass it (no direct push to main).
+
+--------------------------------------------------------------------------------
+C. PENDING — DO IN THIS ORDER
+--------------------------------------------------------------------------------
+GO LIVE WITH v0.4.0 (≈ 2 minutes, phone is fine)
+ [ ] 1. Open https://github.com/ganguydhrubo/sahakarmi/pull/8
+        -> "Squash and merge" -> Confirm.
+ [ ] 2. Open https://github.com/ganguydhrubo/sahakarmi/releases/new
+        -> Choose a tag: type v0.4.0 -> "Create new tag"
+        -> Target: main -> Title: Sahkarmi v0.4.0 -> Publish release.
+ [ ] 3. Wait ~5 min: Actions -> "Release desktop" must be green. Then the
+        website Download button and in-app updates switch to v0.4.0 by
+        themselves. Ask the next session to verify assets + checksums.
+ [ ] 4. Install v0.4.0 on your PC and smoke-test (not testable in sandbox):
+        - one task each on Codex / Claude / Gemini / OpenCode; ask for a
+          file outside its folder + a command -> "Paused tool call" must
+          appear in Approvals; Reject must stop it.
+        - browser "Pay"/"Submit" click must pause.
+        - Model usage shows real numbers; record a real voice note.
+        - watch the Hinglish live status (Masti and Seedha).
+ [ ] 5. (Optional) To let future sessions merge/release themselves: pick
+        "Auto" in the mode dropdown next to the prompt box (if offered),
+        or add allow rules in the repo's .claude/settings.json.
+
+WEBSITE FOLLOW-UPS (need your logins)
+ [ ] 6. Google Search Console: add https://sahkarmi.site/ (DNS TXT), submit
+        https://sahkarmi.site/sitemap.xml, request indexing.
+ [ ] 7. Bing Webmaster Tools: import from Search Console, submit sitemap.
+ [ ] 8. Decide AI-training crawlers (currently allowed; opt-out lines are
+        commented in website/robots.txt). Search is unaffected either way.
+
+KNOWN GAPS (unchanged, be honest about them)
+ - No direct Groq integration: Groq works only via OpenCode
+   ("opencode auth login" -> Groq -> "Your OpenCode model").
+ - Claude allow-rules in ~/.claude/settings.json can pre-approve tools.
+ - Codex: not confirmed live that every file edit raises an approval.
+ - Browser risk detection is keyword-based; downloads not separately gated.
+ - Retry status only for Claude + Codex (Gemini/OpenCode don't report it).
+ - No built-in speech-to-text; unsigned builds; 4 Dependabot PRs open
+   (don't merge #1/#2 blindly).
+ - Still open: rest of original brief, code signing, trademark, DPDP
+   privacy/terms, pricing.
+
+--------------------------------------------------------------------------------
+D. QUICK LINKS
+--------------------------------------------------------------------------------
+PR #8       https://github.com/ganguydhrubo/sahakarmi/pull/8
+New release https://github.com/ganguydhrubo/sahakarmi/releases/new
+Releases    https://github.com/ganguydhrubo/sahakarmi/releases
+Actions     https://github.com/ganguydhrubo/sahakarmi/actions
+Website     https://sahkarmi.site
+LinkedIn    https://www.linkedin.com/company/sahkarmi/
+Facebook    https://www.facebook.com/sahakarmi
+
+Save this file in: C:\Users\Dhrubo\Desktop\Handoff Master
+
+================================================================================
+REVISION 8 AND OLDER HISTORY BELOW — RETAINED FOR CONTEXT
+================================================================================
+
+================================================================================
 REVISION 8 — CURRENT STATUS (20 October 2026, evening)
 THIS SECTION SUPERSEDES REVISION 7 AND ALL OLDER STATUS CLAIMS BELOW.
 ================================================================================
