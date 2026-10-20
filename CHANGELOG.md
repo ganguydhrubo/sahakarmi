@@ -3,6 +3,13 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - Business page
+
+### Changed
+
+- The Business page only lists integrations coworkers can actually help with (GST portal,
+  Tally / spreadsheets, Email). Fiverr and WhatsApp Business, which have no usable access, are gone.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
