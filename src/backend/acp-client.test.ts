@@ -4,6 +4,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stripLeakedToolCalls } from "./acp-client";
 import { geminiModelValue, openCodeModelValue, readGeminiAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
@@ -162,6 +163,15 @@ describe.sequential("ACP providers (bundled OpenCode)", () => {
 });
 
 describe("provider helpers", () => {
+  it("strips a tool call that a free model echoed as text", () => {
+    const leaked =
+      "I'll request approval first. ​type=tool_call tool=functions.sahkarmi_request_approval<|func_arg_name|>title<|func_arg_value|>Pay ₹10<|func_arg_name|>category<|func_arg_value|>payment<|func_arg_end|>";
+    expect(stripLeakedToolCalls(leaked)).toBe("I'll request approval first.");
+    expect(stripLeakedToolCalls("Plain reply with <b>html</b>")).toBe(
+      "Plain reply with <b>html</b>",
+    );
+  });
+
   it("maps Sahkarmi model ids onto the agent's model list", () => {
     const options = [
       { value: "opencode/big-pickle", name: "Big Pickle" },
