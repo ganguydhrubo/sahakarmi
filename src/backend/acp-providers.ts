@@ -2,6 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentModelId } from "../shared/ipc";
+import { modelWireId } from "../shared/ipc";
 import { AcpAgentClient, type AcpModelOption } from "./acp-client";
 import type { AcpCliInfo } from "./cli";
 import { isRecord } from "./protocol";
@@ -41,6 +42,10 @@ export function createOpenCodeClient(cli: AcpCliInfo, transcriptRoot: string): A
 }
 
 export function openCodeModelValue(model: AgentModelId, options: AcpModelOption[]): string | null {
+  if (model !== "opencode-free" && model !== "opencode-default") {
+    const wire = modelWireId(model);
+    return options.some((option) => option.value === wire) ? wire : null;
+  }
   if (model !== "opencode-free") return null; // "Your OpenCode model": keep the user's default.
   const values = options.map((option) => option.value);
   if (values.includes(OPENCODE_FREE_MODEL)) return OPENCODE_FREE_MODEL;
@@ -65,6 +70,10 @@ export function createGeminiClient(cli: AcpCliInfo, transcriptRoot: string): Acp
 }
 
 export function geminiModelValue(model: AgentModelId, options: AcpModelOption[]): string | null {
+  if (!["gemini-auto", "gemini-pro", "gemini-flash"].includes(model)) {
+    const wire = modelWireId(model);
+    return options.some((option) => option.value === wire) ? wire : null;
+  }
   const alias = model === "gemini-pro" ? "pro" : model === "gemini-flash" ? "flash" : "auto";
   const values = options.map((option) => option.value);
   if (values.includes(alias)) return alias;
