@@ -10,6 +10,7 @@ import {
   Show,
   Suspense,
   Switch,
+  untrack,
 } from "solid-js";
 import { createMutable } from "solid-js/store";
 import type {
@@ -31,12 +32,14 @@ import type {
   ConversationSnapshot,
   CoworkerStatus,
   QueueSnapshot,
+  RoutinesState,
   ScheduleCadence,
   ScheduledTask,
   UpdateBotInput,
   UpdateStatus,
   WorkspaceState,
 } from "../../shared/ipc";
+import type { MarketplaceAgent } from "../../shared/marketplace";
 import { ERROR_TITLES } from "./activity-hinglish";
 import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation } from "./components/Conversation";
@@ -48,19 +51,29 @@ import { type CenterView, Sidebar } from "./components/Sidebar";
 import { UpdateControl } from "./components/UpdateControl";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 import { loadFeatures } from "./features";
+import { rememberSettingsSection } from "./settings-section";
 
 // Views opened from the rail load on demand, keeping start-up lean.
+const RoutinesView = lazy(() =>
+  import("./components/RoutinesView").then((module) => ({ default: module.RoutinesView })),
+);
 const ActivityView = lazy(() =>
   import("./components/ActivityView").then((module) => ({ default: module.ActivityView })),
 );
 const BusinessView = lazy(() =>
   import("./components/BusinessView").then((module) => ({ default: module.BusinessView })),
 );
+const MarketplaceView = lazy(() =>
+  import("./components/MarketplaceView").then((module) => ({ default: module.MarketplaceView })),
+);
 const ModelUsageView = lazy(() =>
   import("./components/ModelUsageView").then((module) => ({ default: module.ModelUsageView })),
 );
 const SettingsView = lazy(() =>
   import("./components/SettingsView").then((module) => ({ default: module.SettingsView })),
+);
+const TasksView = lazy(() =>
+  import("./components/TasksView").then((module) => ({ default: module.TasksView })),
 );
 
 const FALLBACK_STATUS: AgentStatus = {
@@ -176,6 +189,7 @@ export function App() {
   });
   const [approvals, setApprovals] = createSignal<ApprovalRequest[]>([]);
   const [schedules, setSchedules] = createSignal<ScheduledTask[]>([]);
+  const [routines, setRoutines] = createSignal<RoutinesState>({ routines: [], runs: [] });
   const [retries, setRetries] = createSignal<
     Record<string, { attempt: number | null; maxRetries: number | null } | null>
   >({});
@@ -213,6 +227,10 @@ export function App() {
     void window.sahkarmi.schedules
       .list()
       .then(setSchedules)
+      .catch(() => undefined);
+    void window.sahkarmi.routines
+      ?.list()
+      .then(setRoutines)
       .catch(() => undefined);
     void loadFeatures();
     void window.sahkarmi.browser
@@ -288,6 +306,8 @@ export function App() {
     switch (event.type) {
       case "status":
         setAgentStatus(event.status);
+        // Provider rows in Settings → Features depend on this status; keep them current.
+        void loadFeatures();
         if (event.status.phase === "ready") {
           void window.sahkarmi.agent
             .listModels()
@@ -336,6 +356,9 @@ export function App() {
         return;
       case "schedules-changed":
         setSchedules(event.schedules);
+        return;
+      case "routines-changed":
+        setRoutines(event.state);
         return;
       case "turn-started":
         clearRetry(event.botId);
@@ -501,6 +524,42 @@ export function App() {
     } finally {
       setCreatingAgent(false);
     }
+  }
+
+  /** Creates a real coworker from a Marketplace entry, with its remit already set. */
+  async function addMarketplaceAgent(agent: MarketplaceAgent): Promise<void> {
+    const stored = await window.sahkarmi.agent.createBot(
+      workspaces().activeWorkspaceId || undefined,
+    );
+    const updated = await window.sahkarmi.agent.updateBot({
+      botId: stored.id,
+      name: agent.name,
+      role: agent.role,
+      description: agent.description,
+      avatarShape: agent.avatarShape,
+      avatarColor: agent.avatarColor,
+    });
+    const profile = createMutable(toBotProfile(updated));
+    setBotList((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
+    setLiveMessages((current) => ({ ...current, [profile.id]: [] }));
+    setConversationLoaded((current) => ({ ...current, [profile.id]: true }));
+  }
+
+  /** The Tasks view lists recent work across the whole team, so it loads every queue. */
+  createEffect(() => {
+    if (view() !== "tasks") return;
+    for (const bot of untrack(workspaceBots)) {
+      void window.sahkarmi.agent
+        .listQueue(bot.id)
+        .then((queue) => setQueues((current) => ({ ...current, [bot.id]: queue })))
+        .catch(() => undefined);
+    }
+  });
+
+  function openAiSettings() {
+    rememberSettingsSection("ai");
+    setAgentPickerOpen(false);
+    setView("settings");
   }
 
   function selectBot(botId: string) {
@@ -710,6 +769,11 @@ export function App() {
     setApprovals(await window.sahkarmi.approvals.list());
   }
 
+  /** Errors propagate so the Routines view can show them next to the form. */
+  async function routineAction(request: Promise<RoutinesState>): Promise<void> {
+    setRoutines(await request);
+  }
+
   async function scheduleMessage(text: string, cadence: ScheduleCadence): Promise<boolean> {
     const bot = activeBot();
     if (!bot || !text.trim()) return false;
@@ -848,6 +912,8 @@ export function App() {
           <Show
             when={
               view() !== "settings" &&
+              // With the sidebar open, its update bar shows progress; errors still float here.
+              (leftPanelCollapsed() || updateStatus().phase === "error") &&
               ["available", "downloading", "ready", "error", "installing"].includes(
                 updateStatus().phase,
               )
@@ -879,6 +945,8 @@ export function App() {
               onCreateWorkspace={createWorkspace}
               onRenameWorkspace={renameWorkspace}
               onCollapse={() => setSidebarCollapsed(true)}
+              updateStatus={updateStatus()}
+              onUpdateAction={runUpdateAction}
             />
             <PanelResizer
               class="left-panel-resizer"
@@ -895,6 +963,15 @@ export function App() {
           </Show>
           <Suspense fallback={<section class="center-view" aria-busy="true" />}>
             <Switch>
+              <Match when={view() === "tasks"}>
+                <TasksView
+                  bots={workspaceBots()}
+                  queues={queues()}
+                  defaultBotId={activeBot()?.id ?? ""}
+                  onSend={(botId, text) => sendMessageToBot(botId, text, [])}
+                  onOpenCoworker={selectBot}
+                />
+              </Match>
               <Match when={view() === "approvals"}>
                 <ApprovalsView
                   approvals={approvals()}
@@ -909,6 +986,8 @@ export function App() {
               <Match when={view() === "schedules"}>
                 <SchedulesView
                   schedules={schedules()}
+                  routines={routines().routines}
+                  runs={routines().runs}
                   bots={botList()}
                   onToggle={(task) =>
                     scheduleAction(() =>
@@ -924,11 +1003,34 @@ export function App() {
                   onOpenCoworker={selectBot}
                 />
               </Match>
+              <Match when={view() === "routines"}>
+                <RoutinesView
+                  state={routines()}
+                  bots={botList()}
+                  onSave={(input) => routineAction(window.sahkarmi.routines.save(input))}
+                  onDelete={(routineId) =>
+                    routineAction(window.sahkarmi.routines.delete(routineId))
+                  }
+                  onSetEnabled={(routineId, enabled) =>
+                    routineAction(window.sahkarmi.routines.setEnabled(routineId, enabled))
+                  }
+                  onRunNow={(routineId) =>
+                    routineAction(window.sahkarmi.routines.runNow(routineId))
+                  }
+                />
+              </Match>
               <Match when={view() === "usage"}>
                 <ModelUsageView bots={botList()} />
               </Match>
               <Match when={view() === "business"}>
                 <BusinessView bots={botList()} />
+              </Match>
+              <Match when={view() === "marketplace"}>
+                <MarketplaceView
+                  bots={workspaceBots()}
+                  onAddAgent={addMarketplaceAgent}
+                  onOpenCoworker={selectBot}
+                />
               </Match>
               <Match when={view() === "activity"}>
                 <ActivityView bots={botList()} />
@@ -972,6 +1074,10 @@ export function App() {
                     (approval) =>
                       approval.kind === "permission" && approval.botId === activeBot()?.id,
                   )}
+                  pendingApprovals={pendingApprovals().filter(
+                    (approval) => approval.botId === activeBot()?.id,
+                  )}
+                  onDecideApproval={decideApproval}
                   activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
                   agentPickerOpen={agentPickerOpen()}
                   creatingAgent={creatingAgent()}
@@ -1008,6 +1114,7 @@ export function App() {
                     void window.sahkarmi.browser.handBack(note).then(setTakeover)
                   }
                   onToggleLeftSidebar={() => setSidebarCollapsed(false)}
+                  onOpenAiSettings={openAiSettings}
                   onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
                   onStop={stopActiveTurn}
                 />

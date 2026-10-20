@@ -11,6 +11,7 @@ import type {
 import { App } from "./App";
 
 let emitAgentEvent: ((event: AgentEvent) => void) | undefined;
+let emitProviderSetup: ((state: unknown) => void) | undefined;
 let emitAttachmentImport: ((event: AttachmentImportEvent) => void) | undefined;
 
 const POLICY: PermissionPolicyState = {
@@ -33,6 +34,7 @@ const POLICY: PermissionPolicyState = {
     app_updates: "auto",
   },
   grants: [],
+  autoMode: false,
 };
 
 const USAGE: UsageOverview = {
@@ -312,6 +314,29 @@ describe("Sahkarmi connected desktop shell", () => {
           revokeGrant: vi.fn().mockResolvedValue(POLICY),
           audit: vi.fn().mockResolvedValue([]),
           clearAudit: vi.fn().mockResolvedValue(undefined),
+          setAutoMode: vi.fn().mockResolvedValue({ ...POLICY, autoMode: true }),
+        },
+        providerSetup: {
+          list: vi.fn().mockResolvedValue([]),
+          connect: vi.fn(async (provider: string) => ({
+            provider,
+            phase: "waiting",
+            message: "Sign in on the page that opened in your browser.",
+            url: null,
+            progress: null,
+          })),
+          submitCode: vi.fn(async (provider: string) => ({
+            provider,
+            phase: "waiting",
+            message: "Checking the code…",
+            url: null,
+            progress: null,
+          })),
+          check: vi.fn(),
+          onEvent: vi.fn((listener: (state: unknown) => void) => {
+            emitProviderSetup = listener;
+            return () => undefined;
+          }),
         },
         usage: {
           overview: vi.fn().mockResolvedValue(USAGE),
@@ -324,6 +349,11 @@ describe("Sahkarmi connected desktop shell", () => {
           previewManifest: vi.fn(),
           applyManifest: vi.fn().mockResolvedValue([]),
           resetCatalogue: vi.fn().mockResolvedValue([]),
+        },
+        marketplace: {
+          installedSkills: vi.fn().mockResolvedValue([]),
+          installSkill: vi.fn().mockImplementation(async (id: string) => [id]),
+          uninstallSkill: vi.fn().mockResolvedValue([]),
         },
         business: {
           integrations: vi.fn().mockResolvedValue([]),
@@ -478,6 +508,36 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(claude).toBeChecked();
     await fireEvent.click(screen.getByRole("button", { name: "Continue with Claude" }));
     expect(window.sahkarmi.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
+  });
+
+  it("connects a provider with one click and finishes Claude's sign-in with the pasted code", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
+    const gemini = (await screen.findByText("Gemini", { selector: "strong" })).closest("li");
+    await fireEvent.click(within(gemini as HTMLElement).getByRole("button", { name: "Connect" }));
+    expect(window.sahkarmi.providerSetup.connect).toHaveBeenCalledWith("gemini");
+
+    emitProviderSetup?.({
+      provider: "claude",
+      phase: "needs-code",
+      message: "After signing in, copy the code shown on the page and paste it here.",
+      url: "https://claude.com/cai/oauth/authorize",
+      progress: null,
+    });
+    const field = await screen.findByPlaceholderText("Paste the code from the sign-in page");
+    await fireEvent.input(field, { target: { value: "code-123" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Finish sign-in" }));
+    expect(window.sahkarmi.providerSetup.submitCode).toHaveBeenCalledWith("claude", "code-123");
+  });
+
+  it("shows real usage limits as rings in the sidebar", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const ring = await screen.findByRole("button", { name: "ChatGPT 91%" });
+    await fireEvent.focus(ring);
+    expect(await screen.findByText("5-hour window")).toBeInTheDocument();
   });
 
   it("lets the user review providers and permissions from Settings", async () => {
@@ -703,6 +763,41 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(document.documentElement.dataset.theme).toBeUndefined();
   });
 
+  it("adds a ready-made coworker and installs a skill from the Marketplace", async () => {
+    vi.mocked(window.sahkarmi.agent.updateBot).mockImplementation(async (input) => ({
+      ...BOTS[0],
+      ...input,
+      id: input.botId,
+    }));
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(await screen.findByRole("button", { name: /Marketplace/ }));
+    const card = (await screen.findByRole("heading", { name: "GST Accountant" })).closest("li");
+    if (!card) throw new Error("GST Accountant card not found");
+    await fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "+ Add" }));
+    await waitFor(() => expect(window.sahkarmi.agent.createBot).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          botId: "bot-new",
+          name: "GST Accountant",
+          role: "GST and bookkeeping",
+        }),
+      ),
+    );
+    expect(
+      await within(card as HTMLElement).findByRole("button", { name: "Open" }),
+    ).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Install Project Plan" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.marketplace.installSkill).toHaveBeenCalledWith("project-plan"),
+    );
+    expect(await screen.findByRole("button", { name: "Remove Project Plan" })).toBeInTheDocument();
+    expect(screen.queryByText(/installs/i)).toBeNull();
+  });
+
   it("lists pending approvals with a badge and sends the owner's decision", async () => {
     vi.mocked(window.sahkarmi.approvals.list).mockResolvedValue([
       {
@@ -738,6 +833,38 @@ describe("Sahkarmi connected desktop shell", () => {
         approvalId: "ap1",
         decision: "approved",
         note: "Pay after GST invoice",
+      }),
+    );
+  });
+
+  it("shows a paused tool call in the coworker's chat and approves it there", async () => {
+    vi.mocked(window.sahkarmi.approvals.list).mockResolvedValue([
+      {
+        id: "ap2",
+        botId: "chief",
+        title: "Allow: npm install",
+        details: "Category: shell",
+        category: "other",
+        kind: "permission",
+        permissionCategory: "shell",
+        amount: null,
+        status: "pending",
+        createdAt: "2026-10-19T10:00:00.000Z",
+        decidedAt: null,
+        note: null,
+      },
+    ]);
+    vi.mocked(window.sahkarmi.approvals.decide).mockResolvedValue({} as never);
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const card = await screen.findByText("Allow: npm install");
+    expect(card.closest(".inline-approvals")).not.toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.approvals.decide).toHaveBeenCalledWith({
+        approvalId: "ap2",
+        decision: "approved",
+        note: null,
       }),
     );
   });
@@ -785,11 +912,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await waitFor(() => expect(window.sahkarmi.update.download).toHaveBeenCalledOnce());
   });
 
-  it.each([
-    ["downloading", "Downloading update 60%"],
-    ["ready", "Restart to update"],
-    ["error", "Retry update"],
-  ] as const)("shows the %s update action while chatting", async (phase, label) => {
+  function mockUpdate(phase: "available" | "downloading" | "ready" | "error") {
     vi.mocked(window.sahkarmi.update.getStatus).mockResolvedValueOnce({
       phase,
       currentVersion: "0.1.0",
@@ -798,20 +921,155 @@ describe("Sahkarmi connected desktop shell", () => {
       checkedAt: null,
       message: null,
     });
+  }
+
+  it("shows Update ready with Restart at the foot of the sidebar and installs on click", async () => {
+    mockUpdate("ready");
     render(() => <App />);
-    const button = await screen.findByRole("button", { name: label });
-    if (phase === "downloading") {
-      expect(button).toBeDisabled();
-      expect(screen.getByRole("progressbar")).toHaveAttribute("value", "60");
-    } else {
-      await fireEvent.click(button);
-      await waitFor(() =>
-        expect(
-          phase === "ready" ? window.sahkarmi.update.install : window.sahkarmi.update.download,
-        ).toHaveBeenCalledOnce(),
-      );
-      expect(window.sahkarmi.update.check).not.toHaveBeenCalled();
-    }
+    const bar = await waitFor(() => {
+      const element = document.querySelector(".sidebar-update-bar");
+      if (!element) throw new Error("no update bar yet");
+      return element as HTMLElement;
+    });
+    expect(bar).toHaveTextContent("Update ready");
+    expect(bar).toHaveTextContent("v0.2.0");
+    await fireEvent.click(within(bar).getByRole("button", { name: "Restart" }));
+    await waitFor(() => expect(window.sahkarmi.update.install).toHaveBeenCalledOnce());
+    expect(window.sahkarmi.update.check).not.toHaveBeenCalled();
+  });
+
+  it("shows download progress and an available update in the sidebar bar", async () => {
+    mockUpdate("downloading");
+    const { unmount } = render(() => <App />);
+    expect(await screen.findByText("Downloading update 60%")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("value", "60");
+    unmount();
+
+    mockUpdate("available");
+    render(() => <App />);
+    await fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await waitFor(() => expect(window.sahkarmi.update.download).toHaveBeenCalledOnce());
+  });
+
+  it("keeps a failed update visible with a retry while chatting", async () => {
+    mockUpdate("error");
+    render(() => <App />);
+    await fireEvent.click(await screen.findByRole("button", { name: "Retry update" }));
+    await waitFor(() => expect(window.sahkarmi.update.download).toHaveBeenCalledOnce());
+  });
+
+  it("queues a task from the Tasks view to the chosen coworker and opens its chat", async () => {
+    vi.mocked(window.sahkarmi.agent.listQueue).mockImplementation(async (botId) => ({
+      botId,
+      paused: false,
+      deliveries:
+        botId === "chief"
+          ? [
+              {
+                id: "d-old",
+                messageId: "m-old",
+                recipientBotId: "chief",
+                sender: { kind: "user" },
+                text: "Reconcile October payables",
+                attachments: [],
+                replyToMessageId: null,
+                status: "completed",
+                position: null,
+                turnId: "turn-old",
+                error: null,
+                createdAt: "2026-10-19T10:00:00.000Z",
+              },
+            ]
+          : [],
+    }));
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+
+    const recent = await screen.findByRole("button", { name: /Reconcile October payables/ });
+    expect(recent).toHaveTextContent("Done");
+
+    await fireEvent.change(screen.getByRole("combobox", { name: "Coworker" }), {
+      target: { value: "sales-outbound" },
+    });
+    await fireEvent.input(screen.getByRole("textbox", { name: "What do you want done?" }), {
+      target: { value: "Draft a Diwali offer for repeat customers" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "Send task" }));
+
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith({
+        botId: "sales-outbound",
+        text: "Draft a Diwali offer for repeat customers",
+        attachmentDraftIds: [],
+      }),
+    );
+    expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeInTheDocument();
+  });
+
+  it("changes the coworker's model and reasoning from the chat header", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(
+      await screen.findByRole("button", { name: "Model and reasoning: Luna · Medium" }),
+    );
+    const popover = screen.getByRole("dialog", { name: "Model and reasoning" });
+
+    await fireEvent.change(within(popover).getByRole("combobox", { name: "Reasoning" }), {
+      target: { value: "high" },
+    });
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
+        botId: "chief",
+        reasoningEffort: "high",
+      }),
+    );
+
+    await fireEvent.click(within(popover).getByRole("button", { name: "Header model: Luna" }));
+    const picker = screen.getByRole("dialog", { name: "Choose agent model" });
+    await fireEvent.click(within(picker).getByRole("tab", { name: /^Claude:/ }));
+    await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
+        botId: "chief",
+        model: "claude-opus-5",
+        reasoningEffort: "high",
+      }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Model and reasoning: Claude Opus 5 · High" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers Connect instead of a silent disabled model picker before a provider connects", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    emitAgentEvent?.({
+      type: "status",
+      status: {
+        phase: "blocked",
+        cliVersion: null,
+        auth: { kind: "unknown" },
+        providers: [
+          {
+            id: "claude",
+            state: "sign-in-required",
+            version: "2.1.231",
+            message: "Sign in to Claude.",
+            email: null,
+          },
+        ],
+        capabilities: { chat: "setup-required", browser: "ready", computerUse: "setup-required" },
+        message: "No AI provider connected.",
+        fullAccess: true,
+      },
+    });
+    await fireEvent.click(await screen.findByRole("button", { name: /^Model and reasoning:/ }));
+    const popover = screen.getByRole("dialog", { name: "Model and reasoning" });
+    expect(popover).toHaveTextContent("Connect an AI provider to choose a model.");
+    await fireEvent.click(within(popover).getByRole("button", { name: "Connect" }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("sahkarmi:settings-section")).toBe("ai");
   });
 
   it("renders loaded history without replaying entrance animations", async () => {

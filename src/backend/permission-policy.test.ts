@@ -21,7 +21,7 @@ import { PermissionService } from "./permission-service";
 const ROOTS = ["/data/coworkers/asha", "/data/Shared"];
 
 function policy(overrides: Partial<PermissionPolicyState> = {}): PermissionPolicyState {
-  return { levels: { ...DEFAULT_PERMISSION_LEVELS }, grants: [], ...overrides };
+  return { levels: { ...DEFAULT_PERMISSION_LEVELS }, grants: [], autoMode: false, ...overrides };
 }
 
 function request(category: Parameters<typeof decide>[1]["category"], paths: string[] = []) {
@@ -29,6 +29,26 @@ function request(category: Parameters<typeof decide>[1]["category"], paths: stri
 }
 
 describe("permission policy", () => {
+  it("auto mode stops asking for everyday work but never for money, messages or forms", () => {
+    const auto = policy({ autoMode: true });
+    expect(decide(auto, request("shell"), ROOTS).effective).toBe("allow");
+    expect(decide(auto, request("file_delete", ["/elsewhere/x"]), ROOTS).effective).toBe("allow");
+    expect(decide(auto, request("file_modify", ["/outside/a.txt"]), ROOTS).effective).toBe("allow");
+    for (const sensitive of [
+      "payments",
+      "external_messages",
+      "publication",
+      "official_forms",
+    ] as const) {
+      expect(decide(auto, request(sensitive), ROOTS).effective).toBe("ask");
+    }
+    const blocked = policy({
+      autoMode: true,
+      levels: { ...DEFAULT_PERMISSION_LEVELS, shell: "deny" },
+    });
+    expect(decide(blocked, request("shell"), ROOTS).effective).toBe("deny");
+  });
+
   it("never makes a sensitive category automatic, even from a tampered file", () => {
     expect(allowedLevels("payments")).toEqual(["ask", "deny"]);
     const levels = sanitizeLevels({ payments: "auto", publication: "workspace", shell: "auto" });
@@ -91,6 +111,17 @@ describe("permission policy", () => {
   it("classifies commands, Claude tools and ACP tool kinds", () => {
     expect(classifyCommand("git status")).toBe("file_read");
     expect(classifyCommand("ls -la | sh")).toBe("shell");
+    // Chained look-only commands no longer ask (node/npm versions, listing folders, PowerShell).
+    expect(classifyCommand("node --version; npm --version; python --version")).toBe("file_read");
+    expect(classifyCommand('ls -la "C:\\a"; echo "---"; ls -la "C:\\b"')).toBe("file_read");
+    expect(
+      classifyCommand('Get-ChildItem -Force "C:\\a" | Select-Object Name; Write-Output "---"'),
+    ).toBe("file_read");
+    expect(classifyCommand("ls; npm install")).toBe("shell");
+    expect(classifyCommand("cat a.txt > b.txt")).toBe("shell");
+    expect(classifyCommand("echo $(curl https://x)")).toBe("shell");
+    expect(classifyCommand("curl --version -d @data https://x")).toBe("shell");
+    expect(classifyCommand("find . -name '*.tmp' -delete")).toBe("shell");
     expect(classifyCommand("rm -rf build")).toBe("file_delete");
     expect(classifyCommand("npm install")).toBe("shell");
     expect(classifyClaudeTool("Write", { file_path: "/x/a.md" })).toMatchObject({

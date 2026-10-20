@@ -1,7 +1,8 @@
+import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   app,
   BrowserWindow,
@@ -9,6 +10,7 @@ import {
   dialog,
   Menu,
   Notification,
+  nativeTheme,
   type OpenDialogOptions,
   protocol,
   session,
@@ -21,11 +23,17 @@ import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
+import { setToolsDirectory } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
 import { PermissionService } from "../backend/permission-service";
+import { ProviderSetup } from "../backend/provider-setup";
+
+import { createRoutineExecutor } from "../backend/routine-executor";
+import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
+import { SkillLibrary } from "../backend/skill-library";
 import { UsageService } from "../backend/usage-service";
 import {
   type AgentEvent,
@@ -94,11 +102,15 @@ protocol.registerSchemesAsPrivileged([
 
 const appLog = new AppLog(app.getPath("userData"));
 let mainWindow: BrowserWindow | null = null;
+nativeTheme.on("updated", () => {
+  mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0");
+});
 let browserHost: BrowserHost | null = null;
 let agentService: AgentService | null = null;
 let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
 let scheduleStore: ScheduleStore | null = null;
+let routineStore: RoutineStore | null = null;
 let usageService: UsageService | null = null;
 let isQuitting = false;
 let shutdownStarted = false;
@@ -149,6 +161,7 @@ function registerIpcHandlers(
   usage: UsageService,
   features: FeatureRegistry,
   business: BusinessStore,
+  routines: RoutineStore,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -187,6 +200,12 @@ function registerIpcHandlers(
     }
     return shell.openExternal(url.toString());
   });
+  handleTrusted(IPC_CHANNELS.setTheme, (value: unknown) => {
+    if (value !== "system" && value !== "light" && value !== "dark")
+      throw new Error("Invalid theme.");
+    nativeTheme.themeSource = value;
+    mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0");
+  });
   handleTrusted(IPC_CHANNELS.updateGetStatus, () => updater.getStatus());
   handleTrusted(IPC_CHANNELS.updateCheck, () => updater.checkForUpdates());
   handleTrusted(IPC_CHANNELS.updateDownload, () => updater.downloadUpdate());
@@ -216,6 +235,7 @@ function registerIpcHandlers(
     const id = requireString(botId, "botId");
     await service.deleteBot(id);
     await schedules.deleteBotData(id);
+    await routines.deleteBotData(id);
   });
   handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown) =>
     service.readConversation(requireString(botId, "botId")),
@@ -344,6 +364,10 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.permissionsAudit, () => permissions.audit());
   handleTrusted(IPC_CHANNELS.permissionsClearAudit, () => permissions.clearAudit());
+  handleTrusted(IPC_CHANNELS.permissionsSetAutoMode, (enabled: unknown) => {
+    if (typeof enabled !== "boolean") throw new Error("Invalid auto mode request.");
+    return permissions.setAutoMode(enabled);
+  });
 
   handleTrusted(IPC_CHANNELS.usageOverview, () => service.usageOverview());
   handleTrusted(IPC_CHANNELS.usageRefresh, () => service.refreshUsage());
@@ -373,6 +397,14 @@ function registerIpcHandlers(
   });
 
   handleTrusted(IPC_CHANNELS.businessIntegrations, () => business.integrations());
+  const skills = new SkillLibrary(sharedFiles.root);
+  handleTrusted(IPC_CHANNELS.marketplaceInstalledSkills, () => skills.installed());
+  handleTrusted(IPC_CHANNELS.marketplaceInstallSkill, (skillId: unknown) =>
+    skills.install(requireString(skillId, "skillId")),
+  );
+  handleTrusted(IPC_CHANNELS.marketplaceUninstallSkill, (skillId: unknown) =>
+    skills.uninstall(requireString(skillId, "skillId")),
+  );
   handleTrusted(IPC_CHANNELS.businessListTargets, () => business.listTargets());
   handleTrusted(IPC_CHANNELS.businessSaveTarget, (input: unknown) =>
     business.saveTarget(parseSaveTarget(input)),
@@ -400,6 +432,42 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.schedulesRunNow, (scheduleId: unknown) =>
     schedules.runNow(requireString(scheduleId, "scheduleId")),
+  );
+
+  handleTrusted(IPC_CHANNELS.routinesList, () => routines.state());
+  handleTrusted(IPC_CHANNELS.routinesSave, (input: unknown) => {
+    if (!isObject(input) || !Array.isArray(input.steps)) throw new Error("Invalid routine.");
+    const known = new Set(service.listBots().map((bot) => bot.id));
+    const steps = input.steps.map((step) => {
+      if (!isObject(step)) throw new Error("Invalid routine step.");
+      const botId = requireString(step.botId, "botId");
+      if (!known.has(botId)) throw new Error("Unknown coworker.");
+      return {
+        id: typeof step.id === "string" ? step.id : undefined,
+        botId,
+        instruction: typeof step.instruction === "string" ? step.instruction : "",
+      };
+    });
+    return routines.save({
+      id: typeof input.id === "string" && input.id ? input.id : undefined,
+      name: typeof input.name === "string" ? input.name : "",
+      steps,
+      cadence: input.cadence === null ? null : parseRoutineCadence(input.cadence),
+      enabled: input.enabled === true,
+      confirmFrequent: input.confirmFrequent === true,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.routinesDelete, (routineId: unknown) =>
+    routines.delete(requireString(routineId, "routineId")),
+  );
+  handleTrusted(IPC_CHANNELS.routinesSetEnabled, (input: unknown) => {
+    if (!isObject(input) || typeof input.enabled !== "boolean") {
+      throw new Error("Invalid routine update.");
+    }
+    return routines.setEnabled(requireString(input.routineId, "routineId"), input.enabled);
+  });
+  handleTrusted(IPC_CHANNELS.routinesRunNow, (routineId: unknown) =>
+    routines.runNow(requireString(routineId, "routineId")),
   );
 
   handleTrusted(IPC_CHANNELS.filesList, (directory: unknown) =>
@@ -462,9 +530,9 @@ function createWindow(): BrowserWindow {
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: "#0F1220",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0",
     title: "Sahkarmi",
-    ...(app.isPackaged ? {} : { icon: join(__dirname, "../../build/icons/512x512.png") }),
+    ...(windowIcon() ? { icon: windowIcon() } : {}),
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 13, y: 14 } }
       : {}),
@@ -511,6 +579,21 @@ function createWindow(): BrowserWindow {
   });
 
   return window;
+}
+
+/** The Sahkarmi logo for the window and taskbar (.ico on Windows for crisp small sizes). */
+function windowIcon(): string | undefined {
+  if (process.platform === "darwin") return undefined;
+  const candidates = app.isPackaged
+    ? [join(process.resourcesPath, "icons", process.platform === "win32" ? "icon.ico" : "icon.png")]
+    : [
+        join(
+          __dirname,
+          "../../build",
+          process.platform === "win32" ? "icon.ico" : "icons/512x512.png",
+        ),
+      ];
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 function loadRenderer(window: BrowserWindow): Promise<void> {
@@ -566,6 +649,73 @@ function forwardAgentEvent(event: AgentEvent): void {
     mainWindow.focus();
   });
   notification.show();
+}
+
+let selfUpdateCheck: Promise<boolean> | null = null;
+
+/**
+ * macOS only replaces an app with a Developer ID signature; ad-hoc signed (unsigned) builds fail
+ * at install. Detected once from the running bundle's signature.
+ */
+function cannotSelfUpdate(): Promise<boolean> {
+  if (process.platform !== "darwin") return Promise.resolve(false);
+  selfUpdateCheck ??= new Promise((resolve) => {
+    const bundle = join(dirname(app.getPath("exe")), "..", "..");
+    execFile("codesign", ["-dv", "--verbose=2", bundle], (_error, stdout, stderr) => {
+      resolve(!/Authority=Developer ID Application/.test(`${stdout}${stderr}`));
+    });
+  });
+  return selfUpdateCheck;
+}
+
+let providerSetup: ProviderSetup | null = null;
+
+function registerProviderSetupHandlers(setup: ProviderSetup): void {
+  const provider = (value: unknown) => {
+    if (!isAgentProvider(value)) throw new Error("Unknown provider.");
+    return value;
+  };
+  handleTrusted(IPC_CHANNELS.providerSetupList, () => setup.list());
+  handleTrusted(IPC_CHANNELS.providerSetupConnect, (value: unknown) =>
+    setup.connect(provider(value)),
+  );
+  handleTrusted(IPC_CHANNELS.providerSetupCheck, (value: unknown) => setup.check(provider(value)));
+  handleTrusted(IPC_CHANNELS.providerSetupSubmitCode, (input: unknown) => {
+    if (!isObject(input) || typeof input.code !== "string") throw new Error("Invalid code.");
+    return setup.submitCode(provider(input.provider), input.code);
+  });
+}
+
+/** Opens a visible terminal running one command (used for Gemini's interactive Google sign-in). */
+function openTerminal(command: string, title: string): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    let child: ReturnType<typeof spawn>;
+    if (process.platform === "win32") {
+      child = spawn("cmd.exe", ["/c", "start", `"${title}"`, "cmd.exe", "/k", command], {
+        detached: true,
+        windowsVerbatimArguments: true,
+        stdio: "ignore",
+      });
+    } else if (process.platform === "darwin") {
+      const script = `tell application "Terminal" to do script ${JSON.stringify(command)}`;
+      child = spawn("osascript", ["-e", script, "-e", 'tell application "Terminal" to activate'], {
+        detached: true,
+        stdio: "ignore",
+      });
+    } else {
+      child = spawn("x-terminal-emulator", ["-e", "bash", "-lc", `${command}; exec bash`], {
+        detached: true,
+        stdio: "ignore",
+      });
+    }
+    child.once("error", (error) =>
+      reject(new Error(`Could not open a terminal: ${error.message}`)),
+    );
+    child.once("spawn", () => {
+      child.unref();
+      resolvePromise();
+    });
+  });
 }
 
 function forwardUpdateStatus(status: import("../shared/ipc").UpdateStatus): void {
@@ -632,6 +782,10 @@ if (!hasSingleInstanceLock) {
       schedules.on("changed", (list) =>
         forwardAgentEvent({ type: "schedules-changed", schedules: list }),
       );
+      const routines = new RoutineStore(app.getPath("userData"));
+      await routines.initialize();
+      routineStore = routines;
+      routines.on("changed", (state) => forwardAgentEvent({ type: "routines-changed", state }));
       const sharedFiles = new SharedFiles(store.sharedRoot);
       const { autoUpdater } = electronUpdater;
       autoUpdater.logger = {
@@ -647,6 +801,11 @@ if (!hasSingleInstanceLock) {
           existsSync(join(process.resourcesPath, "app-update.yml")),
         beforeInstall: prepareForShutdown,
         autoDownload: () => permissions.get().levels.app_updates === "auto",
+        manualInstall: () => cannotSelfUpdate(),
+        openDownload: (version) =>
+          shell.openExternal(
+            `https://github.com/ganguydhrubo/sahakarmi/releases/download/v${version}/Sahkarmi-${version}-arm64.dmg`,
+          ),
       });
       service.on("event", forwardAgentEvent);
       service.on("event", (event) => {
@@ -660,6 +819,19 @@ if (!hasSingleInstanceLock) {
       });
       updateService.on("status", forwardUpdateStatus);
       updateService.start();
+      const toolsDirectory = join(app.getPath("userData"), "tools");
+      setToolsDirectory(toolsDirectory);
+      providerSetup = new ProviderSetup({
+        toolsDirectory,
+        recheck: (provider) => service.ensureProvider(provider),
+        openTerminal,
+      });
+      providerSetup.on("state", (state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.providerSetupEvent, state);
+        }
+      });
+      registerProviderSetupHandlers(providerSetup);
       const agentInitialization = new AgentInitializationGate(() => service.initialize());
       registerIpcHandlers(
         service,
@@ -674,19 +846,21 @@ if (!hasSingleInstanceLock) {
         usage,
         features,
         business,
+        routines,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);
       void agentInitialization
         .start()
-        .then(() =>
+        .then(() => {
           schedules.start(async (task) => {
             await service.sendMessage({
               botId: task.botId,
               text: `[Scheduled task] ${task.text}`,
             });
-          }),
-        )
+          });
+          routines.start(createRoutineExecutor(service));
+        })
         .catch((error) => {
           console.error("Unable to initialize the local agent backend:", error);
           appLog.write("error", "Unable to initialize the local agent backend", error);
@@ -786,7 +960,9 @@ async function prepareForShutdown(): Promise<void> {
   shutdownStarted = true;
   isQuitting = true;
   updateService?.stop();
+  providerSetup?.stop();
   scheduleStore?.stop();
+  routineStore?.stop();
   await (browserHost?.destroy() ?? Promise.resolve());
   await (agentService?.stop() ?? Promise.resolve());
   await (usageService?.flush().catch(() => undefined) ?? Promise.resolve());

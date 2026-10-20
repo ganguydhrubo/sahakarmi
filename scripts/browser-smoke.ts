@@ -19,7 +19,10 @@ try {
   ]);
   if (buildCode !== 0) throw new Error("Unable to build browser smoke test.");
 
-  const electron = join(projectRoot, "node_modules", ".bin", "electron");
+  const electron =
+    process.platform === "win32"
+      ? join(projectRoot, "node_modules", "electron", "dist", "electron.exe")
+      : join(projectRoot, "node_modules", ".bin", "electron");
   const exitCode = await run(electron, [outputPath]);
   if (exitCode !== 0) process.exitCode = exitCode;
 } finally {

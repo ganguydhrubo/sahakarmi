@@ -4,6 +4,7 @@ import {
   type AttachmentImportEvent,
   type ImportAttachmentsInput,
   IPC_CHANNELS,
+  type ProviderSetupState,
   type SahkarmiDesktopApi,
   type UpdateStatus,
 } from "../shared/ipc";
@@ -62,6 +63,7 @@ window.addEventListener("paste", (event) => {
 });
 
 const sahkarmiApi: SahkarmiDesktopApi = {
+  setTheme: (theme) => ipcRenderer.invoke(IPC_CHANNELS.setTheme, theme),
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.getAppInfo),
   getSetupState: () => ipcRenderer.invoke(IPC_CHANNELS.getSetupState),
   saveSetup: (input) => ipcRenderer.invoke(IPC_CHANNELS.saveSetup, input),
@@ -134,6 +136,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     revokeGrant: (grantId) => ipcRenderer.invoke(IPC_CHANNELS.permissionsRevokeGrant, grantId),
     audit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsAudit),
     clearAudit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsClearAudit),
+    setAutoMode: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.permissionsSetAutoMode, enabled),
   },
   usage: {
     overview: () => ipcRenderer.invoke(IPC_CHANNELS.usageOverview),
@@ -154,6 +157,12 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     saveTarget: (input) => ipcRenderer.invoke(IPC_CHANNELS.businessSaveTarget, input),
     deleteTarget: (targetId) => ipcRenderer.invoke(IPC_CHANNELS.businessDeleteTarget, targetId),
   },
+  marketplace: {
+    installedSkills: () => ipcRenderer.invoke(IPC_CHANNELS.marketplaceInstalledSkills),
+    installSkill: (skillId) => ipcRenderer.invoke(IPC_CHANNELS.marketplaceInstallSkill, skillId),
+    uninstallSkill: (skillId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.marketplaceUninstallSkill, skillId),
+  },
   schedules: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.schedulesList),
     create: (input) => ipcRenderer.invoke(IPC_CHANNELS.schedulesCreate, input),
@@ -161,6 +170,14 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.schedulesSetEnabled, { scheduleId, enabled }),
     delete: (scheduleId) => ipcRenderer.invoke(IPC_CHANNELS.schedulesDelete, scheduleId),
     runNow: (scheduleId) => ipcRenderer.invoke(IPC_CHANNELS.schedulesRunNow, scheduleId),
+  },
+  routines: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.routinesList),
+    save: (input) => ipcRenderer.invoke(IPC_CHANNELS.routinesSave, input),
+    delete: (routineId) => ipcRenderer.invoke(IPC_CHANNELS.routinesDelete, routineId),
+    setEnabled: (routineId, enabled) =>
+      ipcRenderer.invoke(IPC_CHANNELS.routinesSetEnabled, { routineId, enabled }),
+    runNow: (routineId) => ipcRenderer.invoke(IPC_CHANNELS.routinesRunNow, routineId),
   },
   files: {
     list: (directory) => ipcRenderer.invoke(IPC_CHANNELS.filesList, directory ?? ""),
@@ -176,6 +193,19 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => listener(status);
       ipcRenderer.on(IPC_CHANNELS.updateEvent, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.updateEvent, handler);
+    },
+  },
+  providerSetup: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.providerSetupList),
+    connect: (provider) => ipcRenderer.invoke(IPC_CHANNELS.providerSetupConnect, provider),
+    submitCode: (provider, code) =>
+      ipcRenderer.invoke(IPC_CHANNELS.providerSetupSubmitCode, { provider, code }),
+    check: (provider) => ipcRenderer.invoke(IPC_CHANNELS.providerSetupCheck, provider),
+    onEvent: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: ProviderSetupState) =>
+        listener(state);
+      ipcRenderer.on(IPC_CHANNELS.providerSetupEvent, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.providerSetupEvent, handler);
     },
   },
   maintenance: {

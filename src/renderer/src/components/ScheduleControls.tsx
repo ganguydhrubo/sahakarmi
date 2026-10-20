@@ -46,7 +46,7 @@ function weekdayName(day: number, style: "long" | "short" = "long"): string {
   );
 }
 
-function localeTag(): string {
+export function localeTag(): string {
   return language() === "hi" ? "hi-IN" : language() === "bn" ? "bn-IN" : "en-IN";
 }
 

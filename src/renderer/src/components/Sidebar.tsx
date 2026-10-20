@@ -1,20 +1,24 @@
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { AppInfo, CoworkerStatus, WorkspaceState } from "../../../shared/ipc";
+import type { AppInfo, CoworkerStatus, UpdateStatus, WorkspaceState } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
 import { LogoMark } from "./Logo";
 import { StatusDot, statusLabel } from "./StatusDot";
+import { UsageRings } from "./UsageRings";
 
 export type CenterView =
   | "coworker"
+  | "tasks"
   | "files"
   | "approvals"
   | "schedules"
+  | "routines"
   | "usage"
   | "business"
+  | "marketplace"
   | "activity"
   | "settings";
 
@@ -24,11 +28,14 @@ const RAIL_ITEMS: Array<{
   feature: string | null;
   icon: () => JSX.Element;
 }> = [
+  { view: "tasks", label: "navTasks", feature: null, icon: TasksIcon },
   { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
   { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
   { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
+  { view: "routines", label: "navRoutines", feature: "schedules", icon: RoutineIcon },
   { view: "usage", label: "navUsage", feature: "model-usage", icon: UsageIcon },
   { view: "business", label: "navBusiness", feature: "business-targets", icon: BusinessIcon },
+  { view: "marketplace", label: "navMarketplace", feature: "marketplace", icon: MarketplaceIcon },
   { view: "activity", label: "navActivity", feature: null, icon: ActivityIcon },
   { view: "settings", label: "settings", feature: null, icon: SettingsIcon },
 ];
@@ -51,6 +58,9 @@ interface SidebarProps {
   onCreateWorkspace: (name: string) => Promise<void>;
   onRenameWorkspace: (workspaceId: string, name: string) => Promise<void>;
   onCollapse: () => void;
+  /** Shown as a compact bar at the bottom of the sidebar while an update is on its way. */
+  updateStatus?: UpdateStatus;
+  onUpdateAction?: () => Promise<void>;
 }
 
 interface BotContextMenu {
@@ -115,6 +125,83 @@ function DeleteIcon() {
   );
 }
 
+function MarketplaceIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path d="M3.5 7.5 4.6 3.8h10.8l1.1 3.7M3.5 7.5c0 1.2 1 2.1 2.2 2.1s2.1-.9 2.1-2.1c0 1.2 1 2.1 2.2 2.1s2.1-.9 2.1-2.1c0 1.2 1 2.1 2.2 2.1s2.2-.9 2.2-2.1M3.5 7.5h13M4.8 9.4v6.8h10.4V9.4M8.3 16.2v-3.6h3.4v3.6" />
+    </svg>
+  );
+}
+
+function TasksIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path d="m3.5 5.5 1.3 1.3 2.4-2.6M3.5 11l1.3 1.3 2.4-2.6M9.5 5.6h7M9.5 11.1h7M9.5 15.8h7" />
+    </svg>
+  );
+}
+
+/** "Update ready → Restart" at the foot of the sidebar; wired to the normal update actions. */
+export function SidebarUpdateBar(props: { status: UpdateStatus; onAction: () => Promise<void> }) {
+  const [failed, setFailed] = createSignal(false);
+  const phase = () => props.status.phase;
+  const label = () => {
+    switch (phase()) {
+      case "ready":
+        return t("updateBarReady");
+      case "downloading":
+        return t("updateBarDownloading", { progress: String(props.status.progress ?? 0) });
+      case "installing":
+        return t("updateBarInstalling");
+      default:
+        return t("updateBarAvailable");
+    }
+  };
+  const action = () =>
+    phase() === "ready"
+      ? t("updateBarRestart")
+      : phase() === "available"
+        ? t("updateBarDownload")
+        : null;
+  return (
+    <Show when={["available", "downloading", "ready", "installing"].includes(phase())}>
+      <div class="sidebar-update-bar" role="status">
+        <span class="sidebar-update-label">
+          {label()}
+          <Show when={props.status.availableVersion}>
+            {(version) => <small> v{version()}</small>}
+          </Show>
+        </span>
+        <Show when={action()}>
+          {(text) => (
+            <button
+              type="button"
+              class="sidebar-update-action"
+              onClick={() => {
+                setFailed(false);
+                void props.onAction().catch(() => setFailed(true));
+              }}
+            >
+              {text()}
+            </button>
+          )}
+        </Show>
+        <Show when={phase() === "downloading"}>
+          <progress
+            class="sidebar-update-progress"
+            max="100"
+            value={props.status.progress ?? 0}
+            aria-label={label()}
+          />
+        </Show>
+        <Show when={failed()}>
+          <small class="sidebar-update-error">{t("updateActionFailed")}</small>
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
 function FilesIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
@@ -155,6 +242,16 @@ function BusinessIcon() {
       <circle cx="10" cy="10" r="6.8" />
       <circle cx="10" cy="10" r="3.6" />
       <circle cx="10" cy="10" r=".9" />
+    </svg>
+  );
+}
+
+function RoutineIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <rect x="2.8" y="3" width="6" height="5" rx="1.4" />
+      <rect x="11.2" y="12" width="6" height="5" rx="1.4" />
+      <path d="M5.8 8v3.5a1 1 0 0 0 1 1h4.4" />
     </svg>
   );
 }
@@ -506,6 +603,14 @@ export function Sidebar(props: SidebarProps) {
             </button>
           )}
         </For>
+        <Show when={props.updateStatus && props.onUpdateAction}>
+          <SidebarUpdateBar
+            status={props.updateStatus as UpdateStatus}
+            onAction={() => props.onUpdateAction?.() ?? Promise.resolve()}
+          />
+        </Show>
+
+        <UsageRings onOpenUsage={() => props.onSelectView("usage")} />
         <p class="rail-tagline">
           {t("tagline")}
           <Show when={props.appInfo}>

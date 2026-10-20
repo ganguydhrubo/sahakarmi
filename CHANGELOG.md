@@ -3,6 +3,121 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-10-20
+
+### taskbar logo
+
+### Fixed
+
+- The Sahkarmi logo now shows on the Windows taskbar and window (and on Linux). The icon ships
+  with the app and is set on the window directly, so Windows never falls back to a blank icon.
+
+### Business page
+
+### Changed
+
+- The Business page only lists integrations coworkers can actually help with (GST portal,
+  Tally / spreadsheets, Email). Fiverr and WhatsApp Business, which have no usable access, are gone.
+
+### Update handling
+
+### Fixed
+
+- **Check for updates** now says why it failed (no internet, update files not found, GitHub
+  limiting requests) instead of a generic "check your connection".
+- On Mac builds without an Apple signature, which macOS will not let replace themselves, the
+  update button now opens the new installer download instead of failing.
+
+### inline approvals
+
+### Changed
+
+- **Approve in the chat.** When a coworker is paused waiting for you, the Approve / Reject card now
+  appears right in that coworker's conversation. It is still listed in Approvals as well.
+- **Fewer pointless approvals.** Look-only commands chained together (`node --version; npm
+  --version`, `ls …; echo …`, PowerShell `Get-ChildItem … | Select-Object`) no longer ask. Anything
+  that writes, redirects, deletes or runs something else still asks.
+
+### auto mode
+
+### Added
+
+- **Auto mode** (Settings → Permissions): coworkers stop asking for everyday work: files anywhere,
+  commands, browsing and downloads. Payments, sending messages, posting, orders, account changes
+  and government forms still ask, and anything set to Block stays blocked.
+
+### marketplace
+
+### Added
+
+- **Marketplace** in the sidebar, with two tabs and search.
+  - **Agents:** 12 ready-made coworkers for Indian businesses, including GST Accountant, Sales
+    Follow-up, Customer Support, Payment Reminders and Marketplace Seller Assistant. **Add**
+    creates a real coworker with its job already set; after that the button says **Open**.
+  - **Skills:** 12 step-by-step playbooks, including GST Invoice Check, Project Plan, Meeting
+    Actions and Customer Reply Draft. **Install** saves the playbook in `Shared/Skills`, and
+    coworkers are told to follow it when a task matches. **Remove** uninstalls it.
+- No install counts or ratings are shown, because none are collected.
+
+### tasks, header model picker, update bar
+
+### Added
+
+- **Tasks:** a new Tasks page with one "What do you want done?" box. Pick a coworker, type or
+  speak the task and send it; it is queued like a normal message and that coworker's chat opens.
+  Recent tasks across the whole team are listed below with their real status (Waiting, Working,
+  Done, Failed, Stopped), and clicking one opens its chat.
+- **Model in the chat header:** the coworker's model and reasoning level ("Luna · Medium") now
+  show in the chat header. Click to change either one.
+- **Update bar in the sidebar:** "Update ready → Restart", "Update available → Download" or the
+  download progress now sits at the foot of the sidebar.
+
+### Fixed
+
+- The model picker no longer looks silently broken before an AI provider is connected: it says
+  "Connect an AI provider to choose a model" and offers a **Connect** button that opens
+  Settings → AI and models.
+
+### one-click Connect and limit rings
+
+### Added
+
+- **Connect buttons** (Settings → AI and models): one click starts the provider's own sign-in in
+  your browser. Use the account where you bought that AI plan.
+  - **ChatGPT (Codex):** if Codex is not installed, Sahkarmi downloads the official build once
+    (checksum-verified) and then opens the ChatGPT sign-in.
+  - **Claude:** Claude Code now ships inside Sahkarmi. Sign in, then paste the code the page shows.
+  - **Gemini:** opens a window for the Google sign-in (installs Gemini CLI there if Node.js is present).
+  - **OpenCode:** built in and free, no sign-in.
+- **Limit rings** in the sidebar: how much of each provider's real 5-hour and weekly limit is used,
+  with reset times. Shown only for providers that report limits.
+
+### Fixed
+
+- Settings → Features no longer shows "Checking…" forever; provider rows update as soon as each
+  provider connects.
+
+### routines and calendar
+
+### Added
+
+- **Routines** (new in the sidebar): chain several coworkers into one automation. Each step goes
+  to a coworker through the normal queue, so permissions and approvals apply as usual, and its
+  final reply is handed to the next step. Run on a schedule (once, hourly, daily, weekdays,
+  weekly or every N minutes) or with **Run now**. Routine details show a step diagram, the last
+  run and every step's status. A failed step stops the run; history is kept on this computer.
+  Repeating more often than every 5 minutes needs confirmation.
+- **Calendar** in Schedules: Day, Week and Month views of scheduled tasks and routines, plus an
+  **Upcoming runs** list. Future entries come from the real schedules; past entries only show
+  what actually ran. Busy days collapse into "+N more".
+
+### Audit follow-up
+
+- Clear theme selection with icons, a selected badge and contrasting borders. Stored appearance
+  is applied before rendering using a CSP-compatible startup script; native appearance stays in sync.
+- Agent shutdown waits for turn-completion writes before returning, protecting final replies and
+  preventing test cleanup from racing persistence. Storage errors remain visible.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
