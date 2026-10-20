@@ -411,11 +411,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    * that is actually connected, so the bundled free OpenCode works with zero setup.
    */
   async #adoptAvailableProvider(): Promise<void> {
-    const provider = this.#defaultProvider();
+    await this.#adoptProvider(this.#defaultProvider(), { force: false });
+  }
+
+  /**
+   * Moves idle coworkers (never ran, nothing queued) to `provider`'s default model.
+   * With `force: false` only coworkers whose own provider is not connected move.
+   */
+  async #adoptProvider(provider: AgentProvider, options: { force: boolean }): Promise<void> {
     if (!this.#clients.has(provider)) return;
     let changed = false;
     for (const bot of this.#store.list()) {
-      if (bot.threadId || this.#clients.has(providerForModel(bot.model))) continue;
+      if (bot.threadId) continue;
+      if (providerForModel(bot.model) === provider) continue;
+      if (!options.force && this.#clients.has(providerForModel(bot.model))) continue;
       if (this.#mailbox.listQueue(bot.id).deliveries.length > 0) continue;
       const model = DEFAULT_MODEL_FOR_PROVIDER[provider];
       await this.#store.updateBot({
@@ -509,6 +518,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       cliVersion: this.#cli.get(provider)?.version ?? null,
       auth: authFor(provider, account.email ?? null),
     });
+    // The owner just chose this provider (first-run setup or Settings): coworkers that have
+    // never run follow that choice, even if another AI is also connected.
+    await this.#adoptProvider(provider, { force: true });
   }
 
   async ensureProvider(provider: AgentProvider): Promise<void> {
@@ -792,6 +804,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         setProviderStatus(providerStatuses, provider, providerFailureStatus(error, cli?.version));
         if (!(error instanceof CodexCliError)) this.#emitError(`${provider}_start_failed`, error);
       }
+      // Show this provider's result right away instead of after every provider was tried.
+      this.#setStatus({ providers: this.#mergeProviders(providerStatuses, requestedProviders) });
     }
 
     if (this.#clients.size === 0) {
