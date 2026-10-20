@@ -16,7 +16,6 @@ Key facts:
 
 - [Website](https://sahkarmi.site/): product overview, explainer video, download and FAQ
 - [Download (GitHub Releases)](https://github.com/ganguydhrubo/sahakarmi/releases/latest): Windows installer and other builds
-- [Source code and README](https://github.com/ganguydhrubo/sahakarmi): full feature list, provider setup and privacy notes
 - [LinkedIn](https://www.linkedin.com/company/sahkarmi/): official company page
 - [Facebook](https://www.facebook.com/sahakarmi): official page
 
