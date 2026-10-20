@@ -7990,7 +7990,8 @@ ol.md-list {
   inset: 0;
   transform: rotate(-90deg);
 }
-.usage-ring circle {
+.usage-ring-track,
+.usage-ring-value {
   fill: none;
   stroke-width: 3.5;
 }
