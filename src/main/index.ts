@@ -27,6 +27,9 @@ import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
+
+import { createRoutineExecutor } from "../backend/routine-executor";
+import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
 import { SkillLibrary } from "../backend/skill-library";
@@ -103,6 +106,7 @@ let agentService: AgentService | null = null;
 let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
 let scheduleStore: ScheduleStore | null = null;
+let routineStore: RoutineStore | null = null;
 let usageService: UsageService | null = null;
 let isQuitting = false;
 let shutdownStarted = false;
@@ -153,6 +157,7 @@ function registerIpcHandlers(
   usage: UsageService,
   features: FeatureRegistry,
   business: BusinessStore,
+  routines: RoutineStore,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -220,6 +225,7 @@ function registerIpcHandlers(
     const id = requireString(botId, "botId");
     await service.deleteBot(id);
     await schedules.deleteBotData(id);
+    await routines.deleteBotData(id);
   });
   handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown) =>
     service.readConversation(requireString(botId, "botId")),
@@ -416,6 +422,42 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.schedulesRunNow, (scheduleId: unknown) =>
     schedules.runNow(requireString(scheduleId, "scheduleId")),
+  );
+
+  handleTrusted(IPC_CHANNELS.routinesList, () => routines.state());
+  handleTrusted(IPC_CHANNELS.routinesSave, (input: unknown) => {
+    if (!isObject(input) || !Array.isArray(input.steps)) throw new Error("Invalid routine.");
+    const known = new Set(service.listBots().map((bot) => bot.id));
+    const steps = input.steps.map((step) => {
+      if (!isObject(step)) throw new Error("Invalid routine step.");
+      const botId = requireString(step.botId, "botId");
+      if (!known.has(botId)) throw new Error("Unknown coworker.");
+      return {
+        id: typeof step.id === "string" ? step.id : undefined,
+        botId,
+        instruction: typeof step.instruction === "string" ? step.instruction : "",
+      };
+    });
+    return routines.save({
+      id: typeof input.id === "string" && input.id ? input.id : undefined,
+      name: typeof input.name === "string" ? input.name : "",
+      steps,
+      cadence: input.cadence === null ? null : parseRoutineCadence(input.cadence),
+      enabled: input.enabled === true,
+      confirmFrequent: input.confirmFrequent === true,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.routinesDelete, (routineId: unknown) =>
+    routines.delete(requireString(routineId, "routineId")),
+  );
+  handleTrusted(IPC_CHANNELS.routinesSetEnabled, (input: unknown) => {
+    if (!isObject(input) || typeof input.enabled !== "boolean") {
+      throw new Error("Invalid routine update.");
+    }
+    return routines.setEnabled(requireString(input.routineId, "routineId"), input.enabled);
+  });
+  handleTrusted(IPC_CHANNELS.routinesRunNow, (routineId: unknown) =>
+    routines.runNow(requireString(routineId, "routineId")),
   );
 
   handleTrusted(IPC_CHANNELS.filesList, (directory: unknown) =>
@@ -730,6 +772,10 @@ if (!hasSingleInstanceLock) {
       schedules.on("changed", (list) =>
         forwardAgentEvent({ type: "schedules-changed", schedules: list }),
       );
+      const routines = new RoutineStore(app.getPath("userData"));
+      await routines.initialize();
+      routineStore = routines;
+      routines.on("changed", (state) => forwardAgentEvent({ type: "routines-changed", state }));
       const sharedFiles = new SharedFiles(store.sharedRoot);
       const { autoUpdater } = electronUpdater;
       autoUpdater.logger = {
@@ -790,19 +836,21 @@ if (!hasSingleInstanceLock) {
         usage,
         features,
         business,
+        routines,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);
       void agentInitialization
         .start()
-        .then(() =>
+        .then(() => {
           schedules.start(async (task) => {
             await service.sendMessage({
               botId: task.botId,
               text: `[Scheduled task] ${task.text}`,
             });
-          }),
-        )
+          });
+          routines.start(createRoutineExecutor(service));
+        })
         .catch((error) => {
           console.error("Unable to initialize the local agent backend:", error);
           appLog.write("error", "Unable to initialize the local agent backend", error);
@@ -904,6 +952,7 @@ async function prepareForShutdown(): Promise<void> {
   updateService?.stop();
   providerSetup?.stop();
   scheduleStore?.stop();
+  routineStore?.stop();
   await (browserHost?.destroy() ?? Promise.resolve());
   await (agentService?.stop() ?? Promise.resolve());
   await (usageService?.flush().catch(() => undefined) ?? Promise.resolve());

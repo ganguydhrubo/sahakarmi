@@ -32,6 +32,7 @@ import type {
   ConversationSnapshot,
   CoworkerStatus,
   QueueSnapshot,
+  RoutinesState,
   ScheduleCadence,
   ScheduledTask,
   UpdateBotInput,
@@ -53,6 +54,9 @@ import { loadFeatures } from "./features";
 import { rememberSettingsSection } from "./settings-section";
 
 // Views opened from the rail load on demand, keeping start-up lean.
+const RoutinesView = lazy(() =>
+  import("./components/RoutinesView").then((module) => ({ default: module.RoutinesView })),
+);
 const ActivityView = lazy(() =>
   import("./components/ActivityView").then((module) => ({ default: module.ActivityView })),
 );
@@ -185,6 +189,7 @@ export function App() {
   });
   const [approvals, setApprovals] = createSignal<ApprovalRequest[]>([]);
   const [schedules, setSchedules] = createSignal<ScheduledTask[]>([]);
+  const [routines, setRoutines] = createSignal<RoutinesState>({ routines: [], runs: [] });
   const [retries, setRetries] = createSignal<
     Record<string, { attempt: number | null; maxRetries: number | null } | null>
   >({});
@@ -222,6 +227,10 @@ export function App() {
     void window.sahkarmi.schedules
       .list()
       .then(setSchedules)
+      .catch(() => undefined);
+    void window.sahkarmi.routines
+      ?.list()
+      .then(setRoutines)
       .catch(() => undefined);
     void loadFeatures();
     void window.sahkarmi.browser
@@ -347,6 +356,9 @@ export function App() {
         return;
       case "schedules-changed":
         setSchedules(event.schedules);
+        return;
+      case "routines-changed":
+        setRoutines(event.state);
         return;
       case "turn-started":
         clearRetry(event.botId);
@@ -760,6 +772,11 @@ export function App() {
     setApprovals(await window.sahkarmi.approvals.list());
   }
 
+  /** Errors propagate so the Routines view can show them next to the form. */
+  async function routineAction(request: Promise<RoutinesState>): Promise<void> {
+    setRoutines(await request);
+  }
+
   async function scheduleMessage(text: string, cadence: ScheduleCadence): Promise<boolean> {
     const bot = activeBot();
     if (!bot || !text.trim()) return false;
@@ -972,6 +989,8 @@ export function App() {
               <Match when={view() === "schedules"}>
                 <SchedulesView
                   schedules={schedules()}
+                  routines={routines().routines}
+                  runs={routines().runs}
                   bots={botList()}
                   onToggle={(task) =>
                     scheduleAction(() =>
@@ -985,6 +1004,22 @@ export function App() {
                     scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
                   }
                   onOpenCoworker={selectBot}
+                />
+              </Match>
+              <Match when={view() === "routines"}>
+                <RoutinesView
+                  state={routines()}
+                  bots={botList()}
+                  onSave={(input) => routineAction(window.sahkarmi.routines.save(input))}
+                  onDelete={(routineId) =>
+                    routineAction(window.sahkarmi.routines.delete(routineId))
+                  }
+                  onSetEnabled={(routineId, enabled) =>
+                    routineAction(window.sahkarmi.routines.setEnabled(routineId, enabled))
+                  }
+                  onRunNow={(routineId) =>
+                    routineAction(window.sahkarmi.routines.runNow(routineId))
+                  }
                 />
               </Match>
               <Match when={view() === "usage"}>

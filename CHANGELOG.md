@@ -95,6 +95,20 @@ All notable changes to Sahkarmi are documented here. The project follows
 - Settings → Features no longer shows "Checking…" forever; provider rows update as soon as each
   provider connects.
 
+## [Unreleased] - routines and calendar
+
+### Added
+
+- **Routines** (new in the sidebar): chain several coworkers into one automation. Each step goes
+  to a coworker through the normal queue, so permissions and approvals apply as usual, and its
+  final reply is handed to the next step. Run on a schedule (once, hourly, daily, weekdays,
+  weekly or every N minutes) or with **Run now**. Routine details show a step diagram, the last
+  run and every step's status. A failed step stops the run; history is kept on this computer.
+  Repeating more often than every 5 minutes needs confirmation.
+- **Calendar** in Schedules: Day, Week and Month views of scheduled tasks and routines, plus an
+  **Upcoming runs** list. Future entries come from the real schedules; past entries only show
+  what actually ran. Busy days collapse into "+N more".
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
