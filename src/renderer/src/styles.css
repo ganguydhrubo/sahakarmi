@@ -7905,3 +7905,32 @@ ol.md-list {
 .inline-approvals .approval-coworker {
   pointer-events: none;
 }
+
+/* Auto mode switch at the top of Permissions. */
+.auto-mode-toggle {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, rgb(0 0 0 / 0.1));
+  border-radius: 12px;
+  cursor: pointer;
+}
+.auto-mode-toggle.auto-mode-on {
+  border-color: #2e9d5b;
+  background: color-mix(in srgb, #2e9d5b 8%, transparent);
+}
+.auto-mode-toggle input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+}
+.auto-mode-toggle span {
+  display: grid;
+  gap: 4px;
+}
+.auto-mode-toggle small {
+  color: var(--text-secondary);
+  line-height: 1.45;
+}

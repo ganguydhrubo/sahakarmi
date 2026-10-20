@@ -36,6 +36,14 @@ All notable changes to Sahkarmi are documented here. The project follows
   --version`, `ls …; echo …`, PowerShell `Get-ChildItem … | Select-Object`) no longer ask. Anything
   that writes, redirects, deletes or runs something else still asks.
 
+## [Unreleased] - auto mode
+
+### Added
+
+- **Auto mode** (Settings → Permissions): coworkers stop asking for everyday work: files anywhere,
+  commands, browsing and downloads. Payments, sending messages, posting, orders, account changes
+  and government forms still ask, and anything set to Block stays blocked.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added

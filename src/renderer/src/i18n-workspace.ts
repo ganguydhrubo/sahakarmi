@@ -251,6 +251,9 @@ export const workspaceEn = {
   activitySeedha: "Seedha (plain)",
   activityStyleHint:
     "Coworker status lines are always in Hinglish. Masti adds playful lines like “Jugaad dhoondha ja raha hai…” only while a coworker is thinking; anything it actually does is always described plainly.",
+  autoModeTitle: "Auto mode",
+  autoModeHint:
+    "Coworkers work without asking: files anywhere, commands, browsing and downloads. Payments, sending messages, posting, orders, account changes and government forms still ask you. Anything set to Block stays blocked.",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -501,6 +504,9 @@ export const workspaceHi: WorkspaceDictionary = {
   activitySeedha: "सीधा (सादा)",
   activityStyleHint:
     "सहकर्मी की स्टेटस लाइनें हमेशा हिंग्लिश (रोमन लिपि) में रहती हैं. मस्ती सिर्फ़ सोचते समय “Jugaad dhoondha ja raha hai…” जैसी मज़ेदार लाइनें दिखाती है; असली काम हमेशा सीधे शब्दों में बताया जाता है.",
+  autoModeTitle: "ऑटो मोड",
+  autoModeHint:
+    "सहकर्मी बिना पूछे काम करते हैं: कहीं भी फ़ाइलें, कमांड, ब्राउज़िंग और डाउनलोड. भुगतान, संदेश भेजना, पोस्ट करना, ऑर्डर, अकाउंट बदलाव और सरकारी फ़ॉर्म के लिए अब भी आपसे पूछा जाएगा. जो ब्लॉक है वह ब्लॉक ही रहेगा.",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -748,4 +754,7 @@ export const workspaceBn: WorkspaceDictionary = {
   activitySeedha: "সোজা (সাধারণ)",
   activityStyleHint:
     "সহকর্মীর স্ট্যাটাস সবসময় হিংলিশে (রোমান হরফে) থাকে। মস্তি শুধু ভাবার সময় “Jugaad dhoondha ja raha hai…” ধরনের মজার লাইন দেখায়; আসল কাজ সবসময় সোজা ভাষায় বলা হয়।",
+  autoModeTitle: "অটো মোড",
+  autoModeHint:
+    "সহকর্মীরা জিজ্ঞেস না করেই কাজ করে: যেকোনো জায়গার ফাইল, কমান্ড, ব্রাউজিং ও ডাউনলোড। পেমেন্ট, বার্তা পাঠানো, পোস্ট, অর্ডার, অ্যাকাউন্ট পরিবর্তন ও সরকারি ফর্মের জন্য এখনও আপনাকে জিজ্ঞেস করা হবে। যা ব্লক করা আছে তা ব্লকই থাকবে।",
 };

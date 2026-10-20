@@ -84,6 +84,9 @@ export function decide(
   if (level === "deny") {
     return { effective: "deny", level, reason: "Denied by your permission settings.", grant: null };
   }
+  if (policy.autoMode && !isSensitive(request.category)) {
+    return { effective: "allow", level, reason: "Auto mode.", grant: null };
+  }
   if (level === "auto" && !isSensitive(request.category)) {
     return { effective: "allow", level, reason: "Allowed automatically.", grant: null };
   }
