@@ -3,6 +3,12 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.4] - 2026-10-21
+
+### Fixed
+
+- Preserve every existing coworker model during startup and automatic CLI/model refresh, including coworkers that have never run. A slow or unavailable provider no longer causes saved selections to fall back to another AI. Only a brand-new default team gets an automatic initial provider.
+
 ## [0.4.3] - 2026-10-21
 
 ### Fixed
