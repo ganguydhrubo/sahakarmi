@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -21,9 +22,11 @@ import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
+import { setToolsDirectory } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
 import { PermissionService } from "../backend/permission-service";
+import { ProviderSetup } from "../backend/provider-setup";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
 import { UsageService } from "../backend/usage-service";
@@ -568,6 +571,56 @@ function forwardAgentEvent(event: AgentEvent): void {
   notification.show();
 }
 
+let providerSetup: ProviderSetup | null = null;
+
+function registerProviderSetupHandlers(setup: ProviderSetup): void {
+  const provider = (value: unknown) => {
+    if (!isAgentProvider(value)) throw new Error("Unknown provider.");
+    return value;
+  };
+  handleTrusted(IPC_CHANNELS.providerSetupList, () => setup.list());
+  handleTrusted(IPC_CHANNELS.providerSetupConnect, (value: unknown) =>
+    setup.connect(provider(value)),
+  );
+  handleTrusted(IPC_CHANNELS.providerSetupCheck, (value: unknown) => setup.check(provider(value)));
+  handleTrusted(IPC_CHANNELS.providerSetupSubmitCode, (input: unknown) => {
+    if (!isObject(input) || typeof input.code !== "string") throw new Error("Invalid code.");
+    return setup.submitCode(provider(input.provider), input.code);
+  });
+}
+
+/** Opens a visible terminal running one command (used for Gemini's interactive Google sign-in). */
+function openTerminal(command: string, title: string): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    let child: ReturnType<typeof spawn>;
+    if (process.platform === "win32") {
+      child = spawn("cmd.exe", ["/c", "start", `"${title}"`, "cmd.exe", "/k", command], {
+        detached: true,
+        windowsVerbatimArguments: true,
+        stdio: "ignore",
+      });
+    } else if (process.platform === "darwin") {
+      const script = `tell application "Terminal" to do script ${JSON.stringify(command)}`;
+      child = spawn("osascript", ["-e", script, "-e", 'tell application "Terminal" to activate'], {
+        detached: true,
+        stdio: "ignore",
+      });
+    } else {
+      child = spawn("x-terminal-emulator", ["-e", "bash", "-lc", `${command}; exec bash`], {
+        detached: true,
+        stdio: "ignore",
+      });
+    }
+    child.once("error", (error) =>
+      reject(new Error(`Could not open a terminal: ${error.message}`)),
+    );
+    child.once("spawn", () => {
+      child.unref();
+      resolvePromise();
+    });
+  });
+}
+
 function forwardUpdateStatus(status: import("../shared/ipc").UpdateStatus): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(IPC_CHANNELS.updateEvent, status);
@@ -660,6 +713,19 @@ if (!hasSingleInstanceLock) {
       });
       updateService.on("status", forwardUpdateStatus);
       updateService.start();
+      const toolsDirectory = join(app.getPath("userData"), "tools");
+      setToolsDirectory(toolsDirectory);
+      providerSetup = new ProviderSetup({
+        toolsDirectory,
+        recheck: (provider) => service.ensureProvider(provider),
+        openTerminal,
+      });
+      providerSetup.on("state", (state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.providerSetupEvent, state);
+        }
+      });
+      registerProviderSetupHandlers(providerSetup);
       const agentInitialization = new AgentInitializationGate(() => service.initialize());
       registerIpcHandlers(
         service,
@@ -786,6 +852,7 @@ async function prepareForShutdown(): Promise<void> {
   shutdownStarted = true;
   isQuitting = true;
   updateService?.stop();
+  providerSetup?.stop();
   scheduleStore?.stop();
   await (browserHost?.destroy() ?? Promise.resolve());
   await (agentService?.stop() ?? Promise.resolve());

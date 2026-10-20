@@ -23,6 +23,7 @@ import { FeaturesSettings } from "./FeaturesSettings";
 import { LogoMark } from "./Logo";
 import { ModelSuggestions } from "./ModelSuggestions";
 import { PermissionsSettings } from "./PermissionsSettings";
+import { ProviderConnect } from "./ProviderConnect";
 import { UpdateControl } from "./UpdateControl";
 
 type SettingsSection =
@@ -206,7 +207,8 @@ export function SettingsView(props: SettingsViewProps) {
             <>
               <section class="settings-card">
                 <h2>{t("providers")}</h2>
-                <p>{t("providersHint")}</p>
+                <p>{t("connectIntro")}</p>
+                <ProviderConnect agentStatus={props.agentStatus} />
                 <Show when={account()}>
                   <p class="settings-meta">{account()}</p>
                 </Show>

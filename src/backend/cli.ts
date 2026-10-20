@@ -35,8 +35,43 @@ export class CodexCliError extends Error {
   }
 }
 
+let toolsDirectory: string | null = null;
+
+/** Where Sahkarmi keeps AI tools it downloaded itself (userData/tools). Set once at startup. */
+export function setToolsDirectory(directory: string): void {
+  toolsDirectory = directory;
+}
+
+/** Codex downloaded by the Connect button: <tools>/codex/bin/codex(.exe). */
+export function managedCodexPath(platform: NodeJS.Platform = process.platform): string | null {
+  if (!toolsDirectory) return null;
+  return join(toolsDirectory, "codex", "bin", platform === "win32" ? "codex.exe" : "codex");
+}
+
+/**
+ * Claude Code ships inside Sahkarmi with the Claude Agent SDK (one native binary per platform).
+ * Packaged builds unpack it from the asar archive so it can run.
+ */
+export function bundledClaudePaths(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  resourcesPath: string | undefined = (process as { resourcesPath?: string }).resourcesPath,
+): string[] {
+  const binary = platform === "win32" ? "claude.exe" : "claude";
+  const packageDir = join("node_modules", "@anthropic-ai", `claude-agent-sdk-${platform}-${arch}`);
+  const paths: string[] = [];
+  if (resourcesPath) paths.push(join(resourcesPath, "app.asar.unpacked", packageDir, binary));
+  paths.push(resolve(packageDir, binary));
+  return paths;
+}
+
 export async function resolveCodexCli(): Promise<CodexCliInfo> {
-  const candidates = await collectCandidates("codex", process.env.SAHKARMI_CODEX_PATH);
+  const override = process.env.SAHKARMI_CODEX_PATH;
+  const managed = managedCodexPath();
+  const candidates = [
+    ...(await collectCandidates("codex", override)),
+    ...(!override?.trim() && managed ? [managed] : []),
+  ];
   const failures: CodexCliError[] = [];
 
   for (const candidate of candidates) {
@@ -77,8 +112,14 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
   );
 }
 
-export async function resolveClaudeCli(): Promise<ClaudeCliInfo> {
-  const candidates = await collectCandidates("claude", process.env.SAHKARMI_CLAUDE_PATH);
+export async function resolveClaudeCli(
+  bundled: string[] = bundledClaudePaths(),
+): Promise<ClaudeCliInfo> {
+  const override = process.env.SAHKARMI_CLAUDE_PATH;
+  const candidates = [
+    ...(await collectCandidates("claude", override)),
+    ...(override?.trim() ? [] : bundled),
+  ];
   let foundCandidate = false;
 
   for (const candidate of candidates) {

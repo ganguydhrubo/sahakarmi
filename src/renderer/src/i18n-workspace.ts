@@ -251,6 +251,22 @@ export const workspaceEn = {
   activitySeedha: "Seedha (plain)",
   activityStyleHint:
     "Coworker status lines are always in Hinglish. Masti adds playful lines like “Jugaad dhoondha ja raha hai…” only while a coworker is thinking; anything it actually does is always described plainly.",
+  connectIntro:
+    "Click Connect and sign in with the account where you have that AI plan. Your password is only ever typed on the provider's own page.",
+  connectCodexHint: "ChatGPT Plus, Pro or Business account",
+  connectClaudeHint: "Claude Pro or Max account",
+  connectGeminiHint: "Google account (free tier works)",
+  connectOpenCodeHint: "Built in. Free, no sign-in",
+  connectConnected: "Connected",
+  connectNotYet: "Not connected yet",
+  connectNotInstalled: "Not installed",
+  connectSignIn: "Sign-in needed",
+  connectButton: "Connect",
+  connectReconnect: "Reconnect",
+  connectCheck: "Check again",
+  connectOpenAgain: "Browser did not open? Open the sign-in page",
+  connectCodePlaceholder: "Paste the code from the sign-in page",
+  connectSubmitCode: "Finish sign-in",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -501,6 +517,22 @@ export const workspaceHi: WorkspaceDictionary = {
   activitySeedha: "सीधा (सादा)",
   activityStyleHint:
     "सहकर्मी की स्टेटस लाइनें हमेशा हिंग्लिश (रोमन लिपि) में रहती हैं. मस्ती सिर्फ़ सोचते समय “Jugaad dhoondha ja raha hai…” जैसी मज़ेदार लाइनें दिखाती है; असली काम हमेशा सीधे शब्दों में बताया जाता है.",
+  connectIntro:
+    "कनेक्ट दबाएँ और उसी अकाउंट से साइन इन करें जिसमें आपका AI प्लान है. पासवर्ड सिर्फ़ कंपनी के अपने पेज पर डाला जाता है.",
+  connectCodexHint: "ChatGPT Plus, Pro या Business अकाउंट",
+  connectClaudeHint: "Claude Pro या Max अकाउंट",
+  connectGeminiHint: "Google अकाउंट (फ़्री भी चलेगा)",
+  connectOpenCodeHint: "पहले से शामिल. फ़्री, साइन इन नहीं",
+  connectConnected: "कनेक्टेड",
+  connectNotYet: "अभी कनेक्ट नहीं",
+  connectNotInstalled: "इंस्टॉल नहीं",
+  connectSignIn: "साइन इन ज़रूरी",
+  connectButton: "कनेक्ट करें",
+  connectReconnect: "फिर से कनेक्ट करें",
+  connectCheck: "फिर जाँचें",
+  connectOpenAgain: "ब्राउज़र नहीं खुला? साइन-इन पेज खोलें",
+  connectCodePlaceholder: "साइन-इन पेज का कोड यहाँ पेस्ट करें",
+  connectSubmitCode: "साइन इन पूरा करें",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -748,4 +780,20 @@ export const workspaceBn: WorkspaceDictionary = {
   activitySeedha: "সোজা (সাধারণ)",
   activityStyleHint:
     "সহকর্মীর স্ট্যাটাস সবসময় হিংলিশে (রোমান হরফে) থাকে। মস্তি শুধু ভাবার সময় “Jugaad dhoondha ja raha hai…” ধরনের মজার লাইন দেখায়; আসল কাজ সবসময় সোজা ভাষায় বলা হয়।",
+  connectIntro:
+    "কানেক্ট চাপুন এবং যে অ্যাকাউন্টে আপনার AI প্ল্যান আছে সেটি দিয়ে সাইন ইন করুন। পাসওয়ার্ড শুধু কোম্পানির নিজের পেজেই দেওয়া হয়।",
+  connectCodexHint: "ChatGPT Plus, Pro বা Business অ্যাকাউন্ট",
+  connectClaudeHint: "Claude Pro বা Max অ্যাকাউন্ট",
+  connectGeminiHint: "Google অ্যাকাউন্ট (ফ্রি-ও চলবে)",
+  connectOpenCodeHint: "আগে থেকেই আছে। ফ্রি, সাইন ইন লাগে না",
+  connectConnected: "কানেক্টেড",
+  connectNotYet: "এখনও কানেক্ট হয়নি",
+  connectNotInstalled: "ইনস্টল করা নেই",
+  connectSignIn: "সাইন ইন দরকার",
+  connectButton: "কানেক্ট করুন",
+  connectReconnect: "আবার কানেক্ট করুন",
+  connectCheck: "আবার দেখুন",
+  connectOpenAgain: "ব্রাউজার খোলেনি? সাইন-ইন পেজ খুলুন",
+  connectCodePlaceholder: "সাইন-ইন পেজের কোড এখানে পেস্ট করুন",
+  connectSubmitCode: "সাইন ইন শেষ করুন",
 };
