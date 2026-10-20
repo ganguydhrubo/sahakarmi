@@ -99,6 +99,7 @@ export class BotStore {
   readonly #sharedRoot: string;
   readonly #downloadsRoot: string;
   #state: StoredState = emptyState();
+  readonly #newDefaultBotIds = new Set<string>();
   #writeQueue: Promise<void> = Promise.resolve();
 
   constructor(userDataPath: string, homePath: string) {
@@ -142,11 +143,17 @@ export class BotStore {
         record.avatarShape = coworker.avatarShape;
         record.avatarColor = coworker.avatarColor;
         this.#state.bots.push(record);
+        this.#newDefaultBotIds.add(record.id);
         await mkdir(record.workspacePath, { recursive: true, mode: 0o700 });
       }
       this.#state.examplesInitialized = true;
     }
     await this.#persist();
+  }
+
+  /** Only default coworkers created by this store instance may receive an automatic first model. */
+  canAutoSelectModel(botId: string): boolean {
+    return this.#newDefaultBotIds.has(botId);
   }
 
   list(): BotSummary[] {
@@ -202,6 +209,7 @@ export class BotStore {
     if (input.description !== undefined) bot.description = input.description.trim().slice(0, 2_000);
     if (input.notifications !== undefined) bot.notifications = input.notifications;
     if (input.model !== undefined) {
+      this.#newDefaultBotIds.delete(bot.id);
       if (providerForModel(input.model) !== providerForModel(bot.model)) bot.threadId = null;
       bot.model = input.model;
     }
