@@ -1230,9 +1230,9 @@ describe("Sahkarmi connected desktop shell", () => {
 
     const leftResizer = screen.getByRole("separator", { name: "Resize left sidebar" });
     await fireEvent.keyDown(leftResizer, { key: "ArrowRight" });
-    expect(leftResizer).toHaveAttribute("aria-valuenow", "272");
-    expect(leftResizer.closest(".app-frame")).toHaveStyle("--left-panel-width: 272px");
-    expect(window.localStorage.getItem("sahkarmi:left-panel-width")).toBe("272");
+    expect(leftResizer).toHaveAttribute("aria-valuenow", "332");
+    expect(leftResizer.closest(".app-frame")).toHaveStyle("--left-panel-width: 332px");
+    expect(window.localStorage.getItem("sahkarmi:coworker-panel-width")).toBe("332");
 
     await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
     const rightResizer = screen.getByRole("separator", { name: "Resize right panel" });
@@ -1556,6 +1556,8 @@ describe("Sahkarmi connected desktop shell", () => {
       screen.queryByRole("separator", { name: "Resize left sidebar" }),
     ).not.toBeInTheDocument();
     expect(frame).toHaveClass("app-frame-sidebar-collapsed");
+    expect(screen.getByRole("navigation", { name: "Sahkarmi" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tasks" })).toBeInTheDocument();
     expect(frame).toHaveStyle("--left-panel-width: 0px");
     expect(window.localStorage.getItem("sahkarmi:left-panel-collapsed")).toBe("true");
     const restoreSidebar = screen.getByRole("button", { name: "Show sidebar" });
@@ -1567,7 +1569,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(screen.getByRole("complementary", { name: "Coworker navigation" })).toBeInTheDocument();
     expect(screen.getByRole("separator", { name: "Resize left sidebar" })).toHaveAttribute(
       "aria-valuenow",
-      "260",
+      "320",
     );
     expect(frame).not.toHaveClass("app-frame-sidebar-collapsed");
     expect(window.localStorage.getItem("sahkarmi:left-panel-collapsed")).toBe("false");
