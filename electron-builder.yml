@@ -1,6 +1,10 @@
 appId: in.sahkarmi.desktop
 productName: Sahkarmi
 asar: true
+# Claude Code ships with the Claude Agent SDK as a native binary; it must sit outside the
+# asar archive to be executable.
+asarUnpack:
+  - node_modules/@anthropic-ai/claude-agent-sdk-*/**
 artifactName: ${productName}-${version}-${arch}.${ext}
 electronUpdaterCompatibility: ">=2.16"
 electronFuses:
@@ -32,6 +36,11 @@ extraResources:
     to: bin
   - from: resources/licenses
     to: licenses
+  # Window and taskbar icon, set at runtime so the taskbar never falls back to a generic icon.
+  - from: build/icon.ico
+    to: icons/icon.ico
+  - from: build/icons/512x512.png
+    to: icons/icon.png
 directories:
   output: dist
 mac:

@@ -1,4 +1,5 @@
 export const IPC_CHANNELS = {
+  setTheme: "app:set-theme",
   getAppInfo: "app:get-info",
   getSetupState: "app:get-setup-state",
   saveSetup: "app:save-setup",
@@ -53,6 +54,11 @@ export const IPC_CHANNELS = {
   schedulesSetEnabled: "schedules:set-enabled",
   schedulesDelete: "schedules:delete",
   schedulesRunNow: "schedules:run-now",
+  routinesList: "routines:list",
+  routinesSave: "routines:save",
+  routinesDelete: "routines:delete",
+  routinesSetEnabled: "routines:set-enabled",
+  routinesRunNow: "routines:run-now",
   filesList: "files:list",
   filesAdd: "files:add",
   filesOpen: "files:open",
@@ -62,6 +68,13 @@ export const IPC_CHANNELS = {
   permissionsRevokeGrant: "permissions:revoke-grant",
   permissionsAudit: "permissions:audit",
   permissionsClearAudit: "permissions:clear-audit",
+  permissionsSetAutoMode: "permissions:set-auto-mode",
+
+  providerSetupList: "provider-setup:list",
+  providerSetupConnect: "provider-setup:connect",
+  providerSetupSubmitCode: "provider-setup:submit-code",
+  providerSetupCheck: "provider-setup:check",
+  providerSetupEvent: "provider-setup:event",
   usageOverview: "usage:overview",
   usageRefresh: "usage:refresh",
   usageClear: "usage:clear",
@@ -71,6 +84,9 @@ export const IPC_CHANNELS = {
   featuresApplyManifest: "features:apply-manifest",
   featuresResetCatalogue: "features:reset-catalogue",
   businessIntegrations: "business:integrations",
+  marketplaceInstalledSkills: "marketplace:installed-skills",
+  marketplaceInstallSkill: "marketplace:install-skill",
+  marketplaceUninstallSkill: "marketplace:uninstall-skill",
   businessListTargets: "business:list-targets",
   businessSaveTarget: "business:save-target",
   businessDeleteTarget: "business:delete-target",
@@ -558,9 +574,45 @@ export interface PermissionGrant {
   createdAt: string;
 }
 
+/** Progress of a one-click "Connect" for an AI provider. */
+export interface ProviderSetupState {
+  provider: AgentProviderId;
+  /**
+   * installing: downloading the provider's tool. waiting: sign-in page is open in the browser.
+   * needs-code: paste the code the sign-in page shows. terminal: finish in the opened window.
+   */
+  phase:
+    | "idle"
+    | "installing"
+    | "waiting"
+    | "needs-code"
+    | "terminal"
+    | "checking"
+    | "connected"
+    | "failed";
+  message: string | null;
+  /** The provider's own sign-in link, shown in case the browser did not open. */
+  url: string | null;
+  progress: number | null;
+}
+
+export interface ProviderSetupDesktopApi {
+  list: () => Promise<ProviderSetupState[]>;
+  connect: (provider: AgentProviderId) => Promise<ProviderSetupState>;
+  submitCode: (provider: AgentProviderId, code: string) => Promise<ProviderSetupState>;
+  check: (provider: AgentProviderId) => Promise<ProviderSetupState>;
+  onEvent: (listener: (state: ProviderSetupState) => void) => () => void;
+}
+
 export interface PermissionPolicyState {
   levels: Record<PermissionCategory, PermissionLevel>;
   grants: PermissionGrant[];
+  /**
+   * Auto mode: everyday work (files anywhere, commands, browsing, downloads) never asks.
+   * Money, messages, publishing, orders, account changes and government forms still ask,
+   * and anything set to "Block" stays blocked.
+   */
+  autoMode: boolean;
 }
 
 export interface PermissionAuditEntry {
@@ -610,6 +662,70 @@ export interface ScheduledTask {
   createdAt: string;
   lastRunAt: string | null;
   nextRunAt: string | null;
+}
+
+/** Routines also accept "every N minutes" (N >= 1; under 5 needs explicit confirmation). */
+export type RoutineCadence = ScheduleCadence | { kind: "interval"; minutes: number };
+
+export interface RoutineStep {
+  id: string;
+  botId: string;
+  instruction: string;
+}
+
+/** A named multi-step automation: each step goes to one coworker, in order. */
+export interface Routine {
+  id: string;
+  name: string;
+  steps: RoutineStep[];
+  /** null = only runs with Run now. */
+  cadence: RoutineCadence | null;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+}
+
+export type RoutineStepStatus = "queued" | "running" | "done" | "failed" | "skipped";
+
+export interface RoutineRunStep {
+  stepId: string;
+  botId: string;
+  instruction: string;
+  status: RoutineStepStatus;
+  deliveryId: string | null;
+  /** Short excerpt of the coworker's final reply, or the failure reason. */
+  result: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface RoutineRun {
+  id: string;
+  routineId: string;
+  routineName: string;
+  trigger: "schedule" | "manual";
+  status: "running" | "done" | "failed";
+  startedAt: string;
+  finishedAt: string | null;
+  steps: RoutineRunStep[];
+}
+
+export interface RoutinesState {
+  routines: Routine[];
+  /** Newest first, capped. */
+  runs: RoutineRun[];
+}
+
+export interface SaveRoutineInput {
+  /** Omit to create a new routine. */
+  id?: string;
+  name: string;
+  steps: Array<{ id?: string; botId: string; instruction: string }>;
+  cadence: RoutineCadence | null;
+  enabled: boolean;
+  /** Required to save a cadence that repeats more often than every 5 minutes. */
+  confirmFrequent?: boolean;
 }
 
 export interface CreateScheduleInput {
@@ -880,6 +996,7 @@ export type AgentEvent =
   | { type: "workspaces-changed"; state: WorkspaceState }
   | { type: "approvals-changed"; approvals: ApprovalRequest[] }
   | { type: "schedules-changed"; schedules: ScheduledTask[] }
+  | { type: "routines-changed"; state: RoutinesState }
   | { type: "error"; botId?: string; code: string; message: string };
 
 export interface BrowserTab {
@@ -994,6 +1111,7 @@ export interface PermissionsDesktopApi {
   revokeGrant: (grantId: string) => Promise<PermissionPolicyState>;
   audit: () => Promise<PermissionAuditEntry[]>;
   clearAudit: () => Promise<void>;
+  setAutoMode: (enabled: boolean) => Promise<PermissionPolicyState>;
 }
 
 export interface UsageDesktopApi {
@@ -1017,9 +1135,25 @@ export interface BusinessDesktopApi {
   deleteTarget: (targetId: string) => Promise<BusinessTarget[]>;
 }
 
+export interface MarketplaceDesktopApi {
+  /** Ids of catalog skills installed in Shared/Skills. */
+  installedSkills: () => Promise<string[]>;
+  installSkill: (skillId: string) => Promise<string[]>;
+  uninstallSkill: (skillId: string) => Promise<string[]>;
+}
+
 export interface ApprovalsDesktopApi {
   list: () => Promise<ApprovalRequest[]>;
   decide: (input: DecideApprovalInput) => Promise<ApprovalRequest>;
+}
+
+export interface RoutinesDesktopApi {
+  list: () => Promise<RoutinesState>;
+  save: (input: SaveRoutineInput) => Promise<RoutinesState>;
+  delete: (routineId: string) => Promise<RoutinesState>;
+  setEnabled: (routineId: string, enabled: boolean) => Promise<RoutinesState>;
+  /** Starts a run in the background and returns at once. */
+  runNow: (routineId: string) => Promise<RoutinesState>;
 }
 
 export interface SchedulesDesktopApi {
@@ -1050,6 +1184,7 @@ export interface MaintenanceDesktopApi {
 }
 
 export interface SahkarmiDesktopApi {
+  setTheme?: (theme: "system" | "light" | "dark") => Promise<void>;
   getAppInfo: () => Promise<AppInfo>;
   getSetupState: () => Promise<AppSetupState>;
   saveSetup: (input: SaveSetupInput) => Promise<AppSetupState>;
@@ -1062,10 +1197,13 @@ export interface SahkarmiDesktopApi {
   team: TeamDesktopApi;
   approvals: ApprovalsDesktopApi;
   permissions: PermissionsDesktopApi;
+  providerSetup: ProviderSetupDesktopApi;
   usage: UsageDesktopApi;
   features: FeaturesDesktopApi;
   business: BusinessDesktopApi;
+  marketplace: MarketplaceDesktopApi;
   schedules: SchedulesDesktopApi;
+  routines: RoutinesDesktopApi;
   files: FilesDesktopApi;
   update: UpdateDesktopApi;
   maintenance: MaintenanceDesktopApi;

@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { join } from "node:path";
+import { nextRunAfter } from "../shared/cadence";
 import type { CreateScheduleInput, ScheduleCadence, ScheduledTask } from "../shared/ipc";
 import { JsonFile } from "./json-file";
+
+export { nextRunAfter };
+
 import { isRecord } from "./protocol";
 
 interface ScheduleState {
@@ -175,32 +179,6 @@ function parseTime(value: unknown): string {
     throw new Error("Use a 24-hour time such as 09:30.");
   }
   return value;
-}
-
-/** Next local-time occurrence strictly after `from`, or null when a one-off time has passed. */
-export function nextRunAfter(cadence: ScheduleCadence, from: Date): Date | null {
-  if (cadence.kind === "once") {
-    const at = new Date(cadence.at);
-    return at.getTime() > from.getTime() ? at : null;
-  }
-  if (cadence.kind === "hourly") {
-    const next = new Date(from);
-    next.setMinutes(0, 0, 0);
-    next.setHours(next.getHours() + 1);
-    return next;
-  }
-  const [hours, minutes] = cadence.time.split(":").map(Number) as [number, number];
-  for (let offset = 0; offset <= 8; offset += 1) {
-    const candidate = new Date(from);
-    candidate.setDate(candidate.getDate() + offset);
-    candidate.setHours(hours, minutes, 0, 0);
-    if (candidate.getTime() <= from.getTime()) continue;
-    const day = candidate.getDay();
-    if (cadence.kind === "weekdays" && (day === 0 || day === 6)) continue;
-    if (cadence.kind === "weekly" && day !== cadence.day) continue;
-    return candidate;
-  }
-  return null;
 }
 
 function isScheduleState(value: unknown): value is ScheduleState {

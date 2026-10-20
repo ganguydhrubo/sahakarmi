@@ -3,7 +3,7 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "../shared/ipc";
 import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
@@ -45,6 +45,7 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_TOOL_ITEM;
   delete process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS;
   delete process.env.SAHKARMI_FAKE_THREAD_READ_DELAY;
+  delete process.env.SAHKARMI_FAKE_THREAD_READ_UNTIL_TURN;
   delete process.env.SAHKARMI_FAKE_AUTO_COMPLETE;
   delete process.env.SAHKARMI_FAKE_CONTEXT_USAGE;
   delete process.env.SAHKARMI_FAKE_COMPACTION_ERROR;
@@ -56,6 +57,44 @@ afterEach(async () => {
 });
 
 describe.sequential("AgentService", () => {
+  it("waits for a completed reply to persist before shutdown returns", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "SAVED_REPLY";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    const original = store.updatePreview.bind(store);
+    let releaseWrite: () => void = () => undefined;
+    let entered = false;
+    const barrier = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const spy = vi.spyOn(store, "updatePreview").mockImplementation(async (botId, text) => {
+      if (text === "SAVED_REPLY") {
+        entered = true;
+        await barrier;
+      }
+      return original(botId, text);
+    });
+    await service.sendMessage({ botId: "chief", text: "Finish and save" });
+    await waitFor(() => entered);
+    let stopped = false;
+    const stopping = service.stop().then(() => {
+      stopped = true;
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stopped).toBe(false);
+    } finally {
+      releaseWrite();
+      await stopping;
+      spy.mockRestore();
+    }
+    const persisted = JSON.parse(await readFile(join(root, "user-data", "bots.json"), "utf8"));
+    expect(persisted.bots.find((bot: { id: string }) => bot.id === "chief").preview).toBe(
+      "SAVED_REPLY",
+    );
+  });
+
   it("files approvals from coworkers and queues the owner's decision back to them", async () => {
     process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
       namespace: "sahkarmi",
@@ -731,7 +770,7 @@ describe.sequential("AgentService", () => {
 
     const isSalesStart = (message: Record<string, unknown>) =>
       message.method === "turn/start" &&
-      String((message.params as Record<string, unknown>).cwd).endsWith("/sales-outbound");
+      /[\\/]sales-outbound$/.test(String((message.params as Record<string, unknown>).cwd));
     await waitFor(async () => (await protocolMessages()).some(isSalesStart));
     const salesStart = (await protocolMessages()).find(isSalesStart);
     const salesInput = (salesStart?.params as Record<string, unknown> | undefined)?.input as
@@ -812,7 +851,7 @@ describe.sequential("AgentService", () => {
   });
 
   it("merges a late thread read with a newer active stream", async () => {
-    process.env.SAHKARMI_FAKE_THREAD_READ_DELAY = "80";
+    process.env.SAHKARMI_FAKE_THREAD_READ_UNTIL_TURN = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -995,9 +1034,9 @@ async function waitFor(
 }
 
 async function createFakeCodex(directory: string): Promise<string> {
-  const executable = join(directory, "codex");
+  const scriptPath = join(directory, "codex.js");
   await writeFile(
-    executable,
+    scriptPath,
     `#!/usr/bin/env node
 const fs = require("node:fs");
 if (process.argv.includes("--version")) {
@@ -1009,6 +1048,7 @@ let buffer = "";
 let threadCounter = 0;
 let turnCounter = 0;
 const turns = new Map();
+const heldThreadReads = [];
 let archivedThread = process.env.SAHKARMI_FAKE_ARCHIVED_THREAD === "1";
 const write = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
 process.stdin.setEncoding("utf8");
@@ -1046,7 +1086,8 @@ process.stdin.on("data", (chunk) => {
         const capturedTurns = JSON.parse(JSON.stringify([...turns.values()]));
         const respond = () => write({ id: message.id, result: { thread: { id: message.params.threadId, turns: capturedTurns } } });
         const delay = Number(process.env.SAHKARMI_FAKE_THREAD_READ_DELAY || 0);
-        if (delay > 0) setTimeout(respond, delay);
+        if (process.env.SAHKARMI_FAKE_THREAD_READ_UNTIL_TURN === "1" && turnCounter === 1) heldThreadReads.push(respond);
+        else if (delay > 0) setTimeout(respond, delay);
         else respond();
       }
       if (message.method === "turn/start") {
@@ -1068,6 +1109,7 @@ process.stdin.on("data", (chunk) => {
           write({ method: "thread/tokenUsage/updated", params: { threadId: message.params.threadId, turnId, tokenUsage: { total: { totalTokens }, last: { totalTokens }, modelContextWindow: 100000 } } });
         }
         write({ method: "item/agentMessage/delta", params: { threadId: message.params.threadId, turnId, itemId: "message-" + turnId, delta: "Streaming" } });
+        for (const respond of heldThreadReads.splice(0)) respond();
         if (process.env.SAHKARMI_FAKE_TOOL_CALL && turnCounter === 1) {
           const call = JSON.parse(process.env.SAHKARMI_FAKE_TOOL_CALL);
           setTimeout(() => write({ id: "agent-tool-custom", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-custom", ...call } }), 30);
@@ -1126,22 +1168,40 @@ process.stdin.on("data", (chunk) => {
 `,
     { mode: 0o700 },
   );
-  await chmod(executable, 0o700);
-  return executable;
+  if (process.platform === "win32") {
+    const cmdPath = join(directory, "codex.cmd");
+    await writeFile(cmdPath, `@node "%~dp0codex.js" %*\r\n`);
+    return cmdPath;
+  }
+  await chmod(scriptPath, 0o700);
+  return scriptPath;
 }
 
 async function createFakeClaude(directory: string): Promise<string> {
-  const executable = join(directory, "claude");
-  await writeFile(
-    executable,
-    `#!/bin/sh
+  const executable =
+    process.platform === "win32" ? join(directory, "claude.cmd") : join(directory, "claude");
+  if (process.platform === "win32") {
+    await writeFile(
+      executable,
+      `@if "%1"=="--version" (
+  @echo 2.1.231 (Claude Code)
+) else if "%1"=="auth" (
+  @echo {"loggedIn":true,"email":"claude@example.com","subscriptionType":"max"}
+)
+`,
+    );
+  } else {
+    await writeFile(
+      executable,
+      `#!/bin/sh
 if [ "$1" = "--version" ]; then
   printf '%s\\n' '2.1.231 (Claude Code)'
 elif [ "$1" = "auth" ]; then
   printf '%s' '{"loggedIn":true,"email":"claude@example.com","subscriptionType":"max"}'
 fi
 `,
-  );
-  await chmod(executable, 0o755);
+    );
+    await chmod(executable, 0o755);
+  }
   return executable;
 }

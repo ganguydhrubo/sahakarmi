@@ -69,6 +69,12 @@ if (updateMetadata !== null && !updateMetadata.includes("provider: github")) {
   throw new Error("The packaged update provider is not GitHub.");
 }
 
+// The taskbar/window icon is shipped next to the app and set at runtime.
+const taskbarIcon = await readFile(resolve(resourcesPath, "icons", "icon.ico"));
+if (taskbarIcon.readUInt16LE(2) !== 1 || taskbarIcon.readUInt16LE(4) < 1) {
+  throw new Error("The packaged taskbar icon is not a valid .ico file.");
+}
+
 const fuses = await getCurrentFuseWire(executablePath);
 const expectedFuses: Array<[FuseV1Options, number]> = [
   [FuseV1Options.RunAsNode, FUSE_DISABLED],
