@@ -10,5 +10,5 @@ One page: headline, one explainer video, one Download for Windows button. Englis
   falling back to the Releases page.
 - **Contact:** hi@goliv.online · WhatsApp +91 82408 01921 (footer).
 - **Hosting:** `.github/workflows/pages.yml` publishes this folder to GitHub Pages on every push
-  that touches `website/`. Site: https://ganguydhrubo.github.io/sahakarmi/
+  that touches `website/`. Site: https://sahkarmi.site/
   To use your own domain later, add it in Settings → Pages → Custom domain.
