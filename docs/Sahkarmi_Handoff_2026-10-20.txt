@@ -1,4 +1,38 @@
 ================================================================================
+REVISION 10 — CURRENT STATUS (20 October 2026, late night)
+THIS SECTION SUPERSEDES REVISION 9 AND ALL OLDER STATUS CLAIMS BELOW.
+================================================================================
+
+ONE-LINE SUMMARY
+  v0.4.0 is RELEASED (16 installers). Website is live with direct Win/Mac
+  downloads. v0.5.0 (agent safety) is ready in PR #9 — needs your merge + tag.
+
+A. LIVE NOW
+- App v0.4.0 released: https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.4.0
+- https://sahkarmi.site: Windows + Mac download buttons start the installer
+  directly (links baked in at deploy, no GitHub page, no API rate limits).
+  Mobile tiles fixed. Social buttons + SEO live.
+
+B. READY: v0.5.0 AGENT SAFETY  (PR #9, branch feat/agent-safety)
+  https://github.com/ganguydhrubo/sahakarmi/pull/9
+  Fixes the AI-agent failure list (Replit wipe, OTP access, mass messages,
+  prompt injection, false "done", loops). Mapping: docs/AGENT-SAFETY-REPORT.md
+  - Destructive + Credentials categories (always ask)
+  - "Stop everything" emergency stop (sidebar, Ctrl/Cmd+Shift+Esc)
+  - Suggest-only coworkers; per-task tool/time/loop limits; hourly outbound cap
+  - Injection detection -> strict mode; untrusted browser content labelled
+  - Hash-chained activity log with integrity check
+  Local: lint, typecheck, 237 tests, browser smoke, build, real-app e2e: PASS.
+
+C. YOUR STEPS
+  1. When PR #9 CI is green: Merge (squash) on GitHub.
+  2. Releases -> Draft new release -> tag exactly  v0.5.0  (lowercase v,
+     three numbers) on main -> Publish. Installers build automatically and
+     the website download links update on their own.
+  3. Still pending from before: Google Search Console + Bing Webmaster —
+     add sahkarmi.site and submit https://sahkarmi.site/sitemap.xml
+
+================================================================================
 REVISION 9 — CURRENT STATUS (20 October 2026, night)
 THIS SECTION SUPERSEDES REVISION 8 AND ALL OLDER STATUS CLAIMS BELOW.
 ================================================================================
