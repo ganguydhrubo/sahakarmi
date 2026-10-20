@@ -26,6 +26,7 @@ import { MailboxStore } from "../backend/mailbox-store";
 import { PermissionService } from "../backend/permission-service";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
+import { SkillLibrary } from "../backend/skill-library";
 import { UsageService } from "../backend/usage-service";
 import {
   type AgentEvent,
@@ -373,6 +374,14 @@ function registerIpcHandlers(
   });
 
   handleTrusted(IPC_CHANNELS.businessIntegrations, () => business.integrations());
+  const skills = new SkillLibrary(sharedFiles.root);
+  handleTrusted(IPC_CHANNELS.marketplaceInstalledSkills, () => skills.installed());
+  handleTrusted(IPC_CHANNELS.marketplaceInstallSkill, (skillId: unknown) =>
+    skills.install(requireString(skillId, "skillId")),
+  );
+  handleTrusted(IPC_CHANNELS.marketplaceUninstallSkill, (skillId: unknown) =>
+    skills.uninstall(requireString(skillId, "skillId")),
+  );
   handleTrusted(IPC_CHANNELS.businessListTargets, () => business.listTargets());
   handleTrusted(IPC_CHANNELS.businessSaveTarget, (input: unknown) =>
     business.saveTarget(parseSaveTarget(input)),

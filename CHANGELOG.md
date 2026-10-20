@@ -3,6 +3,19 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - marketplace
+
+### Added
+
+- **Marketplace** in the sidebar, with two tabs and search.
+  - **Agents:** 12 ready-made coworkers for Indian businesses, including GST Accountant, Sales
+    Follow-up, Customer Support, Payment Reminders and Marketplace Seller Assistant. **Add**
+    creates a real coworker with its job already set; after that the button says **Open**.
+  - **Skills:** 12 step-by-step playbooks, including GST Invoice Check, Project Plan, Meeting
+    Actions and Customer Reply Draft. **Install** saves the playbook in `Shared/Skills`, and
+    coworkers are told to follow it when a task matches. **Remove** uninstalls it.
+- No install counts or ratings are shown, because none are collected.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
