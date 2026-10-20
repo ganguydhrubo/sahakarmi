@@ -102,6 +102,31 @@ fi
     await client.stop();
   });
 
+  it("forwards the SDK's api_retry as a real retry signal", async () => {
+    const { client, notifications, output, threadId } = await createHarness();
+    const turnId = "22222222-2222-4222-8222-222222222222";
+    await startTurn(client, threadId, turnId);
+    output.push({
+      type: "system",
+      subtype: "api_retry",
+      attempt: 2,
+      max_retries: 10,
+      retry_delay_ms: 1500,
+      error_status: 529,
+      error: "overloaded",
+      uuid: turnId,
+      session_id: threadId,
+    } as unknown as SDKMessage);
+    await waitFor(() => notifications.some((event) => event.method === "sahkarmi/retrying"));
+    expect(notifications.find((event) => event.method === "sahkarmi/retrying")?.params).toEqual({
+      threadId,
+      attempt: 2,
+      maxRetries: 10,
+      delayMs: 1500,
+    });
+    await client.stop();
+  });
+
   it("uses a complete assistant message when Claude omits stream deltas", async () => {
     const { client, notifications, output, threadId } = await createHarness();
     const turnId = "11111111-1111-4111-8111-111111111111";

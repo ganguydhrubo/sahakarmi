@@ -24,6 +24,8 @@ import type {
   SendMessageInput,
   SetMessageReactionInput,
   UpdateBotInput,
+  UsageLimitWindow,
+  UsageOverview,
   WorkspaceState,
 } from "../shared/ipc";
 import {
@@ -64,6 +66,14 @@ import {
 } from "./conversation-snapshots";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import {
+  classifyAcpTool,
+  classifyBrowserAction,
+  classifyClaudeTool,
+  classifyCommand,
+  type PermissionRequest,
+} from "./permission-policy";
+import type { PermissionService } from "./permission-service";
+import {
   type AccountRateLimitResult,
   type AccountRateLimitsReadResult,
   type AccountReadResult,
@@ -80,6 +90,7 @@ import {
   type TurnResponse,
 } from "./protocol";
 import { toolCallFromItem } from "./tool-calls";
+import type { UsageService } from "./usage-service";
 
 interface AgentServiceEvents {
   event: [event: AgentEvent];
@@ -222,6 +233,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #mailbox: MailboxStore;
   readonly #browser: BrowserHost;
   readonly #approvals: ApprovalStore | null;
+  readonly #permissions: PermissionService | null;
+  readonly #permissionWaiters = new Map<string, (outcome: "approved" | "rejected") => void>();
+  readonly #fileChangePaths = new Map<string, string[]>();
+  readonly #permissionTimeoutMs: number;
+  #usage: UsageService | null = null;
   #takeover: BrowserTakeoverState = { humanInControl: false, requests: [] };
   readonly #computerUsePrerequisites: (() => ComputerUsePrerequisites) | null;
   readonly #requestTimeoutMs: number;
@@ -258,12 +274,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     requestTimeoutMs = 30_000,
     preferredProvider: AgentProvider = "codex",
     approvals: ApprovalStore | null = null,
+    permissions: PermissionService | null = null,
+    permissionTimeoutMs = 15 * 60_000,
   ) {
     super();
     this.#store = store;
     this.#mailbox = mailbox;
     this.#browser = browser;
     this.#approvals = approvals;
+    this.#permissions = permissions;
+    this.#permissionTimeoutMs = permissionTimeoutMs;
+    permissions?.setAsker((request) => this.#askOwner(request));
     this.#computerUsePrerequisites = computerUsePrerequisites;
     this.#requestTimeoutMs = requestTimeoutMs;
     this.#preferredProvider = preferredProvider;
@@ -273,6 +294,28 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#browser.onControlChanged((state) => {
       this.#emit({ type: "browser-control-changed", state });
     });
+  }
+
+  /** Local usage ledger fed by provider notifications (see UsageService). */
+  setUsageService(usage: UsageService): void {
+    this.#usage = usage;
+  }
+
+  usageOverview(): UsageOverview {
+    if (!this.#usage) throw new Error("Usage tracking is unavailable.");
+    const plans: Partial<Record<AgentProvider, string | null>> = {};
+    for (const [provider, account] of this.#accounts) {
+      plans[provider] =
+        isRecord(account) && typeof account.planType === "string" ? account.planType : null;
+    }
+    return this.#usage.overview(this.#status.providers ?? [], plans);
+  }
+
+  /** Re-reads what can be re-read on demand (Codex rate limits); other providers report live. */
+  async refreshUsage(): Promise<UsageOverview> {
+    const client = this.#clients.get("codex");
+    if (client) await this.#refreshUsage(client).catch(() => undefined);
+    return this.usageOverview();
   }
 
   getStatus(): AgentStatus {
@@ -321,6 +364,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!this.#approvals) throw new Error("Approvals are unavailable.");
     const approval = await this.#approvals.decide(input);
     this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+    if (approval.kind === "permission") {
+      // The paused tool call continues (or is declined) in place; no message to the coworker.
+      const waiter = this.#permissionWaiters.get(approval.id);
+      this.#permissionWaiters.delete(approval.id);
+      waiter?.(approval.status === "approved" ? "approved" : "rejected");
+      return approval;
+    }
     const verdict = approval.status === "approved" ? "APPROVED" : "REJECTED";
     await this.#notifyBot(
       approval.botId,
@@ -503,6 +553,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#store.initialize(),
       this.#mailbox.initialize(),
       this.#approvals?.initialize(),
+      this.#permissions?.initialize(),
     ]);
     this.#initialized = true;
     await this.#connect("starting", AGENT_PROVIDERS);
@@ -943,7 +994,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       effort: bot.reasoningEffort,
       cwd: bot.workspacePath,
       runtimeWorkspaceRoots: [bot.workspacePath, this.#store.sharedRoot],
-      approvalPolicy: "never",
+      approvalPolicy: this.#codexApprovalPolicy,
       sandbox: "danger-full-access",
       developerInstructions: developerInstructions(bot, this.#store.sharedRoot),
       ephemeral: false,
@@ -966,7 +1017,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       effort: bot.reasoningEffort,
       cwd: bot.workspacePath,
       runtimeWorkspaceRoots: [bot.workspacePath, this.#store.sharedRoot],
-      approvalPolicy: "never",
+      approvalPolicy: this.#codexApprovalPolicy,
       sandbox: "danger-full-access",
       developerInstructions: developerInstructions(bot, this.#store.sharedRoot),
       dynamicTools: [...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS],
@@ -997,17 +1048,159 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
   }
 
+  /**
+   * With a permission policy, Codex asks before anything that is not a known read-only command
+   * ("untrusted"), and each request is decided by the policy below. Without one (tests, legacy
+   * embedders) it keeps the previous behaviour.
+   */
+  get #codexApprovalPolicy(): "never" | "untrusted" {
+    return this.#permissions ? "untrusted" : "never";
+  }
+
+  #workspaceRoots(botId: string | null): string[] {
+    const bot = botId ? this.#store.list().find((candidate) => candidate.id === botId) : null;
+    return bot ? [bot.workspacePath, this.#store.sharedRoot] : [this.#store.sharedRoot];
+  }
+
+  async #authorize(
+    provider: string,
+    threadId: string | null,
+    request: Omit<PermissionRequest, "botId" | "provider">,
+  ): Promise<{ allowed: boolean; reason: string }> {
+    if (!this.#permissions) return { allowed: true, reason: "No permission policy configured." };
+    const botId = threadId ? (this.#threadToBot.get(threadId) ?? null) : null;
+    return this.#permissions.authorize(
+      { ...request, botId, provider },
+      this.#workspaceRoots(botId),
+    );
+  }
+
+  /** Files an inbox request for a paused tool call and waits for the owner (or the timeout). */
+  async #askOwner(request: PermissionRequest): Promise<"approved" | "rejected" | "timed-out"> {
+    if (!this.#approvals || !request.botId) return "rejected";
+    const approval = await this.#approvals.create({
+      botId: request.botId,
+      title: `Allow: ${request.action || request.category}`.slice(0, 200),
+      details: [
+        `Category: ${request.category.replaceAll("_", " ")}`,
+        `Provider: ${request.provider}`,
+        request.paths.length ? `Paths: ${request.paths.join(", ")}` : null,
+        "The coworker is paused until you decide.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      category: approvalCategoryFor(request.category),
+      kind: "permission",
+      permissionCategory: request.category,
+    });
+    this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.#permissionWaiters.delete(approval.id);
+        resolve("timed-out");
+        void this.#approvals
+          ?.decide({
+            approvalId: approval.id,
+            decision: "rejected",
+            note: "Timed out: no decision in time, so the action did not run.",
+          })
+          .then(() => {
+            if (this.#approvals) {
+              this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+            }
+          })
+          .catch(() => undefined);
+      }, this.#permissionTimeoutMs);
+      timer.unref?.();
+      this.#permissionWaiters.set(approval.id, (outcome) => {
+        clearTimeout(timer);
+        resolve(outcome);
+      });
+    });
+  }
+
+  /** `sahkarmi/permission`: raised by the Claude and ACP adapters before a tool call runs. */
+  async #permissionFromAdapter(
+    client: AgentClient,
+    params: unknown,
+  ): Promise<{ allowed: boolean; reason: string }> {
+    const threadId = getString(params, "threadId");
+    if (getString(params, "source") === "claude") {
+      const input = getRecord(params, "input") ?? {};
+      const classified = classifyClaudeTool(getString(params, "toolName") ?? "", input);
+      return this.#authorize(client.provider, threadId, classified);
+    }
+    const title = getString(params, "title") ?? "Tool call";
+    const paths =
+      isRecord(params) && Array.isArray(params.paths)
+        ? params.paths.filter((path): path is string => typeof path === "string")
+        : [];
+    const rawInput = isRecord(params) ? params.rawInput : null;
+    const category = classifyAcpTool(getString(params, "kind"), title, paths, rawInput);
+    const command = getString(rawInput, "command");
+    return this.#authorize(client.provider, threadId, {
+      category,
+      paths,
+      action: command ?? title,
+    });
+  }
+
   async #handleServerRequest(client: AgentClient, request: AppServerRequest): Promise<void> {
     try {
       switch (request.method) {
-        case "item/commandExecution/requestApproval":
-        case "item/fileChange/requestApproval":
-          client.respond(request.id, { decision: "acceptForSession" });
+        case "sahkarmi/permission":
+          client.respond(request.id, await this.#permissionFromAdapter(client, request.params));
           return;
-        case "applyPatchApproval":
-        case "execCommandApproval":
-          client.respond(request.id, { decision: "approved_for_session" });
+        case "item/commandExecution/requestApproval": {
+          const command = commandText(isRecord(request.params) ? request.params.command : null);
+          const verdict = await this.#authorize(
+            client.provider,
+            getString(request.params, "threadId"),
+            {
+              category: classifyCommand(command),
+              paths: [],
+              action: command || getString(request.params, "reason") || "Run a command",
+            },
+          );
+          client.respond(request.id, { decision: verdict.allowed ? "accept" : "decline" });
           return;
+        }
+        case "item/fileChange/requestApproval": {
+          const itemId = getString(request.params, "itemId") ?? "";
+          const paths = this.#fileChangePaths.get(itemId) ?? [];
+          const verdict = await this.#authorize(
+            client.provider,
+            getString(request.params, "threadId"),
+            {
+              category: "file_modify",
+              paths,
+              action: paths.length ? `Change ${paths.join(", ")}` : "Change files",
+            },
+          );
+          client.respond(request.id, { decision: verdict.allowed ? "accept" : "decline" });
+          return;
+        }
+        case "execCommandApproval": {
+          const command = commandText(isRecord(request.params) ? request.params.command : null);
+          const verdict = await this.#authorize(
+            client.provider,
+            getString(request.params, "conversationId"),
+            { category: classifyCommand(command), paths: [], action: command || "Run a command" },
+          );
+          client.respond(request.id, { decision: verdict.allowed ? "approved" : "denied" });
+          return;
+        }
+        case "applyPatchApproval": {
+          const changes = getRecord(request.params, "fileChanges") ?? {};
+          const paths = Object.keys(changes);
+          const verdict = await this.#authorize(
+            client.provider,
+            getString(request.params, "conversationId"),
+            { category: "file_modify", paths, action: `Change ${paths.join(", ") || "files"}` },
+          );
+          client.respond(request.id, { decision: verdict.allowed ? "approved" : "denied" });
+          return;
+        }
         case "item/permissions/requestApproval": {
           const permissions = getRecord(request.params, "permissions") ?? {};
           client.respond(request.id, {
@@ -1030,6 +1223,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
                     text: "The owner has taken over the browser (for example to log in or complete 2FA). Do not use the browser now. Continue other work or end your turn; you will be told when control is handed back.",
                   },
                 ],
+              });
+              return;
+            }
+            const blocked = await this.#checkBrowserTool(client.provider, request.params);
+            if (blocked) {
+              client.respond(request.id, {
+                success: false,
+                contentItems: [{ type: "inputText", text: blocked }],
               });
               return;
             }
@@ -1071,6 +1272,46 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       }
       this.#emitError("server_request_failed", error);
     }
+  }
+
+  /** Returns a refusal message when the policy blocks this browser action, else null. */
+  async #checkBrowserTool(provider: string, params: DynamicToolCallParams): Promise<string | null> {
+    if (!this.#permissions || (params.tool !== "act" && params.tool !== "open")) return null;
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    let category: PermissionRequest["category"] = "browser_navigation";
+    let action: string;
+    if (params.tool === "open") {
+      action = `Open ${getString(args, "url") ?? "a page"}`;
+    } else {
+      const browserAction = getRecord(args, "action") ?? {};
+      const type = getString(browserAction, "type") ?? "";
+      const tabId = getString(args, "tabId") ?? "";
+      const target =
+        typeof this.#browser.describeTarget === "function"
+          ? this.#browser.describeTarget(tabId, getString(browserAction, "ref"))
+          : { label: "", url: "" };
+      category = classifyBrowserAction(
+        type,
+        target.label,
+        target.url,
+        browserAction.submit === true,
+      );
+      action = [
+        type,
+        target.label ? `"${target.label.slice(0, 80)}"` : null,
+        target.url ? `on ${target.url.slice(0, 120)}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    const verdict = await this.#authorize(provider, params.threadId, {
+      category,
+      paths: [],
+      action,
+    });
+    return verdict.allowed
+      ? null
+      : `Not performed: ${verdict.reason} Tell the owner what you wanted to do, or use request_approval.`;
   }
 
   async #handleSahkarmiTool(params: DynamicToolCallParams): Promise<{
@@ -1358,7 +1599,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           input,
           cwd: bot.workspacePath,
           runtimeWorkspaceRoots: [bot.workspacePath, this.#store.sharedRoot],
-          approvalPolicy: "never",
+          approvalPolicy: this.#codexApprovalPolicy,
           sandboxPolicy: { type: "dangerFullAccess" },
         },
       );
@@ -1515,10 +1756,96 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
   }
 
+  #emitRetrying(botId: string, params: unknown): void {
+    const value = (key: string) => (isRecord(params) ? finiteNumberOrNull(params[key]) : null);
+    this.#emit({
+      type: "turn-retrying",
+      botId,
+      attempt: value("attempt"),
+      maxRetries: value("maxRetries"),
+      delayMs: value("delayMs"),
+    });
+  }
+
+  #recordAdapterUsage(threadId: string | null, botId: string | null, params: unknown): void {
+    if (!this.#usage) return;
+    const provider = threadId ? this.#providerForThread(threadId) : null;
+    if (!provider) return;
+    const limit = getRecord(params, "limit");
+    if (limit) {
+      const id = getString(limit, "id") ?? "current";
+      const status = getString(limit, "status");
+      const resetsAt = finiteNumberOrNull(limit.resetsAt);
+      this.#usage.record({
+        kind: "limits",
+        provider,
+        replace: false,
+        windows: [
+          {
+            id,
+            label: CLAUDE_LIMIT_LABELS[id] ?? id.replaceAll("_", " "),
+            usedPercent: null,
+            resetsAt: resetsAt === null ? null : new Date(resetsAt * 1_000).toISOString(),
+            status:
+              status === "rejected" ? "limited" : status === "allowed_warning" ? "warning" : "ok",
+            source: "Claude Agent SDK rate_limit_event",
+            observedAt: new Date().toISOString(),
+            dataLabel: "verified",
+          },
+        ],
+      });
+      return;
+    }
+    const context = getRecord(params, "context");
+    const used = finiteNumberOrNull(context?.used);
+    const size = finiteNumberOrNull(context?.size);
+    if (used !== null && size !== null)
+      this.#usage.record({ kind: "context", provider, used, size });
+    const tokens = isRecord(params) ? finiteNumberOrNull(params.tokens) : null;
+    const costUsd = isRecord(params) ? finiteNumberOrNull(params.costUsd) : null;
+    if (tokens === null && costUsd === null) return;
+    this.#usage.record({
+      kind: "cumulative",
+      provider,
+      botId,
+      counterKey: getString(params, "sessionKey") ?? `${provider}:${threadId}`,
+      persistent: false,
+      tokens,
+      costUsd,
+    });
+  }
+
+  #providerForThread(threadId: string): AgentProvider | null {
+    const botId = this.#threadToBot.get(threadId);
+    const bot = botId ? this.#store.list().find((candidate) => candidate.id === botId) : null;
+    return bot ? providerForModel(bot.model) : null;
+  }
+
+  /** Codex file-change approvals name only the item; its paths arrive with item/started. */
+  #rememberFileChange(notification: AppServerNotification): void {
+    const item = getRecord(notification.params, "item");
+    const itemId = getString(item, "id");
+    if (!itemId || getString(item, "type") !== "fileChange") return;
+    if (notification.method === "item/completed") {
+      this.#fileChangePaths.delete(itemId);
+      return;
+    }
+    const changes = isRecord(item) && Array.isArray(item.changes) ? item.changes : [];
+    this.#fileChangePaths.set(
+      itemId,
+      changes.map((change) => getString(change, "path")).filter((path): path is string => !!path),
+    );
+    if (this.#fileChangePaths.size > 500) {
+      const oldest = this.#fileChangePaths.keys().next().value;
+      if (oldest) this.#fileChangePaths.delete(oldest);
+    }
+  }
+
   #handleNotification(notification: AppServerNotification): void {
     const params = notification.params;
     const threadId = getString(params, "threadId");
     const botId = threadId ? this.#threadToBot.get(threadId) : undefined;
+    this.#rememberFileChange(notification);
 
     switch (notification.method) {
       case "turn/started": {
@@ -1612,6 +1939,23 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       case "thread/tokenUsage/updated": {
         if (!threadId || !botId) return;
         this.#updateContextBudget(threadId, params);
+        const total = getRecord(getRecord(params, "tokenUsage"), "total");
+        const totalTokens = finiteNumberOrNull(total?.totalTokens);
+        if (totalTokens !== null) {
+          this.#usage?.record({
+            kind: "cumulative",
+            provider: "codex",
+            botId,
+            counterKey: `thread:codex:${threadId}`,
+            persistent: true,
+            tokens: totalTokens,
+            costUsd: null,
+          });
+        }
+        return;
+      }
+      case "sahkarmi/usage": {
+        this.#recordAdapterUsage(threadId, botId ?? null, params);
         return;
       }
       case "thread/archived": {
@@ -1634,8 +1978,22 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         if (client) void this.#refreshUsage(client).catch(() => undefined);
         return;
       }
+      case "sahkarmi/retrying": {
+        if (botId) this.#emitRetrying(botId, params);
+        return;
+      }
       case "error":
       case "warning": {
+        // Codex marks transient errors it will retry by itself; show that as a retry, not a failure.
+        if (
+          notification.method === "error" &&
+          botId &&
+          isRecord(params) &&
+          params.willRetry === true
+        ) {
+          this.#emitRetrying(botId, params);
+          return;
+        }
         const message = getString(params, "message") ?? notification.method;
         if (notification.method === "warning" && isNonActionableCodexWarning(message)) return;
         this.#emitError(`agent_${notification.method}`, message, botId);
@@ -1986,6 +2344,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       undefined,
     );
     const usage = normalizeAccountUsage(rateLimits);
+    this.#usage?.record({
+      kind: "limits",
+      provider: "codex",
+      replace: true,
+      windows: codexLimitWindows(usage),
+    });
     this.#emit({ type: "usage-changed", usage: structuredClone(usage) });
     return structuredClone(usage);
   }
@@ -2243,4 +2607,74 @@ function providerFailureStatus(
 
 function isRequestTimeout(error: unknown, method: string): boolean {
   return error instanceof Error && error.message === `Codex request timed out: ${method}`;
+}
+
+function approvalCategoryFor(category: PermissionRequest["category"]): ApprovalCategory {
+  switch (category) {
+    case "payments":
+      return "payment";
+    case "external_messages":
+    case "publication":
+      return "message";
+    case "official_forms":
+    case "business_actions":
+    case "account_settings":
+      return "submission";
+    case "file_create":
+    case "file_modify":
+    case "file_delete":
+    case "downloads":
+      return "data";
+    default:
+      return "other";
+  }
+}
+
+function commandText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(String).join(" ");
+  return "";
+}
+
+const CLAUDE_LIMIT_LABELS: Record<string, string> = {
+  five_hour: "5-hour window",
+  seven_day: "Weekly",
+  seven_day_opus: "Weekly (Opus)",
+  seven_day_sonnet: "Weekly (Sonnet)",
+  overage: "Extra usage",
+};
+
+function codexLimitWindows(usage: AccountUsage): UsageLimitWindow[] {
+  const observedAt = new Date().toISOString();
+  const windows: UsageLimitWindow[] = [];
+  for (const limit of usage.limits) {
+    for (const [slot, window] of [
+      ["primary", limit.primary],
+      ["secondary", limit.secondary],
+    ] as const) {
+      if (!window) continue;
+      const minutes = window.windowDurationMins;
+      const label =
+        minutes === 300
+          ? "5-hour window"
+          : minutes === 10_080
+            ? "Weekly"
+            : minutes
+              ? `${Math.round(minutes / 60)}-hour window`
+              : slot === "primary"
+                ? "Short window"
+                : "Long window";
+      windows.push({
+        id: `${limit.id}:${slot}`,
+        label: limit.id === "codex" ? label : `${label} (${limit.id})`,
+        usedPercent: window.usedPercent,
+        resetsAt: window.resetsAt === null ? null : new Date(window.resetsAt * 1_000).toISOString(),
+        status: window.usedPercent >= 100 ? "limited" : window.usedPercent >= 80 ? "warning" : "ok",
+        source: "Codex App Server account/rateLimits/read",
+        observedAt,
+        dataLabel: "verified",
+      });
+    }
+  }
+  return windows;
 }

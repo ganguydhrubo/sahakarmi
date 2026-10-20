@@ -1,15 +1,16 @@
 import type { CoworkerStatus } from "../../../shared/ipc";
-import { type MessageKey, t } from "../i18n";
+import { LABELS } from "../activity-hinglish";
 
-const STATUS_LABELS: Record<CoworkerStatus, MessageKey> = {
-  idle: "statusIdle",
-  working: "statusWorking",
-  waiting: "statusWaiting",
-  error: "statusError",
+/** Coworker activity is always shown in Roman-script Hinglish. */
+const STATUS_LABELS: Record<CoworkerStatus, string> = {
+  idle: LABELS.statusIdle,
+  working: LABELS.statusWorking,
+  waiting: LABELS.statusWaiting,
+  error: LABELS.statusError,
 };
 
 export function statusLabel(status: CoworkerStatus): string {
-  return t(STATUS_LABELS[status]);
+  return STATUS_LABELS[status];
 }
 
 export function StatusDot(props: { status: CoworkerStatus; class?: string }) {

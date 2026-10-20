@@ -31,6 +31,8 @@ interface UpdateServiceOptions {
   checkIntervalMs?: number;
   stallTimeoutMs?: number;
   retryDelayMs?: number;
+  /** False when the owner set "App updates" to ask: found updates wait for a manual download. */
+  autoDownload?: () => boolean;
 }
 
 const DEFAULT_CHECK_INTERVAL = 4 * 60 * 60 * 1_000;
@@ -63,6 +65,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       checkIntervalMs: options.checkIntervalMs ?? DEFAULT_CHECK_INTERVAL,
       stallTimeoutMs: options.stallTimeoutMs ?? 45_000,
       retryDelayMs: options.retryDelayMs ?? 3_000,
+      autoDownload: options.autoDownload ?? (() => true),
     };
     this.#status = {
       phase: options.enabled ? "idle" : "unsupported",
@@ -168,7 +171,9 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     } finally {
       this.#scheduleCheck(this.#options.checkIntervalMs);
     }
-    if (this.#status.phase === "available") void this.downloadUpdate();
+    if (this.#status.phase === "available" && this.#options.autoDownload()) {
+      void this.downloadUpdate();
+    }
     return this.getStatus();
   }
 

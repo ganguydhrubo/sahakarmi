@@ -3,6 +3,35 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-20
+
+### Added
+
+- **Permissions enforced by the app.** Every tool call from Codex, Claude, Gemini, OpenCode and the
+  built-in browser is checked against your rules (ask / allow / own folders only / block).
+  Payments, messages, posting, orders, account changes and government forms can never run
+  automatically. Paused actions appear in Approvals. Time- and use-limited pre-approvals.
+- **Activity log** of blocked, asked and approved actions, with filters and CSV export.
+- **Model usage** page: limits, tokens and cost per provider. Every number is labelled Verified,
+  Estimated, Unavailable or Stale, with its source. Alerts at 80% and 95%.
+- **Live activity status in Hinglish**, Claude Code style. It is driven by real events (tools,
+  streaming, approvals, provider retries, outcome), with an elapsed timer. A **Masti** style adds
+  playful lines while thinking; **Seedha** keeps it plain (Settings → General).
+- **Rich replies:** tables, checklists, nested lists and code blocks, with copy buttons.
+- **Voice notes:** record, pause, listen back and attach.
+- **Business:** your own targets, and an honest integrations list (Fiverr not supported: no seller
+  API).
+- **Features** page with switches and a safe feature-list import (data only).
+- **Model suggestions** (Labs, off by default). They never switch to a paid plan on their own.
+- Global **Schedules** view. Settings split into sections. New views load on demand.
+
+### Changed
+
+- Claude now runs in default permission mode with every tool checked by Sahkarmi. Codex runs with
+  the "untrusted" approval policy. OpenCode is started with permission prompts on.
+- Provider auto-retries are shown as a retry ("Ek baar phir try ho raha hai…") instead of an error.
+- Coworker status labels, tool cards, the task strip and error titles are shown in Hinglish.
+
 ## [0.3.3] - 2026-10-20
 
 - Automatically download desktop updates, retry interrupted transfers twice, and cancel downloads after 45 seconds without progress. Retries use the full installer.

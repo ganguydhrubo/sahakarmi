@@ -11,6 +11,7 @@ import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
 import { MailboxStore } from "./mailbox-store";
+import { PermissionService } from "./permission-service";
 
 let root: string;
 let service: AgentService | null = null;
@@ -91,7 +92,39 @@ describe.sequential("ACP providers (bundled OpenCode)", () => {
     );
     const prompt = log.find((entry) => entry.method === "session/prompt");
     expect(JSON.stringify(prompt)).toContain("sahkarmi_coworker_instructions");
-    expect(log).toContainEqual(expect.objectContaining({ method: "permission-answered" }));
+    // Sahkarmi answers each call itself and never hands the agent a standing "always allow".
+    expect(log).toContainEqual({ method: "permission-answered", optionId: "once" });
+  });
+
+  it("declines an ACP tool call that the owner's permission policy denies", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    const permissions = new PermissionService(join(root, "user-data"));
+    await permissions.initialize();
+    await permissions.setLevel("file_read", "deny");
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      approvals,
+      permissions,
+    );
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Pay Sharma Traders, use tool" });
+    await waitFor(async () =>
+      (await readLog()).some((entry) => entry.method === "permission-answered"),
+    );
+    expect(await readLog()).toContainEqual({ method: "permission-answered", optionId: "deny" });
+    expect(permissions.audit()[0]).toMatchObject({
+      provider: "opencode",
+      category: "file_read",
+      decision: "denied",
+      botId: "asha-accounts",
+    });
   });
 
   it("moves the never-run team to the provider chosen in setup even when another AI is connected", async () => {
@@ -282,8 +315,8 @@ async function handle(message) {
     const sessionId = params.sessionId;
     update(sessionId, { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thinking about it" } });
     update(sessionId, { sessionUpdate: "tool_call", toolCallId: "t1", title: "Read invoices.csv", kind: "read", status: "pending", rawInput: { path: "invoices.csv" } });
-    const permission = await new Promise((resolve) => { const reqId = nextId++; waiting.set(reqId, resolve); write({ id: reqId, method: "session/request_permission", params: { sessionId, toolCall: { toolCallId: "t1" }, options: [{ optionId: "deny", kind: "reject_once", name: "No" }, { optionId: "always", kind: "allow_always", name: "Always" }] } }); });
-    if (permission.result?.outcome?.optionId === "always") log({ method: "permission-answered" });
+    const permission = await new Promise((resolve) => { const reqId = nextId++; waiting.set(reqId, resolve); write({ id: reqId, method: "session/request_permission", params: { sessionId, toolCall: { toolCallId: "t1", kind: "read", title: "Read invoices.csv", locations: [{ path: "invoices.csv" }] }, options: [{ optionId: "deny", kind: "reject_once", name: "No" }, { optionId: "once", kind: "allow_once", name: "Yes" }, { optionId: "always", kind: "allow_always", name: "Always" }] } }); });
+    log({ method: "permission-answered", optionId: permission.result?.outcome?.optionId });
     update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "completed", content: [{ type: "content", content: { type: "text", text: "3 invoices" } }] });
     if (text.includes("use tool") && mcp) {
       await mcpCall("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "fake" } });

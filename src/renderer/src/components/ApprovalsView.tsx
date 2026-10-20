@@ -115,6 +115,11 @@ function ApprovalCard(props: {
         <span class={`approval-category approval-category-${props.approval.category}`}>
           {t(CATEGORY_LABELS[props.approval.category])}
         </span>
+        <Show when={props.approval.kind === "permission"}>
+          <span class="approval-kind" title={t("approvalPausedHint")}>
+            {t("approvalPaused")}
+          </span>
+        </Show>
         <time datetime={props.approval.createdAt}>{formatWhen(props.approval.createdAt)}</time>
       </div>
       <h3>

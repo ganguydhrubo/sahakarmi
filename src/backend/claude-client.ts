@@ -74,6 +74,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   readonly #createQuery: QueryFactory;
   readonly #threads = new Map<string, ThreadRuntime>();
   readonly #pendingServerRequests = new Map<RequestId, PendingServerRequest>();
+  readonly #instanceId = randomUUID();
   #running = false;
 
   constructor(cli: ClaudeCliInfo, createQuery: QueryFactory = query) {
@@ -192,10 +193,14 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   async #startThread(threadId: string, config: ThreadConfig, resume: boolean): Promise<void> {
     const input = new AsyncMessageQueue();
     const canUseTool: CanUseTool = async (toolName, toolInput, options) => {
-      if (toolName !== "AskUserQuestion") {
+      if (toolName === "AskUserQuestion") {
+        return this.#requestUserInput(threadId, toolInput, options.toolUseID ?? randomUUID());
+      }
+      // Sahkarmi's own MCP tools are checked where they run (browser actions, approvals).
+      if (toolName.startsWith("mcp__sahkarmi")) {
         return { behavior: "allow", updatedInput: toolInput } satisfies PermissionResult;
       }
-      return this.#requestUserInput(threadId, toolInput, options.toolUseID ?? randomUUID());
+      return this.#authorizeTool(threadId, toolName, toolInput);
     };
     const mcpServers = this.#createSahkarmiServers(threadId);
     const claudeQuery = this.#createQuery({
@@ -212,8 +217,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           append: config.developerInstructions,
         },
         settingSources: ["user", "project", "local"],
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
+        // Every tool call goes through canUseTool, where Sahkarmi's permission policy decides.
+        permissionMode: "default",
         includePartialMessages: true,
         additionalDirectories: config.additionalDirectories,
         canUseTool,
@@ -286,6 +291,46 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  /**
+   * Usage as the SDK reports it: rate-limit windows (verified, claude.ai subscriptions) and the
+   * running per-session token/cost totals from result.modelUsage (cost is an SDK estimate).
+   */
+  #emitUsage(runtime: ThreadRuntime, message: SDKMessage): void {
+    if (message.type === "rate_limit_event") {
+      const info = message.rate_limit_info;
+      this.emit("notification", {
+        method: "sahkarmi/usage",
+        params: {
+          threadId: runtime.id,
+          limit: {
+            id: info.rateLimitType ?? "current",
+            status: info.status,
+            resetsAt: typeof info.resetsAt === "number" ? info.resetsAt : null,
+          },
+        },
+      });
+      return;
+    }
+    if (message.type !== "result") return;
+    let tokens = 0;
+    for (const usage of Object.values(message.modelUsage ?? {})) {
+      tokens +=
+        (usage.inputTokens ?? 0) +
+        (usage.outputTokens ?? 0) +
+        (usage.cacheReadInputTokens ?? 0) +
+        (usage.cacheCreationInputTokens ?? 0);
+    }
+    this.emit("notification", {
+      method: "sahkarmi/usage",
+      params: {
+        threadId: runtime.id,
+        sessionKey: `${this.#instanceId}:${runtime.id}`,
+        tokens,
+        costUsd: typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
+      },
+    });
+  }
+
   #fail(error: Error): void {
     if (!this.#running) return;
     this.#running = false;
@@ -293,6 +338,20 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   }
 
   #handleMessage(runtime: ThreadRuntime, message: SDKMessage): void {
+    if (message.type === "rate_limit_event" || message.type === "result") {
+      this.#emitUsage(runtime, message);
+    }
+    if (message.type === "system" && message.subtype === "api_retry") {
+      this.emit("notification", {
+        method: "sahkarmi/retrying",
+        params: {
+          threadId: runtime.id,
+          attempt: message.attempt,
+          maxRetries: message.max_retries,
+          delayMs: message.retry_delay_ms,
+        },
+      });
+    }
     if (message.type === "stream_event" && message.parent_tool_use_id === null) {
       const event = message.event as unknown;
       const delta = isRecord(event) ? event.delta : null;
@@ -606,6 +665,28 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       }),
     );
     return { behavior: "allow", updatedInput: { questions: input.questions, answers } };
+  }
+
+  async #authorizeTool(
+    threadId: string,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): Promise<PermissionResult> {
+    try {
+      const verdict = await this.#callServerRequest("sahkarmi/permission", {
+        threadId,
+        source: "claude",
+        toolName,
+        input: toolInput,
+      });
+      if (isRecord(verdict) && verdict.allowed === true) {
+        return { behavior: "allow", updatedInput: toolInput };
+      }
+      const reason = isRecord(verdict) && typeof verdict.reason === "string" ? verdict.reason : "";
+      return { behavior: "deny", message: reason || "Blocked by the owner's permission settings." };
+    } catch (error) {
+      return { behavior: "deny", message: `Permission check failed: ${String(error)}` };
+    }
   }
 
   #callServerRequest(method: string, params: unknown): Promise<unknown> {

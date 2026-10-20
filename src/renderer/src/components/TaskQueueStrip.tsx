@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import type { QueueDelivery, QueueSnapshot } from "../../../shared/ipc";
+import { LABELS } from "../activity-hinglish";
 import { t } from "../i18n";
 
 interface TaskQueueStripProps {
@@ -45,16 +46,16 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
     >
       <div class="task-strip-counts">
         <span class="task-count task-count-queued">
-          <b>{queued().length}</b> {t("queued")}
+          <b>{queued().length}</b> {LABELS.queueQueued}
         </span>
         <span class="task-count task-count-running">
-          <b>{running().length}</b> {t("running")}
+          <b>{running().length}</b> {LABELS.queueRunning}
         </span>
         <span class="task-count task-count-done">
-          <b>{done().length}</b> {t("done")}
+          <b>{done().length}</b> {LABELS.queueDone}
         </span>
         <Show when={paused()}>
-          <span class="task-paused-pill">{t("paused")}</span>
+          <span class="task-paused-pill">{LABELS.queuePaused}</span>
         </Show>
         <span class="task-strip-spacer" />
         <Show

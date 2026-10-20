@@ -4,6 +4,10 @@ export type ThemePreference = "system" | "light" | "dark";
 export type LanguageCode = "en" | "hi" | "bn";
 
 const THEME_KEY = "sahkarmi:theme";
+const ACTIVITY_STYLE_KEY = "sahkarmi:activity-style";
+
+/** masti: playful Hinglish while thinking (default) · seedha: plain factual lines only. */
+export type ActivityStyle = "masti" | "seedha";
 const LANGUAGE_KEY = "sahkarmi:language";
 
 function readStored(key: string): string | null {
@@ -35,7 +39,16 @@ const [language, setLanguageSignal] = createSignal<LanguageCode>(
   parseLanguage(readStored(LANGUAGE_KEY)),
 );
 
-export { language, theme };
+const [activityStyle, setActivityStyleSignal] = createSignal<ActivityStyle>(
+  readStored(ACTIVITY_STYLE_KEY) === "seedha" ? "seedha" : "masti",
+);
+
+export { activityStyle, language, theme };
+
+export function setActivityStyle(next: ActivityStyle): void {
+  setActivityStyleSignal(next);
+  writeStored(ACTIVITY_STYLE_KEY, next);
+}
 
 export function setTheme(next: ThemePreference): void {
   setThemeSignal(next);
