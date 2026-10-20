@@ -27,9 +27,6 @@ compaction or a clever prompt cannot remove them. See `docs/AGENT-SAFETY-REPORT.
 - **Tamper-evident activity log:** entries are hash-chained, and the Activity view shows whether the
   chain is intact. Clearing the log leaves a marker entry.
 - "Task done" shows real counts of tools that ran and failed.
-- **Updates:** "Check for updates" now says why it failed (no internet, file not found, GitHub
-  limit) instead of a generic error. On Mac builds without an Apple signature, which macOS will
-  not let replace themselves, the update now opens the new installer download instead of failing.
 - Coworker instructions now cover grounded answers (only from `Shared/Policies`), never claiming
   to be human, verifying after every change, and never improvising destructive fixes.
 

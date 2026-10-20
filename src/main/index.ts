@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   app,
   BrowserWindow,
@@ -597,23 +596,6 @@ function forwardAgentEvent(event: AgentEvent): void {
   notification.show();
 }
 
-let selfUpdateCheck: Promise<boolean> | null = null;
-
-/**
- * macOS only replaces an app with a Developer ID signature; ad-hoc signed (unsigned) builds fail
- * at install. Detected once from the running bundle's signature.
- */
-function cannotSelfUpdate(): Promise<boolean> {
-  if (process.platform !== "darwin") return Promise.resolve(false);
-  selfUpdateCheck ??= new Promise((resolve) => {
-    const bundle = join(dirname(app.getPath("exe")), "..", "..");
-    execFile("codesign", ["-dv", "--verbose=2", bundle], (_error, stdout, stderr) => {
-      resolve(!/Authority=Developer ID Application/.test(`${stdout}${stderr}`));
-    });
-  });
-  return selfUpdateCheck;
-}
-
 function forwardUpdateStatus(status: import("../shared/ipc").UpdateStatus): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(IPC_CHANNELS.updateEvent, status);
@@ -693,11 +675,6 @@ if (!hasSingleInstanceLock) {
           existsSync(join(process.resourcesPath, "app-update.yml")),
         beforeInstall: prepareForShutdown,
         autoDownload: () => permissions.get().levels.app_updates === "auto",
-        manualInstall: () => cannotSelfUpdate(),
-        openDownload: (version) =>
-          shell.openExternal(
-            `https://github.com/ganguydhrubo/sahakarmi/releases/download/v${version}/Sahkarmi-${version}-arm64.dmg`,
-          ),
       });
       service.on("event", forwardAgentEvent);
       service.on("event", (event) => {

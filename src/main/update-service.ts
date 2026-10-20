@@ -33,12 +33,6 @@ interface UpdateServiceOptions {
   retryDelayMs?: number;
   /** False when the owner set "App updates" to ask: found updates wait for a manual download. */
   autoDownload?: () => boolean;
-  /**
-   * True when this build cannot replace itself (macOS without a Developer ID signature: Apple's
-   * updater refuses ad-hoc signed apps). The update is then opened as a normal download.
-   */
-  manualInstall?: () => Promise<boolean>;
-  openDownload?: (version: string) => Promise<void>;
 }
 
 const DEFAULT_CHECK_INTERVAL = 4 * 60 * 60 * 1_000;
@@ -49,8 +43,8 @@ export function supportsInstalledUpdates(platform: NodeJS.Platform): boolean {
 
 export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   readonly #updater: UpdateAdapter;
-  readonly #options: Required<Omit<UpdateServiceOptions, "beforeInstall" | "manualInstall">> &
-    Pick<UpdateServiceOptions, "beforeInstall" | "manualInstall">;
+  readonly #options: Required<Omit<UpdateServiceOptions, "beforeInstall">> &
+    Pick<UpdateServiceOptions, "beforeInstall">;
   #status: UpdateStatus;
   #checkTimer: ReturnType<typeof setTimeout> | null = null;
   #started = false;
@@ -72,7 +66,6 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       stallTimeoutMs: options.stallTimeoutMs ?? 45_000,
       retryDelayMs: options.retryDelayMs ?? 3_000,
       autoDownload: options.autoDownload ?? (() => true),
-      openDownload: options.openDownload ?? (async () => undefined),
     };
     this.#status = {
       phase: options.enabled ? "idle" : "unsupported",
@@ -131,9 +124,9 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         message: null,
       });
     });
-    this.#updater.on("error", (error: unknown) => {
+    this.#updater.on("error", () => {
       // downloadUpdate also rejects; its catch owns recovery during a transfer.
-      if (!this.#downloadTask && !this.#stopped) this.#setError(error);
+      if (!this.#downloadTask && !this.#stopped) this.#setError();
     });
 
     if (scheduleChecks && this.#options.enabled) {
@@ -173,16 +166,12 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
               },
         );
       }
-    } catch (error) {
-      this.#setError(error);
+    } catch {
+      this.#setError();
     } finally {
       this.#scheduleCheck(this.#options.checkIntervalMs);
     }
-    if (
-      this.#status.phase === "available" &&
-      this.#options.autoDownload() &&
-      !(await this.#needsManualInstall())
-    ) {
+    if (this.#status.phase === "available" && this.#options.autoDownload()) {
       void this.downloadUpdate();
     }
     return this.getStatus();
@@ -196,22 +185,6 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     }
     if (!this.#status.availableVersion || !["available", "error"].includes(this.#status.phase))
       return this.getStatus();
-    if (this.#options.manualInstall && (await this.#needsManualInstall())) {
-      const version = this.#status.availableVersion;
-      try {
-        await this.#options.openDownload(version);
-        this.#setStatus({
-          phase: "available",
-          message: `Version ${version} is downloading in your browser. Open it and drag Sahkarmi into Applications to replace this version. (This Mac build is not Apple-signed yet, so it cannot install updates by itself.)`,
-        });
-      } catch (error) {
-        this.#setStatus({
-          phase: "error",
-          message: `Could not open the download: ${reasonOf(error)}. Get it from https://sahkarmi.site`,
-        });
-      }
-      return this.getStatus();
-    }
     if (this.#retryTimer) clearTimeout(this.#retryTimer);
     this.#retryTimer = null;
     this.#setStatus({ phase: "downloading", progress: 0, message: null });
@@ -222,7 +195,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#downloadTask = Promise.resolve().then(async () => {
       try {
         await this.#updater.downloadUpdate(token);
-      } catch (error) {
+      } catch {
         if (this.#stopped) return;
         if (this.#retryCount < 2) {
           this.#retryCount += 1;
@@ -240,7 +213,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
           this.#retryCount = 0;
           this.#setStatus({
             phase: "error",
-            message: `Update download failed: ${reasonOf(error)}. Check your connection and retry, or download it from https://sahkarmi.site`,
+            message: "Update download interrupted. Check your connection and retry the download.",
           });
         }
       } finally {
@@ -251,10 +224,6 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     });
     await this.#downloadTask;
     return this.getStatus();
-  }
-
-  async #needsManualInstall(): Promise<boolean> {
-    return (await this.#options.manualInstall?.().catch(() => false)) ?? false;
   }
 
   #watchDownload(): void {
@@ -295,12 +264,12 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#checkTimer.unref?.();
   }
 
-  #setError(error?: unknown): void {
+  #setError(): void {
     this.#setStatus({
       phase: "error",
       progress: null,
       checkedAt: new Date().toISOString(),
-      message: `Could not check for updates: ${reasonOf(error)}. Try again.`,
+      message: "Could not check for updates. Try again.",
     });
   }
 
@@ -308,26 +277,6 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#status = { ...this.#status, ...patch };
     this.emit("status", this.getStatus());
   }
-}
-
-/** A short, user-readable reason; the full error goes to the app log through the updater logger. */
-export function reasonOf(error: unknown): string {
-  const text = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  if (
-    /ENOTFOUND|EAI_AGAIN|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|getaddrinfo/i.test(text)
-  ) {
-    return "no internet connection";
-  }
-  if (/ETIMEDOUT|ERR_TIMED_OUT|timeout/i.test(text)) return "the connection timed out";
-  if (/ECONNRESET|ERR_CONNECTION|socket hang up/i.test(text))
-    return "the connection was interrupted";
-  if (/\b(403|429)\b|rate limit/i.test(text))
-    return "GitHub is limiting requests, try again in a few minutes";
-  if (/\b404\b|Cannot find .*latest/i.test(text)) return "the update files were not found";
-  if (/code signature|signature|codesign/i.test(text))
-    return "this build is not signed for automatic updates";
-  if (/sha512 checksum mismatch/i.test(text)) return "the downloaded file was damaged";
-  return "unexpected error (details are in Export diagnostics)";
 }
 
 function clampProgress(value: number): number {
