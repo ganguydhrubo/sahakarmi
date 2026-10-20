@@ -3,7 +3,7 @@
 import { EventEmitter } from "node:events";
 import type { AppUpdater, CancellationToken } from "electron-updater";
 import { describe, expect, it, vi } from "vitest";
-import { supportsInstalledUpdates, UpdateService } from "./update-service";
+import { reasonOf, supportsInstalledUpdates, UpdateService } from "./update-service";
 
 class FakeUpdater extends EventEmitter {
   disableDifferentialDownload = false;
@@ -172,8 +172,44 @@ describe("UpdateService", () => {
     await service.checkForUpdates();
     expect(service.getStatus()).toMatchObject({
       phase: "error",
-      message: "Could not check for updates. Try again.",
+      message:
+        "Could not check for updates: unexpected error (details are in Export diagnostics). Try again.",
     });
+    expect(service.getStatus().message).not.toContain("network details");
+  });
+
+  it("explains known causes in plain words", () => {
+    expect(reasonOf(new Error("net::ERR_INTERNET_DISCONNECTED"))).toBe("no internet connection");
+    expect(reasonOf(new Error("HttpError: 404 Cannot find latest.yml"))).toBe(
+      "the update files were not found",
+    );
+    expect(reasonOf(new Error("Could not get code signature for running application"))).toBe(
+      "this build is not signed for automatic updates",
+    );
+  });
+
+  it("opens the installer download on a Mac build that cannot replace itself", async () => {
+    const updater = new FakeUpdater();
+    updater.checkForUpdates.mockImplementationOnce(async () => {
+      updater.emit("update-available", { version: "0.5.0" });
+      return null;
+    });
+    const openDownload = vi.fn(async () => undefined);
+    const service = new UpdateService(updater as unknown as AppUpdater, {
+      currentVersion: "0.4.0",
+      enabled: true,
+      beforeInstall: vi.fn(async () => undefined),
+      manualInstall: async () => true,
+      openDownload,
+    });
+    service.start(false);
+    await service.checkForUpdates();
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    await service.downloadUpdate();
+    expect(openDownload).toHaveBeenCalledWith("0.5.0");
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(service.getStatus()).toMatchObject({ phase: "available", availableVersion: "0.5.0" });
+    expect(service.getStatus().message).toContain("Applications");
   });
 
   it("does not contact the update provider from an unsupported build", async () => {
