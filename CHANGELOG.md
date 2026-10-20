@@ -76,6 +76,25 @@ All notable changes to Sahkarmi are documented here. The project follows
   "Connect an AI provider to choose a model" and offers a **Connect** button that opens
   Settings → AI and models.
 
+## [Unreleased] - one-click Connect and limit rings
+
+### Added
+
+- **Connect buttons** (Settings → AI and models): one click starts the provider's own sign-in in
+  your browser. Use the account where you bought that AI plan.
+  - **ChatGPT (Codex):** if Codex is not installed, Sahkarmi downloads the official build once
+    (checksum-verified) and then opens the ChatGPT sign-in.
+  - **Claude:** Claude Code now ships inside Sahkarmi. Sign in, then paste the code the page shows.
+  - **Gemini:** opens a window for the Google sign-in (installs Gemini CLI there if Node.js is present).
+  - **OpenCode:** built in and free, no sign-in.
+- **Limit rings** in the sidebar: how much of each provider's real 5-hour and weekly limit is used,
+  with reset times. Shown only for providers that report limits.
+
+### Fixed
+
+- Settings → Features no longer shows "Checking…" forever; provider rows update as soon as each
+  provider connects.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added

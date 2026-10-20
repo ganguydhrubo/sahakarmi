@@ -11,6 +11,7 @@ import type {
 import { App } from "./App";
 
 let emitAgentEvent: ((event: AgentEvent) => void) | undefined;
+let emitProviderSetup: ((state: unknown) => void) | undefined;
 let emitAttachmentImport: ((event: AttachmentImportEvent) => void) | undefined;
 
 const POLICY: PermissionPolicyState = {
@@ -315,6 +316,28 @@ describe("Sahkarmi connected desktop shell", () => {
           clearAudit: vi.fn().mockResolvedValue(undefined),
           setAutoMode: vi.fn().mockResolvedValue({ ...POLICY, autoMode: true }),
         },
+        providerSetup: {
+          list: vi.fn().mockResolvedValue([]),
+          connect: vi.fn(async (provider: string) => ({
+            provider,
+            phase: "waiting",
+            message: "Sign in on the page that opened in your browser.",
+            url: null,
+            progress: null,
+          })),
+          submitCode: vi.fn(async (provider: string) => ({
+            provider,
+            phase: "waiting",
+            message: "Checking the code…",
+            url: null,
+            progress: null,
+          })),
+          check: vi.fn(),
+          onEvent: vi.fn((listener: (state: unknown) => void) => {
+            emitProviderSetup = listener;
+            return () => undefined;
+          }),
+        },
         usage: {
           overview: vi.fn().mockResolvedValue(USAGE),
           refresh: vi.fn().mockResolvedValue(USAGE),
@@ -485,6 +508,36 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(claude).toBeChecked();
     await fireEvent.click(screen.getByRole("button", { name: "Continue with Claude" }));
     expect(window.sahkarmi.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude" });
+  });
+
+  it("connects a provider with one click and finishes Claude's sign-in with the pasted code", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
+    const gemini = (await screen.findByText("Gemini", { selector: "strong" })).closest("li");
+    await fireEvent.click(within(gemini as HTMLElement).getByRole("button", { name: "Connect" }));
+    expect(window.sahkarmi.providerSetup.connect).toHaveBeenCalledWith("gemini");
+
+    emitProviderSetup?.({
+      provider: "claude",
+      phase: "needs-code",
+      message: "After signing in, copy the code shown on the page and paste it here.",
+      url: "https://claude.com/cai/oauth/authorize",
+      progress: null,
+    });
+    const field = await screen.findByPlaceholderText("Paste the code from the sign-in page");
+    await fireEvent.input(field, { target: { value: "code-123" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Finish sign-in" }));
+    expect(window.sahkarmi.providerSetup.submitCode).toHaveBeenCalledWith("claude", "code-123");
+  });
+
+  it("shows real usage limits as rings in the sidebar", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const ring = await screen.findByRole("button", { name: "ChatGPT 91%" });
+    await fireEvent.focus(ring);
+    expect(await screen.findByText("5-hour window")).toBeInTheDocument();
   });
 
   it("lets the user review providers and permissions from Settings", async () => {

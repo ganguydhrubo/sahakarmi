@@ -8253,3 +8253,142 @@ ol.md-list {
   color: var(--danger);
   font-weight: 400;
 }
+
+/* One-click provider Connect rows (Settings → AI and models). */
+.provider-connect {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+.provider-connect-row {
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgb(0 0 0 / 0.1));
+  border-radius: 12px;
+}
+.provider-connect-row.provider-connect-ok {
+  border-color: color-mix(in srgb, #2e9d5b 45%, transparent);
+}
+.provider-connect-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.provider-connect-head > span:first-child {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.provider-connect-head small,
+.provider-connect-progress p {
+  color: var(--text-secondary);
+}
+.provider-connect-state {
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.provider-connect-ok .provider-connect-state {
+  color: #2e9d5b;
+  font-weight: 600;
+}
+.provider-connect-progress {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.provider-connect-progress p {
+  margin: 0;
+}
+.provider-connect-progress progress {
+  width: 100%;
+}
+.provider-connect-code {
+  display: flex;
+  gap: 8px;
+}
+.provider-connect-code input {
+  flex: 1;
+  min-width: 0;
+}
+.link-button {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent, #d9622b);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Live limit rings in the sidebar. */
+.usage-rings {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px 4px;
+}
+.usage-ring-wrap {
+  position: relative;
+}
+.usage-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.usage-ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.usage-ring-track,
+.usage-ring-value {
+  fill: none;
+  stroke-width: 3.5;
+}
+.usage-ring-track {
+  stroke: color-mix(in srgb, currentColor 15%, transparent);
+}
+.usage-ring-value {
+  stroke: #2e9d5b;
+  stroke-linecap: round;
+}
+.usage-ring-mid .usage-ring-value {
+  stroke: #d99a1e;
+}
+.usage-ring-high .usage-ring-value {
+  stroke: var(--danger, #c0392b);
+}
+.usage-ring span {
+  font-size: 12px;
+  font-weight: 700;
+}
+.usage-ring-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  min-width: 240px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-raised, #fff);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+}
+.usage-ring-limit {
+  display: grid;
+  grid-template-columns: 70px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.usage-ring-limit meter {
+  width: 100%;
+}
