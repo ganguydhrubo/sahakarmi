@@ -33,6 +33,7 @@ const POLICY: PermissionPolicyState = {
     app_updates: "auto",
   },
   grants: [],
+  autoMode: false,
 };
 
 const USAGE: UsageOverview = {
@@ -312,6 +313,7 @@ describe("Sahkarmi connected desktop shell", () => {
           revokeGrant: vi.fn().mockResolvedValue(POLICY),
           audit: vi.fn().mockResolvedValue([]),
           clearAudit: vi.fn().mockResolvedValue(undefined),
+          setAutoMode: vi.fn().mockResolvedValue({ ...POLICY, autoMode: true }),
         },
         usage: {
           overview: vi.fn().mockResolvedValue(USAGE),

@@ -134,6 +134,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     revokeGrant: (grantId) => ipcRenderer.invoke(IPC_CHANNELS.permissionsRevokeGrant, grantId),
     audit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsAudit),
     clearAudit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsClearAudit),
+    setAutoMode: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.permissionsSetAutoMode, enabled),
   },
   usage: {
     overview: () => ipcRenderer.invoke(IPC_CHANNELS.usageOverview),

@@ -344,6 +344,10 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.permissionsAudit, () => permissions.audit());
   handleTrusted(IPC_CHANNELS.permissionsClearAudit, () => permissions.clearAudit());
+  handleTrusted(IPC_CHANNELS.permissionsSetAutoMode, (enabled: unknown) => {
+    if (typeof enabled !== "boolean") throw new Error("Invalid auto mode request.");
+    return permissions.setAutoMode(enabled);
+  });
 
   handleTrusted(IPC_CHANNELS.usageOverview, () => service.usageOverview());
   handleTrusted(IPC_CHANNELS.usageRefresh, () => service.refreshUsage());

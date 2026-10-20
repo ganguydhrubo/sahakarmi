@@ -25,6 +25,7 @@ interface PolicyFileState {
   version: 1;
   levels: Record<string, string>;
   grants: PermissionGrant[];
+  autoMode?: boolean;
 }
 
 interface AuditFileState {
@@ -57,7 +58,11 @@ export interface AuthorizeResult {
 export class PermissionService {
   readonly #policyFile: JsonFile<PolicyFileState>;
   readonly #auditFile: JsonFile<AuditFileState>;
-  #policy: PermissionPolicyState = { levels: { ...DEFAULT_PERMISSION_LEVELS }, grants: [] };
+  #policy: PermissionPolicyState = {
+    levels: { ...DEFAULT_PERMISSION_LEVELS },
+    grants: [],
+    autoMode: false,
+  };
   #audit: PermissionAuditEntry[] = [];
   #asker: PermissionAsker | null = null;
   readonly #now: () => Date;
@@ -76,6 +81,7 @@ export class PermissionService {
     this.#policy = {
       levels: sanitizeLevels(stored.levels),
       grants: stored.grants.filter((grant) => PERMISSION_CATEGORIES.includes(grant.category)),
+      autoMode: stored.autoMode === true,
     };
     this.#pruneGrants();
     const audit = await this.#auditFile.read(() => ({ version: 1, entries: [] }), isAuditFileState);
@@ -91,7 +97,14 @@ export class PermissionService {
     return {
       levels: { ...this.#policy.levels },
       grants: this.#policy.grants.map((grant) => ({ ...grant })),
+      autoMode: this.#policy.autoMode,
     };
+  }
+
+  async setAutoMode(enabled: boolean): Promise<PermissionPolicyState> {
+    this.#policy.autoMode = enabled;
+    await this.#persistPolicy();
+    return this.get();
   }
 
   async setLevel(
@@ -240,6 +253,7 @@ export class PermissionService {
       version: 1,
       levels: { ...this.#policy.levels },
       grants: this.#policy.grants,
+      autoMode: this.#policy.autoMode,
     });
   }
 }
