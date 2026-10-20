@@ -851,6 +851,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const merged = structuredClone(this.#status.providers ?? INITIAL_STATUS.providers ?? []);
     for (const status of local) {
       if (!requested.includes(status.id)) continue;
+      // Connections overlap (start-up vs. a coworker needing a provider). A provider this
+      // connection is still checking may already have been resolved by another one: keep that.
+      const live = merged.find((candidate) => candidate.id === status.id);
+      if (status.state === "checking" && live && live.state !== "checking") continue;
       setProviderStatus(merged, status.id, status);
     }
     return merged;

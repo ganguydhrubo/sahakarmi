@@ -3,7 +3,7 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
-## [0.3.1] - 2026-10-20
+## [0.3.2] - 2026-10-20
 
 ### Fixed
 
@@ -15,6 +15,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 - Each AI provider's status is shown as soon as it is known instead of after all four were tried,
   so the model picker opens sooner.
 - macOS release build no longer fails with "GitHub Personal Access Token is not set".
+- The model picker in the message box opened downward, off the bottom of the window, so it
+  looked dead. It now opens upward when there is no room below.
+- Overlapping provider connections could leave a provider (typically OpenCode) stuck on
+  "Checking" with every model greyed out; a resolved status is no longer overwritten.
+- Free models that echo their tool call as text (`type=tool_call … <|func_arg_name|>`) no longer
+  show that text in the chat.
+- A second Sahkarmi instance exits immediately; the packaged-app launch checks allow 10 s.
 
 ### Added
 

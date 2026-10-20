@@ -68,6 +68,8 @@ if (!app.isPackaged) {
 app.enableSandbox();
 if (process.platform === "win32") app.setAppUserModelId("in.sahkarmi.desktop");
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+// A second instance has nothing to do: leave at once (the first instance gets "second-instance").
+if (!hasSingleInstanceLock) app.exit(0);
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "sahkarmi-app",

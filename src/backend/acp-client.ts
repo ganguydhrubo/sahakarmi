@@ -56,6 +56,8 @@ export interface AcpAgentConfig {
 }
 
 interface ActiveTurn {
+  /** The model echoed its tool call as text; deltas are held back and the final text cleaned. */
+  leakedToolCall?: boolean;
   id: string;
   itemId: string;
   text: string;
@@ -393,7 +395,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     this.#emitItem(
       threadId,
       turn.id,
-      { id: turn.itemId, type: "agentMessage", text: turn.text },
+      { id: turn.itemId, type: "agentMessage", text: stripLeakedToolCalls(turn.text) },
       true,
     );
     if (status === "failed" && error) {
@@ -425,6 +427,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         const delta = contentText(update.content);
         if (!delta) return;
         turn.text += delta;
+        if (turn.leakedToolCall || LEAKED_TOOL_CALL_HINT.test(turn.text)) {
+          turn.leakedToolCall = true;
+          return;
+        }
         this.emit("notification", {
           method: "item/agentMessage/delta",
           params: { threadId: session.threadId, turnId: turn.id, itemId: turn.itemId, delta },
@@ -503,7 +509,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           content: [{ type: "text", text: turn.userText }],
         },
         ...turn.tools.values(),
-        ...(turn.text ? [{ id: turn.itemId, type: "agentMessage", text: turn.text }] : []),
+        ...(turn.text
+          ? [{ id: turn.itemId, type: "agentMessage", text: stripLeakedToolCalls(turn.text) }]
+          : []),
       ],
     });
     await mkdir(this.#config.transcriptDir, { recursive: true, mode: 0o700 });
@@ -891,4 +899,16 @@ function errorMessage(error: unknown): string {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Some free models print their tool call as text ("type=tool_call tool=… <|func_arg_name|>…"). */
+const LEAKED_TOOL_CALL_HINT = /type=tool_call\s+tool=|<\|func_arg_(?:name|value)\|>/;
+
+export function stripLeakedToolCalls(text: string): string {
+  if (!LEAKED_TOOL_CALL_HINT.test(text)) return text;
+  return text
+    .replace(/\u200b?type=tool_call\s+tool=[^\s<]+(?:<\|func_arg_(?:name|value)\|>[^<]*)*/g, "")
+    .replace(/<\|[a-z_]+\|>/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }

@@ -2724,6 +2724,12 @@ textarea {
   animation: provider-model-popover-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+.provider-model-popover-up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  animation-name: provider-model-popover-in-up;
+}
+
 .agent-settings-model .provider-model-popover {
   width: 100%;
   min-width: 0;
@@ -2874,6 +2880,17 @@ textarea {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.75;
+}
+
+@keyframes provider-model-popover-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @keyframes provider-model-popover-in {
