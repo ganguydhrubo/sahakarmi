@@ -3,7 +3,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["website/**", "scripts/check-website.mjs", ".github/workflows/pages.yml"]
+    paths: ["website/**", "scripts/check-website.mjs", "scripts/inject-downloads.mjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,13 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Bake direct installer links into the page, so download buttons never depend on a
+      # visitor-side GitHub API call (anonymous calls are rate-limited per IP).
+      - name: Point download buttons at the latest installers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/inject-downloads.mjs
 
       - name: Check website files (SEO, structured data, links, translations)
         run: node scripts/check-website.mjs
