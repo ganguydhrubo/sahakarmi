@@ -498,7 +498,7 @@ export function Sidebar(props: SidebarProps) {
         <span class="rail-count">{props.bots.length}</span>
       </div>
 
-      <Show when={props.bots.length > 6}>
+      <Show when={props.bots.length > 0}>
         <div class="sidebar-search-wrap">
           <label class="search-field">
             <span class="sr-only">{t("searchTeam")}</span>
@@ -555,7 +555,7 @@ export function Sidebar(props: SidebarProps) {
                   </span>
                   <span class="bot-row-copy">
                     <strong>{bot.name}</strong>
-                    <span class="team-row-role">{bot.role || "—"}</span>
+                    <span class="team-row-role">{bot.preview || bot.role || "—"}</span>
                   </span>
                   <Show when={unread() > 0}>
                     <span class="team-row-unread" aria-hidden="true">
@@ -575,34 +575,7 @@ export function Sidebar(props: SidebarProps) {
         </button>
       </nav>
 
-      <nav class="rail-nav" aria-label="Sahkarmi">
-        <For
-          each={RAIL_ITEMS.filter(
-            (item) =>
-              item.feature === null ||
-              featureOn(item.feature) ||
-              (item.feature === "business-targets" && featureOn("integrations")),
-          )}
-        >
-          {(item) => (
-            <button
-              type="button"
-              class="rail-nav-item"
-              classList={{ "rail-nav-active": props.view === item.view }}
-              aria-current={props.view === item.view ? "page" : undefined}
-              onClick={() => props.onSelectView(item.view)}
-            >
-              {item.icon()}
-              <span>{t(item.label)}</span>
-              <Show when={item.view === "approvals" && props.pendingApprovals > 0}>
-                <span class="rail-badge">
-                  {props.pendingApprovals}
-                  <span class="sr-only"> {t("pending")}</span>
-                </span>
-              </Show>
-            </button>
-          )}
-        </For>
+      <div class="coworker-panel-footer">
         <Show when={props.updateStatus && props.onUpdateAction}>
           <SidebarUpdateBar
             status={props.updateStatus as UpdateStatus}
@@ -610,7 +583,6 @@ export function Sidebar(props: SidebarProps) {
           />
         </Show>
 
-        <UsageRings onOpenUsage={() => props.onSelectView("usage")} />
         <p class="rail-tagline">
           {t("tagline")}
           <Show when={props.appInfo}>
@@ -621,7 +593,7 @@ export function Sidebar(props: SidebarProps) {
             )}
           </Show>
         </p>
-      </nav>
+      </div>
 
       <Show when={contextMenu()}>
         {(menu) => (
@@ -718,5 +690,72 @@ export function Sidebar(props: SidebarProps) {
         )}
       </Show>
     </aside>
+  );
+}
+
+/** Persistent app navigation, separate from the collapsible coworker list. */
+export function AppNavigation(props: {
+  view: CenterView;
+  pendingApprovals: number;
+  onSelectView: (view: CenterView) => void;
+  onShowTeam: () => void;
+}) {
+  return (
+    <nav class="app-icon-rail" aria-label="Sahkarmi">
+      <button
+        type="button"
+        class="app-rail-brand"
+        aria-label={t("team")}
+        title={t("team")}
+        onClick={props.onShowTeam}
+      >
+        <LogoMark size={28} />
+      </button>
+      <div class="app-rail-links">
+        <For
+          each={RAIL_ITEMS.filter(
+            (item) =>
+              item.view !== "settings" &&
+              (item.feature === null ||
+                featureOn(item.feature) ||
+                (item.feature === "business-targets" && featureOn("integrations"))),
+          )}
+        >
+          {(item) => (
+            <button
+              type="button"
+              class="rail-nav-item app-rail-button"
+              classList={{ "rail-nav-active": props.view === item.view }}
+              aria-label={t(item.label)}
+              title={t(item.label)}
+              aria-current={props.view === item.view ? "page" : undefined}
+              onClick={() => props.onSelectView(item.view)}
+            >
+              {item.icon()}
+              <Show when={item.view === "approvals" && props.pendingApprovals > 0}>
+                <span class="rail-badge">
+                  {props.pendingApprovals}
+                  <span class="sr-only"> {t("pending")}</span>
+                </span>
+              </Show>
+            </button>
+          )}
+        </For>
+      </div>
+      <div class="app-rail-bottom">
+        <UsageRings onOpenUsage={() => props.onSelectView("usage")} />
+        <button
+          type="button"
+          class="rail-nav-item app-rail-button"
+          classList={{ "rail-nav-active": props.view === "settings" }}
+          aria-label={t("settings")}
+          title={t("settings")}
+          aria-current={props.view === "settings" ? "page" : undefined}
+          onClick={() => props.onSelectView("settings")}
+        >
+          <SettingsIcon />
+        </button>
+      </div>
+    </nav>
   );
 }
