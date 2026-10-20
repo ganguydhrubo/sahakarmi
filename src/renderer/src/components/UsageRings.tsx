@@ -1,6 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { AgentProviderId, ProviderUsageSummary } from "../../../shared/ipc";
-import { t } from "../i18n";
 
 const NAMES: Record<AgentProviderId, string> = {
   codex: "ChatGPT",
@@ -39,23 +38,21 @@ export function UsageRings(props: { onOpenUsage: () => void }) {
 
   return (
     <Show when={providers().length > 0}>
-      <div class="usage-rings" aria-label={t("navUsage")}>
+      <div class="usage-rings">
         <For each={providers()}>
           {(provider) => {
             const highest = () =>
               Math.max(...provider.limits.map((limit) => limit.usedPercent ?? 0));
             const level = () => (highest() >= 95 ? "high" : highest() >= 80 ? "mid" : "ok");
             return (
-              <div
-                class="usage-ring-wrap"
-                onMouseEnter={() => setOpen(provider.provider)}
-                onMouseLeave={() => setOpen(null)}
-              >
+              <div class="usage-ring-wrap">
                 <button
                   type="button"
                   class={`usage-ring usage-ring-${level()}`}
                   aria-label={`${NAMES[provider.provider]} ${Math.round(highest())}%`}
                   onClick={props.onOpenUsage}
+                  onMouseEnter={() => setOpen(provider.provider)}
+                  onMouseLeave={() => setOpen(null)}
                   onFocus={() => setOpen(provider.provider)}
                   onBlur={() => setOpen(null)}
                 >
