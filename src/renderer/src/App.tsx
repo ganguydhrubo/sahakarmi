@@ -47,7 +47,7 @@ import { InitialSetup } from "./components/InitialSetup";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./components/PanelResizer";
 import { SchedulesView } from "./components/SchedulesView";
 import { SharedFilesView } from "./components/SharedFilesView";
-import { type CenterView, Sidebar } from "./components/Sidebar";
+import { AppNavigation, type CenterView, Sidebar } from "./components/Sidebar";
 import { UpdateControl } from "./components/UpdateControl";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 import { loadFeatures } from "./features";
@@ -102,11 +102,11 @@ const FALLBACK_UPDATE_STATUS: UpdateStatus = {
 
 type PromptEvent = Extract<AgentEvent, { type: "prompt" }>;
 
-const LEFT_PANEL_STORAGE_KEY = "sahkarmi:left-panel-width";
+const LEFT_PANEL_STORAGE_KEY = "sahkarmi:coworker-panel-width";
 const LEFT_PANEL_COLLAPSED_STORAGE_KEY = "sahkarmi:left-panel-collapsed";
-const LEFT_PANEL_DEFAULT = 260;
+const LEFT_PANEL_DEFAULT = 320;
 const LEFT_PANEL_MIN = 220;
-const LEFT_PANEL_MAX = 360;
+const LEFT_PANEL_MAX = 480;
 
 const ONBOARDING_PROFILES: Record<
   string,
@@ -923,6 +923,19 @@ export function App() {
               <UpdateControl status={updateStatus()} onAction={runUpdateAction} />
             </aside>
           </Show>
+          <AppNavigation
+            view={view()}
+            pendingApprovals={pendingApprovals().length}
+            onSelectView={(next) => {
+              setAgentPickerOpen(false);
+              setView(next);
+            }}
+            onShowTeam={() => {
+              setSidebarCollapsed(false);
+              setAgentPickerOpen(false);
+              setView("coworker");
+            }}
+          />
           <Show when={!leftPanelCollapsed()}>
             <Sidebar
               bots={workspaceBots()}

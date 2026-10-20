@@ -429,3 +429,128 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* A readable workflow canvas with a separate inspector, inspired by the panel reference. */
+.routines-view > .center-view-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.routines-view .center-view-intro {
+  padding: 12px 20px 0;
+  margin: 0;
+}
+.routines-view .routines-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0;
+  align-items: stretch;
+}
+.routine-switcher {
+  display: flex;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.routine-switcher select {
+  width: min(420px, 100%);
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+.routines-view .routine-details {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: hidden;
+}
+.routine-canvas {
+  min-width: 0;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  background-color: var(--bg-deep);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.routine-canvas-title {
+  margin: 0 auto 28px;
+  max-width: 560px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.routine-canvas .routine-diagram {
+  max-width: 560px;
+  margin: 0 auto;
+  gap: 28px;
+}
+.routine-canvas .routine-node {
+  max-width: none;
+  padding: 18px;
+  background: var(--surface-1);
+  box-shadow: 0 5px 18px rgb(var(--shade-rgb) / 0.06);
+}
+.routine-canvas .routine-node + .routine-node::before {
+  top: -29px;
+  height: 28px;
+  background: var(--primary);
+  opacity: 0.55;
+}
+.routine-inspector {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 18px;
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.routine-inspector .routine-details-head {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.routine-inspector .routine-details-head h2 {
+  font-size: 18px;
+  line-height: 1.35;
+}
+.routine-inspector .routine-actions {
+  gap: 8px;
+}
+.routine-inspector .routine-history {
+  display: grid;
+  gap: 10px;
+}
+.routine-inspector > h3 {
+  margin-top: 26px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.routines-view .routine-editor {
+  overflow-y: auto;
+  margin: 20px;
+}
+@container (max-width: 760px) {
+  .routines-view .routine-details {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .routine-canvas,
+  .routine-inspector {
+    overflow: visible;
+  }
+  .routine-inspector {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
