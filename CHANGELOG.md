@@ -10,6 +10,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 - The Sahkarmi logo now shows on the Windows taskbar and window (and on Linux). The icon ships
   with the app and is set on the window directly, so Windows never falls back to a blank icon.
 
+## [Unreleased] - Business page
+
+### Changed
+
+- The Business page only lists integrations coworkers can actually help with (GST portal,
+  Tally / spreadsheets, Email). Fiverr and WhatsApp Business, which have no usable access, are gone.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
