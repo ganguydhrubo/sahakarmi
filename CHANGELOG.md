@@ -17,6 +17,15 @@ All notable changes to Sahkarmi are documented here. The project follows
 - The Business page only lists integrations coworkers can actually help with (GST portal,
   Tally / spreadsheets, Email). Fiverr and WhatsApp Business, which have no usable access, are gone.
 
+## [0.4.1] - 2026-10-20
+
+### Fixed
+
+- **Check for updates** now says why it failed (no internet, update files not found, GitHub
+  limiting requests) instead of a generic "check your connection".
+- On Mac builds without an Apple signature, which macOS will not let replace themselves, the
+  update button now opens the new installer download instead of failing.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
