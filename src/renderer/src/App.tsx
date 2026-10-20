@@ -304,6 +304,9 @@ export function App() {
 
   function handleAgentEvent(event: AgentEvent) {
     switch (event.type) {
+      case "models-changed":
+        setModelOptions(event.models);
+        return;
       case "status":
         setAgentStatus(event.status);
         // Provider rows in Settings → Features depend on this status; keep them current.

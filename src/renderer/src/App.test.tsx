@@ -1255,6 +1255,36 @@ describe("Sahkarmi connected desktop shell", () => {
     );
   });
 
+  it("adds newly reported models to an open picker without changing the coworker", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Agent model: Luna" }));
+    const picker = screen.getByRole("dialog", { name: "Choose agent model" });
+    emitAgentEvent?.({
+      type: "models-changed",
+      models: [
+        ...(await window.sahkarmi.agent.listModels()),
+        {
+          id: "codex:future-model",
+          name: "Future model",
+          description: "Provider reported",
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: ["medium"],
+        },
+      ],
+    });
+    expect(await within(picker).findByRole("option", { name: "Future model" })).toBeInTheDocument();
+    expect(window.sahkarmi.agent.updateBot).not.toHaveBeenCalled();
+    await fireEvent.click(within(picker).getByRole("option", { name: "Future model" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith({
+        botId: "chief",
+        model: "codex:future-model",
+        reasoningEffort: "medium",
+      }),
+    );
+  });
+
   it("selects a provider and model from the conversation header", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });

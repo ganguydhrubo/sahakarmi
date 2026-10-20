@@ -3,6 +3,18 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.3] - 2026-10-21
+
+### Fixed
+
+- Discover provider-reported models without waiting for an app release. Refresh at startup, every 15 minutes and on window focus, updating open model pickers without changing coworker selections.
+- Detect installed AI CLI path/version changes and reconnect only while idle. Retain the last working catalog during discovery failures.
+- Query Claude SDK and ACP model metadata without prompts, preserve legacy aliases, and route new models to their original provider.
+
+### Notes
+
+- Availability depends on the connected account and CLI. This does not replace independently installed CLI binaries; bundled runtimes update through Sahkarmi app releases.
+
 ## [0.4.1] - 2026-10-20
 
 ### taskbar logo

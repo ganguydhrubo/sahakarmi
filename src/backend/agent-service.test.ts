@@ -57,6 +57,66 @@ afterEach(async () => {
 });
 
 describe.sequential("AgentService", () => {
+  it("publishes new models live, sends their raw ID and defers a changed CLI until idle", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    const catalog = join(root, "catalog.json");
+    await writeFile(
+      catalog,
+      JSON.stringify([{ model: "future-codex-v2", displayName: "Future Codex" }]),
+    );
+    await service.refreshModels(true);
+    expect(service.listModels()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "codex:future-codex-v2", name: "Future Codex" }),
+      ]),
+    );
+    expect(events.some((event) => event.type === "models-changed")).toBe(true);
+    await store.getOrCreate("chief");
+    await service.updateBot({ botId: "chief", model: "codex:future-codex-v2" });
+    await service.sendMessage({ botId: "chief", text: "Hold the turn open" });
+    await waitFor(async () =>
+      (await protocolMessages()).some((entry) => entry.method === "turn/start"),
+    );
+    expect(await protocolMessages()).toContainEqual(
+      expect.objectContaining({
+        method: "turn/start",
+        params: expect.objectContaining({ model: "future-codex-v2" }),
+      }),
+    );
+    const starts = (await protocolMessages()).filter(
+      (entry) => entry.method === "initialize",
+    ).length;
+    await writeFile(join(root, "version.txt"), "0.144.2");
+    await service.refreshModels(true);
+    expect(
+      (await protocolMessages()).filter((entry) => entry.method === "initialize"),
+    ).toHaveLength(starts);
+    const turnId = (await service.readConversation("chief")).activeTurnId;
+    if (!turnId) throw new Error("Expected an active turn");
+    await service.interrupt("chief", turnId);
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "interrupted");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await service.refreshModels(true);
+    expect(
+      service.getStatus().providers?.find((provider) => provider.id === "codex")?.version,
+    ).toBe("0.144.2");
+    expect(
+      (await protocolMessages()).filter((entry) => entry.method === "initialize"),
+    ).toHaveLength(starts + 1);
+    expect(service.listBots().find((bot) => bot.id === "chief")?.model).toBe(
+      "codex:future-codex-v2",
+    );
+    await writeFile(catalog, "{invalid");
+    await service.refreshModels(true);
+    expect(service.listModels()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "codex:future-codex-v2" })]),
+    );
+  }, 20_000);
+
   it("waits for a completed reply to persist before shutdown returns", async () => {
     process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "SAVED_REPLY";
     const { store, mailbox } = stores();
@@ -1040,10 +1100,13 @@ async function createFakeCodex(directory: string): Promise<string> {
     `#!/usr/bin/env node
 const fs = require("node:fs");
 if (process.argv.includes("--version")) {
-  process.stdout.write("codex-cli 0.144.1\\n");
+  const path = require("node:path");
+  const file = path.join(__dirname, "version.txt");
+  process.stdout.write("codex-cli " + (fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim() : "0.144.1") + "\\n");
   process.exit(0);
 }
 const log = process.env.SAHKARMI_FAKE_CODEX_LOG;
+const catalogPath = require("node:path").join(__dirname, "catalog.json");
 let buffer = "";
 let threadCounter = 0;
 let turnCounter = 0;
@@ -1064,6 +1127,11 @@ process.stdin.on("data", (chunk) => {
       if (message.method === "initialize") write({ id: message.id, result: {} });
       if (message.method === "account/read") write({ id: message.id, result: { account: { type: "chatgpt", email: "codex@example.com" } } });
       if (message.method === "account/rateLimits/read") write({ id: message.id, result: { rateLimits: { limitId: "codex", primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1786563600 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1787040000 } }, rateLimitsByLimitId: null } });
+      if (message.method === "model/list" && fs.existsSync(catalogPath)) {
+        try { write({ id: message.id, result: { data: JSON.parse(fs.readFileSync(catalogPath, "utf8")) } }); }
+        catch { write({ id: message.id, error: { code: -1, message: "offline" } }); }
+        continue;
+      }
       if (message.method === "model/list") write({ id: message.id, result: { data: [
         { model: "gpt-5.6-luna", displayName: "GPT-5.6 Luna", defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "medium" }, { reasoningEffort: "high" }] },
         { model: "gpt-5.6-terra", displayName: "GPT-5.6 Terra", defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "medium" }, { reasoningEffort: "high" }] },

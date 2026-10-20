@@ -108,6 +108,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #buffer = "";
   #nextId = 1;
   #running = false;
+  #catalogOptions: AcpModelOption[] = [];
   #agentCapabilities: Record<string, unknown> = {};
   #mcpServer: Server | null = null;
   #mcpPort: number | null = null;
@@ -197,13 +198,33 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         return (await this.#config.readAccount()) as T;
       case "account/rateLimits/read":
         return { rateLimits: null, rateLimitsByLimitId: null } as T;
-      case "model/list":
+      case "model/list": {
+        try {
+          await mkdir(this.#config.transcriptDir, { recursive: true });
+          // Metadata only: no prompt, tools, browser actions or model inference.
+          const result = await this.#call<Record<string, unknown>>(
+            "session/new",
+            { cwd: this.#config.transcriptDir, mcpServers: [] },
+            5_000,
+          );
+          const options = readModelOptions(result);
+          if (options.length) this.#catalogOptions = options;
+        } catch {
+          /* Preserve the last list during provider/network failures. */
+        }
         return {
-          data: this.#config.models.map((model) => ({
-            model: model.model,
-            displayName: model.displayName,
-          })),
+          data: [
+            ...this.#config.models.map((model) => ({
+              model: model.model,
+              displayName: model.displayName,
+            })),
+            ...this.#catalogOptions.map((model) => ({
+              model: model.value,
+              displayName: model.name,
+            })),
+          ],
         } as T;
+      }
       case "plugin/list":
         return { marketplaces: [] } as T;
       case "thread/start":
@@ -306,9 +327,16 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
 
   async #applyModel(session: AcpSession, model: string | null): Promise<void> {
     if (!model || model === session.model) return;
-    session.model = model;
+    const explicit = !this.#config.models.some((option) => option.model === model);
     const value = this.#config.modelValue(model as AgentModelId, session.modelOptions);
-    if (!value) return;
+    if (!value) {
+      if (explicit)
+        throw new Error(
+          `The selected model ${model} is no longer reported by ${this.#config.label}. Choose another model.`,
+        );
+      session.model = model;
+      return;
+    }
     try {
       await this.#call("session/set_config_option", {
         sessionId: session.acpSessionId,
@@ -323,8 +351,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           "diagnostic",
           `${this.#config.label}: could not select ${value} (${String(error)})`,
         );
+        if (explicit) throw error;
       }
     }
+    session.model = model;
   }
 
   async #startTurn(params: unknown): Promise<unknown> {
@@ -661,13 +691,33 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   // ---------------------------------------------------------------------------
   // JSON-RPC over stdio
 
-  #call<T>(method: string, params: unknown): Promise<T> {
+  #call<T>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
     const id = this.#nextId++;
     return new Promise<T>((resolve, reject) => {
-      this.#pending.set(id, { resolve: (value) => resolve(value as T), reject });
+      const timer =
+        timeoutMs === undefined
+          ? null
+          : setTimeout(() => {
+              this.#pending.delete(id);
+              reject(new Error(`${this.#config.label} model discovery timed out.`));
+            }, timeoutMs);
+      const clear = () => {
+        if (timer) clearTimeout(timer);
+      };
+      this.#pending.set(id, {
+        resolve: (value) => {
+          clear();
+          resolve(value as T);
+        },
+        reject: (error) => {
+          clear();
+          reject(error);
+        },
+      });
       try {
         this.#write({ jsonrpc: "2.0", id, method, params });
       } catch (error) {
+        clear();
         this.#pending.delete(id);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
