@@ -15,6 +15,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
 import type { ClaudeCliInfo } from "./cli";
 import {
@@ -76,6 +77,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   readonly #pendingServerRequests = new Map<RequestId, PendingServerRequest>();
   readonly #instanceId = randomUUID();
   #running = false;
+  #catalog = CLAUDE_MODELS;
 
   constructor(cli: ClaudeCliInfo, createQuery: QueryFactory = query) {
     super();
@@ -116,7 +118,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       case "account/rateLimits/read":
         return { rateLimits: null, rateLimitsByLimitId: null } as T;
       case "model/list":
-        return { data: CLAUDE_MODELS } as T;
+        return { data: await this.#readModelCatalog() } as T;
       case "plugin/list":
         return { marketplaces: [] } as T;
       case "thread/start": {
@@ -188,6 +190,54 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     } catch {
       return { account: null, requiresOpenaiAuth: false };
     }
+  }
+
+  async #readModelCatalog(): Promise<typeof CLAUDE_MODELS> {
+    const runtime = this.#threads.values().next().value as ThreadRuntime | undefined;
+    let owned: Query | null = null;
+    const input = new AsyncMessageQueue();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      let session = runtime?.query;
+      if (!session) {
+        owned = this.#createQuery({
+          prompt: input,
+          options: {
+            cwd: process.cwd(),
+            pathToClaudeCodeExecutable: this.#cli.executable,
+            permissionMode: "dontAsk",
+            tools: [],
+            mcpServers: {},
+            settingSources: [],
+            persistSession: false,
+          },
+        });
+        session = owned;
+      }
+      if (typeof session.supportedModels !== "function") return this.#catalog;
+      const models = await Promise.race([
+        session.supportedModels(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Model discovery timed out")), 6_000);
+        }),
+      ]);
+      if (models.length)
+        this.#catalog = models.map((model) => ({
+          model: model.resolvedModel ?? model.value,
+          displayName: model.displayName,
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+        }));
+    } catch {
+      /* Retain the last catalog when an older/offline CLI cannot report models. */
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (owned) {
+        input.close();
+        owned.close();
+      }
+    }
+    return this.#catalog;
   }
 
   async #startThread(threadId: string, config: ThreadConfig, resume: boolean): Promise<void> {
@@ -850,7 +900,7 @@ function dynamicContent(value: unknown): CallToolResult["content"] {
 }
 
 function normalizeClaudeModel(model: string): string {
-  return model.startsWith("claude-") ? model : "claude-opus-5";
+  return modelWireId(model as AgentModelId);
 }
 
 function normalizeClaudeEffort(effort: string): "low" | "medium" | "high" | "xhigh" | "max" {

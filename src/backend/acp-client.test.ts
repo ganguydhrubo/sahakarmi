@@ -41,6 +41,16 @@ describe.sequential("ACP providers (bundled OpenCode)", () => {
     service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex", approvals);
     await service.initialize();
 
+    expect(service.listModels()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "opencode:anthropic/x", name: "X" })]),
+    );
+    await service.updateBot({ botId: "asha-accounts", model: "opencode:anthropic/x" });
+    const reloaded = new BotStore(join(root, "user-data"), join(root, "home"));
+    await reloaded.initialize();
+    expect(reloaded.list().find((bot) => bot.id === "asha-accounts")?.model).toBe(
+      "opencode:anthropic/x",
+    );
+    await service.updateBot({ botId: "asha-accounts", model: "opencode-free" });
     const status = service.getStatus();
     expect(status.phase).toBe("ready");
     expect(status.auth).toEqual({ kind: "opencode", email: null });
@@ -215,12 +225,14 @@ describe("provider helpers", () => {
       "opencode/glm-free",
     );
     expect(openCodeModelValue("opencode-default", options)).toBeNull();
+    expect(openCodeModelValue("opencode:opencode/glm-free", options)).toBe("opencode/glm-free");
     const gemini = [
       { value: "auto", name: "Auto" },
       { value: "gemini-3-pro", name: "Pro" },
       { value: "gemini-3-flash-lite", name: "Lite" },
       { value: "gemini-3-flash", name: "Flash" },
     ];
+    expect(geminiModelValue("gemini:gemini-3-flash", gemini)).toBe("gemini-3-flash");
     expect(geminiModelValue("gemini-auto", gemini)).toBe("auto");
     expect(geminiModelValue("gemini-pro", gemini)).toBe("gemini-3-pro");
     expect(geminiModelValue("gemini-flash", gemini)).toBe("gemini-3-flash");

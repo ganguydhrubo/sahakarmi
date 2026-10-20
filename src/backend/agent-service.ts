@@ -32,7 +32,7 @@ import {
   AGENT_PROVIDERS,
   APPROVAL_CATEGORIES,
   DEFAULT_MODEL_FOR_PROVIDER,
-  isReasoningEffort,
+  modelWireId,
   PROVIDER_LABELS,
   providerForModel,
 } from "../shared/ipc";
@@ -65,6 +65,7 @@ import {
   sortConversationMessages,
 } from "./conversation-snapshots";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
+import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
   classifyAcpTool,
   classifyBrowserAction,
@@ -267,6 +268,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #restartAttempts = 0;
   #restartTimer: NodeJS.Timeout | null = null;
   #models = structuredClone(FALLBACK_MODELS);
+  readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
+  readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
 
   constructor(
     store: BotStore,
@@ -331,6 +334,68 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   listBots(): BotSummary[] {
     return this.#store.list();
+  }
+
+  refreshModels(force = false): Promise<void> {
+    return this.#modelRefresh.request(force);
+  }
+
+  async #refreshModelsAndCli(): Promise<void> {
+    if (!this.#initialized || this.#stopping) return;
+    const resolvers = {
+      codex: resolveCodexCli,
+      claude: resolveClaudeCli,
+      gemini: resolveGeminiCli,
+      opencode: resolveOpenCodeCli,
+    };
+    for (const provider of AGENT_PROVIDERS) {
+      if (this.#stopping) return;
+      const busy = this.#providerBusy(provider);
+      if (busy || this.#providerStarts.has(provider)) continue;
+      try {
+        const latest = await resolvers[provider]();
+        if (this.#stopping) return;
+        if (this.#providerBusy(provider) || this.#providerStarts.has(provider)) continue;
+        const current = this.#cli.get(provider);
+        if (
+          current?.version === latest.version &&
+          current.executable === latest.executable &&
+          this.#clients.has(provider)
+        )
+          continue;
+        const task = (async () => {
+          const old = this.#clients.get(provider);
+          this.#clients.delete(provider);
+          for (const bot of this.#store.list())
+            if (providerForBot(bot) === provider && bot.threadId)
+              this.#loadedThreads.delete(bot.threadId);
+          await old?.stop();
+          if (!this.#stopping) await this.#connect("restarting", [provider]);
+        })();
+        this.#providerStarts.set(provider, task);
+        try {
+          await task;
+        } finally {
+          this.#providerStarts.delete(provider);
+        }
+      } catch {
+        /* A removed/offline CLI must not erase the working model catalog. */
+      }
+    }
+    if (!this.#stopping) await this.#refreshModelCatalog();
+  }
+
+  #providerBusy(provider: AgentProvider): boolean {
+    return (
+      this.#completionTasks.size > 0 ||
+      this.#store
+        .list()
+        .some(
+          (bot) =>
+            providerForBot(bot) === provider &&
+            (this.#snapshots.get(bot.id)?.activeTurnId || this.#drainingBots.has(bot.id)),
+        )
+    );
   }
 
   listModels(): AgentModelOption[] {
@@ -559,6 +624,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     ]);
     this.#initialized = true;
     await this.#connect("starting", AGENT_PROVIDERS);
+    this.#modelRefresh.start();
   }
 
   async setPreferredProvider(provider: AgentProvider): Promise<void> {
@@ -592,6 +658,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   async stop(): Promise<void> {
+    this.#modelRefresh.stop();
     this.#stopping = true;
     this.#initialized = false;
     if (this.#restartTimer) clearTimeout(this.#restartTimer);
@@ -603,6 +670,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const clients = [...this.#clients.values()];
     this.#clients.clear();
     await Promise.all(clients.map((client) => client.stop().catch(() => undefined)));
+    await Promise.allSettled([...this.#providerStarts.values()]);
     await Promise.allSettled([...this.#drainTasks.values()]);
     await Promise.allSettled([...this.#turnAssociations.values()]);
     await Promise.allSettled([...this.#completionTasks]);
@@ -843,6 +911,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         if (provider === "codex" && account.account.type !== "chatgpt") {
           throw new Error("Codex requires a ChatGPT subscription login. Run `codex login`.");
         }
+        if (this.#stopping) {
+          await client.stop().catch(() => undefined);
+          return;
+        }
         this.#cli.set(provider, cli);
         this.#clients.set(provider, client);
         this.#accounts.set(provider, account.account);
@@ -863,6 +935,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#setStatus({ providers: this.#mergeProviders(providerStatuses, requestedProviders) });
     }
 
+    if (this.#stopping) return;
     if (this.#clients.size === 0) {
       this.#setStatus({
         phase: "blocked",
@@ -876,10 +949,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
 
     await this.#refreshModelCatalog();
+    if (this.#stopping) return;
     const primaryProvider = this.#defaultProvider();
     const primaryAccount = this.#accounts.get(primaryProvider);
     const codexClient = this.#clients.get("codex");
     const computerUse = codexClient ? await this.#probeComputerUse(codexClient) : "unavailable";
+    if (this.#stopping) return;
     this.#restartAttempts = 0;
     this.#setStatus({
       phase: "ready",
@@ -994,7 +1069,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
 
     const response = await client.request<ThreadResponse>("thread/start", {
-      model: bot.model,
+      model: modelWireId(bot.model),
       effort: bot.reasoningEffort,
       cwd: bot.workspacePath,
       runtimeWorkspaceRoots: [bot.workspacePath, this.#store.sharedRoot],
@@ -1017,7 +1092,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!bot.threadId) return;
     const params = {
       threadId: bot.threadId,
-      model: bot.model,
+      model: modelWireId(bot.model),
       effort: bot.reasoningEffort,
       cwd: bot.workspacePath,
       runtimeWorkspaceRoots: [bot.workspacePath, this.#store.sharedRoot],
@@ -1597,7 +1672,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         "turn/start",
         {
           threadId,
-          model: bot.model,
+          model: modelWireId(bot.model),
           effort: bot.reasoningEffort,
           clientUserMessageId: delivery.id,
           input,
@@ -1633,46 +1708,39 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   async #refreshModelCatalog(): Promise<void> {
-    const discovered: AgentModelOption[] = [];
-    for (const client of this.#clients.values()) {
-      try {
-        const response = await client.request<ModelListResponse>(
-          "model/list",
-          { limit: 100, includeHidden: false },
-          5_000,
+    await Promise.all(
+      [...this.#clients.values()].map(async (client) => {
+        const fallbacks = FALLBACK_MODELS.filter(
+          (model) => providerForModel(model.id) === client.provider,
         );
-        const serverModels = new Map(
-          response.data
-            .filter((item) => !item.hidden && typeof item.model === "string")
-            .map((item) => [item.model as string, item]),
-        );
-        for (const fallback of FALLBACK_MODELS) {
-          if (providerForModel(fallback.id) !== client.provider || !serverModels.has(fallback.id)) {
-            continue;
-          }
-          const server = serverModels.get(fallback.id);
-          const efforts = (server?.supportedReasoningEfforts ?? [])
-            .map((item) => item.reasoningEffort)
-            .filter(isReasoningEffort);
-          discovered.push({
-            ...fallback,
-            name: cleanModelName(server?.displayName, fallback.name),
-            defaultReasoningEffort: isReasoningEffort(server?.defaultReasoningEffort)
-              ? server.defaultReasoningEffort
-              : fallback.defaultReasoningEffort,
-            supportedReasoningEfforts: efforts.length
-              ? efforts
-              : fallback.supportedReasoningEfforts,
-          });
+        try {
+          const response = await client.request<ModelListResponse>(
+            "model/list",
+            { limit: 500, includeHidden: false },
+            8_000,
+          );
+          if (this.#stopping || this.#clients.get(client.provider) !== client) return;
+          this.#providerCatalogs.set(
+            client.provider,
+            mergeProviderCatalog(
+              client.provider,
+              response,
+              fallbacks,
+              this.#providerCatalogs.get(client.provider) ?? [],
+            ),
+          );
+        } catch {
+          /* Keep the last successful list during provider outages. */
         }
-      } catch {
-        discovered.push(
-          ...FALLBACK_MODELS.filter((model) => providerForModel(model.id) === client.provider),
-        );
-      }
-    }
-    const discoveredById = new Map(discovered.map((model) => [model.id, model]));
-    this.#models = FALLBACK_MODELS.map((fallback) => discoveredById.get(fallback.id) ?? fallback);
+      }),
+    );
+    if (this.#stopping) return;
+    this.#models = AGENT_PROVIDERS.flatMap(
+      (provider) =>
+        this.#providerCatalogs.get(provider) ??
+        FALLBACK_MODELS.filter((model) => providerForModel(model.id) === provider),
+    );
+    this.#emit({ type: "models-changed", models: this.listModels() });
   }
 
   async #reconcileUnresolvedDeliveries(): Promise<void> {
@@ -2559,11 +2627,6 @@ function isDynamicToolCall(value: unknown): value is DynamicToolCallParams {
     typeof value.tool === "string" &&
     "arguments" in value
   );
-}
-
-function cleanModelName(value: string | undefined, fallback: string): string {
-  if (!value) return fallback;
-  return value.replace(/^GPT-5\.6[\s:–—-]*/i, "").trim() || fallback;
 }
 
 const SIGN_IN_HINTS: Record<AgentProvider, string> = {

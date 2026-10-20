@@ -4,7 +4,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeAgentClient } from "./claude-client";
 
 let root: string | null = null;
@@ -15,6 +15,32 @@ afterEach(async () => {
 });
 
 describe("ClaudeAgentClient", () => {
+  it("discovers future SDK models without sending a prompt and retains them offline", async () => {
+    const close = vi.fn();
+    const supportedModels = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { value: "sonnet", resolvedModel: "claude-future", displayName: "Future Claude" },
+      ])
+      .mockRejectedValueOnce(new Error("offline"));
+    const query = vi.fn(
+      (_params: Parameters<NonNullable<ConstructorParameters<typeof ClaudeAgentClient>[1]>>[0]) =>
+        ({ supportedModels, close }) as unknown as Query,
+    );
+    const client = new ClaudeAgentClient({ executable: "unused", version: "test" }, query);
+    client.start();
+    const result = await client.request("model/list", {});
+    expect(result).toMatchObject({
+      data: [{ model: "claude-future", displayName: "Future Claude" }],
+    });
+    expect(await client.request("model/list", {})).toEqual(result);
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[0]?.[0]).toMatchObject({
+      options: { tools: [], mcpServers: {}, persistSession: false },
+    });
+    await client.stop();
+  });
+
   it("streams a Claude SDK turn through the App Server event contract", async () => {
     root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-client-"));
     const executable =

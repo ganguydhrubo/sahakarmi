@@ -808,12 +808,15 @@ if (!hasSingleInstanceLock) {
           ),
       });
       service.on("event", forwardAgentEvent);
+      mainWindow.on("focus", () => void service.refreshModels());
       service.on("event", (event) => {
         if (event.type === "error")
           appLog.write(
             "error",
             `${event.code}${event.botId ? ` (${event.botId})` : ""}: ${event.message}`,
           );
+        else if (event.type === "models-changed")
+          appLog.write("info", "model catalog refreshed", { count: event.models.length });
         else if (event.type === "status")
           appLog.write("info", `agent status: ${event.status.phase}`, event.status.providers);
       });

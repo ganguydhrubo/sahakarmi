@@ -398,7 +398,8 @@ export const AGENT_MODELS = [
   "opencode-free",
   "opencode-default",
 ] as const;
-export type AgentModelId = (typeof AGENT_MODELS)[number];
+export type KnownAgentModelId = (typeof AGENT_MODELS)[number];
+export type AgentModelId = KnownAgentModelId | `${AgentProviderId}:${string}`;
 
 export const AGENT_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type AgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
@@ -439,14 +440,31 @@ export const BOT_AVATAR_COLORS = [
 export type BotAvatarColor = (typeof BOT_AVATAR_COLORS)[number];
 
 export function isAgentModel(value: unknown): value is AgentModelId {
-  return typeof value === "string" && AGENT_MODELS.includes(value as AgentModelId);
+  if (typeof value !== "string") return false;
+  if (AGENT_MODELS.some((model) => model === value)) return true;
+  return /^(codex|claude|gemini|opencode):[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,179}$/.test(value);
 }
 
 export function isClaudeModel(model: AgentModelId): boolean {
-  return model.startsWith("claude-");
+  return providerForModel(model) === "claude";
+}
+
+export function modelWireId(model: AgentModelId): string {
+  return /^(codex|claude|gemini|opencode):/.test(model)
+    ? model.slice(model.indexOf(":") + 1)
+    : model;
+}
+
+export function modelIdForProvider(provider: AgentProviderId, wireId: string): AgentModelId | null {
+  const known = AGENT_MODELS.find((model) => model === wireId);
+  if (known && providerForModel(known) === provider) return known;
+  const id = `${provider}:${wireId}`;
+  return isAgentModel(id) ? id : null;
 }
 
 export function providerForModel(model: AgentModelId): AgentProviderId {
+  const prefix = model.split(":", 1)[0];
+  if (AGENT_PROVIDERS.some((provider) => provider === prefix)) return prefix as AgentProviderId;
   if (model.startsWith("claude-")) return "claude";
   if (model.startsWith("gemini-")) return "gemini";
   if (model.startsWith("opencode-")) return "opencode";
@@ -951,6 +969,7 @@ export interface RespondToPromptInput {
 }
 
 export type AgentEvent =
+  | { type: "models-changed"; models: AgentModelOption[] }
   | { type: "status"; status: AgentStatus }
   /** The provider will retry the current request after a transient error (real event). */
   | {
