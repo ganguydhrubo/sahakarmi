@@ -27,7 +27,8 @@ export function ModelSuggestions(props: {
   const available = () =>
     (props.agentStatus.providers ?? []).filter((p) => p.state === "available").map((p) => p.id);
   const name = (model: AgentModelId) =>
-    props.modelOptions.find((option) => option.id === model)?.name ?? model;
+    props.modelOptions.find((option) => option.id === model)?.name ??
+    model.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   return (
     <div class="model-suggestions">
       <p class="settings-meta">{t("suggestIntro")}</p>

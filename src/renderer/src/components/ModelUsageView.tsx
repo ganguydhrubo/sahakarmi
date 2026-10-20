@@ -315,5 +315,5 @@ function formatWhen(value: string): string {
 }
 
 function formatUsd(value: number): string {
-  return value < 1 ? value.toFixed(4) : value.toFixed(2);
+  return value > 0 && value < 1 ? value.toFixed(4) : value.toFixed(2);
 }

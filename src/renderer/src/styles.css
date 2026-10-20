@@ -6595,7 +6595,10 @@ fieldset.cadence-kinds {
    Workspace upgrade: settings sections, usage, business, activity, voice, rich replies
    --------------------------------------------------------------------------- */
 
-.center-view button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy) {
+.center-view
+button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
+  [role="tab"]
+) {
   border: 1px solid var(--sahkarmi-line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
@@ -6643,6 +6646,10 @@ fieldset.cadence-kinds {
 
 .center-view .settings-nav button {
   border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-weight: 600;
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
@@ -7511,6 +7518,19 @@ fieldset.cadence-kinds {
 .md-list {
   margin: 0;
   padding-left: 22px;
+  list-style: disc;
+}
+
+ol.md-list {
+  list-style: decimal;
+}
+
+.md-list .md-list {
+  list-style: circle;
+}
+
+.md-list li::marker {
+  color: var(--text-muted);
 }
 
 .md-list li {

@@ -9,6 +9,9 @@ import type {
 import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
+import { speechLocale } from "../preferences";
+
+const formatValue = (value: number) => new Intl.NumberFormat(speechLocale()).format(value);
 
 const SUPPORT_LABELS: Record<IntegrationSupport, MessageKey> = {
   supported: "supportSupported",
@@ -244,9 +247,9 @@ export function BusinessView(props: { bots: BotProfile[] }) {
                         <strong>
                           {target.currentValue === null
                             ? t("targetNotReported")
-                            : target.currentValue}
+                            : formatValue(target.currentValue)}
                         </strong>{" "}
-                        / {target.targetValue} {target.unit}{" "}
+                        / {formatValue(target.targetValue)} {target.unit}{" "}
                         <Show when={target.metric}>· {target.metric}</Show>
                       </p>
                       <Show when={percent() !== null}>
