@@ -162,6 +162,14 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     delete: (scheduleId) => ipcRenderer.invoke(IPC_CHANNELS.schedulesDelete, scheduleId),
     runNow: (scheduleId) => ipcRenderer.invoke(IPC_CHANNELS.schedulesRunNow, scheduleId),
   },
+  routines: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.routinesList),
+    save: (input) => ipcRenderer.invoke(IPC_CHANNELS.routinesSave, input),
+    delete: (routineId) => ipcRenderer.invoke(IPC_CHANNELS.routinesDelete, routineId),
+    setEnabled: (routineId, enabled) =>
+      ipcRenderer.invoke(IPC_CHANNELS.routinesSetEnabled, { routineId, enabled }),
+    runNow: (routineId) => ipcRenderer.invoke(IPC_CHANNELS.routinesRunNow, routineId),
+  },
   files: {
     list: (directory) => ipcRenderer.invoke(IPC_CHANNELS.filesList, directory ?? ""),
     add: (directory) => ipcRenderer.invoke(IPC_CHANNELS.filesAdd, directory ?? ""),

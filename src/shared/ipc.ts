@@ -53,6 +53,11 @@ export const IPC_CHANNELS = {
   schedulesSetEnabled: "schedules:set-enabled",
   schedulesDelete: "schedules:delete",
   schedulesRunNow: "schedules:run-now",
+  routinesList: "routines:list",
+  routinesSave: "routines:save",
+  routinesDelete: "routines:delete",
+  routinesSetEnabled: "routines:set-enabled",
+  routinesRunNow: "routines:run-now",
   filesList: "files:list",
   filesAdd: "files:add",
   filesOpen: "files:open",
@@ -612,6 +617,70 @@ export interface ScheduledTask {
   nextRunAt: string | null;
 }
 
+/** Routines also accept "every N minutes" (N >= 1; under 5 needs explicit confirmation). */
+export type RoutineCadence = ScheduleCadence | { kind: "interval"; minutes: number };
+
+export interface RoutineStep {
+  id: string;
+  botId: string;
+  instruction: string;
+}
+
+/** A named multi-step automation: each step goes to one coworker, in order. */
+export interface Routine {
+  id: string;
+  name: string;
+  steps: RoutineStep[];
+  /** null = only runs with Run now. */
+  cadence: RoutineCadence | null;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+}
+
+export type RoutineStepStatus = "queued" | "running" | "done" | "failed" | "skipped";
+
+export interface RoutineRunStep {
+  stepId: string;
+  botId: string;
+  instruction: string;
+  status: RoutineStepStatus;
+  deliveryId: string | null;
+  /** Short excerpt of the coworker's final reply, or the failure reason. */
+  result: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface RoutineRun {
+  id: string;
+  routineId: string;
+  routineName: string;
+  trigger: "schedule" | "manual";
+  status: "running" | "done" | "failed";
+  startedAt: string;
+  finishedAt: string | null;
+  steps: RoutineRunStep[];
+}
+
+export interface RoutinesState {
+  routines: Routine[];
+  /** Newest first, capped. */
+  runs: RoutineRun[];
+}
+
+export interface SaveRoutineInput {
+  /** Omit to create a new routine. */
+  id?: string;
+  name: string;
+  steps: Array<{ id?: string; botId: string; instruction: string }>;
+  cadence: RoutineCadence | null;
+  enabled: boolean;
+  /** Required to save a cadence that repeats more often than every 5 minutes. */
+  confirmFrequent?: boolean;
+}
+
 export interface CreateScheduleInput {
   botId: string;
   text: string;
@@ -880,6 +949,7 @@ export type AgentEvent =
   | { type: "workspaces-changed"; state: WorkspaceState }
   | { type: "approvals-changed"; approvals: ApprovalRequest[] }
   | { type: "schedules-changed"; schedules: ScheduledTask[] }
+  | { type: "routines-changed"; state: RoutinesState }
   | { type: "error"; botId?: string; code: string; message: string };
 
 export interface BrowserTab {
@@ -1022,6 +1092,15 @@ export interface ApprovalsDesktopApi {
   decide: (input: DecideApprovalInput) => Promise<ApprovalRequest>;
 }
 
+export interface RoutinesDesktopApi {
+  list: () => Promise<RoutinesState>;
+  save: (input: SaveRoutineInput) => Promise<RoutinesState>;
+  delete: (routineId: string) => Promise<RoutinesState>;
+  setEnabled: (routineId: string, enabled: boolean) => Promise<RoutinesState>;
+  /** Starts a run in the background and returns at once. */
+  runNow: (routineId: string) => Promise<RoutinesState>;
+}
+
 export interface SchedulesDesktopApi {
   list: () => Promise<ScheduledTask[]>;
   create: (input: CreateScheduleInput) => Promise<ScheduledTask>;
@@ -1066,6 +1145,7 @@ export interface SahkarmiDesktopApi {
   features: FeaturesDesktopApi;
   business: BusinessDesktopApi;
   schedules: SchedulesDesktopApi;
+  routines: RoutinesDesktopApi;
   files: FilesDesktopApi;
   update: UpdateDesktopApi;
   maintenance: MaintenanceDesktopApi;

@@ -13,6 +13,7 @@ export type CenterView =
   | "files"
   | "approvals"
   | "schedules"
+  | "routines"
   | "usage"
   | "business"
   | "activity"
@@ -27,6 +28,7 @@ const RAIL_ITEMS: Array<{
   { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
   { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
   { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
+  { view: "routines", label: "navRoutines", feature: "schedules", icon: RoutineIcon },
   { view: "usage", label: "navUsage", feature: "model-usage", icon: UsageIcon },
   { view: "business", label: "navBusiness", feature: "business-targets", icon: BusinessIcon },
   { view: "activity", label: "navActivity", feature: null, icon: ActivityIcon },
@@ -155,6 +157,16 @@ function BusinessIcon() {
       <circle cx="10" cy="10" r="6.8" />
       <circle cx="10" cy="10" r="3.6" />
       <circle cx="10" cy="10" r=".9" />
+    </svg>
+  );
+}
+
+function RoutineIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <rect x="2.8" y="3" width="6" height="5" rx="1.4" />
+      <rect x="11.2" y="12" width="6" height="5" rx="1.4" />
+      <path d="M5.8 8v3.5a1 1 0 0 0 1 1h4.4" />
     </svg>
   );
 }
