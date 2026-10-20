@@ -121,6 +121,8 @@ interface ConversationProps {
   onActivateBrowserTab: (tabId: string) => void;
   onCloseBrowserTab: (tabId: string) => void;
   onToggleLeftSidebar: () => void;
+  /** Opens Settings → AI and models, where providers are connected. */
+  onOpenAiSettings?: () => void;
   onOpenAgentSetup: () => Promise<void>;
   onStop: () => void;
 }
@@ -900,6 +902,7 @@ export function Conversation(props: ConversationProps) {
   const [settingsNotifications, setSettingsNotifications] = createSignal(true);
   const [settingsModel, setSettingsModel] = createSignal<AgentModelId>("gpt-5.6-luna");
   const [settingsReasoning, setSettingsReasoning] = createSignal<AgentReasoningEffort>("medium");
+  const [headerModelOpen, setHeaderModelOpen] = createSignal(false);
   const [onboardingBots, setOnboardingBots] = createSignal<Record<string, true>>({});
   const [modelConfirmedBots, setModelConfirmedBots] = createSignal<Record<string, true>>({});
   const [completedOnboardingBots, setCompletedOnboardingBots] = createSignal<Record<string, true>>(
@@ -942,6 +945,9 @@ export function Conversation(props: ConversationProps) {
   const reasoningOptions = createMemo(
     () => selectedModel()?.supportedReasoningEfforts ?? ["medium" as const],
   );
+  /** "Luna · Medium": the model and reasoning this coworker runs on. */
+  const headerModelLabel = () =>
+    `${selectedModel()?.name ?? settingsModel()} · ${reasoningLabel(settingsReasoning())}`;
   const onboardingActive = createMemo(() => {
     const botId = props.bot?.id;
     return Boolean(botId && onboardingBots()[botId]);
@@ -1725,6 +1731,82 @@ export function Conversation(props: ConversationProps) {
                 )}
               </Show>
               <div class="conversation-header-actions no-drag">
+                <Show when={props.bot}>
+                  <div class="header-model-root">
+                    <button
+                      type="button"
+                      class="header-model-button"
+                      aria-label={`${t("headerModel")}: ${headerModelLabel()}`}
+                      aria-expanded={headerModelOpen()}
+                      title={agentReady() ? t("headerModel") : t("modelConnectHint")}
+                      onClick={() => setHeaderModelOpen((open) => !open)}
+                    >
+                      <span>{headerModelLabel()}</span>
+                      <svg aria-hidden="true" viewBox="0 0 20 20" class="header-model-chevron">
+                        <path d="m6 8 4 4 4-4" />
+                      </svg>
+                    </button>
+                    <Show when={headerModelOpen()}>
+                      <div
+                        class="header-model-popover"
+                        role="dialog"
+                        aria-label={t("headerModel")}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") setHeaderModelOpen(false);
+                        }}
+                      >
+                        <Show
+                          when={agentReady()}
+                          fallback={
+                            <p class="header-model-connect">
+                              {t("modelConnectHint")}{" "}
+                              <button
+                                type="button"
+                                class="link-button"
+                                onClick={() => {
+                                  setHeaderModelOpen(false);
+                                  props.onOpenAiSettings?.();
+                                }}
+                              >
+                                {t("modelConnect")}
+                              </button>
+                            </p>
+                          }
+                        >
+                          <ProviderModelPicker
+                            variant="field"
+                            ariaLabel="Header model"
+                            value={settingsModel()}
+                            agentStatus={props.agentStatus}
+                            modelOptions={props.modelOptions}
+                            disabled={agentActivity() === "Working"}
+                            disabledReason="Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein."
+                            onChange={(model) => void selectAndConfirmModel(model)}
+                          />
+                          <label class="header-model-reasoning">
+                            <span>{t("headerReasoning")}</span>
+                            <select
+                              value={settingsReasoning()}
+                              aria-label={t("headerReasoning")}
+                              onChange={(event) => {
+                                const reasoningEffort = event.currentTarget
+                                  .value as AgentReasoningEffort;
+                                setSettingsReasoning(reasoningEffort);
+                                void saveBotPatch({ reasoningEffort });
+                              }}
+                            >
+                              <For each={reasoningOptions()}>
+                                {(effort) => (
+                                  <option value={effort}>{reasoningLabel(effort)}</option>
+                                )}
+                              </For>
+                            </select>
+                          </label>
+                        </Show>
+                      </div>
+                    </Show>
+                  </div>
+                </Show>
                 <button
                   type="button"
                   class="header-panel-toggle computer-button browser-toggle"
@@ -2191,10 +2273,20 @@ export function Conversation(props: ConversationProps) {
                 disabledReason={
                   agentActivity() === "Working"
                     ? "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein."
-                    : "Models are available after an AI provider connects."
+                    : t("modelConnectHint")
                 }
                 onChange={(model) => void selectAndConfirmModel(model)}
               />
+              <Show when={!agentReady() && props.onOpenAiSettings}>
+                <button
+                  type="button"
+                  class="composer-connect-link"
+                  title={t("modelConnectHint")}
+                  onClick={() => props.onOpenAiSettings?.()}
+                >
+                  {t("modelConnect")}
+                </button>
+              </Show>
             </Show>
             <VoiceRecorder
               disabled={!agentReady() || submitting()}
