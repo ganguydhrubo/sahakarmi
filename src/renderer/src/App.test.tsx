@@ -5,11 +5,95 @@ import type {
   AttachmentImportEvent,
   BotSummary,
   ConversationSnapshot,
+  PermissionPolicyState,
+  UsageOverview,
 } from "../../shared/ipc";
 import { App } from "./App";
 
 let emitAgentEvent: ((event: AgentEvent) => void) | undefined;
 let emitAttachmentImport: ((event: AttachmentImportEvent) => void) | undefined;
+
+const POLICY: PermissionPolicyState = {
+  levels: {
+    research: "auto",
+    file_read: "auto",
+    file_create: "workspace",
+    file_modify: "workspace",
+    file_delete: "ask",
+    shell: "ask",
+    browser_navigation: "auto",
+    browser_interaction: "auto",
+    downloads: "workspace",
+    external_messages: "ask",
+    publication: "ask",
+    business_actions: "ask",
+    payments: "ask",
+    account_settings: "ask",
+    official_forms: "ask",
+    app_updates: "auto",
+  },
+  grants: [],
+};
+
+const USAGE: UsageOverview = {
+  generatedAt: "2026-10-20T10:00:00.000Z",
+  providers: [
+    {
+      provider: "codex",
+      connection: "available",
+      plan: "plus",
+      limits: [
+        {
+          id: "codex:primary",
+          label: "5-hour window",
+          usedPercent: 91,
+          resetsAt: "2026-10-20T13:00:00.000Z",
+          status: "warning",
+          source: "Codex App Server account/rateLimits/read",
+          observedAt: "2026-10-20T09:59:00.000Z",
+          dataLabel: "verified",
+        },
+      ],
+      limitsLabel: "verified",
+      limitsNote: "Codex App Server · account/rateLimits/read",
+      tokensToday: 1200,
+      tokens7d: 5400,
+      tokens30d: 9100,
+      tokensLabel: "verified",
+      costUsd30d: null,
+      costLabel: "unavailable",
+      context: null,
+      lastActivityAt: "2026-10-20T09:00:00.000Z",
+    },
+    {
+      provider: "gemini",
+      connection: "available",
+      plan: null,
+      limits: [],
+      limitsLabel: "unavailable",
+      limitsNote: "Gemini CLI does not report quota over ACP",
+      tokensToday: null,
+      tokens7d: null,
+      tokens30d: null,
+      tokensLabel: "unavailable",
+      costUsd30d: null,
+      costLabel: "unavailable",
+      context: null,
+      lastActivityAt: null,
+    },
+  ],
+  days: [],
+  bots: [],
+  alerts: [
+    {
+      id: "codex:codex:primary:warning",
+      level: "warning",
+      provider: "codex",
+      message: "5-hour window is 91% used.",
+    },
+  ],
+  ledgerSince: "2026-10-01",
+};
 
 const BOTS: BotSummary[] = [
   {
@@ -221,6 +305,32 @@ describe("Sahkarmi connected desktop shell", () => {
           list: vi.fn().mockResolvedValue([]),
           decide: vi.fn(),
         },
+        permissions: {
+          get: vi.fn().mockResolvedValue(POLICY),
+          setLevel: vi.fn().mockResolvedValue(POLICY),
+          addGrant: vi.fn().mockResolvedValue(POLICY),
+          revokeGrant: vi.fn().mockResolvedValue(POLICY),
+          audit: vi.fn().mockResolvedValue([]),
+          clearAudit: vi.fn().mockResolvedValue(undefined),
+        },
+        usage: {
+          overview: vi.fn().mockResolvedValue(USAGE),
+          refresh: vi.fn().mockResolvedValue(USAGE),
+          clear: vi.fn().mockResolvedValue(USAGE),
+        },
+        features: {
+          list: vi.fn().mockResolvedValue([]),
+          setEnabled: vi.fn().mockResolvedValue([]),
+          previewManifest: vi.fn(),
+          applyManifest: vi.fn().mockResolvedValue([]),
+          resetCatalogue: vi.fn().mockResolvedValue([]),
+        },
+        business: {
+          integrations: vi.fn().mockResolvedValue([]),
+          listTargets: vi.fn().mockResolvedValue([]),
+          saveTarget: vi.fn().mockResolvedValue([]),
+          deleteTarget: vi.fn().mockResolvedValue([]),
+        },
         schedules: {
           list: vi.fn().mockResolvedValue([]),
           create: vi.fn(),
@@ -375,6 +485,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
 
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
     await fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
 
     expect(screen.getByRole("dialog", { name: "Providers & permissions" })).toBeInTheDocument();
@@ -388,6 +499,67 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(
       screen.queryByRole("dialog", { name: "Providers & permissions" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows model usage with a label on every number and no invented values", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Model usage" }));
+
+    expect(await screen.findByText("5-hour window is 91% used.")).toBeInTheDocument();
+    const codex = screen.getByRole("article", { name: "ChatGPT (Codex)" });
+    expect(within(codex).getByText("91%")).toBeInTheDocument();
+    expect(within(codex).getAllByText("Verified").length).toBeGreaterThan(0);
+    const gemini = screen.getByRole("article", { name: "Gemini" });
+    expect(
+      within(gemini).getByText("This provider does not report token usage."),
+    ).toBeInTheDocument();
+    expect(within(gemini).getAllByText("Unavailable").length).toBe(2);
+    expect(within(gemini).queryByText(/\d+%/)).not.toBeInTheDocument();
+    expect(window.sahkarmi.usage.refresh).toHaveBeenCalled();
+  });
+
+  it("never offers automatic approval for sensitive actions in Settings", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "Permissions" }));
+
+    const payments = await screen.findByRole("combobox", { name: "Payments" });
+    expect(
+      within(payments)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Ask me each time", "Block"]);
+    const shell = screen.getByRole("combobox", { name: "Run commands" });
+    expect(within(shell).getAllByRole("option")).toHaveLength(4);
+    await fireEvent.change(shell, { target: { value: "deny" } });
+    expect(window.sahkarmi.permissions.setLevel).toHaveBeenCalledWith("shell", "deny");
+  });
+
+  it("lists blocked actions in the activity log", async () => {
+    vi.mocked(window.sahkarmi.permissions.audit).mockResolvedValueOnce([
+      {
+        id: "a1",
+        at: "2026-10-20T09:30:00.000Z",
+        botId: "chief",
+        provider: "codex",
+        category: "payments",
+        action: 'click "Pay now" on https://pay.example.in',
+        level: "ask",
+        effective: "ask",
+        decision: "rejected",
+        reason: "Needs your approval.",
+      },
+    ]);
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+    expect(
+      await screen.findByText('click "Pay now" on https://pay.example.in'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Payments" })).toBeInTheDocument();
+    expect(screen.getByText("Rejected")).toBeInTheDocument();
   });
 
   it("shows an empty team with a new-coworker action when a workspace has no coworkers", async () => {
@@ -587,9 +759,13 @@ describe("Sahkarmi connected desktop shell", () => {
     ]);
     render(() => <App />);
     expect(
-      await screen.findByRole("button", { name: "Sales Outbound, New coworker, Waiting for you" }),
+      await screen.findByRole("button", {
+        name: "Sales Outbound, New coworker, Aapka intezaar hai",
+      }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Chief, New coworker, Idle" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Chief, New coworker, Free hai" }),
+    ).toBeInTheDocument();
   });
 
   it("downloads an available update from Settings", async () => {
@@ -604,6 +780,7 @@ describe("Sahkarmi connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "Updates" }));
     await fireEvent.click(await screen.findByRole("button", { name: "Download update" }));
     await waitFor(() => expect(window.sahkarmi.update.download).toHaveBeenCalledOnce());
   });
@@ -726,7 +903,7 @@ describe("Sahkarmi connected desktop shell", () => {
       });
 
     render(() => <App />);
-    await screen.findByText("Connecting to agent CLIs…");
+    await screen.findByText("AI tools se connection ho raha hai…");
     emitAgentEvent?.({
       type: "status",
       status: {
@@ -919,7 +1096,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await waitFor(() => expect(trigger).toBeDisabled());
     expect(trigger).toHaveAttribute(
       "title",
-      "Wait for the current work to finish before changing models.",
+      "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein.",
     );
 
     emitAgentEvent?.({
@@ -1348,7 +1525,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.keyDown(composer, { key: "Enter" });
 
     expect(
-      await screen.findByText("Show this message", { selector: ".message-copy" }),
+      await screen.findByText("Show this message", { selector: ".message-copy .md-paragraph" }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByText("Choose a model to get started.")).not.toBeInTheDocument();
@@ -1473,7 +1650,10 @@ describe("Sahkarmi connected desktop shell", () => {
       threadId: "thread-chief",
       turnId: "turn-live",
     });
-    const workingIndicator = await screen.findByRole("status", { name: "Chief is working" });
+    const workingIndicator = await screen.findByRole("status", { name: /^Chief: / });
+    // A real turn started, so the line describes work in progress in Hinglish, never "Working".
+    expect(workingIndicator).toHaveAccessibleName(/^Chief: .*(kaam|ho rahi|ho raha|receive)/i);
+    expect(workingIndicator).not.toHaveTextContent(/Working/);
 
     emitAgentEvent?.({
       type: "conversation",
@@ -1530,7 +1710,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(streamingAnswer.closest(".message-entry")).toHaveClass("message-entry-animated");
     expect(streamingBubble).toHaveClass("bot-bubble-streaming");
     expect(screen.queryByText("Typing…")).not.toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Chief is working" })).toBe(workingIndicator);
+    expect(screen.getByRole("status", { name: /^Chief: / })).toBe(workingIndicator);
 
     emitAgentEvent?.({
       type: "conversation-delta",
@@ -1545,7 +1725,7 @@ describe("Sahkarmi connected desktop shell", () => {
     const updatedStreamingAnswer = await screen.findByText("I am on it now");
     expect(updatedStreamingAnswer.closest(".bot-bubble")).toBe(streamingBubble);
     expect(screen.getByText("Do the work").closest(".message-entry")).toBe(firstMessageEntry);
-    expect(screen.getByRole("status", { name: "Chief is working" })).toBe(workingIndicator);
+    expect(screen.getByRole("status", { name: /^Chief: / })).toBe(workingIndicator);
 
     for (const [revision, text] of [
       [5, "I am on it now, first buffered delta"],
@@ -1589,11 +1769,99 @@ describe("Sahkarmi connected desktop shell", () => {
       turnId: "turn-live",
       status: "completed",
     });
-    await waitFor(() =>
-      expect(screen.queryByRole("status", { name: "Chief is working" })).not.toBeInTheDocument(),
+    // The real outcome is shown briefly, then the indicator hides and its timers stop.
+    expect(await screen.findByRole("status", { name: "Chief: Kaam poora ho gaya!" })).toBe(
+      workingIndicator,
     );
+    await waitFor(() => expect(workingIndicator).toHaveAttribute("aria-hidden", "true"), {
+      timeout: 5_000,
+    });
     expect(document.querySelector(".agent-activity-entry")).toBe(workingIndicator);
-    expect(workingIndicator).toHaveAttribute("aria-hidden", "true");
+  }, 15_000);
+
+  it("describes real tool, retry and cancel events in Hinglish, per coworker", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const createdAt = "2026-08-12T10:00:00.000Z";
+    const userMessage = {
+      id: "req",
+      turnId: "turn-tool",
+      author: "user" as const,
+      text: "Tests chalao",
+      createdAt,
+      status: "completed" as const,
+      delivery: { id: "req", status: "running" as const, position: null },
+    };
+    emitAgentEvent?.({
+      type: "turn-started",
+      botId: "chief",
+      threadId: "thread-chief",
+      turnId: "turn-tool",
+    });
+    emitAgentEvent?.({
+      type: "conversation",
+      snapshot: {
+        botId: "chief",
+        threadId: "thread-chief",
+        activeTurnId: "turn-tool",
+        revision: 2,
+        messages: [
+          userMessage,
+          {
+            id: "tool-1",
+            turnId: "turn-tool",
+            author: "assistant",
+            text: "",
+            createdAt,
+            status: "streaming",
+            itemType: "toolCall",
+            tool: {
+              name: "Run command",
+              kind: "command",
+              status: "running",
+              input: "npm test",
+              output: null,
+            },
+          },
+        ],
+      },
+    });
+    const indicator = await screen.findByRole("status", {
+      name: "Chief: Tests aur build check ho rahe hain…",
+    });
+    expect(indicator).toHaveTextContent("npm test");
+
+    // A provider-reported retry replaces the line; the next real progress clears it.
+    emitAgentEvent?.({
+      type: "turn-retrying",
+      botId: "chief",
+      attempt: 2,
+      maxRetries: 10,
+      delayMs: 2000,
+    });
+    expect(
+      await screen.findByRole("status", { name: "Chief: Ek baar phir try ho raha hai…" }),
+    ).toHaveTextContent("Koshish 2/10");
+
+    // Another coworker's activity never leaks into this one.
+    emitAgentEvent?.({
+      type: "turn-started",
+      botId: "sales-outbound",
+      threadId: "thread-sales",
+      turnId: "turn-sales",
+    });
+    expect(screen.getByRole("status", { name: /^Chief: / })).toBe(indicator);
+
+    emitAgentEvent?.({
+      type: "turn-completed",
+      botId: "chief",
+      threadId: "thread-chief",
+      turnId: "turn-tool",
+      status: "interrupted",
+    });
+    expect(
+      await screen.findByRole("status", { name: "Chief: Task cancel kar diya gaya hai." }),
+    ).toBe(indicator);
   });
 
   it("groups commentary into a collapsed thinking disclosure", async () => {
@@ -1646,12 +1914,12 @@ describe("Sahkarmi connected desktop shell", () => {
       },
     });
 
-    const thinkingLabel = await screen.findByText("Thinking");
+    const thinkingLabel = await screen.findByText("Soch-vichaar");
     const details = thinkingLabel.closest("details");
     expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).not.toBeVisible();
     expect(screen.getByText("Checking that the page loaded.")).not.toBeVisible();
     expect(screen.getByText("Opened example.in.")).toBeVisible();
-    expect(screen.getAllByText("Thinking")).toHaveLength(1);
+    expect(screen.getAllByText("Soch-vichaar")).toHaveLength(1);
 
     await fireEvent.click(thinkingLabel);
     expect(details).toHaveAttribute("open");
@@ -1685,7 +1953,7 @@ describe("Sahkarmi connected desktop shell", () => {
         ],
       },
     });
-    await waitFor(() => expect(screen.getByText("Thinking").closest("details")).toBe(details));
+    await waitFor(() => expect(screen.getByText("Soch-vichaar").closest("details")).toBe(details));
     expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).toBeVisible();
   });
 

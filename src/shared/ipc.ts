@@ -56,6 +56,24 @@ export const IPC_CHANNELS = {
   filesList: "files:list",
   filesAdd: "files:add",
   filesOpen: "files:open",
+  permissionsGet: "permissions:get",
+  permissionsSetLevel: "permissions:set-level",
+  permissionsAddGrant: "permissions:add-grant",
+  permissionsRevokeGrant: "permissions:revoke-grant",
+  permissionsAudit: "permissions:audit",
+  permissionsClearAudit: "permissions:clear-audit",
+  usageOverview: "usage:overview",
+  usageRefresh: "usage:refresh",
+  usageClear: "usage:clear",
+  featuresList: "features:list",
+  featuresSetEnabled: "features:set-enabled",
+  featuresPreviewManifest: "features:preview-manifest",
+  featuresApplyManifest: "features:apply-manifest",
+  featuresResetCatalogue: "features:reset-catalogue",
+  businessIntegrations: "business:integrations",
+  businessListTargets: "business:list-targets",
+  businessSaveTarget: "business:save-target",
+  businessDeleteTarget: "business:delete-target",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -165,6 +183,157 @@ export interface AccountUsageLimit {
 
 export interface AccountUsage {
   limits: AccountUsageLimit[];
+}
+
+/**
+ * How trustworthy a usage number is. verified: reported by the provider for this account.
+ * estimated: computed by the provider or Sahkarmi, not a billing statement. unavailable: the
+ * provider does not expose it. stale: last verified value is too old to rely on.
+ */
+export type UsageDataLabel = "verified" | "estimated" | "unavailable" | "stale";
+
+export interface UsageLimitWindow {
+  id: string;
+  /** e.g. "5-hour window", "Weekly". */
+  label: string;
+  usedPercent: number | null;
+  resetsAt: string | null;
+  status: "ok" | "warning" | "limited" | "unknown";
+  source: string;
+  observedAt: string;
+  dataLabel: UsageDataLabel;
+}
+
+export interface ProviderUsageSummary {
+  provider: AgentProviderId;
+  connection: AgentProviderState | "unknown";
+  plan: string | null;
+  limits: UsageLimitWindow[];
+  limitsLabel: UsageDataLabel;
+  limitsNote: string;
+  tokensToday: number | null;
+  tokens7d: number | null;
+  tokens30d: number | null;
+  tokensLabel: UsageDataLabel;
+  costUsd30d: number | null;
+  costLabel: UsageDataLabel;
+  context: { used: number; size: number; observedAt: string } | null;
+  lastActivityAt: string | null;
+}
+
+export interface UsageDay {
+  date: string;
+  provider: AgentProviderId;
+  tokens: number;
+  costUsd: number | null;
+}
+
+export interface UsageByBot {
+  botId: string;
+  provider: AgentProviderId;
+  tokens30d: number;
+  turns30d: number;
+  lastAt: string;
+}
+
+export interface UsageAlert {
+  id: string;
+  level: "info" | "warning" | "critical";
+  provider: AgentProviderId;
+  message: string;
+}
+
+export interface UsageOverview {
+  generatedAt: string;
+  providers: ProviderUsageSummary[];
+  days: UsageDay[];
+  bots: UsageByBot[];
+  alerts: UsageAlert[];
+  /** First day Sahkarmi recorded usage on this computer. */
+  ledgerSince: string | null;
+}
+
+export const FEATURE_CATEGORIES = ["core", "providers", "workspace", "business", "labs"] as const;
+export type FeatureCategory = (typeof FEATURE_CATEGORIES)[number];
+
+/** What a feature needs. Data only: a requirement can never carry code or a download. */
+export type FeatureRequirement =
+  | { type: "provider"; provider: AgentProviderId }
+  | { type: "any-provider" }
+  | { type: "platform"; platforms: DesktopPlatform[] }
+  | { type: "app-version"; minimum: string };
+
+export type FeatureAvailability = "available" | "needs-setup" | "unavailable" | "coming-later";
+
+export interface FeatureState {
+  id: string;
+  name: string;
+  description: string;
+  category: FeatureCategory;
+  /** built-in: shipped in this app. catalogue: announced in an imported list, not installed. */
+  origin: "built-in" | "catalogue";
+  availability: FeatureAvailability;
+  reason: string | null;
+  enabled: boolean;
+  /** Owner can switch it off (core safety features cannot be). */
+  canDisable: boolean;
+}
+
+export interface FeatureManifestPreview {
+  ok: boolean;
+  errors: string[];
+  added: Array<{ id: string; name: string }>;
+  changed: Array<{ id: string; name: string; change: string }>;
+  ignored: Array<{ id: string; reason: string }>;
+  catalogueVersion: string | null;
+}
+
+export type IntegrationSupport =
+  | "supported"
+  | "manual-import"
+  | "browser-assisted"
+  | "not-supported";
+
+export interface BusinessIntegration {
+  id: string;
+  name: string;
+  support: IntegrationSupport;
+  summary: string;
+  /** What access an official integration would need. */
+  accessNeeded: string;
+  /** What works today without breaking the platform's rules. */
+  workaround: string;
+}
+
+export type TargetPeriod = "weekly" | "monthly" | "quarterly" | "yearly";
+
+/** Owner-defined goal. Never mixed with provider quotas or platform data. */
+export interface BusinessTarget {
+  id: string;
+  title: string;
+  metric: string;
+  unit: string;
+  targetValue: number;
+  /** Entered by the owner (or a coworker after approval); null until reported. */
+  currentValue: number | null;
+  period: TargetPeriod;
+  dueDate: string | null;
+  botId: string | null;
+  notes: string;
+  updatedAt: string;
+}
+
+export interface SaveBusinessTargetInput {
+  id?: string;
+  title: string;
+  metric: string;
+  unit: string;
+  targetValue: number;
+  currentValue: number | null;
+  period: TargetPeriod;
+  dueDate: string | null;
+  botId: string | null;
+  notes: string;
 }
 
 export type ExternalDestination = "agent-setup" | "feedback" | "message";
@@ -331,6 +500,89 @@ export interface ApprovalRequest {
   createdAt: string;
   decidedAt: string | null;
   note: string | null;
+  /**
+   * "action": a coworker asked before doing something (its turn continues later).
+   * "permission": the app paused a tool call until the owner decides.
+   */
+  kind?: "action" | "permission";
+  permissionCategory?: PermissionCategory;
+}
+
+/** Operations the permission engine distinguishes. Order is the Settings display order. */
+export const PERMISSION_CATEGORIES = [
+  "research",
+  "file_read",
+  "file_create",
+  "file_modify",
+  "file_delete",
+  "shell",
+  "browser_navigation",
+  "browser_interaction",
+  "downloads",
+  "external_messages",
+  "publication",
+  "business_actions",
+  "payments",
+  "account_settings",
+  "official_forms",
+  "app_updates",
+] as const;
+export type PermissionCategory = (typeof PERMISSION_CATEGORIES)[number];
+
+/**
+ * ask: owner approves each action · auto: allowed · workspace: allowed inside the coworker's
+ * folder and Shared, asked elsewhere · deny: always blocked.
+ */
+export const PERMISSION_LEVELS = ["ask", "auto", "workspace", "deny"] as const;
+export type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
+
+/** High-impact categories: never "auto"; only ask, deny, or a narrow time-limited grant. */
+export const SENSITIVE_PERMISSION_CATEGORIES: readonly PermissionCategory[] = [
+  "external_messages",
+  "publication",
+  "business_actions",
+  "payments",
+  "account_settings",
+  "official_forms",
+];
+
+export interface PermissionGrant {
+  id: string;
+  category: PermissionCategory;
+  /** null = any coworker. */
+  botId: string | null;
+  expiresAt: string;
+  /** null = unlimited uses until expiry. */
+  usesLeft: number | null;
+  note: string;
+  createdAt: string;
+}
+
+export interface PermissionPolicyState {
+  levels: Record<PermissionCategory, PermissionLevel>;
+  grants: PermissionGrant[];
+}
+
+export interface PermissionAuditEntry {
+  id: string;
+  at: string;
+  botId: string | null;
+  provider: string;
+  category: PermissionCategory;
+  /** Short, redacted description of the action (no secrets). */
+  action: string;
+  level: PermissionLevel;
+  effective: "allow" | "ask" | "deny";
+  decision: "allowed" | "denied" | "approved" | "rejected" | "timed-out";
+  reason: string;
+}
+
+export interface AddPermissionGrantInput {
+  category: PermissionCategory;
+  botId: string | null;
+  hours: number;
+  maxUses: number | null;
+  note: string;
 }
 
 export interface DecideApprovalInput {
@@ -584,6 +836,14 @@ export interface RespondToPromptInput {
 
 export type AgentEvent =
   | { type: "status"; status: AgentStatus }
+  /** The provider will retry the current request after a transient error (real event). */
+  | {
+      type: "turn-retrying";
+      botId: string;
+      attempt: number | null;
+      maxRetries: number | null;
+      delayMs: number | null;
+    }
   | { type: "usage-changed"; usage: AccountUsage }
   | { type: "bots-changed"; bots: BotSummary[] }
   | { type: "conversation"; snapshot: ConversationSnapshot }
@@ -690,6 +950,8 @@ export interface AgentDesktopApi {
   deleteBot: (botId: string) => Promise<void>;
   readConversation: (botId: string) => Promise<ConversationSnapshot>;
   chooseAttachments: () => Promise<DraftAttachment[]>;
+  /** Imports in-memory files (voice notes) as draft attachments. */
+  importData: (data: AttachmentDataInput[]) => Promise<DraftAttachment[]>;
   onAttachmentImport: (listener: (event: AttachmentImportEvent) => void) => () => void;
   discardDraftAttachment: (attachmentId: string) => Promise<void>;
   openAttachment: (input: OpenAttachmentInput) => Promise<void>;
@@ -720,6 +982,39 @@ export interface TeamDesktopApi {
   createWorkspace: (name: string) => Promise<WorkspaceState>;
   renameWorkspace: (workspaceId: string, name: string) => Promise<WorkspaceState>;
   setActiveWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
+}
+
+export interface PermissionsDesktopApi {
+  get: () => Promise<PermissionPolicyState>;
+  setLevel: (
+    category: PermissionCategory,
+    level: PermissionLevel,
+  ) => Promise<PermissionPolicyState>;
+  addGrant: (input: AddPermissionGrantInput) => Promise<PermissionPolicyState>;
+  revokeGrant: (grantId: string) => Promise<PermissionPolicyState>;
+  audit: () => Promise<PermissionAuditEntry[]>;
+  clearAudit: () => Promise<void>;
+}
+
+export interface UsageDesktopApi {
+  overview: () => Promise<UsageOverview>;
+  refresh: () => Promise<UsageOverview>;
+  clear: () => Promise<UsageOverview>;
+}
+
+export interface FeaturesDesktopApi {
+  list: () => Promise<FeatureState[]>;
+  setEnabled: (featureId: string, enabled: boolean) => Promise<FeatureState[]>;
+  previewManifest: (json: string) => Promise<FeatureManifestPreview>;
+  applyManifest: (json: string) => Promise<FeatureState[]>;
+  resetCatalogue: () => Promise<FeatureState[]>;
+}
+
+export interface BusinessDesktopApi {
+  integrations: () => Promise<BusinessIntegration[]>;
+  listTargets: () => Promise<BusinessTarget[]>;
+  saveTarget: (input: SaveBusinessTargetInput) => Promise<BusinessTarget[]>;
+  deleteTarget: (targetId: string) => Promise<BusinessTarget[]>;
 }
 
 export interface ApprovalsDesktopApi {
@@ -766,6 +1061,10 @@ export interface SahkarmiDesktopApi {
   browser: BrowserDesktopApi;
   team: TeamDesktopApi;
   approvals: ApprovalsDesktopApi;
+  permissions: PermissionsDesktopApi;
+  usage: UsageDesktopApi;
+  features: FeaturesDesktopApi;
+  business: BusinessDesktopApi;
   schedules: SchedulesDesktopApi;
   files: FilesDesktopApi;
   update: UpdateDesktopApi;

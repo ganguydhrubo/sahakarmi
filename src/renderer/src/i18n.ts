@@ -1,3 +1,4 @@
+import { workspaceBn, workspaceEn, workspaceHi } from "./i18n-workspace";
 import { type LanguageCode, language } from "./preferences";
 
 const en = {
@@ -121,6 +122,7 @@ const en = {
   messagePlaceholder: "Message {name}",
   schedulePlaceholder: "What should {name} do on schedule?",
   close: "Close",
+  ...workspaceEn,
 };
 
 type Dictionary = typeof en;
@@ -246,6 +248,7 @@ const hi: Dictionary = {
   messagePlaceholder: "{name} को संदेश",
   schedulePlaceholder: "{name} तय समय पर क्या करे?",
   close: "बंद करें",
+  ...workspaceHi,
 };
 
 const bn: Dictionary = {
@@ -368,6 +371,7 @@ const bn: Dictionary = {
   messagePlaceholder: "{name}-কে বার্তা",
   schedulePlaceholder: "{name} নির্ধারিত সময়ে কী করবে?",
   close: "বন্ধ",
+  ...workspaceBn,
 };
 
 const DICTIONARIES: Record<LanguageCode, Dictionary> = { en, hi, bn };

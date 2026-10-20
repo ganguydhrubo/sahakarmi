@@ -53,6 +53,8 @@ export interface AcpAgentConfig {
   readAccount: () => Promise<AccountReadResult>;
   /** Maps a Sahkarmi model id to one of the agent's model values, or null to keep its default. */
   modelValue: (model: AgentModelId, options: AcpModelOption[]) => string | null;
+  /** Extra environment for the agent process (merged over the app's environment). */
+  env?: Record<string, string>;
 }
 
 interface ActiveTurn {
@@ -109,6 +111,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #agentCapabilities: Record<string, unknown> = {};
   #mcpServer: Server | null = null;
   #mcpPort: number | null = null;
+  readonly #instanceId = randomUUID();
 
   constructor(config: AcpAgentConfig) {
     super();
@@ -127,7 +130,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       [".cmd", ".bat"].includes(extname(this.#config.executable).toLowerCase());
     const child = spawn(this.#config.executable, this.#config.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
+      env: { ...process.env, ...this.#config.env },
       shell: needsShell,
       windowsHide: true,
     });
@@ -418,6 +421,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const update = isRecord(params) && isRecord(params.update) ? params.update : null;
     if (!sessionId || !update) return;
     const session = [...this.#sessions.values()].find((item) => item.acpSessionId === sessionId);
+    if (session && update.sessionUpdate === "usage_update") {
+      this.#emitUsage(session.threadId, update);
+      return;
+    }
     const turn = session?.activeTurn;
     // Updates outside a turn are history replays from session/load; Sahkarmi keeps its own.
     if (!session || !turn) return;
@@ -711,32 +718,81 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       if (method === "session/update") this.#handleSessionUpdate(message.params);
       return;
     }
-    this.#write(this.#answerAgentRequest(id, method, message.params));
-  }
-
-  #answerAgentRequest(id: RequestId, method: string, params: unknown): unknown {
     if (method === "session/request_permission") {
-      // Same stance as the other providers: coworkers run with the access the owner granted.
-      // Money, customer messages and submissions go through Sahkarmi approvals instead.
-      const options =
-        isRecord(params) && Array.isArray(params.options) ? params.options.filter(isRecord) : [];
-      const choice =
-        options.find((option) => option.kind === "allow_always") ??
-        options.find((option) => option.kind === "allow_once") ??
-        options[0];
-      return choice
-        ? {
-            jsonrpc: "2.0",
-            id,
-            result: { outcome: { outcome: "selected", optionId: choice.optionId } },
-          }
-        : { jsonrpc: "2.0", id, result: { outcome: { outcome: "cancelled" } } };
+      void this.#answerPermission(id, message.params).then((answer) => {
+        if (this.#child?.stdin.writable) this.#write(answer);
+      });
+      return;
     }
-    return {
+    this.#write({
       jsonrpc: "2.0",
       id,
       error: { code: -32601, message: `Sahkarmi does not implement ${method}.` },
-    };
+    });
+  }
+
+  /** ACP usage_update: context tokens in use and the session's running cost (an estimate). */
+  #emitUsage(threadId: string, update: Record<string, unknown>): void {
+    const used = typeof update.used === "number" ? update.used : null;
+    const size = typeof update.size === "number" ? update.size : null;
+    const cost = isRecord(update.cost) ? update.cost : null;
+    const amount =
+      cost && typeof cost.amount === "number" && (cost.currency ?? "USD") === "USD"
+        ? cost.amount
+        : null;
+    this.emit("notification", {
+      method: "sahkarmi/usage",
+      params: {
+        threadId,
+        context: used !== null && size !== null ? { used, size } : null,
+        sessionKey: `${this.#instanceId}:${threadId}`,
+        tokens: null,
+        costUsd: amount,
+      },
+    });
+  }
+
+  /**
+   * The agent asks before a tool call. Sahkarmi's permission policy decides (through the
+   * `sahkarmi/permission` server request, which may wait for the owner); the agent's own
+   * "always allow" options are never chosen, so every call comes back here.
+   */
+  async #answerPermission(id: RequestId, params: unknown): Promise<unknown> {
+    const options =
+      isRecord(params) && Array.isArray(params.options) ? params.options.filter(isRecord) : [];
+    const toolCall = isRecord(params) && isRecord(params.toolCall) ? params.toolCall : {};
+    const acpSessionId = isRecord(params) ? getString(params, "sessionId") : null;
+    const session = [...this.#sessions.values()].find(
+      (candidate) => candidate.acpSessionId === acpSessionId,
+    );
+    const locations = Array.isArray(toolCall.locations) ? toolCall.locations.filter(isRecord) : [];
+    let allowed = false;
+    try {
+      const verdict = await this.#callServerRequest("sahkarmi/permission", {
+        threadId: session?.threadId ?? null,
+        source: "acp",
+        kind: getString(toolCall, "kind"),
+        title: getString(toolCall, "title") ?? "Tool call",
+        rawInput: toolCall.rawInput ?? null,
+        paths: locations
+          .map((location) => getString(location, "path"))
+          .filter((path): path is string => Boolean(path)),
+      });
+      allowed = isRecord(verdict) && verdict.allowed === true;
+    } catch {
+      allowed = false;
+    }
+    const choice = allowed
+      ? options.find((option) => option.kind === "allow_once")
+      : (options.find((option) => option.kind === "reject_once") ??
+        options.find((option) => option.kind === "reject_always"));
+    return choice
+      ? {
+          jsonrpc: "2.0",
+          id,
+          result: { outcome: { outcome: "selected", optionId: choice.optionId } },
+        }
+      : { jsonrpc: "2.0", id, result: { outcome: { outcome: "cancelled" } } };
   }
 
   #fail(error: Error): void {

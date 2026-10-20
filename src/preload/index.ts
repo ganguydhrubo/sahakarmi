@@ -80,6 +80,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     deleteBot: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentDeleteBot, botId),
     readConversation: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentReadConversation, botId),
     chooseAttachments: () => ipcRenderer.invoke(IPC_CHANNELS.agentChooseAttachments),
+    importData: (data) =>
+      ipcRenderer.invoke(IPC_CHANNELS.agentImportAttachments, { paths: [], data }),
     onAttachmentImport: (listener) => {
       attachmentImportListeners.add(listener);
       return () => attachmentImportListeners.delete(listener);
@@ -123,6 +125,34 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   approvals: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.approvalsList),
     decide: (input) => ipcRenderer.invoke(IPC_CHANNELS.approvalsDecide, input),
+  },
+  permissions: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsGet),
+    setLevel: (category, level) =>
+      ipcRenderer.invoke(IPC_CHANNELS.permissionsSetLevel, { category, level }),
+    addGrant: (input) => ipcRenderer.invoke(IPC_CHANNELS.permissionsAddGrant, input),
+    revokeGrant: (grantId) => ipcRenderer.invoke(IPC_CHANNELS.permissionsRevokeGrant, grantId),
+    audit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsAudit),
+    clearAudit: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsClearAudit),
+  },
+  usage: {
+    overview: () => ipcRenderer.invoke(IPC_CHANNELS.usageOverview),
+    refresh: () => ipcRenderer.invoke(IPC_CHANNELS.usageRefresh),
+    clear: () => ipcRenderer.invoke(IPC_CHANNELS.usageClear),
+  },
+  features: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.featuresList),
+    setEnabled: (featureId, enabled) =>
+      ipcRenderer.invoke(IPC_CHANNELS.featuresSetEnabled, { featureId, enabled }),
+    previewManifest: (json) => ipcRenderer.invoke(IPC_CHANNELS.featuresPreviewManifest, json),
+    applyManifest: (json) => ipcRenderer.invoke(IPC_CHANNELS.featuresApplyManifest, json),
+    resetCatalogue: () => ipcRenderer.invoke(IPC_CHANNELS.featuresResetCatalogue),
+  },
+  business: {
+    integrations: () => ipcRenderer.invoke(IPC_CHANNELS.businessIntegrations),
+    listTargets: () => ipcRenderer.invoke(IPC_CHANNELS.businessListTargets),
+    saveTarget: (input) => ipcRenderer.invoke(IPC_CHANNELS.businessSaveTarget, input),
+    deleteTarget: (targetId) => ipcRenderer.invoke(IPC_CHANNELS.businessDeleteTarget, targetId),
   },
   schedules: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.schedulesList),

@@ -43,6 +43,8 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
   darkModeSupport: true
+  extendInfo:
+    NSMicrophoneUsageDescription: Sahkarmi records voice notes for your coworkers only when you press record.
   target:
     - target: dmg
       arch:

@@ -3,10 +3,12 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  lazy,
   Match,
   onCleanup,
   onMount,
   Show,
+  Suspense,
   Switch,
 } from "solid-js";
 import { createMutable } from "solid-js/store";
@@ -35,15 +37,31 @@ import type {
   UpdateStatus,
   WorkspaceState,
 } from "../../shared/ipc";
+import { ERROR_TITLES } from "./activity-hinglish";
 import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation } from "./components/Conversation";
 import { InitialSetup } from "./components/InitialSetup";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./components/PanelResizer";
-import { SettingsView } from "./components/SettingsView";
+import { SchedulesView } from "./components/SchedulesView";
 import { SharedFilesView } from "./components/SharedFilesView";
 import { type CenterView, Sidebar } from "./components/Sidebar";
 import { UpdateControl } from "./components/UpdateControl";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
+import { loadFeatures } from "./features";
+
+// Views opened from the rail load on demand, keeping start-up lean.
+const ActivityView = lazy(() =>
+  import("./components/ActivityView").then((module) => ({ default: module.ActivityView })),
+);
+const BusinessView = lazy(() =>
+  import("./components/BusinessView").then((module) => ({ default: module.BusinessView })),
+);
+const ModelUsageView = lazy(() =>
+  import("./components/ModelUsageView").then((module) => ({ default: module.ModelUsageView })),
+);
+const SettingsView = lazy(() =>
+  import("./components/SettingsView").then((module) => ({ default: module.SettingsView })),
+);
 
 const FALLBACK_STATUS: AgentStatus = {
   phase: "starting",
@@ -56,7 +74,7 @@ const FALLBACK_STATUS: AgentStatus = {
     { id: "opencode", state: "not-started", version: null, message: null },
   ],
   capabilities: { chat: "unavailable", browser: "unavailable", computerUse: "unavailable" },
-  message: "Starting local agent CLIs…",
+  message: "AI tools start ho rahe hain…",
   fullAccess: true,
 };
 
@@ -158,6 +176,12 @@ export function App() {
   });
   const [approvals, setApprovals] = createSignal<ApprovalRequest[]>([]);
   const [schedules, setSchedules] = createSignal<ScheduledTask[]>([]);
+  const [retries, setRetries] = createSignal<
+    Record<string, { attempt: number | null; maxRetries: number | null } | null>
+  >({});
+  const [turnOutcomes, setTurnOutcomes] = createSignal<
+    Record<string, { status: "completed" | "interrupted" | "failed"; at: number }>
+  >({});
   const [takeover, setTakeover] = createSignal<BrowserTakeoverState>(EMPTY_TAKEOVER);
   const pendingConversationChanges: Array<{ botId: string; revision: number; apply: () => void }> =
     [];
@@ -190,6 +214,7 @@ export function App() {
       .list()
       .then(setSchedules)
       .catch(() => undefined);
+    void loadFeatures();
     void window.sahkarmi.browser
       .getTakeover()
       .then(setTakeover)
@@ -256,7 +281,7 @@ export function App() {
         setQueues((current) => ({ ...current, [botId]: queue }));
         scheduleConversation(snapshot);
       })
-      .catch((error) => appendUiError(botId, error, "Load failed"));
+      .catch((error) => appendUiError(botId, error, ERROR_TITLES.load));
   });
 
   function handleAgentEvent(event: AgentEvent) {
@@ -277,10 +302,18 @@ export function App() {
         applyStoredBots(event.bots);
         return;
       case "conversation":
+        clearRetry(event.snapshot.botId);
         scheduleConversation(event.snapshot);
         return;
       case "conversation-delta":
+        clearRetry(event.botId);
         applyConversationDelta(event);
+        return;
+      case "turn-retrying":
+        setRetries((current) => ({
+          ...current,
+          [event.botId]: { attempt: event.attempt, maxRetries: event.maxRetries },
+        }));
         return;
       case "queue-changed":
         setQueues((current) => ({ ...current, [event.snapshot.botId]: event.snapshot }));
@@ -305,10 +338,16 @@ export function App() {
         setSchedules(event.schedules);
         return;
       case "turn-started":
+        clearRetry(event.botId);
         clearRecentReply(event.botId);
         setActiveTurns((current) => ({ ...current, [event.botId]: event.turnId }));
         return;
       case "turn-completed":
+        clearRetry(event.botId);
+        setTurnOutcomes((current) => ({
+          ...current,
+          [event.botId]: { status: outcomeStatus(event.status), at: Date.now() },
+        }));
         setActiveTurns((current) => ({ ...current, [event.botId]: null }));
         if (event.status === "completed") markReplyCompleted(event.botId);
         return;
@@ -316,8 +355,13 @@ export function App() {
         setPendingPrompts((current) => ({ ...current, [event.botId]: event }));
         return;
       case "error":
-        if (event.botId) appendUiError(event.botId, event.message, "Error");
+        if (event.botId) appendUiError(event.botId, event.message, ERROR_TITLES.error);
     }
+  }
+
+  function clearRetry(botId: string) {
+    if (!retries()[botId]) return;
+    setRetries((current) => ({ ...current, [botId]: null }));
   }
 
   function applyStoredBots(storedBots: BotSummary[]) {
@@ -453,7 +497,7 @@ export function App() {
       setOnboardingRequest({ botId: newAgent.id, nonce: Date.now() });
     } catch (error) {
       setAgentPickerOpen(false);
-      if (activeBotId()) appendUiError(activeBotId(), error, "Create failed");
+      if (activeBotId()) appendUiError(activeBotId(), error, ERROR_TITLES.create);
     } finally {
       setCreatingAgent(false);
     }
@@ -516,7 +560,7 @@ export function App() {
       if (existing) Object.assign(existing, toBotProfile(stored));
       else setBotList((current) => [...current, createMutable(toBotProfile(stored))]);
     } catch (error) {
-      appendUiError(botId, error, "Settings failed");
+      appendUiError(botId, error, ERROR_TITLES.settings);
       throw error;
     }
   }
@@ -546,7 +590,7 @@ export function App() {
       if (replyTimer) clearTimeout(replyTimer);
       recentReplyTimers.delete(botId);
     } catch (error) {
-      appendUiError(botId, error, "Delete failed");
+      appendUiError(botId, error, ERROR_TITLES.delete);
       throw error;
     }
   }
@@ -577,7 +621,7 @@ export function App() {
       setUiErrors((current) => ({ ...current, [botId]: [] }));
       return true;
     } catch (error) {
-      appendUiError(botId, error, "Send failed");
+      appendUiError(botId, error, ERROR_TITLES.send);
       return false;
     }
   }
@@ -618,7 +662,7 @@ export function App() {
       setPendingPrompts((current) => ({ ...current, [bot.id]: undefined }));
       return true;
     } catch (error) {
-      appendUiError(bot.id, error, "Answer failed");
+      appendUiError(bot.id, error, ERROR_TITLES.answer);
       return false;
     }
   }
@@ -628,7 +672,7 @@ export function App() {
     if (!bot) return;
     void window.sahkarmi.agent
       .cancelQueuedMessage({ botId: bot.id, deliveryId })
-      .catch((error) => appendUiError(bot.id, error, "Cancel failed"));
+      .catch((error) => appendUiError(bot.id, error, ERROR_TITLES.cancel));
   }
 
   function setQueuePaused(paused: boolean) {
@@ -636,7 +680,9 @@ export function App() {
     if (!bot) return;
     void window.sahkarmi.agent
       .setQueuePaused({ botId: bot.id, paused })
-      .catch((error) => appendUiError(bot.id, error, paused ? "Pause failed" : "Resume failed"));
+      .catch((error) =>
+        appendUiError(bot.id, error, paused ? ERROR_TITLES.pause : ERROR_TITLES.resume),
+      );
   }
 
   async function selectWorkspace(workspaceId: string) {
@@ -672,7 +718,7 @@ export function App() {
       setSchedules(await window.sahkarmi.schedules.list());
       return true;
     } catch (error) {
-      appendUiError(bot.id, error, "Schedule failed");
+      appendUiError(bot.id, error, ERROR_TITLES.schedule);
       return false;
     }
   }
@@ -681,7 +727,7 @@ export function App() {
     const botId = activeBot()?.id;
     void action()
       .then(() => window.sahkarmi.schedules.list().then(setSchedules))
-      .catch((error) => botId && appendUiError(botId, error, "Schedule failed"));
+      .catch((error) => botId && appendUiError(botId, error, ERROR_TITLES.schedule));
   }
 
   function resumeQueue() {
@@ -689,7 +735,7 @@ export function App() {
     if (!bot) return;
     void window.sahkarmi.agent
       .setQueuePaused({ botId: bot.id, paused: false })
-      .catch((error) => appendUiError(bot.id, error, "Resume failed"));
+      .catch((error) => appendUiError(bot.id, error, ERROR_TITLES.resume));
   }
 
   function stopActiveTurn() {
@@ -698,7 +744,7 @@ export function App() {
     if (!bot || !turnId) return;
     void window.sahkarmi.agent
       .interrupt({ botId: bot.id, turnId })
-      .catch((error) => appendUiError(bot.id, error, "Stop failed"));
+      .catch((error) => appendUiError(bot.id, error, ERROR_TITLES.stop));
   }
 
   function appendUiError(botId: string, error: unknown, status: string) {
@@ -847,83 +893,127 @@ export function App() {
               onResizeEnd={(value) => savePanelWidth(LEFT_PANEL_STORAGE_KEY, value)}
             />
           </Show>
-          <Switch>
-            <Match when={view() === "approvals"}>
-              <ApprovalsView
-                approvals={approvals()}
-                bots={botList()}
-                onDecide={decideApproval}
-                onOpenCoworker={selectBot}
-              />
-            </Match>
-            <Match when={view() === "files"}>
-              <SharedFilesView />
-            </Match>
-            <Match when={view() === "settings"}>
-              <SettingsView
-                appInfo={appInfo()}
-                agentStatus={agentStatus()}
-                updateStatus={updateStatus()}
-                onOpenPermissions={() => setPermissionsOpen(true)}
-                onUpdateAction={runUpdateAction}
-              />
-            </Match>
-            <Match when={view() === "coworker"}>
-              <Conversation
-                agentStatus={agentStatus()}
-                bot={activeBot()}
-                bots={botList()}
-                status={
-                  activeBot() ? (coworkerStatuses()[activeBot()?.id ?? ""] ?? "idle") : "idle"
-                }
-                modelOptions={modelOptions()}
-                messages={activeMessages()}
-                loaded={activeBot() ? conversationLoaded()[activeBot()?.id ?? ""] === true : false}
-                queue={activeQueue()}
-                schedules={schedules().filter((task) => task.botId === activeBot()?.id)}
-                takeover={takeover()}
-                browserTabs={browserTabs()}
-                activeBrowserTabId={activeBrowserTabId()}
-                browserControlState={browserControlState()}
-                leftSidebarCollapsed={leftPanelCollapsed()}
-                prompt={activeBot() ? pendingPrompts()[activeBot()?.id ?? ""] : undefined}
-                activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
-                agentPickerOpen={agentPickerOpen()}
-                creatingAgent={creatingAgent()}
-                settingsRequest={settingsRequest()}
-                onboardingRequest={onboardingRequest()}
-                onCloseAgentPicker={() => setAgentPickerOpen(false)}
-                onCreateAgent={() => void createAgent()}
-                onSelectAgent={selectBot}
-                onUpdateBot={updateBot}
-                onSendMessage={sendMessage}
-                onScheduleMessage={scheduleMessage}
-                onToggleSchedule={(task) =>
-                  scheduleAction(() => window.sahkarmi.schedules.setEnabled(task.id, !task.enabled))
-                }
-                onDeleteSchedule={(task) =>
-                  scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
-                }
-                onRunSchedule={(task) =>
-                  scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
-                }
-                onCompleteOnboarding={completeOnboarding}
-                onAnswerPrompt={answerPrompt}
-                onCancelQueuedMessage={cancelQueuedMessage}
-                onPauseQueue={() => setQueuePaused(true)}
-                onResumeQueue={resumeQueue}
-                onActivateBrowserTab={activateBrowserTab}
-                onCloseBrowserTab={closeBrowserTab}
-                onTakeOverBrowser={() => void window.sahkarmi.browser.takeOver().then(setTakeover)}
-                onHandBackBrowser={(note) =>
-                  void window.sahkarmi.browser.handBack(note).then(setTakeover)
-                }
-                onToggleLeftSidebar={() => setSidebarCollapsed(false)}
-                onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
-                onStop={stopActiveTurn}
-              />
-            </Match>
-          </Switch>
+          <Suspense fallback={<section class="center-view" aria-busy="true" />}>
+            <Switch>
+              <Match when={view() === "approvals"}>
+                <ApprovalsView
+                  approvals={approvals()}
+                  bots={botList()}
+                  onDecide={decideApproval}
+                  onOpenCoworker={selectBot}
+                />
+              </Match>
+              <Match when={view() === "files"}>
+                <SharedFilesView />
+              </Match>
+              <Match when={view() === "schedules"}>
+                <SchedulesView
+                  schedules={schedules()}
+                  bots={botList()}
+                  onToggle={(task) =>
+                    scheduleAction(() =>
+                      window.sahkarmi.schedules.setEnabled(task.id, !task.enabled),
+                    )
+                  }
+                  onDelete={(task) =>
+                    scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
+                  }
+                  onRunNow={(task) =>
+                    scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
+                  }
+                  onOpenCoworker={selectBot}
+                />
+              </Match>
+              <Match when={view() === "usage"}>
+                <ModelUsageView bots={botList()} />
+              </Match>
+              <Match when={view() === "business"}>
+                <BusinessView bots={botList()} />
+              </Match>
+              <Match when={view() === "activity"}>
+                <ActivityView bots={botList()} />
+              </Match>
+              <Match when={view() === "settings"}>
+                <SettingsView
+                  appInfo={appInfo()}
+                  agentStatus={agentStatus()}
+                  updateStatus={updateStatus()}
+                  bots={botList()}
+                  modelOptions={modelOptions()}
+                  onUpdateModel={(botId, model) => updateBot(botId, { model })}
+                  onOpenPermissions={() => setPermissionsOpen(true)}
+                  onUpdateAction={runUpdateAction}
+                />
+              </Match>
+              <Match when={view() === "coworker"}>
+                <Conversation
+                  agentStatus={agentStatus()}
+                  bot={activeBot()}
+                  bots={botList()}
+                  status={
+                    activeBot() ? (coworkerStatuses()[activeBot()?.id ?? ""] ?? "idle") : "idle"
+                  }
+                  modelOptions={modelOptions()}
+                  messages={activeMessages()}
+                  loaded={
+                    activeBot() ? conversationLoaded()[activeBot()?.id ?? ""] === true : false
+                  }
+                  queue={activeQueue()}
+                  schedules={schedules().filter((task) => task.botId === activeBot()?.id)}
+                  takeover={takeover()}
+                  browserTabs={browserTabs()}
+                  activeBrowserTabId={activeBrowserTabId()}
+                  browserControlState={browserControlState()}
+                  leftSidebarCollapsed={leftPanelCollapsed()}
+                  prompt={activeBot() ? pendingPrompts()[activeBot()?.id ?? ""] : undefined}
+                  activityRetry={retries()[activeBot()?.id ?? ""] ?? null}
+                  turnOutcome={turnOutcomes()[activeBot()?.id ?? ""] ?? null}
+                  waitingForApproval={pendingApprovals().some(
+                    (approval) =>
+                      approval.kind === "permission" && approval.botId === activeBot()?.id,
+                  )}
+                  activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
+                  agentPickerOpen={agentPickerOpen()}
+                  creatingAgent={creatingAgent()}
+                  settingsRequest={settingsRequest()}
+                  onboardingRequest={onboardingRequest()}
+                  onCloseAgentPicker={() => setAgentPickerOpen(false)}
+                  onCreateAgent={() => void createAgent()}
+                  onSelectAgent={selectBot}
+                  onUpdateBot={updateBot}
+                  onSendMessage={sendMessage}
+                  onScheduleMessage={scheduleMessage}
+                  onToggleSchedule={(task) =>
+                    scheduleAction(() =>
+                      window.sahkarmi.schedules.setEnabled(task.id, !task.enabled),
+                    )
+                  }
+                  onDeleteSchedule={(task) =>
+                    scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
+                  }
+                  onRunSchedule={(task) =>
+                    scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
+                  }
+                  onCompleteOnboarding={completeOnboarding}
+                  onAnswerPrompt={answerPrompt}
+                  onCancelQueuedMessage={cancelQueuedMessage}
+                  onPauseQueue={() => setQueuePaused(true)}
+                  onResumeQueue={resumeQueue}
+                  onActivateBrowserTab={activateBrowserTab}
+                  onCloseBrowserTab={closeBrowserTab}
+                  onTakeOverBrowser={() =>
+                    void window.sahkarmi.browser.takeOver().then(setTakeover)
+                  }
+                  onHandBackBrowser={(note) =>
+                    void window.sahkarmi.browser.handBack(note).then(setTakeover)
+                  }
+                  onToggleLeftSidebar={() => setSidebarCollapsed(false)}
+                  onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
+                  onStop={stopActiveTurn}
+                />
+              </Match>
+            </Switch>
+          </Suspense>
           <Show when={permissionsOpen()}>
             <InitialSetup
               reviewing
@@ -983,13 +1073,13 @@ function toBotMessage(message: ConversationMessage): BotMessage {
     status: message.exchange
       ? undefined
       : message.delivery?.status === "queued"
-        ? `Queued #${message.delivery.position}`
+        ? `Line mein #${message.delivery.position}`
         : message.delivery?.status === "cancelled"
-          ? "Cancelled"
+          ? "Cancel kar diya gaya"
           : message.status === "failed"
-            ? "Failed"
+            ? "Poora nahi ho paya"
             : message.status === "interrupted"
-              ? "Stopped"
+              ? "Beech mein rok diya gaya"
               : undefined,
   };
 }
@@ -1094,4 +1184,10 @@ function withoutBot<T>(values: Record<string, T>, botId: string): Record<string,
   const next = { ...values };
   delete next[botId];
   return next;
+}
+
+function outcomeStatus(status: string): "completed" | "interrupted" | "failed" {
+  if (status === "completed") return "completed";
+  if (status === "interrupted" || status === "cancelled") return "interrupted";
+  return "failed";
 }
