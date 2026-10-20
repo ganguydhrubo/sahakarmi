@@ -514,6 +514,11 @@ if (!hasSingleInstanceLock) {
       );
       const sharedFiles = new SharedFiles(store.sharedRoot);
       const { autoUpdater } = electronUpdater;
+      autoUpdater.logger = {
+        info: (message) => appLog.write("info", "updater", message),
+        warn: (message) => appLog.write("warn", "updater", message),
+        error: (message) => appLog.write("error", "updater", message),
+      };
       updateService = new UpdateService(autoUpdater, {
         currentVersion: app.getVersion(),
         enabled:

@@ -592,7 +592,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(screen.getByRole("button", { name: "Chief, New coworker, Idle" })).toBeInTheDocument();
   });
 
-  it("checks for updates from Settings", async () => {
+  it("downloads an available update from Settings", async () => {
     vi.mocked(window.sahkarmi.update.getStatus).mockResolvedValueOnce({
       phase: "available",
       currentVersion: "0.1.0",
@@ -604,8 +604,37 @@ describe("Sahkarmi connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await fireEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Download update" }));
     await waitFor(() => expect(window.sahkarmi.update.download).toHaveBeenCalledOnce());
+  });
+
+  it.each([
+    ["downloading", "Downloading update 60%"],
+    ["ready", "Restart to update"],
+    ["error", "Retry update"],
+  ] as const)("shows the %s update action while chatting", async (phase, label) => {
+    vi.mocked(window.sahkarmi.update.getStatus).mockResolvedValueOnce({
+      phase,
+      currentVersion: "0.1.0",
+      availableVersion: "0.2.0",
+      progress: 60,
+      checkedAt: null,
+      message: null,
+    });
+    render(() => <App />);
+    const button = await screen.findByRole("button", { name: label });
+    if (phase === "downloading") {
+      expect(button).toBeDisabled();
+      expect(screen.getByRole("progressbar")).toHaveAttribute("value", "60");
+    } else {
+      await fireEvent.click(button);
+      await waitFor(() =>
+        expect(
+          phase === "ready" ? window.sahkarmi.update.install : window.sahkarmi.update.download,
+        ).toHaveBeenCalledOnce(),
+      );
+      expect(window.sahkarmi.update.check).not.toHaveBeenCalled();
+    }
   });
 
   it("renders loaded history without replaying entrance animations", async () => {

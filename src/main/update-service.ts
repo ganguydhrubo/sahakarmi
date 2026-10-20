@@ -1,9 +1,15 @@
 import { EventEmitter } from "node:events";
-import type { AppUpdater, ProgressInfo, UpdateInfo } from "electron-updater";
+import {
+  type AppUpdater,
+  CancellationToken,
+  type ProgressInfo,
+  type UpdateInfo,
+} from "electron-updater";
 import type { UpdateStatus } from "../shared/ipc";
 
 type UpdateAdapter = Pick<
   AppUpdater,
+  | "disableDifferentialDownload"
   | "allowPrerelease"
   | "autoDownload"
   | "autoInstallOnAppQuit"
@@ -23,6 +29,8 @@ interface UpdateServiceOptions {
   beforeInstall: () => Promise<void>;
   initialCheckDelayMs?: number;
   checkIntervalMs?: number;
+  stallTimeoutMs?: number;
+  retryDelayMs?: number;
 }
 
 const DEFAULT_CHECK_INTERVAL = 4 * 60 * 60 * 1_000;
@@ -38,6 +46,13 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   #status: UpdateStatus;
   #checkTimer: ReturnType<typeof setTimeout> | null = null;
   #started = false;
+  #downloadToken: CancellationToken | null = null;
+  #downloadTask: Promise<void> | null = null;
+  #stallTimer: ReturnType<typeof setTimeout> | null = null;
+  #retryTimer: ReturnType<typeof setTimeout> | null = null;
+  #retryCount = 0;
+  #transferred = 0;
+  #stopped = false;
 
   constructor(updater: UpdateAdapter, options: UpdateServiceOptions) {
     super();
@@ -46,6 +61,8 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       ...options,
       initialCheckDelayMs: options.initialCheckDelayMs ?? 12_000,
       checkIntervalMs: options.checkIntervalMs ?? DEFAULT_CHECK_INTERVAL,
+      stallTimeoutMs: options.stallTimeoutMs ?? 45_000,
+      retryDelayMs: options.retryDelayMs ?? 3_000,
     };
     this.#status = {
       phase: options.enabled ? "idle" : "unsupported",
@@ -60,6 +77,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   start(scheduleChecks = true): void {
     if (this.#started) return;
     this.#started = true;
+    // The service owns automatic downloads so it can cancel stalls and retry safely.
     this.#updater.autoDownload = false;
     this.#updater.autoInstallOnAppQuit = true;
     this.#updater.allowPrerelease = false;
@@ -86,9 +104,16 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       });
     });
     this.#updater.on("download-progress", (progress: ProgressInfo) => {
+      if (!this.#downloadToken || this.#downloadToken.cancelled || this.#stopped) return;
+      if (progress.transferred > this.#transferred) {
+        this.#transferred = progress.transferred;
+        this.#watchDownload();
+      }
       this.#setStatus({ phase: "downloading", progress: clampProgress(progress.percent) });
     });
     this.#updater.on("update-downloaded", (info: UpdateInfo) => {
+      this.#clearStallTimer();
+      this.#retryCount = 0;
       this.#setStatus({
         phase: "ready",
         availableVersion: info.version,
@@ -96,7 +121,10 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         message: null,
       });
     });
-    this.#updater.on("error", () => this.#setError());
+    this.#updater.on("error", () => {
+      // downloadUpdate also rejects; its catch owns recovery during a transfer.
+      if (!this.#downloadTask && !this.#stopped) this.#setError();
+    });
 
     if (scheduleChecks && this.#options.enabled) {
       this.#scheduleCheck(this.#options.initialCheckDelayMs);
@@ -108,7 +136,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   }
 
   async checkForUpdates(): Promise<UpdateStatus> {
-    if (!this.#options.enabled) return this.getStatus();
+    if (!this.#options.enabled || this.#stopped) return this.getStatus();
     if (
       this.#status.phase === "checking" ||
       this.#status.phase === "downloading" ||
@@ -140,18 +168,71 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     } finally {
       this.#scheduleCheck(this.#options.checkIntervalMs);
     }
+    if (this.#status.phase === "available") void this.downloadUpdate();
     return this.getStatus();
   }
 
   async downloadUpdate(): Promise<UpdateStatus> {
-    if (this.#status.phase !== "available") return this.getStatus();
-    this.#setStatus({ phase: "downloading", progress: 0, message: null });
-    try {
-      await this.#updater.downloadUpdate();
-    } catch {
-      this.#setError();
+    if (!this.#options.enabled || this.#stopped) return this.getStatus();
+    if (this.#downloadTask) {
+      await this.#downloadTask;
+      return this.getStatus();
     }
+    if (!this.#status.availableVersion || !["available", "error"].includes(this.#status.phase))
+      return this.getStatus();
+    if (this.#retryTimer) clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
+    this.#setStatus({ phase: "downloading", progress: 0, message: null });
+    const token = new CancellationToken();
+    this.#downloadToken = token;
+    this.#transferred = 0;
+    this.#watchDownload();
+    this.#downloadTask = Promise.resolve().then(async () => {
+      try {
+        await this.#updater.downloadUpdate(token);
+      } catch {
+        if (this.#stopped) return;
+        if (this.#retryCount < 2) {
+          this.#retryCount += 1;
+          this.#updater.disableDifferentialDownload = true;
+          this.#setStatus({
+            phase: "error",
+            message: `Download interrupted. Retrying automatically (${this.#retryCount}/2)…`,
+          });
+          this.#retryTimer = setTimeout(() => {
+            this.#retryTimer = null;
+            void this.downloadUpdate();
+          }, this.#options.retryDelayMs);
+          this.#retryTimer.unref?.();
+        } else {
+          this.#retryCount = 0;
+          this.#setStatus({
+            phase: "error",
+            message: "Update download interrupted. Check your connection and retry the download.",
+          });
+        }
+      } finally {
+        this.#clearStallTimer();
+        this.#downloadToken = null;
+        this.#downloadTask = null;
+      }
+    });
+    await this.#downloadTask;
     return this.getStatus();
+  }
+
+  #watchDownload(): void {
+    this.#clearStallTimer();
+    this.#stallTimer = setTimeout(
+      () => this.#downloadToken?.cancel(),
+      this.#options.stallTimeoutMs,
+    );
+    this.#stallTimer.unref?.();
+  }
+
+  #clearStallTimer(): void {
+    if (this.#stallTimer) clearTimeout(this.#stallTimer);
+    this.#stallTimer = null;
   }
 
   async installUpdate(): Promise<void> {
@@ -162,11 +243,17 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   }
 
   stop(): void {
+    this.#stopped = true;
+    this.#clearStallTimer();
+    if (this.#retryTimer) clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
+    this.#downloadToken?.cancel();
     if (this.#checkTimer) clearTimeout(this.#checkTimer);
     this.#checkTimer = null;
   }
 
   #scheduleCheck(delayMs: number): void {
+    if (this.#stopped) return;
     if (this.#checkTimer) clearTimeout(this.#checkTimer);
     this.#checkTimer = setTimeout(() => void this.checkForUpdates(), delayMs);
     this.#checkTimer.unref?.();
