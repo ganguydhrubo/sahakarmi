@@ -3,6 +3,14 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.3] - 2026-10-20
+
+- Automatically download desktop updates, retry interrupted transfers twice, and cancel downloads after 45 seconds without progress. Retries use the full installer.
+- Show update progress and restart/retry actions in the coworker screen and Settings, with English, Hindi, and Bengali labels.
+- Record updater diagnostics in the application log.
+- Batch streaming chat changes once per animation frame while preserving message identity and loaded-history behavior.
+- Disable hot reload in UI tests for Windows compatibility.
+
 ## [0.3.2] - 2026-10-20
 
 ### Fixed

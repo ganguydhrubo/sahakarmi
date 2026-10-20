@@ -124,3 +124,7 @@ After publishing `v0.1.0`, keep one installed copy and use the first signed patc
 end-to-end updater acceptance test: check, download, restart, and confirm the version changed without
 losing local agents or queues. This cannot be proven with an unsigned development build because macOS
 updaters require both versions to share a valid Developer ID signature.
+
+### Desktop checks and the marketing website
+
+The root Biome configuration covers the desktop app and release tooling. The standalone `website/` marketing page is deployed by `.github/workflows/pages.yml` and is excluded from desktop lint so its HTML rules do not block installer releases. Website accessibility checks should run in the website workflow.
