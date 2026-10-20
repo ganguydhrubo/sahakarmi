@@ -524,8 +524,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /**
-   * Coworkers that have never run (e.g. the default team on a fresh install) move to a provider
-   * that is actually connected, so the bundled free OpenCode works with zero setup.
+   * Only a newly created default team receives an automatic first provider. Saved selections
+   * survive startup, reconnects and temporary provider outages even before their first turn.
    */
   async #adoptAvailableProvider(): Promise<void> {
     await this.#adoptProvider(this.#defaultProvider(), { force: false });
@@ -533,12 +533,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   /**
    * Moves idle coworkers (never ran, nothing queued) to `provider`'s default model.
-   * With `force: false` only coworkers whose own provider is not connected move.
+   * With `force: false` only new defaults receive one automatic initial selection.
    */
   async #adoptProvider(provider: AgentProvider, options: { force: boolean }): Promise<void> {
     if (!this.#clients.has(provider)) return;
     let changed = false;
     for (const bot of this.#store.list()) {
+      if (!options.force && !this.#store.takeAutoModelSelection(bot.id)) continue;
       if (bot.threadId) continue;
       if (providerForModel(bot.model) === provider) continue;
       if (!options.force && this.#clients.has(providerForModel(bot.model))) continue;
