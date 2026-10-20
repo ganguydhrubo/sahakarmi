@@ -62,6 +62,18 @@ export const IPC_CHANNELS = {
   permissionsRevokeGrant: "permissions:revoke-grant",
   permissionsAudit: "permissions:audit",
   permissionsClearAudit: "permissions:clear-audit",
+  usageOverview: "usage:overview",
+  usageRefresh: "usage:refresh",
+  usageClear: "usage:clear",
+  featuresList: "features:list",
+  featuresSetEnabled: "features:set-enabled",
+  featuresPreviewManifest: "features:preview-manifest",
+  featuresApplyManifest: "features:apply-manifest",
+  featuresResetCatalogue: "features:reset-catalogue",
+  businessIntegrations: "business:integrations",
+  businessListTargets: "business:list-targets",
+  businessSaveTarget: "business:save-target",
+  businessDeleteTarget: "business:delete-target",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -171,6 +183,157 @@ export interface AccountUsageLimit {
 
 export interface AccountUsage {
   limits: AccountUsageLimit[];
+}
+
+/**
+ * How trustworthy a usage number is. verified: reported by the provider for this account.
+ * estimated: computed by the provider or Sahkarmi, not a billing statement. unavailable: the
+ * provider does not expose it. stale: last verified value is too old to rely on.
+ */
+export type UsageDataLabel = "verified" | "estimated" | "unavailable" | "stale";
+
+export interface UsageLimitWindow {
+  id: string;
+  /** e.g. "5-hour window", "Weekly". */
+  label: string;
+  usedPercent: number | null;
+  resetsAt: string | null;
+  status: "ok" | "warning" | "limited" | "unknown";
+  source: string;
+  observedAt: string;
+  dataLabel: UsageDataLabel;
+}
+
+export interface ProviderUsageSummary {
+  provider: AgentProviderId;
+  connection: AgentProviderState | "unknown";
+  plan: string | null;
+  limits: UsageLimitWindow[];
+  limitsLabel: UsageDataLabel;
+  limitsNote: string;
+  tokensToday: number | null;
+  tokens7d: number | null;
+  tokens30d: number | null;
+  tokensLabel: UsageDataLabel;
+  costUsd30d: number | null;
+  costLabel: UsageDataLabel;
+  context: { used: number; size: number; observedAt: string } | null;
+  lastActivityAt: string | null;
+}
+
+export interface UsageDay {
+  date: string;
+  provider: AgentProviderId;
+  tokens: number;
+  costUsd: number | null;
+}
+
+export interface UsageByBot {
+  botId: string;
+  provider: AgentProviderId;
+  tokens30d: number;
+  turns30d: number;
+  lastAt: string;
+}
+
+export interface UsageAlert {
+  id: string;
+  level: "info" | "warning" | "critical";
+  provider: AgentProviderId;
+  message: string;
+}
+
+export interface UsageOverview {
+  generatedAt: string;
+  providers: ProviderUsageSummary[];
+  days: UsageDay[];
+  bots: UsageByBot[];
+  alerts: UsageAlert[];
+  /** First day Sahkarmi recorded usage on this computer. */
+  ledgerSince: string | null;
+}
+
+export const FEATURE_CATEGORIES = ["core", "providers", "workspace", "business", "labs"] as const;
+export type FeatureCategory = (typeof FEATURE_CATEGORIES)[number];
+
+/** What a feature needs. Data only: a requirement can never carry code or a download. */
+export type FeatureRequirement =
+  | { type: "provider"; provider: AgentProviderId }
+  | { type: "any-provider" }
+  | { type: "platform"; platforms: DesktopPlatform[] }
+  | { type: "app-version"; minimum: string };
+
+export type FeatureAvailability = "available" | "needs-setup" | "unavailable" | "coming-later";
+
+export interface FeatureState {
+  id: string;
+  name: string;
+  description: string;
+  category: FeatureCategory;
+  /** built-in: shipped in this app. catalogue: announced in an imported list, not installed. */
+  origin: "built-in" | "catalogue";
+  availability: FeatureAvailability;
+  reason: string | null;
+  enabled: boolean;
+  /** Owner can switch it off (core safety features cannot be). */
+  canDisable: boolean;
+}
+
+export interface FeatureManifestPreview {
+  ok: boolean;
+  errors: string[];
+  added: Array<{ id: string; name: string }>;
+  changed: Array<{ id: string; name: string; change: string }>;
+  ignored: Array<{ id: string; reason: string }>;
+  catalogueVersion: string | null;
+}
+
+export type IntegrationSupport =
+  | "supported"
+  | "manual-import"
+  | "browser-assisted"
+  | "not-supported";
+
+export interface BusinessIntegration {
+  id: string;
+  name: string;
+  support: IntegrationSupport;
+  summary: string;
+  /** What access an official integration would need. */
+  accessNeeded: string;
+  /** What works today without breaking the platform's rules. */
+  workaround: string;
+}
+
+export type TargetPeriod = "weekly" | "monthly" | "quarterly" | "yearly";
+
+/** Owner-defined goal. Never mixed with provider quotas or platform data. */
+export interface BusinessTarget {
+  id: string;
+  title: string;
+  metric: string;
+  unit: string;
+  targetValue: number;
+  /** Entered by the owner (or a coworker after approval); null until reported. */
+  currentValue: number | null;
+  period: TargetPeriod;
+  dueDate: string | null;
+  botId: string | null;
+  notes: string;
+  updatedAt: string;
+}
+
+export interface SaveBusinessTargetInput {
+  id?: string;
+  title: string;
+  metric: string;
+  unit: string;
+  targetValue: number;
+  currentValue: number | null;
+  period: TargetPeriod;
+  dueDate: string | null;
+  botId: string | null;
+  notes: string;
 }
 
 export type ExternalDestination = "agent-setup" | "feedback" | "message";
@@ -823,6 +986,27 @@ export interface PermissionsDesktopApi {
   clearAudit: () => Promise<void>;
 }
 
+export interface UsageDesktopApi {
+  overview: () => Promise<UsageOverview>;
+  refresh: () => Promise<UsageOverview>;
+  clear: () => Promise<UsageOverview>;
+}
+
+export interface FeaturesDesktopApi {
+  list: () => Promise<FeatureState[]>;
+  setEnabled: (featureId: string, enabled: boolean) => Promise<FeatureState[]>;
+  previewManifest: (json: string) => Promise<FeatureManifestPreview>;
+  applyManifest: (json: string) => Promise<FeatureState[]>;
+  resetCatalogue: () => Promise<FeatureState[]>;
+}
+
+export interface BusinessDesktopApi {
+  integrations: () => Promise<BusinessIntegration[]>;
+  listTargets: () => Promise<BusinessTarget[]>;
+  saveTarget: (input: SaveBusinessTargetInput) => Promise<BusinessTarget[]>;
+  deleteTarget: (targetId: string) => Promise<BusinessTarget[]>;
+}
+
 export interface ApprovalsDesktopApi {
   list: () => Promise<ApprovalRequest[]>;
   decide: (input: DecideApprovalInput) => Promise<ApprovalRequest>;
@@ -868,6 +1052,9 @@ export interface SahkarmiDesktopApi {
   team: TeamDesktopApi;
   approvals: ApprovalsDesktopApi;
   permissions: PermissionsDesktopApi;
+  usage: UsageDesktopApi;
+  features: FeaturesDesktopApi;
+  business: BusinessDesktopApi;
   schedules: SchedulesDesktopApi;
   files: FilesDesktopApi;
   update: UpdateDesktopApi;

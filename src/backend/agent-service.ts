@@ -24,6 +24,8 @@ import type {
   SendMessageInput,
   SetMessageReactionInput,
   UpdateBotInput,
+  UsageLimitWindow,
+  UsageOverview,
   WorkspaceState,
 } from "../shared/ipc";
 import {
@@ -88,6 +90,7 @@ import {
   type TurnResponse,
 } from "./protocol";
 import { toolCallFromItem } from "./tool-calls";
+import type { UsageService } from "./usage-service";
 
 interface AgentServiceEvents {
   event: [event: AgentEvent];
@@ -234,6 +237,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #permissionWaiters = new Map<string, (outcome: "approved" | "rejected") => void>();
   readonly #fileChangePaths = new Map<string, string[]>();
   readonly #permissionTimeoutMs: number;
+  #usage: UsageService | null = null;
   #takeover: BrowserTakeoverState = { humanInControl: false, requests: [] };
   readonly #computerUsePrerequisites: (() => ComputerUsePrerequisites) | null;
   readonly #requestTimeoutMs: number;
@@ -290,6 +294,28 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#browser.onControlChanged((state) => {
       this.#emit({ type: "browser-control-changed", state });
     });
+  }
+
+  /** Local usage ledger fed by provider notifications (see UsageService). */
+  setUsageService(usage: UsageService): void {
+    this.#usage = usage;
+  }
+
+  usageOverview(): UsageOverview {
+    if (!this.#usage) throw new Error("Usage tracking is unavailable.");
+    const plans: Partial<Record<AgentProvider, string | null>> = {};
+    for (const [provider, account] of this.#accounts) {
+      plans[provider] =
+        isRecord(account) && typeof account.planType === "string" ? account.planType : null;
+    }
+    return this.#usage.overview(this.#status.providers ?? [], plans);
+  }
+
+  /** Re-reads what can be re-read on demand (Codex rate limits); other providers report live. */
+  async refreshUsage(): Promise<UsageOverview> {
+    const client = this.#clients.get("codex");
+    if (client) await this.#refreshUsage(client).catch(() => undefined);
+    return this.usageOverview();
   }
 
   getStatus(): AgentStatus {
@@ -1730,6 +1756,60 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
   }
 
+  #recordAdapterUsage(threadId: string | null, botId: string | null, params: unknown): void {
+    if (!this.#usage) return;
+    const provider = threadId ? this.#providerForThread(threadId) : null;
+    if (!provider) return;
+    const limit = getRecord(params, "limit");
+    if (limit) {
+      const id = getString(limit, "id") ?? "current";
+      const status = getString(limit, "status");
+      const resetsAt = finiteNumberOrNull(limit.resetsAt);
+      this.#usage.record({
+        kind: "limits",
+        provider,
+        replace: false,
+        windows: [
+          {
+            id,
+            label: CLAUDE_LIMIT_LABELS[id] ?? id.replaceAll("_", " "),
+            usedPercent: null,
+            resetsAt: resetsAt === null ? null : new Date(resetsAt * 1_000).toISOString(),
+            status:
+              status === "rejected" ? "limited" : status === "allowed_warning" ? "warning" : "ok",
+            source: "Claude Agent SDK rate_limit_event",
+            observedAt: new Date().toISOString(),
+            dataLabel: "verified",
+          },
+        ],
+      });
+      return;
+    }
+    const context = getRecord(params, "context");
+    const used = finiteNumberOrNull(context?.used);
+    const size = finiteNumberOrNull(context?.size);
+    if (used !== null && size !== null)
+      this.#usage.record({ kind: "context", provider, used, size });
+    const tokens = isRecord(params) ? finiteNumberOrNull(params.tokens) : null;
+    const costUsd = isRecord(params) ? finiteNumberOrNull(params.costUsd) : null;
+    if (tokens === null && costUsd === null) return;
+    this.#usage.record({
+      kind: "cumulative",
+      provider,
+      botId,
+      counterKey: getString(params, "sessionKey") ?? `${provider}:${threadId}`,
+      persistent: false,
+      tokens,
+      costUsd,
+    });
+  }
+
+  #providerForThread(threadId: string): AgentProvider | null {
+    const botId = this.#threadToBot.get(threadId);
+    const bot = botId ? this.#store.list().find((candidate) => candidate.id === botId) : null;
+    return bot ? providerForModel(bot.model) : null;
+  }
+
   /** Codex file-change approvals name only the item; its paths arrive with item/started. */
   #rememberFileChange(notification: AppServerNotification): void {
     const item = getRecord(notification.params, "item");
@@ -1848,6 +1928,23 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       case "thread/tokenUsage/updated": {
         if (!threadId || !botId) return;
         this.#updateContextBudget(threadId, params);
+        const total = getRecord(getRecord(params, "tokenUsage"), "total");
+        const totalTokens = finiteNumberOrNull(total?.totalTokens);
+        if (totalTokens !== null) {
+          this.#usage?.record({
+            kind: "cumulative",
+            provider: "codex",
+            botId,
+            counterKey: `thread:codex:${threadId}`,
+            persistent: true,
+            tokens: totalTokens,
+            costUsd: null,
+          });
+        }
+        return;
+      }
+      case "sahkarmi/usage": {
+        this.#recordAdapterUsage(threadId, botId ?? null, params);
         return;
       }
       case "thread/archived": {
@@ -2222,6 +2319,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       undefined,
     );
     const usage = normalizeAccountUsage(rateLimits);
+    this.#usage?.record({
+      kind: "limits",
+      provider: "codex",
+      replace: true,
+      windows: codexLimitWindows(usage),
+    });
     this.#emit({ type: "usage-changed", usage: structuredClone(usage) });
     return structuredClone(usage);
   }
@@ -2506,4 +2609,47 @@ function commandText(value: unknown): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(String).join(" ");
   return "";
+}
+
+const CLAUDE_LIMIT_LABELS: Record<string, string> = {
+  five_hour: "5-hour window",
+  seven_day: "Weekly",
+  seven_day_opus: "Weekly (Opus)",
+  seven_day_sonnet: "Weekly (Sonnet)",
+  overage: "Extra usage",
+};
+
+function codexLimitWindows(usage: AccountUsage): UsageLimitWindow[] {
+  const observedAt = new Date().toISOString();
+  const windows: UsageLimitWindow[] = [];
+  for (const limit of usage.limits) {
+    for (const [slot, window] of [
+      ["primary", limit.primary],
+      ["secondary", limit.secondary],
+    ] as const) {
+      if (!window) continue;
+      const minutes = window.windowDurationMins;
+      const label =
+        minutes === 300
+          ? "5-hour window"
+          : minutes === 10_080
+            ? "Weekly"
+            : minutes
+              ? `${Math.round(minutes / 60)}-hour window`
+              : slot === "primary"
+                ? "Short window"
+                : "Long window";
+      windows.push({
+        id: `${limit.id}:${slot}`,
+        label: limit.id === "codex" ? label : `${label} (${limit.id})`,
+        usedPercent: window.usedPercent,
+        resetsAt: window.resetsAt === null ? null : new Date(window.resetsAt * 1_000).toISOString(),
+        status: window.usedPercent >= 100 ? "limited" : window.usedPercent >= 80 ? "warning" : "ok",
+        source: "Codex App Server account/rateLimits/read",
+        observedAt,
+        dataLabel: "verified",
+      });
+    }
+  }
+  return windows;
 }

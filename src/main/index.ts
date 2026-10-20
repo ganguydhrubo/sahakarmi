@@ -20,10 +20,13 @@ import { AgentService } from "../backend/agent-service";
 import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
+import { BusinessStore } from "../backend/business-store";
+import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
 import { PermissionService } from "../backend/permission-service";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
+import { UsageService } from "../backend/usage-service";
 import {
   type AgentEvent,
   type AgentProviderId,
@@ -35,6 +38,7 @@ import {
   type CancelQueuedMessageInput,
   type CreateScheduleInput,
   type DecideApprovalInput,
+  type DesktopPlatform,
   type ExternalDestination,
   type ImportAttachmentsInput,
   type InterruptTurnInput,
@@ -54,8 +58,10 @@ import {
   type PermissionCategory,
   type PermissionLevel,
   type RespondToPromptInput,
+  type SaveBusinessTargetInput,
   type SendMessageInput,
   type SetQueuePausedInput,
+  type TargetPeriod,
   type UpdateBotInput,
 } from "../shared/ipc";
 import { AgentInitializationGate } from "./agent-initialization";
@@ -93,6 +99,7 @@ let agentService: AgentService | null = null;
 let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
 let scheduleStore: ScheduleStore | null = null;
+let usageService: UsageService | null = null;
 let isQuitting = false;
 let shutdownStarted = false;
 
@@ -139,7 +146,15 @@ function registerIpcHandlers(
   schedules: ScheduleStore,
   sharedFiles: SharedFiles,
   permissions: PermissionService,
+  usage: UsageService,
+  features: FeatureRegistry,
+  business: BusinessStore,
 ): void {
+  const featureContext = () => ({
+    platform: process.platform as DesktopPlatform,
+    appVersion: app.getVersion(),
+    providers: service.getStatus().providers ?? [],
+  });
   handleTrusted(IPC_CHANNELS.getAppInfo, (): AppInfo => {
     const platform = process.platform;
     if (platform !== "darwin" && platform !== "win32" && platform !== "linux") {
@@ -329,6 +344,42 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.permissionsAudit, () => permissions.audit());
   handleTrusted(IPC_CHANNELS.permissionsClearAudit, () => permissions.clearAudit());
+
+  handleTrusted(IPC_CHANNELS.usageOverview, () => service.usageOverview());
+  handleTrusted(IPC_CHANNELS.usageRefresh, () => service.refreshUsage());
+  handleTrusted(IPC_CHANNELS.usageClear, async () => {
+    await usage.clear();
+    return service.usageOverview();
+  });
+
+  handleTrusted(IPC_CHANNELS.featuresList, () => features.list(featureContext()));
+  handleTrusted(IPC_CHANNELS.featuresSetEnabled, async (input: unknown) => {
+    if (!isObject(input) || typeof input.enabled !== "boolean") {
+      throw new Error("Invalid feature update.");
+    }
+    await features.setEnabled(requireString(input.featureId, "featureId"), input.enabled);
+    return features.list(featureContext());
+  });
+  handleTrusted(IPC_CHANNELS.featuresPreviewManifest, (json: unknown) =>
+    features.preview(requireString(json, "json"), app.getVersion()),
+  );
+  handleTrusted(IPC_CHANNELS.featuresApplyManifest, async (json: unknown) => {
+    await features.apply(requireString(json, "json"), app.getVersion());
+    return features.list(featureContext());
+  });
+  handleTrusted(IPC_CHANNELS.featuresResetCatalogue, async () => {
+    await features.resetCatalogue();
+    return features.list(featureContext());
+  });
+
+  handleTrusted(IPC_CHANNELS.businessIntegrations, () => business.integrations());
+  handleTrusted(IPC_CHANNELS.businessListTargets, () => business.listTargets());
+  handleTrusted(IPC_CHANNELS.businessSaveTarget, (input: unknown) =>
+    business.saveTarget(parseSaveTarget(input)),
+  );
+  handleTrusted(IPC_CHANNELS.businessDeleteTarget, (targetId: unknown) =>
+    business.deleteTarget(requireString(targetId, "targetId")),
+  );
 
   handleTrusted(IPC_CHANNELS.schedulesList, () => schedules.list());
   handleTrusted(IPC_CHANNELS.schedulesCreate, (input: unknown) => {
@@ -546,6 +597,18 @@ if (!hasSingleInstanceLock) {
         permissions,
       );
       const service = agentService;
+      const usage = new UsageService(app.getPath("userData"));
+      await usage.initialize().catch((error) => {
+        appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
+      });
+      service.setUsageService(usage);
+      usageService = usage;
+      const features = new FeatureRegistry(app.getPath("userData"));
+      await features.initialize().catch((error) => {
+        appLog.write("error", "feature settings unreadable; using defaults", String(error));
+      });
+      const business = new BusinessStore(app.getPath("userData"));
+      await business.initialize();
       const schedules = new ScheduleStore(app.getPath("userData"));
       await schedules.initialize();
       scheduleStore = schedules;
@@ -591,6 +654,9 @@ if (!hasSingleInstanceLock) {
         schedules,
         sharedFiles,
         permissions,
+        usage,
+        features,
+        business,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);
@@ -706,6 +772,28 @@ async function prepareForShutdown(): Promise<void> {
   scheduleStore?.stop();
   await (browserHost?.destroy() ?? Promise.resolve());
   await (agentService?.stop() ?? Promise.resolve());
+  await (usageService?.flush().catch(() => undefined) ?? Promise.resolve());
+}
+
+function parseSaveTarget(value: unknown): SaveBusinessTargetInput {
+  if (!isObject(value)) throw new Error("Invalid target.");
+  const number = (field: unknown) =>
+    field === null || field === undefined || field === "" ? null : Number(field);
+  const targetValue = number(value.targetValue);
+  if (targetValue === null) throw new Error("The target value is required.");
+  const text = (field: unknown) => (typeof field === "string" ? field : "");
+  return {
+    id: typeof value.id === "string" && value.id ? value.id : undefined,
+    title: requireString(value.title, "title"),
+    metric: text(value.metric),
+    unit: text(value.unit),
+    targetValue,
+    currentValue: number(value.currentValue),
+    period: text(value.period) as TargetPeriod,
+    dueDate: typeof value.dueDate === "string" && value.dueDate ? value.dueDate : null,
+    botId: typeof value.botId === "string" && value.botId ? value.botId : null,
+    notes: text(value.notes),
+  };
 }
 
 function requireString(value: unknown, field: string): string {

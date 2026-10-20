@@ -111,6 +111,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #agentCapabilities: Record<string, unknown> = {};
   #mcpServer: Server | null = null;
   #mcpPort: number | null = null;
+  readonly #instanceId = randomUUID();
 
   constructor(config: AcpAgentConfig) {
     super();
@@ -420,6 +421,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const update = isRecord(params) && isRecord(params.update) ? params.update : null;
     if (!sessionId || !update) return;
     const session = [...this.#sessions.values()].find((item) => item.acpSessionId === sessionId);
+    if (session && update.sessionUpdate === "usage_update") {
+      this.#emitUsage(session.threadId, update);
+      return;
+    }
     const turn = session?.activeTurn;
     // Updates outside a turn are history replays from session/load; Sahkarmi keeps its own.
     if (!session || !turn) return;
@@ -723,6 +728,27 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       jsonrpc: "2.0",
       id,
       error: { code: -32601, message: `Sahkarmi does not implement ${method}.` },
+    });
+  }
+
+  /** ACP usage_update: context tokens in use and the session's running cost (an estimate). */
+  #emitUsage(threadId: string, update: Record<string, unknown>): void {
+    const used = typeof update.used === "number" ? update.used : null;
+    const size = typeof update.size === "number" ? update.size : null;
+    const cost = isRecord(update.cost) ? update.cost : null;
+    const amount =
+      cost && typeof cost.amount === "number" && (cost.currency ?? "USD") === "USD"
+        ? cost.amount
+        : null;
+    this.emit("notification", {
+      method: "sahkarmi/usage",
+      params: {
+        threadId,
+        context: used !== null && size !== null ? { used, size } : null,
+        sessionKey: `${this.#instanceId}:${threadId}`,
+        tokens: null,
+        costUsd: amount,
+      },
     });
   }
 

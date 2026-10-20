@@ -74,6 +74,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   readonly #createQuery: QueryFactory;
   readonly #threads = new Map<string, ThreadRuntime>();
   readonly #pendingServerRequests = new Map<RequestId, PendingServerRequest>();
+  readonly #instanceId = randomUUID();
   #running = false;
 
   constructor(cli: ClaudeCliInfo, createQuery: QueryFactory = query) {
@@ -290,6 +291,46 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  /**
+   * Usage as the SDK reports it: rate-limit windows (verified, claude.ai subscriptions) and the
+   * running per-session token/cost totals from result.modelUsage (cost is an SDK estimate).
+   */
+  #emitUsage(runtime: ThreadRuntime, message: SDKMessage): void {
+    if (message.type === "rate_limit_event") {
+      const info = message.rate_limit_info;
+      this.emit("notification", {
+        method: "sahkarmi/usage",
+        params: {
+          threadId: runtime.id,
+          limit: {
+            id: info.rateLimitType ?? "current",
+            status: info.status,
+            resetsAt: typeof info.resetsAt === "number" ? info.resetsAt : null,
+          },
+        },
+      });
+      return;
+    }
+    if (message.type !== "result") return;
+    let tokens = 0;
+    for (const usage of Object.values(message.modelUsage ?? {})) {
+      tokens +=
+        (usage.inputTokens ?? 0) +
+        (usage.outputTokens ?? 0) +
+        (usage.cacheReadInputTokens ?? 0) +
+        (usage.cacheCreationInputTokens ?? 0);
+    }
+    this.emit("notification", {
+      method: "sahkarmi/usage",
+      params: {
+        threadId: runtime.id,
+        sessionKey: `${this.#instanceId}:${runtime.id}`,
+        tokens,
+        costUsd: typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
+      },
+    });
+  }
+
   #fail(error: Error): void {
     if (!this.#running) return;
     this.#running = false;
@@ -297,6 +338,9 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   }
 
   #handleMessage(runtime: ThreadRuntime, message: SDKMessage): void {
+    if (message.type === "rate_limit_event" || message.type === "result") {
+      this.#emitUsage(runtime, message);
+    }
     if (message.type === "stream_event" && message.parent_tool_use_id === null) {
       const event = message.event as unknown;
       const delta = isRecord(event) ? event.delta : null;
