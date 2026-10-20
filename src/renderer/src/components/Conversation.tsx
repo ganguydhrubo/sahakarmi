@@ -21,14 +21,18 @@ import type {
   UpdateBotInput,
 } from "../../../shared/ipc";
 import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
+import { copyText } from "../clipboard";
 import type { BotMessage, BotProfile } from "../data";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
+import { featureOn } from "../features";
 import { t } from "../i18n";
+import { markdownToPlainText } from "../markdown";
 import { AgentAvatar } from "./AgentAvatar";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import { RichMarkdown } from "./RichMarkdown";
 import {
   type CadenceDraft,
   CadencePicker,
@@ -507,14 +511,33 @@ function MessageBody(props: {
         )}
       </Show>
       <Show when={props.message.body}>
-        <p class="message-copy">
-          <RichMessageText
-            body={props.message.body}
-            bots={props.bots}
-            onSelectAgent={props.onSelectAgent}
-            onOpenLink={props.onOpenLink}
-          />
-        </p>
+        <Show
+          when={featureOn("rich-replies")}
+          fallback={
+            <p class="message-copy">
+              <RichMessageText
+                body={props.message.body}
+                bots={props.bots}
+                onSelectAgent={props.onSelectAgent}
+                onOpenLink={props.onOpenLink}
+              />
+            </p>
+          }
+        >
+          <div class="message-copy message-rich">
+            <RichMarkdown
+              body={props.message.body}
+              inline={(text) => (
+                <RichMessageText
+                  body={text}
+                  bots={props.bots}
+                  onSelectAgent={props.onSelectAgent}
+                  onOpenLink={props.onOpenLink}
+                />
+              )}
+            />
+          </div>
+        </Show>
       </Show>
       <Show when={props.message.status}>
         <div class="message-status">
@@ -545,6 +568,7 @@ function MessageActions(props: {
   onReact: (emoji: MessageReaction | null) => void;
   onReply: () => void;
   onCopy: () => void;
+  onCopyPlain: () => void;
 }) {
   return (
     <div
@@ -632,6 +656,10 @@ function MessageActions(props: {
             <button type="button" role="menuitem" onClick={props.onCopy}>
               {props.copied ? <CheckIcon /> : <CopyIcon />}
               <span>{props.copied ? "Copied" : "Copy"}</span>
+            </button>
+            <button type="button" role="menuitem" onClick={props.onCopyPlain}>
+              <CopyIcon />
+              <span>{t("copyPlain")}</span>
             </button>
           </div>
         </Show>
@@ -1480,22 +1508,11 @@ export function Conversation(props: ConversationProps) {
     }
   }
 
-  async function copyMessage(message: BotMessage) {
-    const text = message.body;
+  async function copyMessage(message: BotMessage, plain = false) {
+    const text = plain ? markdownToPlainText(message.body) : message.body;
     if (!text) return;
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const input = document.createElement("textarea");
-        input.value = text;
-        input.style.position = "fixed";
-        input.style.opacity = "0";
-        document.body.append(input);
-        input.select();
-        document.execCommand("copy");
-        input.remove();
-      }
+      await copyText(text);
       setCopiedMessageId(message.id);
       window.setTimeout(() => {
         if (copiedMessageId() === message.id) setCopiedMessageId(null);
@@ -1935,6 +1952,7 @@ export function Conversation(props: ConversationProps) {
                               onReact={(emoji) => void reactToMessage(message, emoji)}
                               onReply={() => replyToMessage(message)}
                               onCopy={() => void copyMessage(message)}
+                              onCopyPlain={() => void copyMessage(message, true)}
                             />
                           </div>
                           <Show when={message.reaction}>

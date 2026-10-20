@@ -1348,7 +1348,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.keyDown(composer, { key: "Enter" });
 
     expect(
-      await screen.findByText("Show this message", { selector: ".message-copy" }),
+      await screen.findByText("Show this message", { selector: ".message-copy .md-paragraph" }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByText("Choose a model to get started.")).not.toBeInTheDocument();

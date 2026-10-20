@@ -488,6 +488,23 @@ function createWindow(): BrowserWindow {
     if (mainWindow === window) mainWindow = null;
   });
 
+  // The app window may use the microphone (voice notes, after the owner presses record) and the
+  // clipboard (copy buttons), nothing else. Coworker browser tabs use their own session, which
+  // denies everything.
+  const allowed = (contents: Electron.WebContents | null, permission: string, types?: string[]) =>
+    contents === window.webContents &&
+    isTrustedRendererUrl(contents.getURL()) &&
+    (permission === "clipboard-sanitized-write" ||
+      (permission === "media" && (types ?? ["audio"]).every((type) => type === "audio")));
+  window.webContents.session.setPermissionRequestHandler(
+    (contents, permission, callback, details) => {
+      const types = "mediaTypes" in details ? details.mediaTypes : undefined;
+      callback(allowed(contents, permission, types));
+    },
+  );
+  window.webContents.session.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    allowed(contents, permission, details.mediaType ? [details.mediaType] : undefined),
+  );
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event, targetUrl) => {
     if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();

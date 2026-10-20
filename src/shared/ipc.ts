@@ -942,6 +942,8 @@ export interface AgentDesktopApi {
   deleteBot: (botId: string) => Promise<void>;
   readConversation: (botId: string) => Promise<ConversationSnapshot>;
   chooseAttachments: () => Promise<DraftAttachment[]>;
+  /** Imports in-memory files (voice notes) as draft attachments. */
+  importData: (data: AttachmentDataInput[]) => Promise<DraftAttachment[]>;
   onAttachmentImport: (listener: (event: AttachmentImportEvent) => void) => () => void;
   discardDraftAttachment: (attachmentId: string) => Promise<void>;
   openAttachment: (input: OpenAttachmentInput) => Promise<void>;
