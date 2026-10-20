@@ -10,21 +10,11 @@ import { JsonFile } from "./json-file";
 import { isRecord } from "./protocol";
 
 /**
+ * Only platforms coworkers can actually help with today; unsupported ones are not listed.
  * What each platform officially allows. Statuses come from the platforms' published developer
  * programmes; nothing here scrapes an account, solves a CAPTCHA or automates a prohibited action.
  */
 export const BUSINESS_INTEGRATIONS: BusinessIntegration[] = [
-  {
-    id: "fiverr",
-    name: "Fiverr",
-    support: "not-supported",
-    summary:
-      "Fiverr has no public seller API for orders, gigs, messages or earnings (its API programme covers affiliates only). Sahkarmi does not read your seller account.",
-    accessNeeded:
-      "An official Fiverr seller/partner API or an authorised data export with your permission.",
-    workaround:
-      "Download reports from Fiverr yourself and add them to Shared files; a coworker can then summarise them. Track your own goals under Targets.",
-  },
   {
     id: "gst-portal",
     name: "GST portal",
@@ -43,15 +33,6 @@ export const BUSINESS_INTEGRATIONS: BusinessIntegration[] = [
       "Exported Tally reports, Excel and CSV files in Shared files can be read and reconciled.",
     accessNeeded: "None for exported files.",
     workaround: "Export from Tally to Excel/CSV and drop the file in Shared files.",
-  },
-  {
-    id: "whatsapp-business",
-    name: "WhatsApp Business",
-    support: "not-supported",
-    summary:
-      "Sending through WhatsApp needs the official WhatsApp Business Platform account. Sahkarmi does not automate WhatsApp Web.",
-    accessNeeded: "A WhatsApp Business Platform (Cloud API) account and approved templates.",
-    workaround: "Coworkers draft replies; you copy and send them. Sending always needs approval.",
   },
   {
     id: "email",
