@@ -209,43 +209,18 @@ export function RoutinesView(props: {
               fallback={<p class="center-view-empty">{t("routineEmpty")}</p>}
             >
               <div class="routines-layout">
-                <ul class="routine-list" aria-label={t("navRoutines")}>
-                  <For each={props.state.routines}>
-                    {(routine) => {
-                      const last = () => runsOf(routine.id)[0];
-                      return (
-                        <li>
-                          <button
-                            type="button"
-                            class="routine-list-item"
-                            aria-current={selected()?.id === routine.id ? "true" : undefined}
-                            onClick={() => setSelectedId(routine.id)}
-                          >
-                            <span class="routine-avatars">
-                              <For each={routine.steps.slice(0, 3)}>
-                                {(step) => <AgentAvatar bot={botFor(step.botId)} />}
-                              </For>
-                            </span>
-                            <span class="routine-list-text">
-                              <strong>{routine.name}</strong>
-                              <small>
-                                {describeRoutineCadence(routine.cadence)}
-                                <Show when={!routine.enabled}> · {t("disable")}</Show>
-                              </small>
-                            </span>
-                            <Show when={last()}>
-                              {(run) => (
-                                <span class={`routine-run-pill routine-run-${run().status}`}>
-                                  {t(RUN_STATUS[run().status])}
-                                </span>
-                              )}
-                            </Show>
-                          </button>
-                        </li>
-                      );
-                    }}
-                  </For>
-                </ul>
+                <label class="routine-switcher">
+                  <span class="sr-only">{t("navRoutines")}</span>
+                  <select
+                    value={selected()?.id ?? ""}
+                    onChange={(event) => setSelectedId(event.currentTarget.value)}
+                  >
+                    <For each={props.state.routines}>
+                      {(routine) => <option value={routine.id}>{routine.name}</option>}
+                    </For>
+                  </select>
+                </label>
+
                 <Show when={selected()}>
                   {(routine) => {
                     const last = () => runsOf(routine().id)[0];
@@ -253,124 +228,135 @@ export function RoutinesView(props: {
                       last()?.steps.find((step) => step.stepId === stepId);
                     return (
                       <article class="routine-details" aria-label={t("routineDetails")}>
-                        <header class="routine-details-head">
-                          <div>
-                            <h2>{routine().name}</h2>
-                            <p class="settings-meta">
-                              {t("routineLastRun")}:{" "}
-                              <Show when={last()} fallback={t("routineNeverRun")}>
-                                {(run) => (
-                                  <>
-                                    <span class={`routine-run-pill routine-run-${run().status}`}>
-                                      {t(RUN_STATUS[run().status])}
-                                    </span>{" "}
-                                    {formatWhen(run().startedAt)}
-                                  </>
+                        <div class="routine-canvas">
+                          <div class="routine-canvas-title">{routine().name}</div>
+                          <ol class="routine-diagram">
+                            <li class="routine-node routine-node-trigger">
+                              <small>{t("routineStarts")}</small>
+                              <strong>{describeRoutineCadence(routine().cadence)}</strong>
+                              <Show when={routine().enabled && routine().nextRunAt}>
+                                {(next) => (
+                                  <small>
+                                    {t("nextRun")}: {formatWhen(next())}
+                                  </small>
                                 )}
                               </Show>
-                            </p>
-                          </div>
-                          <div class="routine-actions">
-                            <button
-                              type="button"
-                              class="button-primary"
-                              disabled={busy() || last()?.status === "running"}
-                              onClick={() => void act(() => props.onRunNow(routine().id))}
-                            >
-                              ▶ {t("runNow")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDraft(draftFrom(routine(), props.bots))}
-                            >
-                              {t("routineEdit")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void act(() => props.onSetEnabled(routine().id, !routine().enabled))
-                              }
-                            >
-                              {routine().enabled ? t("disable") : t("enable")}
-                            </button>
-                            <button
-                              type="button"
-                              class="button-danger-quiet"
-                              onClick={() => {
-                                if (window.confirm(t("routineDeleteConfirm"))) {
-                                  void act(() => props.onDelete(routine().id));
-                                }
-                              }}
-                            >
-                              {t("routineDelete")}
-                            </button>
-                          </div>
-                        </header>
-                        <ol class="routine-diagram">
-                          <li class="routine-node routine-node-trigger">
-                            <small>{t("routineStarts")}</small>
-                            <strong>{describeRoutineCadence(routine().cadence)}</strong>
-                            <Show when={routine().enabled && routine().nextRunAt}>
-                              {(next) => (
-                                <small>
-                                  {t("nextRun")}: {formatWhen(next())}
-                                </small>
-                              )}
-                            </Show>
-                          </li>
-                          <For each={routine().steps}>
-                            {(step, index) => {
-                              const status = () => stepRun(step.id)?.status;
-                              return (
-                                <li
-                                  class="routine-node"
-                                  classList={{ [`routine-node-${status()}`]: Boolean(status()) }}
-                                >
-                                  <div class="routine-node-head">
-                                    <AgentAvatar bot={botFor(step.botId)} />
-                                    <span>
-                                      <small>{t("routineStepN", { n: String(index() + 1) })}</small>
-                                      <strong>{botFor(step.botId)?.name ?? step.botId}</strong>
-                                    </span>
-                                    <Show when={status()}>
-                                      {(value) => (
-                                        <span class={`routine-step-status routine-step-${value()}`}>
-                                          {t(STEP_STATUS[value()])}
-                                        </span>
-                                      )}
+                            </li>
+                            <For each={routine().steps}>
+                              {(step, index) => {
+                                const status = () => stepRun(step.id)?.status;
+                                return (
+                                  <li
+                                    class="routine-node"
+                                    classList={{ [`routine-node-${status()}`]: Boolean(status()) }}
+                                  >
+                                    <div class="routine-node-head">
+                                      <AgentAvatar bot={botFor(step.botId)} />
+                                      <span>
+                                        <small>
+                                          {t("routineStepN", { n: String(index() + 1) })}
+                                        </small>
+                                        <strong>{botFor(step.botId)?.name ?? step.botId}</strong>
+                                      </span>
+                                      <Show when={status()}>
+                                        {(value) => (
+                                          <span
+                                            class={`routine-step-status routine-step-${value()}`}
+                                          >
+                                            {t(STEP_STATUS[value()])}
+                                          </span>
+                                        )}
+                                      </Show>
+                                    </div>
+                                    <p class="routine-node-text">{step.instruction}</p>
+                                    <Show when={stepRun(step.id)?.result}>
+                                      {(result) => <p class="routine-node-result">{result()}</p>}
                                     </Show>
-                                  </div>
-                                  <p class="routine-node-text">{step.instruction}</p>
-                                  <Show when={stepRun(step.id)?.result}>
-                                    {(result) => <p class="routine-node-result">{result()}</p>}
-                                  </Show>
-                                </li>
-                              );
-                            }}
-                          </For>
-                        </ol>
-                        <Show when={runsOf(routine().id).length > 0}>
-                          <h3>{t("routineRunHistory")}</h3>
-                          <ul class="routine-history">
-                            <For each={runsOf(routine().id).slice(0, 8)}>
-                              {(run) => (
-                                <li>
-                                  <span class={`routine-run-pill routine-run-${run.status}`}>
-                                    {t(RUN_STATUS[run.status])}
-                                  </span>
-                                  <span>{formatWhen(run.startedAt)}</span>
-                                  <small>
-                                    {run.trigger === "manual"
-                                      ? t("routineTriggerManual")
-                                      : t("routineTriggerSchedule")}{" "}
-                                    · {run.steps.filter((step) => step.status === "done").length}/
-                                    {run.steps.length}
-                                  </small>
-                                </li>
-                              )}
+                                  </li>
+                                );
+                              }}
                             </For>
-                          </ul>
-                        </Show>
+                          </ol>{" "}
+                        </div>
+                        <aside class="routine-inspector">
+                          <header class="routine-details-head">
+                            <div>
+                              <h2>{routine().name}</h2>
+                              <p class="settings-meta">
+                                {t("routineLastRun")}:{" "}
+                                <Show when={last()} fallback={t("routineNeverRun")}>
+                                  {(run) => (
+                                    <>
+                                      <span class={`routine-run-pill routine-run-${run().status}`}>
+                                        {t(RUN_STATUS[run().status])}
+                                      </span>{" "}
+                                      {formatWhen(run().startedAt)}
+                                    </>
+                                  )}
+                                </Show>
+                              </p>
+                            </div>
+                            <div class="routine-actions">
+                              <button
+                                type="button"
+                                class="button-primary"
+                                disabled={busy() || last()?.status === "running"}
+                                onClick={() => void act(() => props.onRunNow(routine().id))}
+                              >
+                                ▶ {t("runNow")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDraft(draftFrom(routine(), props.bots))}
+                              >
+                                {t("routineEdit")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void act(() =>
+                                    props.onSetEnabled(routine().id, !routine().enabled),
+                                  )
+                                }
+                              >
+                                {routine().enabled ? t("disable") : t("enable")}
+                              </button>
+                              <button
+                                type="button"
+                                class="button-danger-quiet"
+                                onClick={() => {
+                                  if (window.confirm(t("routineDeleteConfirm"))) {
+                                    void act(() => props.onDelete(routine().id));
+                                  }
+                                }}
+                              >
+                                {t("routineDelete")}
+                              </button>
+                            </div>
+                          </header>
+                          <Show when={runsOf(routine().id).length > 0}>
+                            <h3>{t("routineRunHistory")}</h3>
+                            <ul class="routine-history">
+                              <For each={runsOf(routine().id).slice(0, 8)}>
+                                {(run) => (
+                                  <li>
+                                    <span class={`routine-run-pill routine-run-${run.status}`}>
+                                      {t(RUN_STATUS[run.status])}
+                                    </span>
+                                    <span>{formatWhen(run.startedAt)}</span>
+                                    <small>
+                                      {run.trigger === "manual"
+                                        ? t("routineTriggerManual")
+                                        : t("routineTriggerSchedule")}{" "}
+                                      · {run.steps.filter((step) => step.status === "done").length}/
+                                      {run.steps.length}
+                                    </small>
+                                  </li>
+                                )}
+                              </For>
+                            </ul>
+                          </Show>
+                        </aside>
                       </article>
                     );
                   }}
