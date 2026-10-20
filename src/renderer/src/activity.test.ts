@@ -223,3 +223,41 @@ describe("Hinglish vocabulary", () => {
     }
   });
 });
+
+describe("masti style", () => {
+  const base = deriveActivity(
+    input({ queue: queue(delivery("running")), activeTurnId: "t", messages: [request] }),
+  );
+
+  it("adds playful lines only while thinking, never during real actions", async () => {
+    const { mastiLine } = await import("./components/ActivityIndicator");
+    const { MASTI_LONG, MASTI_THINKING } = await import("./activity-hinglish");
+    expect(MASTI_THINKING).toContain(mastiLine(base, "masti", 0, 0));
+    expect(MASTI_LONG).toContain(mastiLine(base, "masti", LONG_WAIT_MS, 0));
+    expect(mastiLine(base, "seedha", 0, 0)).toBeNull();
+    for (const phase of [
+      "executing_tool",
+      "researching",
+      "waiting_approval",
+      "retrying",
+      "completed",
+      "failed",
+    ] as const) {
+      expect(mastiLine({ ...base, phase }, "masti", 0, 0)).toBeNull();
+    }
+    // Rotates like Claude Code's verbs without repeating back-to-back.
+    expect(mastiLine(base, "masti", 0, 0)).not.toBe(mastiLine(base, "masti", ROTATE_MS, 0));
+  });
+
+  it("is Roman-script Hinglish and never claims the work is done", async () => {
+    const { MASTI_LONG, MASTI_THINKING } = await import("./activity-hinglish");
+    const lines = [...MASTI_THINKING, ...MASTI_LONG];
+    expect(MASTI_THINKING.length).toBeGreaterThanOrEqual(20);
+    expect(new Set(lines).size).toBe(lines.length);
+    for (const line of lines) {
+      expect(line).not.toMatch(/[ऀ-ॿঀ-৿]/);
+      expect(line).toMatch(/\b(hai|hain|ho|raha|rahi|rahe|lijiye|rakhiye)\b/);
+      expect(line).not.toMatch(/poora ho gaya|bas ho gaya|almost/i);
+    }
+  });
+});

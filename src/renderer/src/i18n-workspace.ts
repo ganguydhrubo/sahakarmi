@@ -246,6 +246,11 @@ export const workspaceEn = {
   voiceDiscard: "Discard",
   voiceStop: "Stop",
   voiceAttach: "Attach to message",
+  activityStyleTitle: "Live status style",
+  activityMasti: "Masti (playful)",
+  activitySeedha: "Seedha (plain)",
+  activityStyleHint:
+    "Coworker status lines are always in Hinglish. Masti adds playful lines like “Jugaad dhoondha ja raha hai…” only while a coworker is thinking; anything it actually does is always described plainly.",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -491,6 +496,11 @@ export const workspaceHi: WorkspaceDictionary = {
   voiceDiscard: "हटाएँ",
   voiceStop: "रोकें",
   voiceAttach: "मैसेज में जोड़ें",
+  activityStyleTitle: "लाइव स्टेटस की शैली",
+  activityMasti: "मस्ती (मज़ेदार)",
+  activitySeedha: "सीधा (सादा)",
+  activityStyleHint:
+    "सहकर्मी की स्टेटस लाइनें हमेशा हिंग्लिश (रोमन लिपि) में रहती हैं. मस्ती सिर्फ़ सोचते समय “Jugaad dhoondha ja raha hai…” जैसी मज़ेदार लाइनें दिखाती है; असली काम हमेशा सीधे शब्दों में बताया जाता है.",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -733,4 +743,9 @@ export const workspaceBn: WorkspaceDictionary = {
   voiceDiscard: "বাদ দিন",
   voiceStop: "থামান",
   voiceAttach: "মেসেজে যোগ করুন",
+  activityStyleTitle: "লাইভ স্ট্যাটাসের ধরন",
+  activityMasti: "মস্তি (মজার)",
+  activitySeedha: "সোজা (সাধারণ)",
+  activityStyleHint:
+    "সহকর্মীর স্ট্যাটাস সবসময় হিংলিশে (রোমান হরফে) থাকে। মস্তি শুধু ভাবার সময় “Jugaad dhoondha ja raha hai…” ধরনের মজার লাইন দেখায়; আসল কাজ সবসময় সোজা ভাষায় বলা হয়।",
 };

@@ -9,7 +9,16 @@ import type {
 import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { LANGUAGE_OPTIONS, type MessageKey, t } from "../i18n";
-import { language, setLanguage, setTheme, type ThemePreference, theme } from "../preferences";
+import {
+  type ActivityStyle,
+  activityStyle,
+  language,
+  setActivityStyle,
+  setLanguage,
+  setTheme,
+  type ThemePreference,
+  theme,
+} from "../preferences";
 import { FeaturesSettings } from "./FeaturesSettings";
 import { LogoMark } from "./Logo";
 import { ModelSuggestions } from "./ModelSuggestions";
@@ -59,6 +68,11 @@ interface SettingsViewProps {
   onOpenPermissions: () => void;
   onUpdateAction: () => Promise<void>;
 }
+
+const ACTIVITY_STYLES: Array<{ value: ActivityStyle; label: MessageKey }> = [
+  { value: "masti", label: "activityMasti" },
+  { value: "seedha", label: "activitySeedha" },
+];
 
 const THEMES: Array<{ value: ThemePreference; label: () => string }> = [
   { value: "system", label: () => t("themeSystem") },
@@ -151,6 +165,23 @@ export function SettingsView(props: SettingsViewProps) {
                   )}
                 </For>
               </fieldset>
+              <h2>{t("activityStyleTitle")}</h2>
+              <fieldset class="segmented">
+                <legend class="sr-only">{t("activityStyleTitle")}</legend>
+                <For each={ACTIVITY_STYLES}>
+                  {(option) => (
+                    <button
+                      type="button"
+                      aria-pressed={activityStyle() === option.value}
+                      classList={{ "segmented-active": activityStyle() === option.value }}
+                      onClick={() => setActivityStyle(option.value)}
+                    >
+                      {t(option.label)}
+                    </button>
+                  )}
+                </For>
+              </fieldset>
+              <p class="settings-meta">{t("activityStyleHint")}</p>
               <h2>{t("languageLabel")}</h2>
               <fieldset class="segmented">
                 <legend class="sr-only">{t("languageLabel")}</legend>

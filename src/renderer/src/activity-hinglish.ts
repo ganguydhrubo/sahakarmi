@@ -162,6 +162,46 @@ export const TOOL_SECONDARY: Record<ActivityCategory, string[]> = {
   generic: ["Tool ke response ka intezaar ho raha hai…", "Workflow aage badh raha hai…"],
 };
 
+/**
+ * "Masti" style: playful Claude Code-like lines in desi flavour. Used ONLY while the model is
+ * thinking with no specific action under way, so they decorate without claiming any activity.
+ * Tool, research, waiting and outcome lines always stay factual.
+ */
+export const MASTI_THINKING: string[] = [
+  "Dimaag lagaya ja raha hai…",
+  "Jugaad dhoondha ja raha hai…",
+  "Chai ke saath soch-vichaar ho raha hai…",
+  "Dimaag ki batti jal rahi hai…",
+  "Khichdi pak rahi hai…",
+  "Taar jode ja rahe hain…",
+  "Soch ke ghode daudaye ja rahe hain…",
+  "Neurons ki kabaddi chal rahi hai…",
+  "Idea mein tadka lag raha hai…",
+  "Gutthi suljhayi ja rahi hai…",
+  "Chintan-manan ho raha hai…",
+  "Shatranj ki agli chaal sochi ja rahi hai…",
+  "Jalebi jaisi uljhan seedhi ki ja rahi hai…",
+  "Masala mix ho raha hai…",
+  "Tukde jode ja rahe hain…",
+  "Dhaaga sui mein piroya ja raha hai…",
+  "Hisaab-kitaab baith raha hai…",
+  "Mann hi mann tol-mol ho raha hai…",
+  "Soch ki rangoli ban rahi hai…",
+  "Daal mein kuch kaala to nahi, dekha ja raha hai…",
+  "Gaadi gear mein daali ja rahi hai…",
+  "Kahani ka plot buna ja raha hai…",
+  "Chakki chal rahi hai, aata pis raha hai…",
+  "Dimaag ke ghode ko chabuk lagi hai…",
+];
+
+/** Masti lines for long waits: still honest that the work is ongoing, never "almost done". */
+export const MASTI_LONG: string[] = [
+  "Lambi race hai, gaadi chal rahi hai…",
+  "Kaam bada hai, thoda dhairya rakhiye…",
+  "Ek cup chai aur lijiye, kaam jaari hai…",
+  "Sabr ka phal meetha hota hai, kaam jaari hai…",
+];
+
 /** Long waits: reassuring, and never claims the task is nearly done. */
 export const LONG_RUNNING: string[] = [
   "Thoda waqt lag raha hai, kaam jaari hai…",
