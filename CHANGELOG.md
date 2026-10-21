@@ -4,7 +4,7 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
-## [Unreleased] - working animation
+## [0.4.5] - 2026-10-21
 
 ### Added
 
