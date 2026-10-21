@@ -199,6 +199,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       case "account/rateLimits/read":
         return { rateLimits: null, rateLimitsByLimitId: null } as T;
       case "model/list": {
+        let stale = false;
         try {
           await mkdir(this.#config.transcriptDir, { recursive: true });
           // Metadata only: no prompt, tools, browser actions or model inference.
@@ -209,10 +210,13 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           );
           const options = readModelOptions(result);
           if (options.length) this.#catalogOptions = options;
+          else stale = true;
         } catch {
+          stale = true;
           /* Preserve the last list during provider/network failures. */
         }
         return {
+          stale,
           data: [
             ...this.#config.models.map((model) => ({
               model: model.model,
@@ -330,7 +334,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const explicit = !this.#config.models.some((option) => option.model === model);
     const value = this.#config.modelValue(model as AgentModelId, session.modelOptions);
     if (!value) {
-      if (explicit)
+      if (explicit || model === "opencode-free")
         throw new Error(
           `The selected model ${model} is no longer reported by ${this.#config.label}. Choose another model.`,
         );
@@ -351,7 +355,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           "diagnostic",
           `${this.#config.label}: could not select ${value} (${String(error)})`,
         );
-        if (explicit) throw error;
+        throw error;
       }
     }
     session.model = model;
@@ -886,6 +890,9 @@ export function readModelOptions(result: unknown): AcpModelOption[] {
   );
   if (modelConfig && Array.isArray(modelConfig.options)) {
     return modelConfig.options
+      .flatMap((option) =>
+        isRecord(option) && Array.isArray(option.options) ? option.options : [option],
+      )
       .filter(isRecord)
       .filter((option) => typeof option.value === "string")
       .map((option) => ({

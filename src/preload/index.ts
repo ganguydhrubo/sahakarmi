@@ -76,6 +76,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetStatus),
     getUsage: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetUsage),
     listModels: () => ipcRenderer.invoke(IPC_CHANNELS.agentListModels),
+    refreshModels: () => ipcRenderer.invoke(IPC_CHANNELS.agentRefreshModels),
     listBots: () => ipcRenderer.invoke(IPC_CHANNELS.agentListBots),
     createBot: (workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.agentCreateBot, workspaceId),
     updateBot: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentUpdateBot, input),

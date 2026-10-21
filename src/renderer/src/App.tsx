@@ -45,6 +45,7 @@ import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation } from "./components/Conversation";
 import { InitialSetup } from "./components/InitialSetup";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./components/PanelResizer";
+import type { ProviderRefresh } from "./components/ProviderUpdates";
 import { SchedulesView } from "./components/SchedulesView";
 import { SharedFilesView } from "./components/SharedFilesView";
 import { AppNavigation, type CenterView, Sidebar } from "./components/Sidebar";
@@ -173,6 +174,9 @@ export function App() {
   const [agentStatus, setAgentStatus] = createSignal<AgentStatus>(FALLBACK_STATUS);
   const [, setAccountUsage] = createSignal<AccountUsage | null>(null);
   const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>(FALLBACK_UPDATE_STATUS);
+  const [providerRefreshes, setProviderRefreshes] = createSignal<
+    Partial<Record<AgentProviderId, ProviderRefresh>>
+  >({});
   const [leftPanelWidth, setLeftPanelWidth] = createSignal(
     readPanelWidth(LEFT_PANEL_STORAGE_KEY, LEFT_PANEL_DEFAULT, LEFT_PANEL_MIN, LEFT_PANEL_MAX),
   );
@@ -304,6 +308,15 @@ export function App() {
 
   function handleAgentEvent(event: AgentEvent) {
     switch (event.type) {
+      case "provider-models-refreshed":
+        setProviderRefreshes((current) => ({
+          ...current,
+          [event.provider]: {
+            checkedAt: event.checkedAt,
+            addedModels: (current[event.provider]?.addedModels ?? 0) + event.addedModels,
+          },
+        }));
+        return;
       case "models-changed":
         setModelOptions(event.models);
         return;
@@ -916,7 +929,7 @@ export function App() {
             when={
               view() !== "settings" &&
               // With the sidebar open, its update bar shows progress; errors still float here.
-              (leftPanelCollapsed() || updateStatus().phase === "error") &&
+              (leftPanelCollapsed() || updateStatus().phase === "ready") &&
               ["available", "downloading", "ready", "error", "installing"].includes(
                 updateStatus().phase,
               )
@@ -963,6 +976,12 @@ export function App() {
               onCollapse={() => setSidebarCollapsed(true)}
               updateStatus={updateStatus()}
               onUpdateAction={runUpdateAction}
+              agentStatus={agentStatus()}
+              modelOptions={modelOptions()}
+              providerRefreshes={providerRefreshes()}
+              onRefreshModels={async () => {
+                setModelOptions(await window.sahkarmi.agent.refreshModels());
+              }}
             />
             <PanelResizer
               class="left-panel-resizer"

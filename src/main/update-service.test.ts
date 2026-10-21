@@ -24,6 +24,26 @@ function createService(updater: FakeUpdater, beforeInstall = vi.fn(async () => u
 }
 
 describe("UpdateService", () => {
+  it("checks again after wake but throttles focus while downloads are ready", async () => {
+    const updater = new FakeUpdater();
+    const service = createService(updater);
+    service.start(false);
+    try {
+      updater.checkForUpdates.mockImplementation(async () => {
+        updater.emit("update-not-available");
+        return null;
+      });
+      await service.checkOnWake();
+      await service.checkOnWake();
+      expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+      updater.emit("update-downloaded", { version: "0.1.1" });
+      await service.checkOnWake();
+      expect(service.getStatus().phase).toBe("ready");
+      expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    } finally {
+      service.stop();
+    }
+  });
   it("cancels a download stuck at 60% and automatically retries a full installer", async () => {
     vi.useFakeTimers();
     const updater = new FakeUpdater();

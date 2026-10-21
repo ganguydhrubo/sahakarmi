@@ -12,6 +12,7 @@ import {
   Notification,
   nativeTheme,
   type OpenDialogOptions,
+  powerMonitor,
   protocol,
   session,
   shell,
@@ -220,6 +221,10 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.agentGetStatus, () => service.getStatus());
   handleTrusted(IPC_CHANNELS.agentGetUsage, () => service.getUsage());
   handleTrusted(IPC_CHANNELS.agentListModels, () => service.listModels());
+  handleTrusted(IPC_CHANNELS.agentRefreshModels, async () => {
+    await service.refreshModels(true);
+    return service.listModels();
+  });
   handleTrusted(IPC_CHANNELS.agentListBots, () => service.listBots());
   handleTrusted(IPC_CHANNELS.agentCreateBot, (workspaceId: unknown) =>
     service.createBot(
@@ -808,7 +813,13 @@ if (!hasSingleInstanceLock) {
           ),
       });
       service.on("event", forwardAgentEvent);
-      mainWindow.on("focus", () => void service.refreshModels());
+      const refreshOnWake = () => {
+        void service.refreshModels();
+        void updateService?.checkOnWake();
+      };
+      mainWindow.on("focus", refreshOnWake);
+      powerMonitor.on("resume", refreshOnWake);
+      mainWindow.once("closed", () => powerMonitor.removeListener("resume", refreshOnWake));
       service.on("event", (event) => {
         if (event.type === "error")
           appLog.write(

@@ -4,6 +4,19 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.4.6] - 2026-10-21
+
+### Fixed
+
+- Keep the model picker inside the window, including from the chat header and composer. Add search and a scrolling model list; put free OpenCode models first and separate models requiring an account or credits.
+- Read grouped ACP model lists. Report model selection failures instead of silently running a different model.
+- Keep update errors and retry visible at the foot of the coworker panel. Show a restart notice automatically when the app update is downloaded.
+
+### Added
+
+- AI updates in the coworker panel: installed Claude, ChatGPT, Gemini and OpenCode versions, model counts, successful refresh times, new-model notices and a Refresh AI models button. Catalogs refresh automatically; separately installed AI tools retain their own updater.
+- Check for Sahkarmi updates every 15 minutes and on focus/resume after sleep. Download automatically when App updates is set to automatic, then offer Restart.
+
 ## [0.4.5] - 2026-10-21
 
 ### Added

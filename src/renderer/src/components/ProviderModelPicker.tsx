@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import type {
   AgentModelId,
   AgentModelOption,
@@ -29,25 +30,43 @@ const CLI_NAMES: Record<AgentProviderId, string> = {
   opencode: "OpenCode",
 };
 
-/** Popover height incl. margin, used to decide whether it opens above or below the trigger. */
-const POPOVER_HEIGHT = 380;
-
 export function ProviderModelPicker(props: ProviderModelPickerProps) {
   const [open, setOpen] = createSignal(false);
-  const [openUpward, setOpenUpward] = createSignal(false);
+  const [placement, setPlacement] = createSignal({
+    left: "0px",
+    top: "0px",
+    width: "380px",
+    "max-height": "460px",
+  });
+  const [search, setSearch] = createSignal("");
+  const [showAccountModels, setShowAccountModels] = createSignal(false);
   const [railProvider, setRailProvider] = createSignal<AgentProviderId>(
     providerForModel(props.value),
   );
   const providerButtons = new Map<AgentProviderId, HTMLButtonElement>();
   const modelButtons = new Map<AgentModelId, HTMLButtonElement>();
   let root: HTMLDivElement | undefined;
+  let popover: HTMLDivElement | undefined;
+  let searchInput: HTMLInputElement | undefined;
 
   const selectedModel = createMemo(() =>
     props.modelOptions.find((option) => option.id === props.value),
   );
   const activeProvider = createMemo(() => providerForModel(props.value));
   const railModels = createMemo(() =>
-    props.modelOptions.filter((option) => providerForModel(option.id) === railProvider()),
+    props.modelOptions
+      .filter((option) => providerForModel(option.id) === railProvider())
+      .filter(
+        (option) =>
+          railProvider() !== "opencode" ||
+          showAccountModels() ||
+          isFreeModel(option.id) ||
+          option.id === props.value,
+      )
+      .filter((option) =>
+        `${option.name} ${option.id}`.toLowerCase().includes(search().trim().toLowerCase()),
+      )
+      .sort((a, b) => Number(isFreeModel(b.id)) - Number(isFreeModel(a.id))),
   );
   const railStatus = createMemo(() =>
     providerAvailability(props.agentStatus, props.modelOptions, railProvider()),
@@ -65,22 +84,55 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
 
   onMount(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!open() || root?.contains(event.target as Node)) return;
+      if (
+        !open() ||
+        root?.contains(event.target as Node) ||
+        popover?.contains(event.target as Node)
+      )
+        return;
       setOpen(false);
     };
     window.addEventListener("pointerdown", closeOnOutsidePointer);
-    onCleanup(() => window.removeEventListener("pointerdown", closeOnOutsidePointer));
+    const reposition = () => {
+      if (open()) positionPopover();
+    };
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    onCleanup(() => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    });
   });
+
+  function positionPopover(): void {
+    const rect = root?.getBoundingClientRect();
+    if (!rect) return;
+    const margin = 12;
+    const gap = 8;
+    const width = Math.min(400, window.innerWidth - margin * 2);
+    const below = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
+    const above = Math.max(0, rect.top - gap - margin);
+    const upward = below < 320 && above > below;
+    const height = Math.min(460, upward ? above : below);
+    setPlacement({
+      left: `${Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin))}px`,
+      top: `${Math.max(margin, upward ? rect.top - gap - height : rect.bottom + gap)}px`,
+      width: `${width}px`,
+      "max-height": `${height}px`,
+    });
+  }
 
   function setPickerOpen(next: boolean): void {
     if (props.disabled) return;
     if (next) {
       setRailProvider(activeProvider());
-      // The composer sits at the bottom of the window: open upward when there is no room below.
-      const rect = root?.getBoundingClientRect();
-      setOpenUpward(rect !== undefined && window.innerHeight - rect.bottom < POPOVER_HEIGHT);
+      setSearch("");
+      setShowAccountModels(false);
+      positionPopover();
     }
     setOpen(next);
+    if (next) requestAnimationFrame(() => searchInput?.focus());
   }
 
   function focusModel(model?: AgentModelId): void {
@@ -95,6 +147,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
     const provider = PROVIDERS[(current + delta + PROVIDERS.length) % PROVIDERS.length];
     if (!provider) return;
     setRailProvider(provider);
+    setSearch("");
     providerButtons.get(provider)?.focus();
   }
 
@@ -159,130 +212,163 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
       </button>
 
       <Show when={open()}>
-        <div
-          class="provider-model-popover"
-          classList={{ "provider-model-popover-up": openUpward() }}
-          role="dialog"
-          aria-label="Choose agent model"
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            setOpen(false);
-          }}
-        >
+        <Portal>
           <div
-            class="provider-model-rail"
-            role="tablist"
-            aria-label="Model providers"
-            aria-orientation="vertical"
+            ref={popover}
+            class="provider-model-popover"
+            style={placement()}
+            role="dialog"
+            aria-label="Choose agent model"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setOpen(false);
+              root?.querySelector<HTMLButtonElement>(".provider-model-trigger")?.focus();
+            }}
           >
-            <For each={PROVIDERS}>
-              {(provider) => {
-                const status = () =>
-                  providerAvailability(props.agentStatus, props.modelOptions, provider);
-                const selected = () => railProvider() === provider;
-                return (
-                  <button
-                    ref={(element) => providerButtons.set(provider, element)}
-                    type="button"
-                    role="tab"
-                    class="provider-model-rail-button"
-                    classList={{
-                      "provider-model-rail-button-selected": selected(),
-                      "provider-model-rail-button-unavailable": status().state !== "available",
-                    }}
-                    aria-selected={selected()}
-                    aria-controls="provider-model-panel"
-                    aria-label={`${providerName(provider)}: ${providerSummary(provider, status())}`}
-                    tabIndex={selected() ? 0 : -1}
-                    title={`${providerName(provider)} · ${providerSummary(provider, status())}`}
-                    onClick={() => setRailProvider(provider)}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-                        event.preventDefault();
-                        moveProvider(1);
-                      } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-                        event.preventDefault();
-                        moveProvider(-1);
-                      }
-                    }}
-                  >
-                    <ProviderMark provider={provider} large />
-                  </button>
-                );
-              }}
-            </For>
-          </div>
-
-          <div
-            id="provider-model-panel"
-            class="provider-model-panel"
-            role="tabpanel"
-            aria-label={`${providerName(railProvider())} models`}
-          >
-            <div class="provider-model-heading">
-              <strong>{providerName(railProvider())}</strong>
-              <span>{providerSummary(railProvider(), railStatus())}</span>
-            </div>
             <div
-              class="provider-model-list"
-              role="listbox"
-              aria-label={`${providerName(railProvider())} models`}
+              class="provider-model-rail"
+              role="tablist"
+              aria-label="Model providers"
+              aria-orientation="vertical"
             >
-              <For each={railModels()}>
-                {(model, index) => {
-                  const selected = () => props.value === model.id;
-                  const firstFocusable = () =>
-                    railAvailable() &&
-                    (selected() ||
-                      (!railModels().some((option) => option.id === props.value) && index() === 0));
+              <For each={PROVIDERS}>
+                {(provider) => {
+                  const status = () =>
+                    providerAvailability(props.agentStatus, props.modelOptions, provider);
+                  const selected = () => railProvider() === provider;
                   return (
                     <button
-                      ref={(element) => modelButtons.set(model.id, element)}
+                      ref={(element) => providerButtons.set(provider, element)}
                       type="button"
-                      role="option"
-                      class="provider-model-option"
-                      classList={{ "provider-model-option-selected": selected() }}
-                      aria-label={`${displayModelName(model.name, model.id)}${
-                        model.id === DEFAULT_MODELS[railProvider()] ? ", default" : ""
-                      }`}
+                      role="tab"
+                      class="provider-model-rail-button"
+                      classList={{
+                        "provider-model-rail-button-selected": selected(),
+                        "provider-model-rail-button-unavailable": status().state !== "available",
+                      }}
                       aria-selected={selected()}
-                      disabled={!railAvailable()}
-                      tabIndex={firstFocusable() ? 0 : -1}
-                      onClick={() => selectModel(model.id)}
+                      aria-controls="provider-model-panel"
+                      aria-label={`${providerName(provider)}: ${providerSummary(provider, status())}`}
+                      tabIndex={selected() ? 0 : -1}
+                      title={`${providerName(provider)} · ${providerSummary(provider, status())}`}
+                      onClick={() => {
+                        setRailProvider(provider);
+                        setSearch("");
+                      }}
                       onKeyDown={(event) => {
-                        if (event.key === "ArrowDown") {
+                        if (event.key === "ArrowDown" || event.key === "ArrowRight") {
                           event.preventDefault();
-                          moveModel(model.id, 1);
-                        } else if (event.key === "ArrowUp") {
+                          moveProvider(1);
+                        } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
                           event.preventDefault();
-                          moveModel(model.id, -1);
-                        } else if (event.key === "Home") {
-                          event.preventDefault();
-                          modelButtons.get(railModels()[0]?.id ?? model.id)?.focus();
-                        } else if (event.key === "End") {
-                          event.preventDefault();
-                          modelButtons.get(railModels().at(-1)?.id ?? model.id)?.focus();
+                          moveProvider(-1);
                         }
                       }}
                     >
-                      <span class="provider-model-option-name">
-                        <span>{displayModelName(model.name, model.id)}</span>
-                        <Show when={model.id === DEFAULT_MODELS[railProvider()]}>
-                          <small>default</small>
-                        </Show>
-                      </span>
-                      <Show when={selected()}>
-                        <CheckIcon />
-                      </Show>
+                      <ProviderMark provider={provider} large />
                     </button>
                   );
                 }}
               </For>
             </div>
+
+            <div
+              id="provider-model-panel"
+              class="provider-model-panel"
+              role="tabpanel"
+              aria-label={`${providerName(railProvider())} models`}
+            >
+              <div class="provider-model-heading">
+                <strong>{providerName(railProvider())}</strong>
+                <span>{providerSummary(railProvider(), railStatus())}</span>
+              </div>
+              <input
+                ref={searchInput}
+                class="provider-model-search"
+                type="search"
+                aria-label="Search models"
+                placeholder="Search models"
+                value={search()}
+                onInput={(event) => setSearch(event.currentTarget.value)}
+              />
+              <Show when={railProvider() === "opencode"}>
+                <label class="provider-model-account-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showAccountModels()}
+                    onChange={(event) => setShowAccountModels(event.currentTarget.checked)}
+                  />
+                  Show models requiring an account or credits
+                </label>
+              </Show>
+              <div
+                class="provider-model-list"
+                role="listbox"
+                aria-label={`${providerName(railProvider())} models`}
+              >
+                <For each={railModels()}>
+                  {(model, index) => {
+                    const selected = () => props.value === model.id;
+                    const firstFocusable = () =>
+                      railAvailable() &&
+                      (selected() ||
+                        (!railModels().some((option) => option.id === props.value) &&
+                          index() === 0));
+                    return (
+                      <button
+                        ref={(element) => modelButtons.set(model.id, element)}
+                        type="button"
+                        role="option"
+                        class="provider-model-option"
+                        classList={{ "provider-model-option-selected": selected() }}
+                        aria-label={`${displayModelName(model.name, model.id)}${
+                          model.id === DEFAULT_MODELS[railProvider()] ? ", default" : ""
+                        }`}
+                        aria-selected={selected()}
+                        disabled={!railAvailable()}
+                        tabIndex={firstFocusable() ? 0 : -1}
+                        onClick={() => selectModel(model.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowDown") {
+                            event.preventDefault();
+                            moveModel(model.id, 1);
+                          } else if (event.key === "ArrowUp") {
+                            event.preventDefault();
+                            moveModel(model.id, -1);
+                          } else if (event.key === "Home") {
+                            event.preventDefault();
+                            modelButtons.get(railModels()[0]?.id ?? model.id)?.focus();
+                          } else if (event.key === "End") {
+                            event.preventDefault();
+                            modelButtons.get(railModels().at(-1)?.id ?? model.id)?.focus();
+                          }
+                        }}
+                      >
+                        <span class="provider-model-option-name">
+                          <span>{displayModelName(model.name, model.id)}</span>
+                          <Show when={railProvider() === "opencode"}>
+                            <small>{isFreeModel(model.id) ? "Free" : "Account / credits"}</small>
+                          </Show>
+                          <Show when={model.id === DEFAULT_MODELS[railProvider()]}>
+                            <small>default</small>
+                          </Show>
+                        </span>
+                        <Show when={selected()}>
+                          <CheckIcon />
+                        </Show>
+                      </button>
+                    );
+                  }}
+                </For>
+                <Show when={railModels().length === 0}>
+                  <p class="provider-model-empty">No matching models.</p>
+                </Show>
+              </div>
+            </div>
           </div>
-        </div>
+        </Portal>
       </Show>
     </div>
   );
@@ -329,7 +415,11 @@ function providerName(provider: AgentProviderId): string {
 }
 
 function displayModelName(name: string | undefined, fallback: string): string {
-  return name?.replace(/^[\s:–—-]+/, "") || fallback;
+  return name?.replace(/^OpenCode\//i, "").replace(/^[\s:–—-]+/, "") || fallback;
+}
+
+export function isFreeModel(id: string): boolean {
+  return id === "opencode-free" || /^opencode:opencode\/(?:big-pickle|[^/]+-free)$/.test(id);
 }
 
 function ProviderMark(props: { provider: AgentProviderId; large?: boolean }) {
