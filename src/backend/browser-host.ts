@@ -720,7 +720,7 @@ function browserRequestHeaders(
 
   // Google OAuth blocks Chromium WebViews if Sec-CH-UA or non-standard brand tokens are present.
   // For accounts.google.com and related login services, remove client hints so standard web flow applies.
-  if (url && (url.includes("accounts.google.com") || url.includes("google.com"))) {
+  if (url?.includes("accounts.google.com") || url?.includes("google.com")) {
     delete headers["sec-ch-ua"];
     delete headers["sec-ch-ua-mobile"];
     delete headers["sec-ch-ua-platform"];
@@ -733,10 +733,17 @@ function browserRequestHeaders(
 }
 
 function browserUserAgent(sessionUserAgent: string, url?: string): string {
-  if (url && url.includes("accounts.google.com")) {
+  if (url?.includes("accounts.google.com")) {
     return "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0";
   }
-  return removeUserAgentProducts(sessionUserAgent, ["Electron", app.getName(), "Sahkarmi", "sahkarmi", "OpenBot", "openbot"]);
+  return removeUserAgentProducts(sessionUserAgent, [
+    "Electron",
+    app.getName(),
+    "Sahkarmi",
+    "sahkarmi",
+    "OpenBot",
+    "openbot",
+  ]);
 }
 
 function removeUserAgentProducts(userAgent: string, products: string[]): string {
