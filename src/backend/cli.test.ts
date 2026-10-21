@@ -6,10 +6,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CodexCliError,
+  managedOpenCodePaths,
   parseClaudeVersion,
   parseCodexVersion,
   resolveClaudeCli,
   resolveCodexCli,
+  setRuntimeDirectory,
   windowsFallbackPaths,
 } from "./cli";
 
@@ -42,6 +44,30 @@ describe("Claude CLI version parsing", () => {
 
   it("fails closed on an unknown format", () => {
     expect(() => parseClaudeVersion("Claude development build")).toThrow(CodexCliError);
+  });
+});
+
+describe("OpenCode runtime that Sahkarmi downloaded", () => {
+  it("offers the newest runtime it downloaded", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-cli-runtime-"));
+    temporaryPaths.push(root);
+    await mkdir(join(root, "opencode", "1.19.3"), { recursive: true });
+    await mkdir(join(root, "opencode", "1.20.0"), { recursive: true });
+    await writeFile(join(root, "opencode", "1.20.0", "opencode.exe"), "binary");
+    setRuntimeDirectory(root);
+    expect(managedOpenCodePaths("win32")).toEqual([
+      join(root, "opencode", "1.20.0", "opencode.exe"),
+    ]);
+    setRuntimeDirectory("");
+    expect(managedOpenCodePaths("win32")).toEqual([]);
+  });
+
+  it("offers nothing when no runtime was downloaded", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-cli-runtime-"));
+    temporaryPaths.push(root);
+    setRuntimeDirectory(root);
+    expect(managedOpenCodePaths("win32")).toEqual([]);
+    setRuntimeDirectory("");
   });
 });
 

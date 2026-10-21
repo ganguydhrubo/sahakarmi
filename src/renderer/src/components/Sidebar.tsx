@@ -4,6 +4,8 @@ import type {
   AgentModelOption,
   AgentProviderId,
   AgentStatus,
+  AiRuntimeStatus,
+  AiToolId,
   AppInfo,
   CoworkerStatus,
   UpdateStatus,
@@ -75,6 +77,8 @@ interface SidebarProps {
   modelOptions?: AgentModelOption[];
   providerRefreshes?: Partial<Record<AgentProviderId, ProviderRefresh>>;
   onRefreshModels?: () => Promise<void>;
+  runtimeStatus?: AiRuntimeStatus;
+  onUpdateTool?: (toolId: AiToolId) => Promise<void>;
 }
 
 interface BotContextMenu {
@@ -606,6 +610,8 @@ export function Sidebar(props: SidebarProps) {
             models={props.modelOptions ?? []}
             refreshes={props.providerRefreshes ?? {}}
             onRefresh={() => props.onRefreshModels?.() ?? Promise.resolve()}
+            runtime={props.runtimeStatus}
+            onUpdateTool={props.onUpdateTool}
           />
         </Show>
         <Show when={props.updateStatus && props.onUpdateAction}>
