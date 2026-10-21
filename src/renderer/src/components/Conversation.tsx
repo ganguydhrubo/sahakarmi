@@ -58,7 +58,7 @@ import {
 import { SidebarToggleIcon } from "./Sidebar";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { TaskQueueStrip } from "./TaskQueueStrip";
-import { ToolCallCard, ToolGroupCard } from "./ToolCallCard";
+import { ToolCallCard, type ToolCallSummary, ToolGroupCard } from "./ToolCallCard";
 import { VoiceRecorder } from "./VoiceRecorder";
 
 interface ConversationProps {
@@ -2013,7 +2013,9 @@ export function Conversation(props: ConversationProps) {
               if (message.kind === "tool" && message.tool) {
                 const i = index();
                 const prevIsTool =
-                  i > 0 && props.messages[i - 1]?.kind === "tool" && Boolean(props.messages[i - 1]?.tool);
+                  i > 0 &&
+                  props.messages[i - 1]?.kind === "tool" &&
+                  Boolean(props.messages[i - 1]?.tool);
                 if (prevIsTool) {
                   return null;
                 }

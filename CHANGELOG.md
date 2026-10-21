@@ -4,6 +4,19 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.1] - 2026-10-21
+
+### Added
+
+- Expanded default coworker roster to 9 distinct Indian AI archetypes with custom taglines, roles, and personality archetypes: Mitra (Lead Orchestrator), Asha (Finance & GST), Vikram (Sales Dynamo), Meera (Customer Support), Arjun (Research Scout), Kavya (Content & Brand), Dev (Code Architect), Tara (Ops & Routines), and Kabir (Security & Vault).
+- Interactive 3D cartoon coworker mascot design and real-time animated Deep Check diagnostic scanner with holographic HUD, radar sweep, and live inspection telemetry.
+
+### Fixed
+
+- Resolved Biome template literal formatting and semantic interactive button accessibility in ToolCallCard.
+- Sorted i18n import structure and cleaned translation dictionaries for all 12 supported Indian languages.
+- Complete verification of TypeScript soundness and test suite.
+
 ## [0.5.0] - 2026-10-21
 
 ### Added

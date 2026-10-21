@@ -1,5 +1,8 @@
 import { createSignal, For, Show } from "solid-js";
 import type { ToolCallKind, ToolCallSummary } from "../../../shared/ipc";
+
+export type { ToolCallSummary };
+
 import { LABELS } from "../activity-hinglish";
 import { t } from "../i18n";
 
@@ -21,7 +24,7 @@ export function formatToolDisplay(tool: ToolCallSummary): {
   cleanInput: string;
 } {
   const rawInput = tool.input?.trim() ?? "";
-  let cleanInput = rawInput;
+  const cleanInput = rawInput;
   let title = tool.name;
   let subtitle = "";
 
@@ -53,18 +56,27 @@ export function formatToolDisplay(tool: ToolCallSummary): {
 
   if (!subtitle) {
     if (tool.kind === "file") {
-      let cleaned = rawInput.split("\n")[0].replace(/[\s{]+$/, "").trim();
+      const cleaned = rawInput
+        .split("\n")[0]
+        .replace(/[\s{]+$/, "")
+        .trim();
       const fileName = cleaned.split(/[/\\]/).filter(Boolean).pop() ?? cleaned;
       title = `File: ${fileName}`;
       subtitle = cleaned;
     } else if (tool.kind === "command") {
-      let firstLine = rawInput.split("\n")[0].trim().replace(/[\s{]+$/, "");
-      title = firstLine.length > 75 ? firstLine.slice(0, 72) + "…" : firstLine;
+      const firstLine = rawInput
+        .split("\n")[0]
+        .trim()
+        .replace(/[\s{]+$/, "");
+      title = firstLine.length > 75 ? `${firstLine.slice(0, 72)}…` : firstLine;
       subtitle = "Command";
     } else {
-      let firstLine = rawInput.split("\n")[0].trim().replace(/[\s{]+$/, "");
+      const firstLine = rawInput
+        .split("\n")[0]
+        .trim()
+        .replace(/[\s{]+$/, "");
       title = tool.name || "Tool";
-      subtitle = firstLine.length > 75 ? firstLine.slice(0, 72) + "…" : firstLine;
+      subtitle = firstLine.length > 75 ? `${firstLine.slice(0, 72)}…` : firstLine;
     }
   }
 
@@ -161,10 +173,9 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
         "tool-group-open": isOpen(),
       }}
     >
-      <header
+      <button
+        type="button"
         class="tool-group-header"
-        role="button"
-        tabindex="0"
         aria-expanded={isOpen()}
         onClick={toggleOpen}
         onKeyDown={(e) => {
@@ -178,8 +189,17 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
           <Show
             when={isAnyRunning()}
             fallback={
-              <svg viewBox="0 0 20 20" class="fill-none stroke-current" stroke-width="1.6">
-                <path d="M13 3 6 11h5l-2 6 7-8h-5z" stroke-linecap="round" stroke-linejoin="round" />
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                class="fill-none stroke-current"
+                stroke-width="1.6"
+              >
+                <path
+                  d="M13 3 6 11h5l-2 6 7-8h-5z"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             }
           >
@@ -188,10 +208,7 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
         </span>
         <div class="tool-group-info">
           <span class="tool-group-headline">
-            <Show
-              when={isAnyRunning()}
-              fallback={`Ran ${props.tools.length} operations`}
-            >
+            <Show when={isAnyRunning()} fallback={`Ran ${props.tools.length} operations`}>
               {`Running step ${activeToolIndex() + 1} of ${props.tools.length}`}
             </Show>
           </span>
@@ -213,19 +230,28 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
             <Show when={isAnyFailed() && !isAnyRunning()}>Failed</Show>
             <Show when={isAllDone()}>Done ✓</Show>
           </span>
-          <span class="tool-group-chevron" classList={{ "tool-group-chevron-open": isOpen() }} aria-hidden="true">
-            <svg viewBox="0 0 20 20" class="fill-none stroke-current" stroke-width="1.8">
+          <span
+            class="tool-group-chevron"
+            classList={{ "tool-group-chevron-open": isOpen() }}
+            aria-hidden="true"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              class="fill-none stroke-current"
+              stroke-width="1.8"
+            >
               <path d="m6 8 4 4 4-4" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </span>
         </div>
-      </header>
+      </button>
 
       <Show when={isOpen()}>
         <div class="tool-group-drawer">
           <div class="tool-group-timeline">
             <For each={props.tools}>
-              {(tool, index) => {
+              {(tool) => {
                 const [itemOpen, setItemOpen] = createSignal(false);
                 const display = () => formatToolDisplay(tool);
 
@@ -238,10 +264,9 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
                       "tool-step-done": tool.status === "completed",
                     }}
                   >
-                    <div
+                    <button
+                      type="button"
                       class="tool-step-row"
-                      role="button"
-                      tabindex="0"
                       onClick={() => setItemOpen(!itemOpen())}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -251,7 +276,7 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
                       }}
                     >
                       <span class={`tool-step-icon tool-card-icon-${tool.kind}`} aria-hidden="true">
-                        <svg viewBox="0 0 20 20">
+                        <svg aria-hidden="true" viewBox="0 0 20 20">
                           <path d={KIND_GLYPHS[tool.kind]} />
                         </svg>
                       </span>
@@ -270,7 +295,7 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
                         <Show when={tool.status === "completed"}>✓</Show>
                         <Show when={tool.status === "failed"}>✕</Show>
                       </span>
-                    </div>
+                    </button>
 
                     <Show when={itemOpen()}>
                       <div class="tool-step-details">

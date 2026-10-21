@@ -21,11 +21,15 @@ describe("BotStore", () => {
     await store.initialize();
 
     expect(store.list().map((bot) => `${bot.name} (${bot.role})`)).toEqual([
+      "Mitra (Orchestrator)",
       "Asha (Accounts)",
       "Vikram (Sales)",
       "Meera (Support)",
       "Arjun (Research)",
       "Kavya (Content)",
+      "Dev (Code)",
+      "Tara (Ops)",
+      "Kabir (Security)",
     ]);
     expect(store.list().every((bot) => bot.workspaceId === DEFAULT_WORKSPACE_ID)).toBe(true);
     expect(store.workspaces()).toMatchObject({

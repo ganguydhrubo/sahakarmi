@@ -108,7 +108,11 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                     {connected() ? t("connectReconnect") : t("connectButton")}
                   </button>
                 </Show>
-                <Show when={provider.id === "gemini" || provider.id === "codex" || provider.id === "claude"}>
+                <Show
+                  when={
+                    provider.id === "gemini" || provider.id === "codex" || provider.id === "claude"
+                  }
+                >
                   <button
                     type="button"
                     class="link-button"
@@ -132,9 +136,7 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                       if (!key) return;
                       void act(provider.id, () =>
                         window.sahkarmi.providerSetup.setApiKey(provider.id, key),
-                      ).then(() =>
-                        setApiKeyOpen((prev) => ({ ...prev, [provider.id]: false })),
-                      );
+                      ).then(() => setApiKeyOpen((prev) => ({ ...prev, [provider.id]: false })));
                     }}
                   >
                     <input

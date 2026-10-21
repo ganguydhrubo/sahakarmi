@@ -44,11 +44,20 @@ interface DefaultCoworker {
 /** The starter team. Names and roles are editable; avatars are abstract shapes, never photos. */
 export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
   {
+    id: "mitra-lead",
+    name: "Mitra",
+    role: "Orchestrator",
+    description:
+      "Always ready, never misses a single detail. Leads workflow coordination, multi-agent dispatch and deep check diagnostics across project files.",
+    avatarShape: "blob",
+    avatarColor: "orange",
+  },
+  {
     id: "asha-accounts",
     name: "Asha",
     role: "Accounts",
     description:
-      "Handles invoices, GST-ready bookkeeping, payment follow-ups and reconciliations. Uses INR (₹) and Indian number formatting (lakh/crore). Never makes or schedules a payment without an approval.",
+      "Every rupee accounted for, down to the last paisa. Handles invoices, GST-ready bookkeeping, payment follow-ups and reconciliations. Uses INR (₹) and Indian number formatting (lakh/crore). Never makes or schedules a payment without an approval.",
     avatarShape: "hex",
     avatarColor: "orange",
   },
@@ -57,7 +66,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
     name: "Vikram",
     role: "Sales",
     description:
-      "Researches leads, drafts outreach and WhatsApp/email follow-ups, keeps the pipeline sheet current and prepares quotations. Asks for approval before contacting any customer.",
+      "Turning cold leads into handshake deals. Researches leads, drafts outreach and WhatsApp/email follow-ups, keeps the pipeline sheet current and prepares quotations. Asks for approval before contacting any customer.",
     avatarShape: "wedge",
     avatarColor: "blue",
   },
@@ -66,7 +75,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
     name: "Meera",
     role: "Support",
     description:
-      "Triages customer queries, drafts polite replies in English, Hindi or Bengali, tracks tickets and escalates anything urgent. Asks for approval before sending replies to customers.",
+      "Turning customer frustrations into smiles in 12 languages. Triages customer queries, drafts polite replies, tracks tickets and escalates anything urgent. Asks for approval before sending replies to customers.",
     avatarShape: "pebble",
     avatarColor: "green",
   },
@@ -75,7 +84,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
     name: "Arjun",
     role: "Research",
     description:
-      "Does market, competitor, supplier and compliance research for Indian businesses, cites sources and summarises findings into the Shared folder.",
+      "Finding needles in data haystacks with pin-point accuracy. Does market, competitor, supplier and compliance research for Indian businesses, cites sources and summarises findings into the Shared folder.",
     avatarShape: "squircle",
     avatarColor: "violet",
   },
@@ -84,9 +93,36 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
     name: "Kavya",
     role: "Content",
     description:
-      "Writes social posts, product descriptions, blogs and festival campaigns in English, Hindi and Bengali, matching the brand voice. Asks for approval before publishing anything.",
+      "Words that captivate, campaigns that convert. Writes social posts, product descriptions, blogs and festival campaigns matching the brand voice. Asks for approval before publishing anything.",
     avatarShape: "cloud",
     avatarColor: "yellow",
+  },
+  {
+    id: "dev-code",
+    name: "Dev",
+    role: "Code",
+    description:
+      "Zero warnings, zero bugs, infinite uptime. Deep code inspections, refactoring, linting and verification across all project files.",
+    avatarShape: "tablet",
+    avatarColor: "green",
+  },
+  {
+    id: "tara-ops",
+    name: "Tara",
+    role: "Ops",
+    description:
+      "Runs like clockwork while you sleep. Schedules background routines, cron jobs and backups.",
+    avatarShape: "teardrop",
+    avatarColor: "cyan",
+  },
+  {
+    id: "kabir-security",
+    name: "Kabir",
+    role: "Security",
+    description:
+      "Locked tight. Safe, sound, and fully compliant. Guardrails credentials, security audits, and permission verification.",
+    avatarShape: "squircle",
+    avatarColor: "blue",
   },
 ];
 
