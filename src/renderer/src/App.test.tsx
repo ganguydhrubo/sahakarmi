@@ -167,6 +167,7 @@ describe("Sahkarmi connected desktop shell", () => {
         openExternal: vi.fn().mockResolvedValue(undefined),
         openUrl: vi.fn().mockResolvedValue(undefined),
         agent: {
+          refreshModels: vi.fn().mockResolvedValue([]),
           getStatus: vi.fn().mockResolvedValue({
             phase: "ready",
             cliVersion: "0.144.1",
@@ -938,6 +939,21 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(window.sahkarmi.update.check).not.toHaveBeenCalled();
   });
 
+  it("shows provider model refreshes and offers a manual refresh", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    emitAgentEvent?.({
+      type: "provider-models-refreshed",
+      provider: "claude",
+      checkedAt: new Date().toISOString(),
+      addedModels: 2,
+    });
+    expect(await screen.findByText("+2 models")).toBeInTheDocument();
+    await fireEvent.click(screen.getByText("AI updates"));
+    await fireEvent.click(await screen.findByRole("button", { name: "Refresh AI models" }));
+    await waitFor(() => expect(window.sahkarmi.agent.refreshModels).toHaveBeenCalledOnce());
+  });
+
   it("shows download progress and an available update in the sidebar bar", async () => {
     mockUpdate("downloading");
     const { unmount } = render(() => <App />);
@@ -1429,7 +1445,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(thinking).toHaveValue("medium");
 
     await fireEvent.click(within(settings).getByRole("button", { name: "Agent model: Luna" }));
-    let picker = within(settings).getByRole("dialog", { name: "Choose agent model" });
+    let picker = screen.getByRole("dialog", { name: "Choose agent model" });
     await fireEvent.click(within(picker).getByRole("tab", { name: /^Claude:/ }));
     await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
     await waitFor(() =>
@@ -1446,7 +1462,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(
       within(settings).getByRole("button", { name: "Agent model: Claude Opus 5" }),
     );
-    picker = within(settings).getByRole("dialog", { name: "Choose agent model" });
+    picker = screen.getByRole("dialog", { name: "Choose agent model" });
     await fireEvent.click(within(picker).getByRole("tab", { name: /^ChatGPT \(Codex\):/ }));
     await fireEvent.click(within(picker).getByRole("option", { name: "Sol" }));
     await fireEvent.change(thinking, { target: { value: "xhigh" } });
@@ -1464,7 +1480,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(screen.getByRole("button", { name: "View coworker settings" }));
     let settings = screen.getByRole("complementary", { name: "Agent settings" });
     await fireEvent.click(within(settings).getByRole("button", { name: "Agent model: Luna" }));
-    let picker = within(settings).getByRole("dialog", { name: "Choose agent model" });
+    let picker = screen.getByRole("dialog", { name: "Choose agent model" });
     await fireEvent.click(within(picker).getByRole("tab", { name: /^Claude:/ }));
     await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
 
@@ -1474,7 +1490,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(within(settings).getByRole("button", { name: "Agent model: Luna" })).toBeEnabled();
 
     await fireEvent.click(within(settings).getByRole("button", { name: "Agent model: Luna" }));
-    picker = within(settings).getByRole("dialog", { name: "Choose agent model" });
+    picker = screen.getByRole("dialog", { name: "Choose agent model" });
     await fireEvent.click(within(picker).getByRole("tab", { name: /^Claude:/ }));
     await fireEvent.click(within(picker).getByRole("option", { name: "Claude Opus 5, default" }));
     await waitFor(() =>

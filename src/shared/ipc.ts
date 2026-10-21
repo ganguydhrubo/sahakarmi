@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   agentGetStatus: "agent:get-status",
   agentGetUsage: "agent:get-usage",
   agentListModels: "agent:list-models",
+  agentRefreshModels: "agent:refresh-models",
   agentListBots: "agent:list-bots",
   agentCreateBot: "agent:create-bot",
   agentUpdateBot: "agent:update-bot",
@@ -969,6 +970,12 @@ export interface RespondToPromptInput {
 }
 
 export type AgentEvent =
+  | {
+      type: "provider-models-refreshed";
+      provider: AgentProviderId;
+      checkedAt: string;
+      addedModels: number;
+    }
   | { type: "models-changed"; models: AgentModelOption[] }
   | { type: "status"; status: AgentStatus }
   /** The provider will retry the current request after a transient error (real event). */
@@ -1080,6 +1087,7 @@ export interface AgentDesktopApi {
   getStatus: () => Promise<AgentStatus>;
   getUsage: () => Promise<AccountUsage>;
   listModels: () => Promise<AgentModelOption[]>;
+  refreshModels: () => Promise<AgentModelOption[]>;
   listBots: () => Promise<BotSummary[]>;
   createBot: (workspaceId?: string) => Promise<BotSummary>;
   updateBot: (input: UpdateBotInput) => Promise<BotSummary>;
