@@ -118,8 +118,54 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       }
     } else if (provider === "codex") {
       process.env.OPENAI_API_KEY = key;
+      if (process.platform === "win32") {
+        try {
+          execFile(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-Command",
+              `[System.Environment]::SetEnvironmentVariable('OPENAI_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
+            ],
+            { windowsHide: true },
+            () => {},
+          );
+        } catch {
+          // ignore
+        }
+      }
+      try {
+        const codexDir = join(homedir(), ".codex");
+        await mkdir(codexDir, { recursive: true });
+        await writeFile(join(codexDir, "openai_api_key.txt"), key, "utf8");
+      } catch {
+        // ignore
+      }
     } else if (provider === "claude") {
       process.env.ANTHROPIC_API_KEY = key;
+      if (process.platform === "win32") {
+        try {
+          execFile(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-Command",
+              `[System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
+            ],
+            { windowsHide: true },
+            () => {},
+          );
+        } catch {
+          // ignore
+        }
+      }
+      try {
+        const claudeDir = join(homedir(), ".claude");
+        await mkdir(claudeDir, { recursive: true });
+        await writeFile(join(claudeDir, "anthropic_api_key.txt"), key, "utf8");
+      } catch {
+        // ignore
+      }
     }
 
     try {

@@ -273,7 +273,11 @@ async function main(): Promise<void> {
   } finally {
     clearTimeout(hardTimeout);
     server.close();
-    await rm(temporaryRoot, { recursive: true, force: true });
+    try {
+      await rm(temporaryRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {
+      // Windows file handle release delay
+    }
     app.quit();
   }
 }

@@ -19,7 +19,7 @@ export function AgentAvatar(props: AgentAvatarProps) {
       style={props.style}
       aria-hidden="true"
     >
-      <AgentMark shape={shape()} />
+      <AgentMark shape={shape()} color={color()} />
     </span>
   );
 }

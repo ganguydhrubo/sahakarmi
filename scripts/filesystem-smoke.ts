@@ -108,7 +108,11 @@ try {
   );
 } finally {
   if (client) await client.stop();
-  await rm(temporaryRoot, { recursive: true, force: true });
+  try {
+    await rm(temporaryRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    // Windows file handle release delay
+  }
 }
 
 function respondToServerRequest(

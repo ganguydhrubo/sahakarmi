@@ -4,6 +4,20 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.2] - 2026-10-22
+
+### Added
+
+- Real 3D animated cartoon coworker avatars inside the desktop application, replacing flat 2D silhouettes across sidebar, conversation title, message entries, and Settings.
+- Full 3D character customization: all 8 avatar shapes (`blob`, `pebble`, `squircle`, `tablet`, `wedge`, `hex`, `cloud`, `teardrop`) render distinct 3D cartoon head archetypes, and all 11 colors update multi-stop radial gradients, specular highlights, luminous blinking eyes, antenna gems, and ear nodes in real time.
+- Smooth CSS animations for eye blinking and floating levitation bobbing.
+- Restores saved API keys across sessions for Gemini, Codex, and Claude from user home configuration files on application startup.
+
+### Fixed
+
+- Resolved Node DEP0190 child process spawn security warnings by adopting verbatim argument passing on Windows.
+- Hardened test and build teardown scripts against transient Windows file handle release locks.
+
 ## [0.5.1] - 2026-10-21
 
 ### Added
