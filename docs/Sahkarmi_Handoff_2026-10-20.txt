@@ -1,4 +1,176 @@
 ================================================================================
+REVISION 12 — CURRENT STATUS (21 October 2026)
+THIS SECTION SUPERSEDES REVISION 11 AND ALL OLDER STATUS CLAIMS BELOW.
+================================================================================
+
+ONE-LINE SUMMARY
+  LIVE: app v0.4.4 (main = 91b841e) + website (downloads point to v0.4.4).
+  Open: #23 working animation (ready to merge when CI is green), #9 v0.5.0
+  safety (PARKED). Rule: every new instruction = its own separate update.
+
+A. LIVE NOW
+- Latest release v0.4.4 (16 installers). Releases since last handoff:
+  v0.4.1 (all approved updates #10–#18 via #19), v0.4.2 (panel layout, #20),
+  v0.4.3 (automatic model refresh + CLI upgrade detection, #21),
+  v0.4.4 (keeps each coworker's saved model on startup, #22).
+- Website https://sahkarmi.site redeployed after v0.4.4 (deploy + live check
+  succeeded); download buttons start the v0.4.4 installer directly.
+- In v0.4.4 (merged): Approve in chat, no asks for look-only commands,
+  taskbar logo, Auto mode, Business page cleanup, Marketplace (agents +
+  skills), Tasks page, header model picker, sidebar update bar, one-click
+  Connect (browser sign-in) + limit rings, Routines + calendar, update-button
+  fix (v0.4.1 content).
+
+B. OPEN — NOT LIVE
+  #23 Working animation around coworker avatars (Indian style):
+      rangoli ring = thinking, marigold/peacock sparks orbit = using a tool,
+      diya glow = waiting for you, marigold petal burst = done, red shake =
+      failed. Driven only by real status; honours "reduce motion".
+      https://github.com/ganguydhrubo/sahakarmi/pull/23
+      Local: lint, typecheck, 269 tests, build pass; checked in Chromium
+      screenshots. CI was running at the time of writing. Not yet watched in
+      the app with a real coworker working.
+  #9  v0.5.0 Agent safety — PARKED, do not merge until you say so.
+      https://github.com/ganguydhrubo/sahakarmi/pull/9
+      NOTE: it was built on the v0.4.0 code; main has moved a lot since
+      (v0.4.1–v0.4.4). Before releasing it, it needs to be rebuilt on top of
+      current main (expect conflicts in permission + agent files).
+  #1–#4 Dependabot dependency bumps — untouched.
+
+C. KNOWN ISSUES / LIMITS (honest)
+- One flaky test on the macos-15 CI machine (temp folder deleted while a save
+  is still being written -> ENOENT on rename). Not caused by any feature;
+  re-run passes. Fix = small separate update (await pending writes before
+  test cleanup).
+- OpenBot v0.1.12+ is PolyForm NONCOMMERCIAL: its code/UI cannot be copied;
+  every OpenBot-like feature here was written from scratch.
+- "Never ask anything" mode (incl. payments) was refused by the safety
+  check. Auto mode keeps payments/messages/posting/orders/forms on ask.
+- No Grok / Google Antigravity provider yet.
+- Mac: in-app install of updates needs an Apple Developer ID signature
+  (paid Apple account). Until then the update button opens the .dmg download.
+- Gemini sign-in opens a terminal window (Gemini CLI login is interactive);
+  installing Gemini CLI needs Node.js on the PC.
+- Several merged features (Connect sign-in, Routines, Marketplace, animation)
+  have automated tests but have not all been clicked through on a real
+  Windows/Mac PC by me.
+
+D. YOUR STEPS
+  1. #23: when all 4 checks are green -> Merge (squash) -> Releases -> Draft
+     new release -> tag v0.4.5 on main -> Publish. Website + in-app updates
+     pick it up automatically.
+  2. Keep #9 parked. When you want v0.5.0, tell me and I will rebuild it on
+     the latest main as a fresh PR.
+  3. Still pending: Google Search Console + Bing Webmaster — submit
+     https://sahkarmi.site/sitemap.xml
+
+================================================================================
+REVISION 11 — CURRENT STATUS (20–21 October 2026, late night)
+THIS SECTION SUPERSEDES REVISION 10 AND ALL OLDER STATUS CLAIMS BELOW.
+================================================================================
+
+ONE-LINE SUMMARY
+  Live: app v0.4.0 + website (direct Win/Mac downloads, GitHub source link
+  removed). Built but NOT merged/published: 10 separate updates (PR #9–#18).
+  Rule from owner: every new instruction = its own separate update; v0.5.0
+  safety stays parked.
+
+A. LIVE NOW
+- App v0.4.0: https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.4.0
+  (16 assets; downloads so far: Windows 7, Mac 2 when last checked).
+- https://sahkarmi.site — download buttons start the installer directly
+  (no GitHub page). "Source code on GitHub" button REMOVED (footer, Hindi,
+  structured data, llms.txt). Live check passed after deploy.
+
+B. SEPARATE UPDATES — BUILT, TESTED, NOT MERGED (nothing published)
+  #   What                                         PR   CI
+  1   v0.5.0 Agent safety (PARKED — do not merge)   #9   all green
+      destructive/credentials always ask, emergency stop, suggest-only,
+      task limits + loop stop, hourly send cap, injection strict mode,
+      hash-chained log. Report: docs/AGENT-SAFETY-REPORT.md
+  2   v0.4.1 Update button explains failures;       #10  all green
+      unsigned Mac opens the .dmg download instead of failing
+  3   Approve in the chat + no approval for         #11  all green
+      look-only commands (node --version; ls; Get-ChildItem | Select)
+  4   Taskbar logo (Windows/Linux window icon)      #12  all green
+  5   Auto mode: everyday work never asks;          #13  all green
+      payments/messages/posting/orders/forms still ask
+  6   Business page: only usable integrations       #14  all green
+      (Fiverr + WhatsApp "Not supported" cards removed)
+  7   Marketplace: 12 ready coworkers (Add) +       #15  macos-15 flaky*
+      12 skills (Install -> Shared/Skills), no fake install counts
+  8   Tasks page, model picker in chat header,      #16  macos-15 flaky*
+      "Update ready -> Restart" bar in sidebar
+  9   One-click Connect (browser sign-in) for       #17  macos-15 flaky*
+      ChatGPT/Claude/Gemini + live limit rings; Features "Checking…" fix
+      - Codex downloads once on Connect (sha512-verified) if missing
+      - Claude Code ships inside the app; paste the code from the page
+      - Gemini opens a window for Google sign-in
+  10  Routines (multi-step, schedule, Run now) +    #18  running
+      Day/Week/Month calendar + upcoming runs
+
+  * macos-15 failures are ONE pre-existing flaky test: a test deletes its
+    temp folder while a save (bots.json / mailbox.json) is still being
+    written (ENOENT on rename). Not caused by these updates; Check, Windows
+    and macos-26 pass. Fix = small separate update (await pending writes
+    before test cleanup). Re-running the job usually passes.
+
+C. NOT POSSIBLE / LIMITS (honest)
+- OpenBot v0.1.12+ is PolyForm NONCOMMERCIAL: its code/UI cannot be copied.
+  All new features were written from scratch (ideas only).
+- "Full auto, never ask anything" (incl. payments) was refused by the
+  safety check; Auto mode keeps money/messages/posting/forms on ask.
+- Grok / Google Antigravity: no Connect — Sahkarmi cannot run them yet.
+- Mac in-app update needs an Apple Developer ID signature (paid Apple
+  account). Until then Mac users update by downloading the .dmg.
+- None of #10–#18 has been clicked through on a real Windows/Mac PC yet;
+  automated tests + build pass for each.
+
+D. YOUR STEPS (when you decide)
+  1. Review each PR on GitHub. Merge only the ones you want (squash).
+     Merge order that avoids most conflicts: #12, #14, #10, #11, #13,
+     #15, #16, #17, #18. Later ones may need a quick conflict fix — ask me.
+  2. Keep #9 (v0.5.0) parked until you say so.
+  3. To release: Releases -> Draft new release -> tag  vX.Y.Z  (lowercase
+     v, three numbers) on main -> Publish. Website links update by themselves.
+  4. Still pending: Google Search Console + Bing Webmaster — submit
+     https://sahkarmi.site/sitemap.xml
+
+================================================================================
+REVISION 10 — CURRENT STATUS (20 October 2026, late night)
+THIS SECTION SUPERSEDES REVISION 9 AND ALL OLDER STATUS CLAIMS BELOW.
+================================================================================
+
+ONE-LINE SUMMARY
+  v0.4.0 is RELEASED (16 installers). Website is live with direct Win/Mac
+  downloads. v0.5.0 (agent safety) is ready in PR #9 — needs your merge + tag.
+
+A. LIVE NOW
+- App v0.4.0 released: https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.4.0
+- https://sahkarmi.site: Windows + Mac download buttons start the installer
+  directly (links baked in at deploy, no GitHub page, no API rate limits).
+  Mobile tiles fixed. Social buttons + SEO live.
+
+B. READY: v0.5.0 AGENT SAFETY  (PR #9, branch feat/agent-safety)
+  https://github.com/ganguydhrubo/sahakarmi/pull/9
+  Fixes the AI-agent failure list (Replit wipe, OTP access, mass messages,
+  prompt injection, false "done", loops). Mapping: docs/AGENT-SAFETY-REPORT.md
+  - Destructive + Credentials categories (always ask)
+  - "Stop everything" emergency stop (sidebar, Ctrl/Cmd+Shift+Esc)
+  - Suggest-only coworkers; per-task tool/time/loop limits; hourly outbound cap
+  - Injection detection -> strict mode; untrusted browser content labelled
+  - Hash-chained activity log with integrity check
+  Local: lint, typecheck, 237 tests, browser smoke, build, real-app e2e: PASS.
+
+C. YOUR STEPS
+  1. When PR #9 CI is green: Merge (squash) on GitHub.
+  2. Releases -> Draft new release -> tag exactly  v0.5.0  (lowercase v,
+     three numbers) on main -> Publish. Installers build automatically and
+     the website download links update on their own.
+  3. Still pending from before: Google Search Console + Bing Webmaster —
+     add sahkarmi.site and submit https://sahkarmi.site/sitemap.xml
+
+================================================================================
 REVISION 9 — CURRENT STATUS (20 October 2026, night)
 THIS SECTION SUPERSEDES REVISION 8 AND ALL OLDER STATUS CLAIMS BELOW.
 ================================================================================
