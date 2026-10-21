@@ -24,7 +24,7 @@ import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
-import { setToolsDirectory } from "../backend/cli";
+import { resolveOpenCodeCli, setRuntimeDirectory, setToolsDirectory } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
 import { PermissionService } from "../backend/permission-service";
@@ -39,6 +39,8 @@ import { UsageService } from "../backend/usage-service";
 import {
   type AgentEvent,
   type AgentProviderId,
+  type AiRuntimeStatus,
+  type AiToolId,
   type AppInfo,
   type AppSetupState,
   type BrowserBounds,
@@ -54,6 +56,7 @@ import {
   IPC_CHANNELS,
   isAgentModel,
   isAgentProvider,
+  isAiToolId,
   isAvatarColor,
   isAvatarShape,
   isMessageReaction,
@@ -75,6 +78,7 @@ import {
 } from "../shared/ipc";
 import { AgentInitializationGate } from "./agent-initialization";
 import { notificationForAgentEvent } from "./agent-notifications";
+import { AiRuntimeService } from "./ai-runtime-service";
 import { AppLog } from "./app-log";
 import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
 import { readSetupState, writeSetupState } from "./setup-store";
@@ -110,6 +114,7 @@ let browserHost: BrowserHost | null = null;
 let agentService: AgentService | null = null;
 let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
+let aiRuntimeService: AiRuntimeService | null = null;
 let scheduleStore: ScheduleStore | null = null;
 let routineStore: RoutineStore | null = null;
 let usageService: UsageService | null = null;
@@ -163,6 +168,7 @@ function registerIpcHandlers(
   features: FeatureRegistry,
   business: BusinessStore,
   routines: RoutineStore,
+  aiRuntime: AiRuntimeService,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -211,6 +217,11 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.updateCheck, () => updater.checkForUpdates());
   handleTrusted(IPC_CHANNELS.updateDownload, () => updater.downloadUpdate());
   handleTrusted(IPC_CHANNELS.updateInstall, () => updater.installUpdate());
+  handleTrusted(IPC_CHANNELS.aiRuntimeGetStatus, () => aiRuntime.getStatus());
+  handleTrusted(IPC_CHANNELS.aiRuntimeCheck, () => aiRuntime.check());
+  handleTrusted(IPC_CHANNELS.aiRuntimeUpdate, (toolId: unknown) =>
+    aiRuntime.update(parseAiToolId(toolId)),
+  );
   handleTrusted(IPC_CHANNELS.maintenanceExportData, () =>
     exportSahkarmiData({ service, mailbox, parentWindow: mainWindow }),
   );
@@ -728,6 +739,29 @@ function forwardUpdateStatus(status: import("../shared/ipc").UpdateStatus): void
   mainWindow.webContents.send(IPC_CHANNELS.updateEvent, status);
 }
 
+function forwardAiRuntimeStatus(status: AiRuntimeStatus): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(IPC_CHANNELS.aiRuntimeEvent, status);
+}
+
+const AI_RUNTIME_CHECK_INTERVAL_MS = 15 * 60 * 1_000;
+
+function scheduleAiRuntimeChecks(): void {
+  const timer = setInterval(() => {
+    void aiRuntimeService?.check();
+  }, AI_RUNTIME_CHECK_INTERVAL_MS);
+  timer.unref?.();
+  const firstCheck = setTimeout(() => {
+    void aiRuntimeService?.check();
+  }, 60_000);
+  firstCheck.unref?.();
+}
+
+function parseAiToolId(value: unknown): AiToolId {
+  if (typeof value !== "string" || !isAiToolId(value)) throw new Error("Unknown AI tool.");
+  return value;
+}
+
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
@@ -816,6 +850,7 @@ if (!hasSingleInstanceLock) {
       const refreshOnWake = () => {
         void service.refreshModels();
         void updateService?.checkOnWake();
+        void aiRuntimeService?.check();
       };
       mainWindow.on("focus", refreshOnWake);
       powerMonitor.on("resume", refreshOnWake);
@@ -835,6 +870,30 @@ if (!hasSingleInstanceLock) {
       updateService.start();
       const toolsDirectory = join(app.getPath("userData"), "tools");
       setToolsDirectory(toolsDirectory);
+      const runtimeDirectory = join(app.getPath("userData"), "runtime");
+      setRuntimeDirectory(runtimeDirectory);
+      aiRuntimeService = new AiRuntimeService({
+        runtimeDirectory,
+        currentOpenCodeVersion: async () => {
+          try {
+            const resolved = await resolveOpenCodeCli();
+            return resolved.version;
+          } catch {
+            return null;
+          }
+        },
+        installedToolVersions: () => {
+          const versions: Record<string, string | null> = {};
+          for (const provider of service.getStatus().providers ?? []) {
+            versions[provider.id] = provider.version ?? null;
+          }
+          return versions;
+        },
+        autoDownload: () => permissions.get().levels.app_updates === "auto",
+        log: (level, message) => appLog.write(level, "ai-runtime", message),
+      });
+      aiRuntimeService.onStatus(forwardAiRuntimeStatus);
+      scheduleAiRuntimeChecks();
       providerSetup = new ProviderSetup({
         toolsDirectory,
         recheck: (provider) => service.ensureProvider(provider),
@@ -861,6 +920,7 @@ if (!hasSingleInstanceLock) {
         features,
         business,
         routines,
+        aiRuntimeService,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);

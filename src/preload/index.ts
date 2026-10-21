@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   type AgentEvent,
+  type AiRuntimeStatus,
   type AttachmentImportEvent,
   type ImportAttachmentsInput,
   IPC_CHANNELS,
@@ -194,6 +195,17 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => listener(status);
       ipcRenderer.on(IPC_CHANNELS.updateEvent, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.updateEvent, handler);
+    },
+  },
+  aiRuntime: {
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.aiRuntimeGetStatus),
+    check: () => ipcRenderer.invoke(IPC_CHANNELS.aiRuntimeCheck),
+    update: (toolId) => ipcRenderer.invoke(IPC_CHANNELS.aiRuntimeUpdate, toolId),
+    onEvent: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: AiRuntimeStatus) =>
+        listener(status);
+      ipcRenderer.on(IPC_CHANNELS.aiRuntimeEvent, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.aiRuntimeEvent, handler);
     },
   },
   providerSetup: {

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { constants } from "node:fs";
+import { constants, existsSync, readdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, resolve, win32 } from "node:path";
@@ -36,10 +36,45 @@ export class CodexCliError extends Error {
 }
 
 let toolsDirectory: string | null = null;
+let runtimeDirectory: string | null = null;
 
 /** Where Sahkarmi keeps AI tools it downloaded itself (userData/tools). Set once at startup. */
 export function setToolsDirectory(directory: string): void {
   toolsDirectory = directory;
+}
+
+/** Where Sahkarmi keeps a newer OpenCode runtime it downloaded itself. Set once at startup. */
+export function setRuntimeDirectory(directory: string): void {
+  runtimeDirectory = directory;
+}
+
+/**
+ * A newer OpenCode runtime that Sahkarmi downloaded and verified: <runtime>/opencode/<version>/.
+ * The newest version wins, so an update takes over from the copy inside the installer.
+ */
+export function managedOpenCodePaths(platform: NodeJS.Platform = process.platform): string[] {
+  if (!runtimeDirectory) return [];
+  const root = join(runtimeDirectory, "opencode");
+  if (!existsSync(root)) return [];
+  const versions = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d+\.\d+\.\d+$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort(compareVersionStrings);
+  const newest = versions.at(-1);
+  if (!newest) return [];
+  const binary = platform === "win32" ? "opencode.exe" : "opencode";
+  const path = join(root, newest, binary);
+  return existsSync(path) ? [path] : [];
+}
+
+function compareVersionStrings(left: string, right: string): number {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
 }
 
 /** Codex downloaded by the Connect button: <tools>/codex/bin/codex(.exe). */
@@ -169,23 +204,25 @@ export async function resolveGeminiCli(): Promise<AcpCliInfo> {
 
 /**
  * OpenCode ships inside Sahkarmi (resources/bin) so free models work with no install.
+ * A runtime that Sahkarmi downloaded itself is newer than the copy in the installer and wins.
  * A user-installed `opencode` on PATH is used only when no bundled copy exists.
  */
 export async function resolveOpenCodeCli(
   bundledCandidates: string[] = bundledOpenCodePaths(),
 ): Promise<AcpCliInfo> {
   const override = process.env.SAHKARMI_OPENCODE_PATH?.trim();
+  const managed = override ? [] : managedOpenCodePaths();
   const bundled = override ? [] : bundledCandidates;
   const candidates = override
     ? [override]
-    : [...bundled, ...(await collectCandidates("opencode", undefined))];
+    : [...managed, ...bundled, ...(await collectCandidates("opencode", undefined))];
   for (const candidate of candidates) {
     if (!(await isExecutable(candidate))) continue;
     try {
       return {
         executable: candidate,
         version: parseSemver(await readCliVersion(candidate), "OpenCode"),
-        bundled: bundled.includes(candidate),
+        bundled: managed.includes(candidate) || bundled.includes(candidate),
       };
     } catch {
       // Try the next executable candidate.
