@@ -753,7 +753,7 @@ function scheduleAiRuntimeChecks(): void {
   timer.unref?.();
   const firstCheck = setTimeout(() => {
     void aiRuntimeService?.check();
-  }, 20_000);
+  }, 60_000);
   firstCheck.unref?.();
 }
 
