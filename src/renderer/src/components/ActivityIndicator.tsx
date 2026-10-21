@@ -17,6 +17,7 @@ import {
 import type { BotProfile } from "../data";
 import { type ActivityStyle, activityStyle } from "../preferences";
 import { AgentAvatar } from "./AgentAvatar";
+import { AvatarAura, phaseAura } from "./AvatarAura";
 
 /** Secondary lines rotate this often while the same real event is in progress. */
 export const ROTATE_MS = 4_000;
@@ -133,7 +134,9 @@ export function ActivityIndicator(props: {
       aria-hidden={!visible()}
       aria-label={visible() ? `${name()}: ${primary()}` : undefined}
     >
-      <AgentAvatar bot={props.bot} class="agent-activity-avatar" />
+      <AvatarAura state={phaseAura(props.activity.phase)}>
+        <AgentAvatar bot={props.bot} class="agent-activity-avatar" />
+      </AvatarAura>
       {/* Announced to screen readers only when a real event changes the primary line. */}
       <span class="sr-only">{visible() ? primary() : ""}</span>
       <div class="agent-activity-card" aria-hidden="true">

@@ -5,6 +5,7 @@ import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
+import { AvatarAura, statusAura } from "./AvatarAura";
 import { LogoMark } from "./Logo";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { UsageRings } from "./UsageRings";
@@ -524,6 +525,7 @@ export function Sidebar(props: SidebarProps) {
           <For each={filteredBots()}>
             {(bot) => {
               const status = () => props.statuses[bot.id] ?? "idle";
+              const aura = statusAura(status);
               const unread = () => props.unread[bot.id] ?? 0;
               return (
                 <button
@@ -550,7 +552,9 @@ export function Sidebar(props: SidebarProps) {
                   }}
                 >
                   <span class="bot-row-avatar">
-                    <AgentAvatar bot={bot} />
+                    <AvatarAura state={aura()}>
+                      <AgentAvatar bot={bot} />
+                    </AvatarAura>
                     <StatusDot status={status()} class="team-row-status" />
                   </span>
                   <span class="bot-row-copy">
