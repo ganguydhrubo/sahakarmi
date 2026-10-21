@@ -1,7 +1,34 @@
 import { createSignal } from "solid-js";
 
 export type ThemePreference = "system" | "light" | "dark";
-export type LanguageCode = "en" | "hi" | "bn";
+export type LanguageCode =
+  | "en"
+  | "hi"
+  | "bn"
+  | "mr"
+  | "te"
+  | "ta"
+  | "gu"
+  | "kn"
+  | "ml"
+  | "pa"
+  | "or"
+  | "as";
+
+export const SUPPORTED_LANGUAGES: LanguageCode[] = [
+  "en",
+  "hi",
+  "bn",
+  "mr",
+  "te",
+  "ta",
+  "gu",
+  "kn",
+  "ml",
+  "pa",
+  "or",
+  "as",
+];
 
 const THEME_KEY = "sahkarmi:theme";
 const ACTIVITY_STYLE_KEY = "sahkarmi:activity-style";
@@ -31,7 +58,9 @@ function parseTheme(value: string | null): ThemePreference {
 }
 
 function parseLanguage(value: string | null): LanguageCode {
-  return value === "hi" || value === "bn" ? value : "en";
+  return value && SUPPORTED_LANGUAGES.includes(value as LanguageCode)
+    ? (value as LanguageCode)
+    : "en";
 }
 
 const [theme, setThemeSignal] = createSignal<ThemePreference>(parseTheme(readStored(THEME_KEY)));
@@ -76,5 +105,30 @@ export function applyStoredPreferences(): void {
 
 /** BCP-47 tag used for voice input and date formatting. */
 export function speechLocale(code: LanguageCode = language()): string {
-  return code === "hi" ? "hi-IN" : code === "bn" ? "bn-IN" : "en-IN";
+  switch (code) {
+    case "hi":
+      return "hi-IN";
+    case "bn":
+      return "bn-IN";
+    case "mr":
+      return "mr-IN";
+    case "te":
+      return "te-IN";
+    case "ta":
+      return "ta-IN";
+    case "gu":
+      return "gu-IN";
+    case "kn":
+      return "kn-IN";
+    case "ml":
+      return "ml-IN";
+    case "pa":
+      return "pa-IN";
+    case "or":
+      return "or-IN";
+    case "as":
+      return "as-IN";
+    default:
+      return "en-IN";
+  }
 }

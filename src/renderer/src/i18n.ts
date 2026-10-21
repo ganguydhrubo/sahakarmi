@@ -1,4 +1,5 @@
 import { workspaceBn, workspaceEn, workspaceHi } from "./i18n-workspace";
+import { mr, te, ta, gu, kn, ml, pa, or, as } from "./i18n-indic";
 import { type LanguageCode, language } from "./preferences";
 
 const en = {
@@ -374,22 +375,54 @@ const bn: Dictionary = {
   ...workspaceBn,
 };
 
-const DICTIONARIES: Record<LanguageCode, Dictionary> = { en, hi, bn };
+const DICTIONARIES: Record<LanguageCode, Partial<Dictionary>> = {
+  en,
+  hi,
+  bn,
+  mr,
+  te,
+  ta,
+  gu,
+  kn,
+  ml,
+  pa,
+  or,
+  as,
+};
 
 export const LANGUAGE_OPTIONS: Array<{ code: LanguageCode; label: string }> = [
   { code: "en", label: "English" },
   { code: "hi", label: "हिन्दी" },
   { code: "bn", label: "বাংলা" },
+  { code: "mr", label: "मराठी" },
+  { code: "te", label: "తెలుగు" },
+  { code: "ta", label: "தமிழ்" },
+  { code: "gu", label: "ગુજરાતી" },
+  { code: "kn", label: "ಕನ್ನಡ" },
+  { code: "ml", label: "മലയാളം" },
+  { code: "pa", label: "ਪੰਜਾਬੀ" },
+  { code: "or", label: "ଓଡ଼ିଆ" },
+  { code: "as", label: "অসমীয়া" },
 ];
 
 export const TAGLINES: Record<LanguageCode, string> = {
   en: en.tagline,
   hi: hi.tagline,
   bn: bn.tagline,
+  mr: mr.tagline ?? en.tagline,
+  te: te.tagline ?? en.tagline,
+  ta: ta.tagline ?? en.tagline,
+  gu: gu.tagline ?? en.tagline,
+  kn: kn.tagline ?? en.tagline,
+  ml: ml.tagline ?? en.tagline,
+  pa: pa.tagline ?? en.tagline,
+  or: or.tagline ?? en.tagline,
+  as: as.tagline ?? en.tagline,
 };
 
 /** Reactive translation: reads the current language signal. */
 export function t(key: MessageKey, values: Record<string, string> = {}): string {
-  const template = DICTIONARIES[language()][key] ?? en[key];
+  const dict = DICTIONARIES[language()] ?? en;
+  const template = dict[key] ?? en[key] ?? "";
   return template.replace(/\{(\w+)\}/g, (_match, name: string) => values[name] ?? "");
 }
