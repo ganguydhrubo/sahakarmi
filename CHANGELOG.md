@@ -4,6 +4,14 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.0] - 2026-10-21
+
+### Added
+
+- Support for all major Indian languages (except Urdu): Marathi (मराठी), Telugu (తెలుగు), Tamil (தமிழ்), Gujarati (ગુજરાતી), Kannada (ಕನ್ನಡ), Malayalam (മലയാളം), Punjabi (ਪੰਜਾਬੀ), Odia (ଓଡ଼ିଆ), Assamese (অসমীয়া), along with existing Hindi (हिन्दी), Bengali (বাংলা), and English.
+- Voice input speech locales configured for all 11 Indian languages.
+- Settings language selector expanded with native script button options.
+
 ## [0.4.9] - 2026-10-21
 
 ### Fixed
