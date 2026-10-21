@@ -5801,7 +5801,9 @@ body {
   border-radius: var(--radius-md);
   background: var(--surface-1);
   overflow: hidden;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .tool-group-card:hover {

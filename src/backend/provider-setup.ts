@@ -124,7 +124,11 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
 
     try {
       await this.#options.recheck(provider);
-      this.#set(provider, { phase: "connected", message: "API key saved! Provider connected.", url: null });
+      this.#set(provider, {
+        phase: "connected",
+        message: "API key saved! Provider connected.",
+        url: null,
+      });
     } catch (error) {
       this.#set(provider, { phase: "failed", message: messageOf(error) });
     }

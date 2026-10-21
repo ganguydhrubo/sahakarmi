@@ -1,5 +1,5 @@
+import { as, gu, kn, ml, mr, or, pa, ta, te } from "./i18n-indic";
 import { workspaceBn, workspaceEn, workspaceHi } from "./i18n-workspace";
-import { mr, te, ta, gu, kn, ml, pa, or, as } from "./i18n-indic";
 import { type LanguageCode, language } from "./preferences";
 
 const en = {
