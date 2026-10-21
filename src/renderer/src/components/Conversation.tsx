@@ -42,6 +42,7 @@ import { markdownToPlainText } from "../markdown";
 import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
 import { ApprovalCard } from "./ApprovalsView";
+import { AvatarAura, statusAura } from "./AvatarAura";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
@@ -887,6 +888,7 @@ function ThinkingDisclosure(props: { message: BotMessage }) {
 }
 
 export function Conversation(props: ConversationProps) {
+  const titleAura = statusAura(() => props.status);
   const agentReady = () => props.agentStatus.phase === "ready";
   const [drafts, setDrafts] = createSignal<Record<string, ComposerDraft>>({});
   const [showAttachments, setShowAttachments] = createSignal(false);
@@ -1718,7 +1720,9 @@ export function Conversation(props: ConversationProps) {
                     }}
                   >
                     <span class="conversation-title-avatar">
-                      <AgentAvatar bot={bot()} />
+                      <AvatarAura state={titleAura()} size="medium">
+                        <AgentAvatar bot={bot()} />
+                      </AvatarAura>
                       <StatusDot status={props.status} class="conversation-title-status" />
                     </span>
                     <span class="conversation-title-copy">
