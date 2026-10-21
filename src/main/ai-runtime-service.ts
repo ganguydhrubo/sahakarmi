@@ -197,6 +197,8 @@ export class AiRuntimeService {
     if (lastCheck && Date.now() - lastCheck < 60_000) return this.getStatus();
     this.#working = true;
     let shouldAutoUpdate = false;
+    let openCodeUpdate = false;
+    const npmUpdatesToRun: AiToolId[] = [];
     this.#setStatus({ phase: "checking", message: null, progress: null });
     try {
       const platform = this.#options.platform ?? process.platform;
@@ -224,27 +226,29 @@ export class AiRuntimeService {
       for (const tool of AI_TOOLS.filter((entry) => entry.id !== "opencode")) {
         const release = await latestNpmRelease(tool.packageName).catch(() => null);
         const installedVersion = installed[tool.id] ?? null;
+        const hasUpdate =
+          installedVersion && release && compareVersions(release.version, installedVersion) > 0;
+        if (hasUpdate) npmUpdatesToRun.push(tool.id);
         tools.push({
           id: tool.id,
           label: tool.label,
           installed: installedVersion,
           latest: release?.version ?? null,
-          managed: false,
+          managed: true,
           command: tool.command,
-          note:
-            installedVersion && release && compareVersions(release.version, installedVersion) > 0
-              ? "You installed this tool yourself, so Sahkarmi only updates it when you click."
-              : null,
+          note: hasUpdate ? "Will be updated automatically in the background." : null,
         });
       }
 
       const openBot = await this.#checkUpstreamOpenBot();
       if (openBot) tools.push(openBot);
 
-      const openCodeUpdate =
-        currentVersion && openCodeLatest && compareVersions(openCodeLatest, currentVersion) > 0;
+      openCodeUpdate = Boolean(
+        currentVersion && openCodeLatest && compareVersions(openCodeLatest, currentVersion) > 0,
+      );
+      const anyUpdate = Boolean(openCodeUpdate) || npmUpdatesToRun.length > 0;
       this.#setStatus({
-        phase: openCodeUpdate ? "available" : "up-to-date",
+        phase: anyUpdate ? "available" : "up-to-date",
         currentVersion,
         availableVersion: openCodeUpdate ? openCodeLatest : null,
         progress: null,
@@ -252,7 +256,7 @@ export class AiRuntimeService {
         message: null,
         tools,
       });
-      shouldAutoUpdate = Boolean(openCodeUpdate) && this.#options.autoDownload();
+      shouldAutoUpdate = anyUpdate && this.#options.autoDownload();
     } catch (error) {
       this.#setStatus({
         phase: "error",
@@ -263,7 +267,12 @@ export class AiRuntimeService {
     } finally {
       this.#working = false;
     }
-    if (shouldAutoUpdate) await this.update("opencode");
+    if (shouldAutoUpdate) {
+      if (openCodeUpdate) await this.update("opencode");
+      for (const toolId of npmUpdatesToRun) {
+        await this.update(toolId);
+      }
+    }
     return this.getStatus();
   }
 

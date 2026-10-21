@@ -1899,6 +1899,15 @@ export function Conversation(props: ConversationProps) {
           onResume={props.onResumeQueue}
           onCancel={props.onCancelQueuedMessage}
           onStop={props.onStop}
+          onSteer={async (deliveryId) => {
+            const delivery = props.queue?.deliveries.find((d) => d.id === deliveryId);
+            if (!delivery) return;
+            props.onCancelQueuedMessage(deliveryId);
+            if (props.activeTurnId) {
+              props.onStop();
+            }
+            await props.onSendMessage(delivery.text, [], null);
+          }}
         />
       </Show>
 

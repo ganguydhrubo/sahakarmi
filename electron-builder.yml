@@ -70,6 +70,15 @@ win:
     - target: nsis
       arch:
         - x64
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Sahkarmi
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  uninstallDisplayName: Sahkarmi
 linux:
   icon: build/icons
   category: Office
