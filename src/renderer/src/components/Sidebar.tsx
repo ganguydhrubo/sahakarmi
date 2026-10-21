@@ -1,12 +1,21 @@
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { AppInfo, CoworkerStatus, UpdateStatus, WorkspaceState } from "../../../shared/ipc";
+import type {
+  AgentModelOption,
+  AgentProviderId,
+  AgentStatus,
+  AppInfo,
+  CoworkerStatus,
+  UpdateStatus,
+  WorkspaceState,
+} from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
 import { AvatarAura, statusAura } from "./AvatarAura";
 import { LogoMark } from "./Logo";
+import { type ProviderRefresh, ProviderUpdates } from "./ProviderUpdates";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { UsageRings } from "./UsageRings";
 
@@ -62,6 +71,10 @@ interface SidebarProps {
   /** Shown as a compact bar at the bottom of the sidebar while an update is on its way. */
   updateStatus?: UpdateStatus;
   onUpdateAction?: () => Promise<void>;
+  agentStatus?: AgentStatus;
+  modelOptions?: AgentModelOption[];
+  providerRefreshes?: Partial<Record<AgentProviderId, ProviderRefresh>>;
+  onRefreshModels?: () => Promise<void>;
 }
 
 interface BotContextMenu {
@@ -154,6 +167,8 @@ export function SidebarUpdateBar(props: { status: UpdateStatus; onAction: () => 
         return t("updateBarDownloading", { progress: String(props.status.progress ?? 0) });
       case "installing":
         return t("updateBarInstalling");
+      case "error":
+        return t("updateActionFailed");
       default:
         return t("updateBarAvailable");
     }
@@ -161,12 +176,14 @@ export function SidebarUpdateBar(props: { status: UpdateStatus; onAction: () => 
   const action = () =>
     phase() === "ready"
       ? t("updateBarRestart")
-      : phase() === "available"
-        ? t("updateBarDownload")
-        : null;
+      : phase() === "error"
+        ? t("updateRetry")
+        : phase() === "available"
+          ? t("updateBarDownload")
+          : null;
   return (
-    <Show when={["available", "downloading", "ready", "installing"].includes(phase())}>
-      <div class="sidebar-update-bar" role="status">
+    <Show when={["available", "downloading", "ready", "installing", "error"].includes(phase())}>
+      <div class="sidebar-update-bar" role="status" aria-live="polite">
         <span class="sidebar-update-label">
           {label()}
           <Show when={props.status.availableVersion}>
@@ -197,6 +214,9 @@ export function SidebarUpdateBar(props: { status: UpdateStatus; onAction: () => 
         </Show>
         <Show when={failed()}>
           <small class="sidebar-update-error">{t("updateActionFailed")}</small>
+        </Show>
+        <Show when={props.status.message}>
+          <small class="sidebar-update-error">{props.status.message}</small>
         </Show>
       </div>
     </Show>
@@ -580,6 +600,14 @@ export function Sidebar(props: SidebarProps) {
       </nav>
 
       <div class="coworker-panel-footer">
+        <Show when={props.agentStatus && props.onRefreshModels}>
+          <ProviderUpdates
+            status={props.agentStatus as AgentStatus}
+            models={props.modelOptions ?? []}
+            refreshes={props.providerRefreshes ?? {}}
+            onRefresh={() => props.onRefreshModels?.() ?? Promise.resolve()}
+          />
+        </Show>
         <Show when={props.updateStatus && props.onUpdateAction}>
           <SidebarUpdateBar
             status={props.updateStatus as UpdateStatus}

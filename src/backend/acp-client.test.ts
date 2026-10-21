@@ -4,7 +4,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { stripLeakedToolCalls } from "./acp-client";
+import { readModelOptions, stripLeakedToolCalls } from "./acp-client";
 import { geminiModelValue, openCodeModelValue, readGeminiAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
@@ -206,6 +206,24 @@ describe.sequential("ACP providers (bundled OpenCode)", () => {
 });
 
 describe("provider helpers", () => {
+  it("reads grouped ACP models without dropping provider IDs", () => {
+    expect(
+      readModelOptions({
+        configOptions: [
+          {
+            id: "model",
+            options: [
+              { group: "Free", options: [{ value: "opencode/beam-free", name: "Beam Free" }] },
+              { value: "anthropic/paid", name: "Account model" },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      { value: "opencode/beam-free", name: "Beam Free" },
+      { value: "anthropic/paid", name: "Account model" },
+    ]);
+  });
   it("strips a tool call that a free model echoed as text", () => {
     const leaked =
       "I'll request approval first. ​type=tool_call tool=functions.sahkarmi_request_approval<|func_arg_name|>title<|func_arg_value|>Pay ₹10<|func_arg_name|>category<|func_arg_value|>payment<|func_arg_end|>";

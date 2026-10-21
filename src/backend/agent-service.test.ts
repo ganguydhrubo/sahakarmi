@@ -53,7 +53,8 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY;
   delete process.env.SAHKARMI_FAKE_WARNING;
   delete process.env.SAHKARMI_FAKE_RETRY;
-  await rm(root, { recursive: true, force: true });
+  // Windows may briefly retain handles after the child process and atomic writes close.
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 describe.sequential("AgentService", () => {

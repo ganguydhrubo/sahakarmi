@@ -1721,6 +1721,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             8_000,
           );
           if (this.#stopping || this.#clients.get(client.provider) !== client) return;
+          const previous = this.#providerCatalogs.get(client.provider);
           this.#providerCatalogs.set(
             client.provider,
             mergeProviderCatalog(
@@ -1730,6 +1731,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
               this.#providerCatalogs.get(client.provider) ?? [],
             ),
           );
+          if (
+            !(response as ModelListResponse & { stale?: boolean }).stale &&
+            response.data?.length
+          ) {
+            const updated = this.#providerCatalogs.get(client.provider) ?? [];
+            this.#emit({
+              type: "provider-models-refreshed",
+              provider: client.provider,
+              checkedAt: new Date().toISOString(),
+              addedModels: previous
+                ? updated.filter((model) => !previous.some((old) => old.id === model.id)).length
+                : 0,
+            });
+          }
         } catch {
           /* Keep the last successful list during provider outages. */
         }

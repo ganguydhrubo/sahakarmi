@@ -41,7 +41,7 @@ interface UpdateServiceOptions {
   openDownload?: (version: string) => Promise<void>;
 }
 
-const DEFAULT_CHECK_INTERVAL = 4 * 60 * 60 * 1_000;
+const DEFAULT_CHECK_INTERVAL = 15 * 60 * 1_000;
 
 export function supportsInstalledUpdates(platform: NodeJS.Platform): boolean {
   return platform === "darwin" || platform === "win32";
@@ -143,6 +143,11 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
 
   getStatus(): UpdateStatus {
     return { ...this.#status };
+  }
+
+  async checkOnWake(): Promise<void> {
+    if (this.#status.checkedAt && Date.now() - Date.parse(this.#status.checkedAt) < 60_000) return;
+    await this.checkForUpdates();
   }
 
   async checkForUpdates(): Promise<UpdateStatus> {
