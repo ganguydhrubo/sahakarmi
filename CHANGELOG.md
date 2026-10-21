@@ -3,6 +3,15 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+
+## [Unreleased] - working animation
+
+### Added
+
+- **Working animation** around coworker avatars (team list, chat header, live status line), in an
+  Indian style and driven only by real events: a turning rangoli dot ring while thinking, marigold
+  and peacock sparks orbiting while a tool runs, a soft diya glow while waiting for you, a marigold
+  petal burst when a task finishes, and a short red shake on failure. Respects "reduce motion".
 ## [0.4.4] - 2026-10-21
 
 ### Fixed
