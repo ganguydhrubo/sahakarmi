@@ -438,7 +438,7 @@ export class BrowserHost {
     this.#session.setUserAgent(userAgent, preferredBrowserLanguageCodes());
     this.#session.webRequest.onBeforeSendHeaders((details, callback) => {
       callback({
-        requestHeaders: browserRequestHeaders(details.requestHeaders, userAgent),
+        requestHeaders: browserRequestHeaders(details.requestHeaders, userAgent, details.url),
       });
     });
     this.#session.setPermissionRequestHandler((_webContents, _permission, callback) => {
@@ -711,16 +711,32 @@ function browserLoadOptions(): { extraHeaders: string } {
 function browserRequestHeaders(
   requestHeaders: Record<string, string>,
   sessionUserAgent: string,
+  url?: string,
 ): Record<string, string> {
-  const userAgent = browserUserAgent(sessionUserAgent);
+  const userAgent = browserUserAgent(sessionUserAgent, url);
   const headers = { ...requestHeaders };
   setRequestHeader(headers, "User-Agent", userAgent);
   setRequestHeader(headers, "Accept-Language", preferredBrowserLanguages());
+
+  // Google OAuth blocks Chromium WebViews if Sec-CH-UA or non-standard brand tokens are present.
+  // For accounts.google.com and related login services, remove client hints so standard web flow applies.
+  if (url && (url.includes("accounts.google.com") || url.includes("google.com"))) {
+    delete headers["sec-ch-ua"];
+    delete headers["sec-ch-ua-mobile"];
+    delete headers["sec-ch-ua-platform"];
+    delete headers["Sec-CH-UA"];
+    delete headers["Sec-CH-UA-Mobile"];
+    delete headers["Sec-CH-UA-Platform"];
+  }
+
   return headers;
 }
 
-function browserUserAgent(sessionUserAgent: string): string {
-  return removeUserAgentProducts(sessionUserAgent, ["Electron", app.getName()]);
+function browserUserAgent(sessionUserAgent: string, url?: string): string {
+  if (url && url.includes("accounts.google.com")) {
+    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0";
+  }
+  return removeUserAgentProducts(sessionUserAgent, ["Electron", app.getName(), "Sahkarmi", "sahkarmi", "OpenBot", "openbot"]);
 }
 
 function removeUserAgentProducts(userAgent: string, products: string[]): string {
@@ -728,7 +744,7 @@ function removeUserAgentProducts(userAgent: string, products: string[]): string 
     .filter(Boolean)
     .reduce(
       (current, product) =>
-        current.replace(new RegExp(`\\s${escapeRegExp(product)}/[^\\s]+`, "g"), ""),
+        current.replace(new RegExp(`\\s${escapeRegExp(product)}/[^\\s]+`, "gi"), ""),
       userAgent,
     );
 }
