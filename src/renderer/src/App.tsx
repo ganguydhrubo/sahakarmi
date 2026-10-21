@@ -21,6 +21,7 @@ import type {
   AgentProviderId,
   AgentReasoningEffort,
   AgentStatus,
+  AiRuntimeStatus,
   AppInfo,
   ApprovalRequest,
   AppSetupState,
@@ -177,6 +178,7 @@ export function App() {
   const [providerRefreshes, setProviderRefreshes] = createSignal<
     Partial<Record<AgentProviderId, ProviderRefresh>>
   >({});
+  const [runtimeStatus, setRuntimeStatus] = createSignal<AiRuntimeStatus | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = createSignal(
     readPanelWidth(LEFT_PANEL_STORAGE_KEY, LEFT_PANEL_DEFAULT, LEFT_PANEL_MIN, LEFT_PANEL_MAX),
   );
@@ -242,9 +244,11 @@ export function App() {
       .then(setTakeover)
       .catch(() => undefined);
     const unsubscribeUpdate = window.sahkarmi.update.onEvent(setUpdateStatus);
+    const unsubscribeRuntime = window.sahkarmi.aiRuntime.onEvent(setRuntimeStatus);
     onCleanup(() => {
       unsubscribe();
       unsubscribeUpdate();
+      unsubscribeRuntime();
       if (conversationFrame !== undefined) cancelAnimationFrame(conversationFrame);
       for (const timer of recentReplyTimers.values()) clearTimeout(timer);
       recentReplyTimers.clear();
@@ -252,6 +256,10 @@ export function App() {
     void window.sahkarmi.update
       .getStatus()
       .then(setUpdateStatus)
+      .catch(() => undefined);
+    void window.sahkarmi.aiRuntime
+      .getStatus()
+      .then(setRuntimeStatus)
       .catch(() => undefined);
     void window.sahkarmi
       .getSetupState()
@@ -981,6 +989,10 @@ export function App() {
               providerRefreshes={providerRefreshes()}
               onRefreshModels={async () => {
                 setModelOptions(await window.sahkarmi.agent.refreshModels());
+              }}
+              runtimeStatus={runtimeStatus() ?? undefined}
+              onUpdateTool={async (toolId) => {
+                setRuntimeStatus(await window.sahkarmi.aiRuntime.update(toolId));
               }}
             />
             <PanelResizer

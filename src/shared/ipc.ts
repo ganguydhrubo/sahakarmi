@@ -12,6 +12,10 @@ export const IPC_CHANNELS = {
   updateDownload: "update:download",
   updateInstall: "update:install",
   updateEvent: "update:event",
+  aiRuntimeGetStatus: "ai-runtime:get-status",
+  aiRuntimeCheck: "ai-runtime:check",
+  aiRuntimeUpdate: "ai-runtime:update",
+  aiRuntimeEvent: "ai-runtime:event",
   maintenanceExportData: "maintenance:export-data",
   maintenanceExportDiagnostics: "maintenance:export-diagnostics",
   agentGetStatus: "agent:get-status",
@@ -123,6 +127,47 @@ export interface UpdateStatus {
 
 export interface ExportResult {
   saved: boolean;
+}
+
+export type AiRuntimePhase =
+  | "idle"
+  | "checking"
+  | "available"
+  | "updating"
+  | "updated"
+  | "up-to-date"
+  | "error";
+
+export const AI_TOOL_IDS = ["opencode", "codex", "claude", "gemini", "openbot"] as const;
+export type AiToolId = (typeof AI_TOOL_IDS)[number];
+
+export function isAiToolId(value: unknown): value is AiToolId {
+  return typeof value === "string" && AI_TOOL_IDS.includes(value as AiToolId);
+}
+
+export interface AiToolUpdate {
+  id: AiToolId;
+  label: string;
+  installed: string | null;
+  latest: string | null;
+  /** Sahkarmi can install this update itself. */
+  managed: boolean;
+  /** The command that updates the tool when Sahkarmi cannot do it. */
+  command: string | null;
+  /** A short, honest note, such as why upstream code is not merged. */
+  note: string | null;
+}
+
+export interface AiRuntimeStatus {
+  phase: AiRuntimePhase;
+  /** Version of the OpenCode runtime the app is running right now. */
+  currentVersion: string | null;
+  /** Version available for the bundled OpenCode runtime. */
+  availableVersion: string | null;
+  progress: number | null;
+  checkedAt: string | null;
+  message: string | null;
+  tools: AiToolUpdate[];
 }
 
 export type AgentPhase = "idle" | "starting" | "ready" | "restarting" | "blocked" | "stopped";
@@ -1205,6 +1250,13 @@ export interface UpdateDesktopApi {
   onEvent: (listener: (status: UpdateStatus) => void) => () => void;
 }
 
+export interface AiRuntimeDesktopApi {
+  getStatus: () => Promise<AiRuntimeStatus>;
+  check: () => Promise<AiRuntimeStatus>;
+  update: (toolId: AiToolId) => Promise<AiRuntimeStatus>;
+  onEvent: (listener: (status: AiRuntimeStatus) => void) => () => void;
+}
+
 export interface MaintenanceDesktopApi {
   exportData: () => Promise<ExportResult>;
   exportDiagnostics: () => Promise<ExportResult>;
@@ -1233,5 +1285,6 @@ export interface SahkarmiDesktopApi {
   routines: RoutinesDesktopApi;
   files: FilesDesktopApi;
   update: UpdateDesktopApi;
+  aiRuntime: AiRuntimeDesktopApi;
   maintenance: MaintenanceDesktopApi;
 }
