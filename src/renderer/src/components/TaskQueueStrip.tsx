@@ -10,6 +10,7 @@ interface TaskQueueStripProps {
   onResume: () => void;
   onCancel: (deliveryId: string) => void;
   onStop: () => void;
+  onSteer?: (deliveryId: string) => void;
 }
 
 const DONE_STATUSES = new Set(["completed", "failed", "interrupted", "cancelled"]);
@@ -109,6 +110,31 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
           <For each={queued()}>
             {(delivery) => (
               <TaskChip delivery={delivery} state="queued">
+                <Show when={props.activeTurnId && props.onSteer}>
+                  <button
+                    type="button"
+                    class="task-chip-steer"
+                    onClick={() => props.onSteer?.(delivery.id)}
+                    aria-label={`Steer active turn with task ${delivery.position ?? ""}`.trim()}
+                    title="Steer: guide the active turn with this task immediately"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 16 16"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="10 6 14 10 10 14" />
+                      <path d="M2 2v4a4 4 0 0 0 4 4h8" />
+                    </svg>
+                    <span>Steer</span>
+                  </button>
+                </Show>
                 <button
                   type="button"
                   onClick={() => props.onCancel(delivery.id)}

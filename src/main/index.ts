@@ -10,6 +10,7 @@ import {
   dialog,
   Menu,
   Notification,
+  nativeImage,
   nativeTheme,
   type OpenDialogOptions,
   powerMonitor,
@@ -540,6 +541,7 @@ function parseOpenSharedFile(value: unknown): OpenSharedFileInput {
 }
 
 function createWindow(): BrowserWindow {
+  const icon = windowIcon();
   const window = new BrowserWindow({
     width: 1200,
     height: 820,
@@ -548,7 +550,7 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0",
     title: "Sahkarmi",
-    ...(windowIcon() ? { icon: windowIcon() } : {}),
+    ...(icon ? { icon } : {}),
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 13, y: 14 } }
       : {}),
@@ -560,6 +562,10 @@ function createWindow(): BrowserWindow {
       webSecurity: true,
     },
   });
+
+  if (icon && process.platform === "win32") {
+    window.setIcon(icon);
+  }
 
   window.once("ready-to-show", () => window.show());
   window.on("close", (event) => {
@@ -598,7 +604,7 @@ function createWindow(): BrowserWindow {
 }
 
 /** The Sahkarmi logo for the window and taskbar (.ico on Windows for crisp small sizes). */
-function windowIcon(): string | undefined {
+function windowIcon(): Electron.NativeImage | undefined {
   if (process.platform === "darwin") return undefined;
   const candidates = app.isPackaged
     ? [join(process.resourcesPath, "icons", process.platform === "win32" ? "icon.ico" : "icon.png")]
@@ -609,7 +615,10 @@ function windowIcon(): string | undefined {
           process.platform === "win32" ? "icon.ico" : "icons/512x512.png",
         ),
       ];
-  return candidates.find((candidate) => existsSync(candidate));
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) return undefined;
+  const img = nativeImage.createFromPath(found);
+  return img.isEmpty() ? undefined : img;
 }
 
 function loadRenderer(window: BrowserWindow): Promise<void> {

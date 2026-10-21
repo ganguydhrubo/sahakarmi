@@ -4,6 +4,20 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.4.8] - 2026-10-21
+
+### Fixed
+
+- Set explicit taskbar and window icon using NativeImage on Windows with NSIS shortcut binding.
+- Expand chat window bounds: increase user bubble max-width to 720px and bot bubble to 860px for a comfortable wide layout.
+- Fix AI tool updates sheet clipping in settings panel and expand scroll container.
+- Clean up informal activity thinking lines to professional enterprise tone; set factual activity as default.
+
+### Added
+
+- Add the `↳ Steer` button in TaskQueueStrip to steer or prioritize active turns with queued tasks immediately.
+- Automatic background updates for all installed AI tools (OpenCode, Codex, Claude, Gemini) with zero user intervention.
+
 ## [0.4.7] - 2026-10-21
 
 ### Fixed

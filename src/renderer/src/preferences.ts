@@ -40,7 +40,7 @@ const [language, setLanguageSignal] = createSignal<LanguageCode>(
 );
 
 const [activityStyle, setActivityStyleSignal] = createSignal<ActivityStyle>(
-  readStored(ACTIVITY_STYLE_KEY) === "seedha" ? "seedha" : "masti",
+  readStored(ACTIVITY_STYLE_KEY) === "masti" ? "masti" : "seedha",
 );
 
 export { activityStyle, language, theme };
