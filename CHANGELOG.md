@@ -4,6 +4,17 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.4.7] - 2026-10-21
+
+### Fixed
+
+- Sanitize client hints and headers during Google sign-in to eliminate embedded WebView security warnings.
+- Keep coworker browser tabs trusted during OAuth logins.
+
+### Added
+
+- Auto-update the bundled OpenCode runtime and surface every AI tool update (PR #25).
+
 ## [0.4.6] - 2026-10-21
 
 ### Fixed
