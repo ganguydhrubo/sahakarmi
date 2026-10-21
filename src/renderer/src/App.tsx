@@ -1227,13 +1227,13 @@ function toBotMessage(message: ConversationMessage): BotMessage {
     status: message.exchange
       ? undefined
       : message.delivery?.status === "queued"
-        ? `Line mein #${message.delivery.position}`
+        ? `Queued #${message.delivery.position}`
         : message.delivery?.status === "cancelled"
-          ? "Cancel kar diya gaya"
+          ? "Cancelled"
           : message.status === "failed"
-            ? "Poora nahi ho paya"
+            ? "Failed"
             : message.status === "interrupted"
-              ? "Beech mein rok diya gaya"
+              ? "Interrupted"
               : undefined,
   };
 }

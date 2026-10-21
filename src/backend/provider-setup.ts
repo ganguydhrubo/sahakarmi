@@ -2,7 +2,8 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { createWriteStream } from "node:fs";
-import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -82,6 +83,51 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     if (trimmed.length > 4_096 || /[\r\n]/.test(trimmed)) throw new Error("That code looks wrong.");
     login.stdin.write(`${trimmed}\n`);
     this.#set(provider, { phase: "waiting", message: "Checking the code…" });
+    return this.#get(provider);
+  }
+
+  /** Saves an API key for the provider, writes it to environment and disk, and connects. */
+  async setApiKey(provider: AgentProviderId, apiKey: string): Promise<ProviderSetupState> {
+    const key = apiKey.trim();
+    if (!key) throw new Error("API key cannot be empty.");
+    if (provider === "gemini") {
+      process.env.GEMINI_API_KEY = key;
+      process.env.GOOGLE_API_KEY = key;
+      if (process.platform === "win32") {
+        try {
+          execFile(
+            "powershell",
+            [
+              "-NoProfile",
+              "-Command",
+              `[System.Environment]::SetEnvironmentVariable('GEMINI_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
+            ],
+            { windowsHide: true },
+            () => {},
+          );
+        } catch {
+          // ignore
+        }
+      }
+      try {
+        const geminiDir = join(homedir(), ".gemini");
+        await mkdir(geminiDir, { recursive: true });
+        await writeFile(join(geminiDir, "gemini_api_key.txt"), key, "utf8");
+      } catch {
+        // ignore
+      }
+    } else if (provider === "codex") {
+      process.env.OPENAI_API_KEY = key;
+    } else if (provider === "claude") {
+      process.env.ANTHROPIC_API_KEY = key;
+    }
+
+    try {
+      await this.#options.recheck(provider);
+      this.#set(provider, { phase: "connected", message: "API key saved! Provider connected.", url: null });
+    } catch (error) {
+      this.#set(provider, { phase: "failed", message: messageOf(error) });
+    }
     return this.#get(provider);
   }
 

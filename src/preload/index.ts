@@ -213,6 +213,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     connect: (provider) => ipcRenderer.invoke(IPC_CHANNELS.providerSetupConnect, provider),
     submitCode: (provider, code) =>
       ipcRenderer.invoke(IPC_CHANNELS.providerSetupSubmitCode, { provider, code }),
+    setApiKey: (provider, apiKey) =>
+      ipcRenderer.invoke(IPC_CHANNELS.providerSetupSetApiKey, { provider, apiKey }),
     check: (provider) => ipcRenderer.invoke(IPC_CHANNELS.providerSetupCheck, provider),
     onEvent: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, state: ProviderSetupState) =>

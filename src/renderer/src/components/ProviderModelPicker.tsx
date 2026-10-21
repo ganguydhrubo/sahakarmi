@@ -60,6 +60,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
         (option) =>
           railProvider() !== "opencode" ||
           showAccountModels() ||
+          Boolean(search().trim()) ||
           isFreeModel(option.id) ||
           option.id === props.value,
       )
