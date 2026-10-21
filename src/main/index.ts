@@ -747,6 +747,46 @@ function openTerminal(command: string, title: string): Promise<void> {
   });
 }
 
+async function restoreSavedApiKeys(): Promise<void> {
+  const home = homedir();
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      const key = await readFile(join(home, ".gemini", "gemini_api_key.txt"), "utf8").catch(
+        () => "",
+      );
+      const trimmed = key.trim();
+      if (trimmed) {
+        process.env.GEMINI_API_KEY = trimmed;
+        process.env.GOOGLE_API_KEY = trimmed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      const key = await readFile(join(home, ".codex", "openai_api_key.txt"), "utf8").catch(
+        () => "",
+      );
+      const trimmed = key.trim();
+      if (trimmed) process.env.OPENAI_API_KEY = trimmed;
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      const key = await readFile(join(home, ".claude", "anthropic_api_key.txt"), "utf8").catch(
+        () => "",
+      );
+      const trimmed = key.trim();
+      if (trimmed) process.env.ANTHROPIC_API_KEY = trimmed;
+    }
+  } catch {
+    // ignore
+  }
+}
+
 function forwardUpdateStatus(status: import("../shared/ipc").UpdateStatus): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(IPC_CHANNELS.updateEvent, status);
@@ -790,6 +830,7 @@ if (!hasSingleInstanceLock) {
     .then(async () => {
       configureContentSecurityPolicy();
       mainWindow = createWindow();
+      await restoreSavedApiKeys();
       const store = new BotStore(app.getPath("userData"), homedir());
       await store.initialize();
       mailboxStore = new MailboxStore(app.getPath("userData"), store.sharedRoot);

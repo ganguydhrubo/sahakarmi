@@ -1195,6 +1195,44 @@ textarea {
   overflow: visible;
 }
 
+@keyframes agentBlink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  96.5% {
+    transform: scaleY(0.1);
+  }
+}
+
+@keyframes agentFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+.agent-mark-3d {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));
+  transition: transform 0.25s ease;
+}
+
+.bot-avatar:hover .agent-mark-3d {
+  transform: scale(1.08) translateY(-1px);
+}
+
+.agent-mark__eyes {
+  transform-origin: 50px 49px;
+  animation: agentBlink 4.4s infinite ease-in-out;
+}
+
 .agent-mark__head {
   fill: currentColor;
 }

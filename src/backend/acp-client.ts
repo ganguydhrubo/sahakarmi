@@ -126,13 +126,24 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
 
   start(): void {
     if (this.#child) return;
-    const needsShell =
+    const isWindowsBatch =
       process.platform === "win32" &&
       [".cmd", ".bat"].includes(extname(this.#config.executable).toLowerCase());
-    const child = spawn(this.#config.executable, this.#config.args, {
+    const launchExecutable = isWindowsBatch
+      ? process.env.ComSpec || "cmd.exe"
+      : this.#config.executable;
+    const launchArgs = isWindowsBatch
+      ? [
+          "/d",
+          "/s",
+          "/c",
+          `""${this.#config.executable.replaceAll("%", "%%")}" ${this.#config.args.map((arg) => `"${arg}"`).join(" ")}"`,
+        ]
+      : this.#config.args;
+    const child = spawn(launchExecutable, launchArgs, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...this.#config.env },
-      shell: needsShell,
+      windowsVerbatimArguments: isWindowsBatch,
       windowsHide: true,
     });
     this.#child = child;

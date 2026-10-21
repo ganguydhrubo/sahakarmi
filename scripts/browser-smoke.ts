@@ -26,7 +26,11 @@ try {
   const exitCode = await run(electron, [outputPath]);
   if (exitCode !== 0) process.exitCode = exitCode;
 } finally {
-  await rm(outputRoot, { recursive: true, force: true });
+  try {
+    await rm(outputRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    // Windows file handle release delay
+  }
 }
 
 function run(executable: string, arguments_: string[]): Promise<number> {
