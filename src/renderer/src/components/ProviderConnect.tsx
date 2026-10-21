@@ -23,6 +23,8 @@ const BUSY: ProviderSetupState["phase"][] = ["installing", "waiting", "needs-cod
 export function ProviderConnect(props: { agentStatus: AgentStatus }) {
   const [setup, setSetup] = createSignal<Record<string, ProviderSetupState>>({});
   const [codes, setCodes] = createSignal<Record<string, string>>({});
+  const [apiKeys, setApiKeys] = createSignal<Record<string, string>>({});
+  const [apiKeyOpen, setApiKeyOpen] = createSignal<Record<string, boolean>>({});
   const [errors, setErrors] = createSignal<Record<string, string>>({});
 
   const store = (state: ProviderSetupState) =>
@@ -106,7 +108,67 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                     {connected() ? t("connectReconnect") : t("connectButton")}
                   </button>
                 </Show>
+                <Show when={provider.id === "gemini" || provider.id === "codex" || provider.id === "claude"}>
+                  <button
+                    type="button"
+                    class="link-button"
+                    style="font-size: 12px; margin-left: 6px;"
+                    title="Enter API Key directly"
+                    onClick={() =>
+                      setApiKeyOpen((prev) => ({ ...prev, [provider.id]: !prev[provider.id] }))
+                    }
+                  >
+                    🔑 {apiKeyOpen()[provider.id] ? "Close Key" : "API Key"}
+                  </button>
+                </Show>
               </div>
+              <Show when={apiKeyOpen()[provider.id]}>
+                <div class="provider-connect-progress" style="margin-top: 8px;">
+                  <form
+                    class="provider-connect-code"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const key = apiKeys()[provider.id]?.trim();
+                      if (!key) return;
+                      void act(provider.id, () =>
+                        window.sahkarmi.providerSetup.setApiKey(provider.id, key),
+                      ).then(() =>
+                        setApiKeyOpen((prev) => ({ ...prev, [provider.id]: false })),
+                      );
+                    }}
+                  >
+                    <input
+                      type="password"
+                      value={apiKeys()[provider.id] ?? ""}
+                      placeholder={
+                        provider.id === "gemini"
+                          ? "Enter Gemini API Key (from Google AI Studio)"
+                          : `Enter ${provider.name} API Key`
+                      }
+                      aria-label="API Key"
+                      onInput={(event) => {
+                        const value = event.currentTarget.value;
+                        setApiKeys((current) => ({ ...current, [provider.id]: value }));
+                      }}
+                    />
+                    <button type="submit" class="button-primary">
+                      Save & Connect
+                    </button>
+                    <Show when={provider.id === "gemini"}>
+                      <button
+                        type="button"
+                        class="link-button"
+                        style="font-size: 12px; margin-left: 8px;"
+                        onClick={() =>
+                          void window.sahkarmi.openUrl("https://aistudio.google.com/app/apikey")
+                        }
+                      >
+                        Get Free Key ↗
+                      </button>
+                    </Show>
+                  </form>
+                </div>
+              </Show>
               <Show when={state() && state()?.phase !== "idle" && state()?.phase !== "connected"}>
                 <div class="provider-connect-progress" role="status">
                   <Show when={state()?.message}>
@@ -148,6 +210,33 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                       />
                       <button type="submit" class="button-primary">
                         {t("connectSubmitCode")}
+                      </button>
+                    </form>
+                  </Show>
+                  <Show when={state()?.phase === "needs-api-key"}>
+                    <form
+                      class="provider-connect-code"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const key = apiKeys()[provider.id]?.trim();
+                        if (!key) return;
+                        void act(provider.id, () =>
+                          window.sahkarmi.providerSetup.setApiKey(provider.id, key),
+                        );
+                      }}
+                    >
+                      <input
+                        type="password"
+                        value={apiKeys()[provider.id] ?? ""}
+                        placeholder="Paste your Gemini API key (AIzaSy...)"
+                        aria-label="API Key"
+                        onInput={(event) => {
+                          const value = event.currentTarget.value;
+                          setApiKeys((current) => ({ ...current, [provider.id]: value }));
+                        }}
+                      />
+                      <button type="submit" class="button-primary">
+                        Save & Connect
                       </button>
                     </form>
                   </Show>

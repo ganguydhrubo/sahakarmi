@@ -58,7 +58,7 @@ import {
 import { SidebarToggleIcon } from "./Sidebar";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { TaskQueueStrip } from "./TaskQueueStrip";
-import { ToolCallCard } from "./ToolCallCard";
+import { ToolCallCard, ToolGroupCard } from "./ToolCallCard";
 import { VoiceRecorder } from "./VoiceRecorder";
 
 interface ConversationProps {
@@ -2008,13 +2008,34 @@ export function Conversation(props: ConversationProps) {
             </article>
           </Show>
           <For each={props.messages}>
-            {(message) => {
+            {(message, index) => {
               const animateEntrance = message.animate === true && markMessageSeen(message.id);
               if (message.kind === "tool" && message.tool) {
-                const tool = message.tool;
+                const i = index();
+                const prevIsTool =
+                  i > 0 && props.messages[i - 1]?.kind === "tool" && Boolean(props.messages[i - 1]?.tool);
+                if (prevIsTool) {
+                  return null;
+                }
+                const tools: ToolCallSummary[] = [message.tool];
+                for (let next = i + 1; next < props.messages.length; next++) {
+                  const nextMsg = props.messages[next];
+                  if (nextMsg?.kind === "tool" && nextMsg.tool) {
+                    tools.push(nextMsg.tool);
+                  } else {
+                    break;
+                  }
+                }
+                if (tools.length === 1) {
+                  return (
+                    <div classList={{ "thinking-entry-animated": animateEntrance }}>
+                      <ToolCallCard tool={message.tool} />
+                    </div>
+                  );
+                }
                 return (
                   <div classList={{ "thinking-entry-animated": animateEntrance }}>
-                    <ToolCallCard tool={message.tool ?? tool} />
+                    <ToolGroupCard tools={tools} />
                   </div>
                 );
               }

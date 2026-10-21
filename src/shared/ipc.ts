@@ -78,6 +78,7 @@ export const IPC_CHANNELS = {
   providerSetupList: "provider-setup:list",
   providerSetupConnect: "provider-setup:connect",
   providerSetupSubmitCode: "provider-setup:submit-code",
+  providerSetupSetApiKey: "provider-setup:set-api-key",
   providerSetupCheck: "provider-setup:check",
   providerSetupEvent: "provider-setup:event",
   usageOverview: "usage:overview",
@@ -650,6 +651,7 @@ export interface ProviderSetupState {
     | "installing"
     | "waiting"
     | "needs-code"
+    | "needs-api-key"
     | "terminal"
     | "checking"
     | "connected"
@@ -664,6 +666,7 @@ export interface ProviderSetupDesktopApi {
   list: () => Promise<ProviderSetupState[]>;
   connect: (provider: AgentProviderId) => Promise<ProviderSetupState>;
   submitCode: (provider: AgentProviderId, code: string) => Promise<ProviderSetupState>;
+  setApiKey: (provider: AgentProviderId, apiKey: string) => Promise<ProviderSetupState>;
   check: (provider: AgentProviderId) => Promise<ProviderSetupState>;
   onEvent: (listener: (state: ProviderSetupState) => void) => () => void;
 }

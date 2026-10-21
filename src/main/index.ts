@@ -709,6 +709,10 @@ function registerProviderSetupHandlers(setup: ProviderSetup): void {
     if (!isObject(input) || typeof input.code !== "string") throw new Error("Invalid code.");
     return setup.submitCode(provider(input.provider), input.code);
   });
+  handleTrusted(IPC_CHANNELS.providerSetupSetApiKey, (input: unknown) => {
+    if (!isObject(input) || typeof input.apiKey !== "string") throw new Error("Invalid API key.");
+    return setup.setApiKey(provider(input.provider), input.apiKey);
+  });
 }
 
 /** Opens a visible terminal running one command (used for Gemini's interactive Google sign-in). */
