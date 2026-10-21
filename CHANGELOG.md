@@ -4,6 +4,18 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.4.9] - 2026-10-21
+
+### Fixed
+
+- Modern collapsible tool-call execution drawers matching Claude, Codex, Grok, and Antigravity: consecutive operations are unified into a sleek, clean progress card rather than spilling across the chat.
+- Clean sanitized tool titles and file paths: eliminates raw JSON dumping, removes trailing braces and bounds clipping.
+- Replaced informal raw status labels on tool cards and task queue.
+
+### Added
+
+- In-app Google Gemini API key management: paste free Google AI Studio keys directly in Settings without terminal windows or CLI prompts.
+
 ## [0.4.8] - 2026-10-21
 
 ### Fixed
