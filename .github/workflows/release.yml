@@ -203,6 +203,21 @@ jobs:
       - name: Build unsigned NSIS installer
         run: bun run dist:win
 
+      - name: Sign Windows installer via SignPath (if configured)
+        continue-on-error: true
+        if: env.SIGNPATH_API_TOKEN != ''
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: 'sahakarmi'
+          signing-policy-slug: 'release-signing'
+          wait-for-completion: true
+          output-artifact-directory: 'dist'
+
       - name: Verify packaged application metadata and launch
         run: bun run verify:package:win --require-update-metadata
 
@@ -215,9 +230,7 @@ jobs:
             Write-Error "Expected one EXE installer and latest.yml."
           }
           $signature = Get-AuthenticodeSignature -LiteralPath $installers[0].FullName
-          if ($signature.Status -ne "NotSigned") {
-            Write-Error "The unsigned release contract changed: $($signature.Status)."
-          }
+          Write-Host "Authenticode signature status: $($signature.Status)"
           Select-String -Path dist/latest.yml -SimpleMatch "version: $env:RELEASE_VERSION"
           Select-String -Path dist/latest.yml -SimpleMatch ".exe"
 
@@ -362,3 +375,16 @@ jobs:
       - name: Refresh website download links
         continue-on-error: true
         run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+      # Submit release to Windows Package Manager (winget-pkgs)
+      - name: Submit to Windows Package Manager (winget)
+        continue-on-error: true
+        if: env.WINGET_TOKEN != ''
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        uses: vedantmgoyal2009/winget-releaser@v2
+        with:
+          identifier: Sahkarmi.Sahkarmi
+          version: ${{ needs.validate.outputs.release_version }}
+          installers-regex: 'Sahkarmi-.*-x64\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
