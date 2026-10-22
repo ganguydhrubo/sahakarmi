@@ -77,6 +77,9 @@ const SettingsView = lazy(() =>
 const TasksView = lazy(() =>
   import("./components/TasksView").then((module) => ({ default: module.TasksView })),
 );
+const OrchestratorView = lazy(() =>
+  import("./components/OrchestratorView").then((module) => ({ default: module.OrchestratorView })),
+);
 
 const FALLBACK_STATUS: AgentStatus = {
   phase: "starting",
@@ -1018,6 +1021,9 @@ export function App() {
                   onSend={(botId, text) => sendMessageToBot(botId, text, [])}
                   onOpenCoworker={selectBot}
                 />
+              </Match>
+              <Match when={view() === "orchestrator"}>
+                <OrchestratorView bots={workspaceBots()} onOpenCoworker={selectBot} />
               </Match>
               <Match when={view() === "approvals"}>
                 <ApprovalsView

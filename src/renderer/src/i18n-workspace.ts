@@ -365,6 +365,17 @@ export const workspaceEn = {
   connectOpenAgain: "Browser did not open? Open the sign-in page",
   connectCodePlaceholder: "Paste the code from the sign-in page",
   connectSubmitCode: "Finish sign-in",
+
+  navOrchestrator: "Multi-Agent",
+  orchestratorTitle: "Adaptive Multi-Agent Engine",
+  orchestratorSubtitle: "OpenBots-inspired autonomous task graph & multi-specialist collaboration",
+  orchestratorObjectivePlaceholder:
+    "Describe your goal (e.g. Build authentication system with JWT and test suite)...",
+  orchestratorStart: "Launch Orchestration",
+  orchestratorFastPath: "Single-Agent Fast Path",
+  orchestratorMultiAgent: "Adaptive Multi-Agent DAG",
+  orchestratorNoRuns:
+    "No orchestration runs yet. Enter an objective above to launch your autonomous agent team.",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -729,6 +740,15 @@ export const workspaceHi: WorkspaceDictionary = {
   connectOpenAgain: "ब्राउज़र नहीं खुला? साइन-इन पेज खोलें",
   connectCodePlaceholder: "साइन-इन पेज का कोड यहाँ पेस्ट करें",
   connectSubmitCode: "साइन इन पूरा करें",
+
+  navOrchestrator: "मल्टी-एजेंट",
+  orchestratorTitle: "अनुकूली मल्टी-एजेंट इंजन",
+  orchestratorSubtitle: "ओपनबॉट्स-प्रेरित स्वायत्त टास्क ग्राफ और मल्टी-विशेषज्ञ सहयोग",
+  orchestratorObjectivePlaceholder: "अपना लक्ष्य बताएं (उदा. JWT प्रमाणीकरण प्रणाली और टेस्ट सूट बनाएं)...",
+  orchestratorStart: "ऑर्केस्ट्रेशन शुरू करें",
+  orchestratorFastPath: "सिंगल-एजेंट फ़ास्ट पाथ",
+  orchestratorMultiAgent: "अनुकूली मल्टी-एजेंट DAG",
+  orchestratorNoRuns: "अभी तक कोई ऑर्केस्ट्रेशन रन नहीं है। ऊपर एक लक्ष्य दर्ज करें।",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -1089,4 +1109,13 @@ export const workspaceBn: WorkspaceDictionary = {
   connectOpenAgain: "ব্রাউজার খোলেনি? সাইন-ইন পেজ খুলুন",
   connectCodePlaceholder: "সাইন-ইন পেজের কোড এখানে পেস্ট করুন",
   connectSubmitCode: "সাইন ইন শেষ করুন",
+
+  navOrchestrator: "মাল্টি-এজেন্ট",
+  orchestratorTitle: "অ্যাডাপ্টিভ মাল্টি-এজেন্ট ইঞ্জিন",
+  orchestratorSubtitle: "OpenBots-অনুপ্রাণিত স্বায়ত্তশাসিত টাস্ক গ্রাফ এবং বহু-বিশেষজ্ঞ সমন্বয়",
+  orchestratorObjectivePlaceholder: "আপনার লক্ষ্য লিখুন (যেমন: JWT প্রমাণীকরণ এবং টেস্ট স্যুট তৈরি করুন)...",
+  orchestratorStart: "অর্কেস্ট্রেশন শুরু করুন",
+  orchestratorFastPath: "সিঙ্গেল-এজেন্ট ফাস্ট পাথ",
+  orchestratorMultiAgent: "অ্যাডাপ্টিভ মাল্টি-এজেন্ট DAG",
+  orchestratorNoRuns: "এখনও কোনও অর্কেস্ট্রেশন রান নেই। উপরে একটি লক্ষ্য লিখুন।",
 };

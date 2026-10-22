@@ -20,6 +20,7 @@ import {
   systemPreferences,
 } from "electron";
 import electronUpdater from "electron-updater";
+import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
 import { AgentService } from "../backend/agent-service";
 import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
@@ -28,6 +29,7 @@ import { BusinessStore } from "../backend/business-store";
 import { resolveOpenCodeCli, setRuntimeDirectory, setToolsDirectory } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
+import { OrchestratorStore } from "../backend/orchestrator-store";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
 
@@ -74,6 +76,7 @@ import {
   type SaveBusinessTargetInput,
   type SendMessageInput,
   type SetQueuePausedInput,
+  type StartOrchestratorRunInput,
   type TargetPeriod,
   type UpdateBotInput,
 } from "../shared/ipc";
@@ -170,6 +173,8 @@ function registerIpcHandlers(
   business: BusinessStore,
   routines: RoutineStore,
   aiRuntime: AiRuntimeService,
+  orchestrator: AdaptiveOrchestrator,
+  store: BotStore,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -507,6 +512,35 @@ function registerIpcHandlers(
     }
     const error = await shell.openPath(target);
     if (error) throw new Error(error);
+  });
+  handleTrusted(IPC_CHANNELS.orchestratorGetRuns, () => orchestrator.getRuns());
+  handleTrusted(IPC_CHANNELS.orchestratorGetRun, (runId: unknown) => {
+    if (typeof runId !== "string") throw new Error("Invalid runId");
+    return orchestrator.getRun(runId);
+  });
+  handleTrusted(IPC_CHANNELS.orchestratorStartRun, (input: unknown) => {
+    if (!isObject(input) || typeof input.objective !== "string") {
+      throw new Error("Invalid StartOrchestratorRunInput");
+    }
+    const workspacePath = store.sharedRoot;
+    const existingBots = store.list();
+    return orchestrator.startRun(
+      input as unknown as StartOrchestratorRunInput,
+      workspacePath,
+      existingBots,
+    );
+  });
+  handleTrusted(IPC_CHANNELS.orchestratorPauseRun, (runId: unknown) => {
+    if (typeof runId !== "string") throw new Error("Invalid runId");
+    return orchestrator.pauseRun(runId);
+  });
+  handleTrusted(IPC_CHANNELS.orchestratorResumeRun, (runId: unknown) => {
+    if (typeof runId !== "string") throw new Error("Invalid runId");
+    return orchestrator.resumeRun(runId, store.sharedRoot);
+  });
+  handleTrusted(IPC_CHANNELS.orchestratorCancelRun, (runId: unknown) => {
+    if (typeof runId !== "string") throw new Error("Invalid runId");
+    return orchestrator.cancelRun(runId);
   });
 }
 
@@ -959,6 +993,10 @@ if (!hasSingleInstanceLock) {
         }
       });
       registerProviderSetupHandlers(providerSetup);
+      const orchestratorStore = new OrchestratorStore(app.getPath("userData"));
+      await orchestratorStore.initialize();
+      const orchestrator = new AdaptiveOrchestrator(orchestratorStore);
+      orchestrator.onEvent((event) => forwardAgentEvent(event));
       const agentInitialization = new AgentInitializationGate(() => service.initialize());
       registerIpcHandlers(
         service,
@@ -975,6 +1013,8 @@ if (!hasSingleInstanceLock) {
         business,
         routines,
         aiRuntimeService,
+        orchestrator,
+        store,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);

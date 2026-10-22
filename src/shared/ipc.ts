@@ -96,6 +96,12 @@ export const IPC_CHANNELS = {
   businessListTargets: "business:list-targets",
   businessSaveTarget: "business:save-target",
   businessDeleteTarget: "business:delete-target",
+  orchestratorGetRuns: "orchestrator:get-runs",
+  orchestratorGetRun: "orchestrator:get-run",
+  orchestratorStartRun: "orchestrator:start-run",
+  orchestratorPauseRun: "orchestrator:pause-run",
+  orchestratorResumeRun: "orchestrator:resume-run",
+  orchestratorCancelRun: "orchestrator:cancel-run",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -1012,6 +1018,122 @@ export interface AgentPromptQuestion {
   options: Array<{ label: string; description: string }> | null;
 }
 
+export type TaskExecutionStrategy = "single-agent" | "multi-agent";
+
+export type OrchestratorTaskStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "blocked"
+  | "repairing";
+
+export type OrchestratorSpecialistRole =
+  | "orchestrator"
+  | "architect"
+  | "frontend"
+  | "backend"
+  | "code"
+  | "qa"
+  | "security"
+  | "research"
+  | "finance"
+  | "ops";
+
+export interface OrchestratorDeliverable {
+  name: string;
+  path?: string;
+  summary?: string;
+  bytes?: number;
+}
+
+export interface OrchestratorVerificationEvidence {
+  type: "lint" | "typecheck" | "test" | "build" | "review";
+  passed: boolean;
+  summary: string;
+  output?: string;
+  timestamp: string;
+}
+
+export interface OrchestratorTask {
+  id: string;
+  runId: string;
+  title: string;
+  description: string;
+  role: OrchestratorSpecialistRole;
+  assignedBotId: string;
+  assignedInstanceId: string | null;
+  dependencies: string[];
+  inputs: Record<string, unknown>;
+  deliverables: OrchestratorDeliverable[];
+  acceptanceCriteria: string[];
+  status: OrchestratorTaskStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  error: string | null;
+  evidence: OrchestratorVerificationEvidence[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentExecutionInstance {
+  instanceId: string;
+  botId: string;
+  botName: string;
+  role: OrchestratorSpecialistRole;
+  assignedTaskId: string | null;
+  status: "idle" | "running" | "waiting" | "completed" | "failed";
+  workspacePath: string;
+  toolPermissions: string[];
+  turnCount: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface AgentCollaborationMessage {
+  id: string;
+  runId: string;
+  senderInstanceId: string;
+  senderBotId: string;
+  senderRole: OrchestratorSpecialistRole;
+  recipientInstanceId: string | null;
+  recipientBotId: string;
+  recipientRole: OrchestratorSpecialistRole;
+  type:
+    | "task_delegation"
+    | "task_handoff"
+    | "clarification_request"
+    | "clarification_reply"
+    | "status_update"
+    | "review_request"
+    | "review_verdict"
+    | "escalation";
+  summary: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface OrchestratorRun {
+  id: string;
+  workspaceId: string;
+  objective: string;
+  strategy: TaskExecutionStrategy;
+  status: "planning" | "running" | "paused" | "completed" | "failed";
+  tasks: OrchestratorTask[];
+  instances: AgentExecutionInstance[];
+  messages: AgentCollaborationMessage[];
+  deliverables: OrchestratorDeliverable[];
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface StartOrchestratorRunInput {
+  workspaceId?: string;
+  objective: string;
+  forcedStrategy?: TaskExecutionStrategy;
+}
+
 export interface RespondToPromptInput {
   requestId: string | number;
   answers: Record<string, string[]>;
@@ -1071,6 +1193,9 @@ export type AgentEvent =
   | { type: "approvals-changed"; approvals: ApprovalRequest[] }
   | { type: "schedules-changed"; schedules: ScheduledTask[] }
   | { type: "routines-changed"; state: RoutinesState }
+  | { type: "orchestrator-run-updated"; run: OrchestratorRun }
+  | { type: "orchestrator-task-updated"; runId: string; task: OrchestratorTask }
+  | { type: "orchestrator-handoff"; message: AgentCollaborationMessage }
   | { type: "error"; botId?: string; code: string; message: string };
 
 export interface BrowserTab {
@@ -1265,6 +1390,15 @@ export interface MaintenanceDesktopApi {
   exportDiagnostics: () => Promise<ExportResult>;
 }
 
+export interface OrchestratorDesktopApi {
+  getRuns: () => Promise<OrchestratorRun[]>;
+  getRun: (runId: string) => Promise<OrchestratorRun | null>;
+  startRun: (input: StartOrchestratorRunInput) => Promise<OrchestratorRun>;
+  pauseRun: (runId: string) => Promise<OrchestratorRun | null>;
+  resumeRun: (runId: string) => Promise<OrchestratorRun | null>;
+  cancelRun: (runId: string) => Promise<OrchestratorRun | null>;
+}
+
 export interface SahkarmiDesktopApi {
   setTheme?: (theme: "system" | "light" | "dark") => Promise<void>;
   getAppInfo: () => Promise<AppInfo>;
@@ -1290,4 +1424,5 @@ export interface SahkarmiDesktopApi {
   update: UpdateDesktopApi;
   aiRuntime: AiRuntimeDesktopApi;
   maintenance: MaintenanceDesktopApi;
+  orchestrator: OrchestratorDesktopApi;
 }

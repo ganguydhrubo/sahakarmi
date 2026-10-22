@@ -227,6 +227,14 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     exportData: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportData),
     exportDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportDiagnostics),
   },
+  orchestrator: {
+    getRuns: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetRuns),
+    getRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetRun, runId),
+    startRun: (input) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorStartRun, input),
+    pauseRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPauseRun, runId),
+    resumeRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResumeRun, runId),
+    cancelRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorCancelRun, runId),
+  },
 };
 
 contextBridge.exposeInMainWorld("sahkarmi", sahkarmiApi);
