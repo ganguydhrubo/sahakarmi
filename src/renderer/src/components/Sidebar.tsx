@@ -25,6 +25,7 @@ export type CenterView =
   | "coworker"
   | "tasks"
   | "orchestrator"
+  | "memory"
   | "files"
   | "approvals"
   | "schedules"
@@ -43,6 +44,7 @@ const RAIL_ITEMS: Array<{
 }> = [
   { view: "tasks", label: "navTasks", feature: null, icon: TasksIcon },
   { view: "orchestrator", label: "navOrchestrator", feature: null, icon: OrchestratorIcon },
+  { view: "memory", label: "navMemory", feature: null, icon: MemoryIcon },
   { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
   { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
   { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
@@ -164,6 +166,25 @@ function OrchestratorIcon() {
         fill="none"
         stroke="currentColor"
         stroke-width="1.5"
+      />
+    </svg>
+  );
+}
+
+function MemoryIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path
+        d="M5 3.5h10a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 5 3.5Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      />
+      <path
+        d="M7 7h6M7 10.5h6M7 14h4"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
       />
     </svg>
   );

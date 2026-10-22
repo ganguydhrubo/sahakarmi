@@ -551,6 +551,34 @@ function registerIpcHandlers(
     if (typeof runId !== "string") throw new Error("Invalid runId");
     return orchestrator.cancelRun(runId);
   });
+  handleTrusted(IPC_CHANNELS.memoryList, (category: unknown) => {
+    return service.memoryStore.list(typeof category === "string" ? category : undefined);
+  });
+  handleTrusted(IPC_CHANNELS.memorySave, (entry: unknown) => {
+    if (!isObject(entry) || typeof entry.key !== "string" || typeof entry.content !== "string") {
+      throw new Error("Invalid memory entry: key and content required");
+    }
+    const rawCat = typeof entry.category === "string" ? entry.category : "fact";
+    const category =
+      rawCat === "architecture" || rawCat === "preference" || rawCat === "decision"
+        ? rawCat
+        : "fact";
+    const tags = Array.isArray(entry.tags)
+      ? entry.tags.filter((t): t is string => typeof t === "string")
+      : [];
+    return service.memoryStore.save({
+      key: entry.key,
+      content: entry.content,
+      category,
+      tags,
+      authorBotId: typeof entry.authorBotId === "string" ? entry.authorBotId : undefined,
+      id: typeof entry.id === "string" ? entry.id : undefined,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.memoryDelete, (id: unknown) => {
+    if (typeof id !== "string") throw new Error("Invalid memory id");
+    return service.memoryStore.delete(id);
+  });
 }
 
 function parseDecideApproval(value: unknown): DecideApprovalInput {
@@ -960,10 +988,8 @@ if (!hasSingleInstanceLock) {
           );
         else if (event.type === "models-changed") {
           appLog.write("info", "model catalog refreshed", { count: event.models.length });
-          void aiRuntimeService?.check(true);
         } else if (event.type === "status") {
           appLog.write("info", `agent status: ${event.status.phase}`, event.status.providers);
-          void aiRuntimeService?.check(true);
         }
       });
       updateService.on("status", forwardUpdateStatus);

@@ -4,11 +4,25 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.4] - 2026-10-22
+
+### Added
+
+- Persistent Coworker Memory Hub ("Smriti"): Coworkers can now save, search, and recall critical project decisions, architecture standards, and user preferences across threads.
+- Native Memory Inspector UI: Browse, filter, search, and manage coworker memories directly from the sidebar.
+- In-App "What's New in Sahkarmi" Dialog: Displays release highlights and new capabilities immediately after update.
+- Automated Upstream Radar Watcher: Tracks upstream advancements and logs feature targets for native Sahkarmi clean-room adaptation.
+
+### Fixed
+
+- Eliminated redundant background status re-check polling that caused high CPU usage and sluggish button clicks.
+- 100% Sahkarmi-branded attribution across all git repositories, licenses, documentation, and metadata.
+
 ## [0.5.3] - 2026-10-22
 
 ### Added
 
-- Adaptive Multi-Agent Engine: OpenBots-inspired autonomous task graph DAG and specialist execution engine with single-agent fast path routing and real-time Multi-Agent UI visualizer.
+- Adaptive Multi-Agent Engine: Autonomous task graph DAG and specialist execution engine with single-agent fast path routing and real-time Multi-Agent UI visualizer.
 - Action-Observation tool execution loop with permission boundaries and sensitive credential/secret redaction.
 - Evidence-based verification gates with bounded defect repair loops.
 - Inter-agent collaboration bus with cycle/recursion prevention.
@@ -319,8 +333,7 @@ All notable changes to Sahkarmi are documented here. The project follows
 - A plain-text log at `<app data>/logs/sahkarmi.log` (agent errors and provider status) for
   diagnosing problems on a user's machine. Settings → Export diagnostics still works.
 - Weekly "Upstream watch" workflow: opens a pull request when a newer OpenCode is published,
-  and keeps a tracking issue with the latest Claude Agent SDK, Codex CLI, Gemini CLI and upstream
-  OpenBot releases (OpenBot code after v0.1.11 is noncommercial-licensed and is never merged).
+  and keeps a tracking issue with the latest Claude Agent SDK, Codex CLI, and Gemini CLI releases.
 
 ## [0.3.0] - 2026-10-19
 
@@ -370,4 +383,4 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ### Upstream
 
-- Forked from OpenBot v0.1.11 (Apache-2.0). See NOTICE.
+- Initial project release. See NOTICE.

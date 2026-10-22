@@ -40,6 +40,7 @@ import {
 } from "../shared/ipc";
 import { createGeminiClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
+import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
 import type { BotStore } from "./bot-store";
@@ -272,6 +273,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #models = structuredClone(FALLBACK_MODELS);
   readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
+  readonly #memoryStore: AgentMemoryStore;
 
   constructor(
     store: BotStore,
@@ -286,6 +288,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   ) {
     super();
     this.#store = store;
+    this.#memoryStore = new AgentMemoryStore(store.userDataPath);
     this.#mailbox = mailbox;
     this.#browser = browser;
     this.#approvals = approvals;
@@ -301,6 +304,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#browser.onControlChanged((state) => {
       this.#emit({ type: "browser-control-changed", state });
     });
+  }
+
+  /** Persistent memory store for coworker long-term knowledge retention */
+  get memoryStore(): AgentMemoryStore {
+    return this.#memoryStore;
   }
 
   /** Local usage ledger fed by provider notifications (see UsageService). */
@@ -1493,6 +1501,81 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       };
     }
 
+    if (params.tool === "save_memory") {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const key = typeof args.key === "string" ? args.key.trim() : "Note";
+      const content = typeof args.content === "string" ? args.content.trim() : "";
+      const rawCategory = typeof args.category === "string" ? args.category : "";
+      const category: AgentMemoryCategory =
+        rawCategory === "architecture" || rawCategory === "preference" || rawCategory === "decision"
+          ? rawCategory
+          : "fact";
+      const tags = Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string") : [];
+
+      const saved = await this.#memoryStore.save({
+        key,
+        content,
+        category,
+        tags,
+        authorBotId: senderBotId,
+      });
+
+      return {
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({
+              success: true,
+              message: `Memory saved successfully with key: "${saved.key}"`,
+              memory: saved,
+            }),
+          },
+        ],
+      };
+    }
+
+    if (params.tool === "search_memory") {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const query = typeof args.query === "string" ? args.query : "";
+      const category = typeof args.category === "string" ? args.category : undefined;
+      const results = await this.#memoryStore.search(query, category);
+
+      return {
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({
+              success: true,
+              count: results.length,
+              memories: results,
+            }),
+          },
+        ],
+      };
+    }
+
+    if (params.tool === "list_memories") {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const category = typeof args.category === "string" ? args.category : undefined;
+      const results = await this.#memoryStore.list(category);
+
+      return {
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({
+              success: true,
+              count: results.length,
+              memories: results,
+            }),
+          },
+        ],
+      };
+    }
+
     if (params.tool !== "send_message" || !isRecord(params.arguments)) {
       throw new Error(`Unsupported Sahkarmi tool: ${params.tool}`);
     }
@@ -2673,6 +2756,76 @@ const SAHKARMI_DYNAMIC_TOOLS = {
           },
         },
         required: ["name", "role"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "save_memory",
+      description:
+        "Save a persistent piece of knowledge, project decision, technical fact, or owner preference into long-term team memory. Persists across conversations.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          key: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            description: "Short title or key (e.g. 'Database Type', 'Owner Preference')",
+          },
+          content: {
+            type: "string",
+            minLength: 1,
+            maxLength: 8000,
+            description: "Detailed knowledge or decision to remember",
+          },
+          category: {
+            type: "string",
+            enum: ["architecture", "preference", "decision", "fact"],
+            description: "Category of the memory entry",
+          },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Keywords or tags for fast retrieval",
+          },
+        },
+        required: ["key", "content"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "search_memory",
+      description:
+        "Search long-term team memory by keyword or semantic query to recall previous decisions, standards, or facts.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Keyword or query to search for" },
+          category: {
+            type: "string",
+            enum: ["architecture", "preference", "decision", "fact"],
+            description: "Optional category filter",
+          },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "list_memories",
+      description: "List all memories currently retained in the team long-term memory hub.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          category: {
+            type: "string",
+            enum: ["architecture", "preference", "decision", "fact"],
+            description: "Optional category filter",
+          },
+        },
         additionalProperties: false,
       },
     },

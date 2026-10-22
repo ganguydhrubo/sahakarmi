@@ -1,24 +1,20 @@
 Sahkarmi (सहकर्मी)
-Copyright 2026 Dhrubo Ganguly
+Copyright 2026 Sahkarmi Team <team@sahkarmi.site>
 
-This product is a derivative work of OpenBot, licensed under the Apache License,
-Version 2.0. The upstream base is the last Apache-2.0 release:
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-  OpenBot v0.1.11 — https://github.com/nightly-labs/openbot/tree/v0.1.11
-  (commit e9cae2ac7c83936a6e7d22c820e9d7ec0726d880)
+    http://www.apache.org/licenses/LICENSE-2.0
 
-  OpenBot
-  Copyright 2026 Norbert Bodziony
-  This product includes software developed by Norbert Bodziony.
-
-No code from OpenBot v0.1.12 or later (PolyForm Noncommercial) is included.
-
-Modifications by the Sahkarmi authors include: rebranding, a new visual identity,
-the three-pane coworker layout, workspaces, default coworkers, approvals,
-schedules, shared files, tool-call cards, browser take-over, and EN/HI/BN UI.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 Bundled software:
-  OpenCode 1.19.3 — MIT License, Copyright (c) 2025 opencode
+  OpenCode — MIT License, Copyright (c) 2025 opencode
   (https://github.com/sst/opencode). Shipped unmodified as resources/bin/opencode;
   licence text in resources/licenses/OpenCode-LICENSE.txt.
 

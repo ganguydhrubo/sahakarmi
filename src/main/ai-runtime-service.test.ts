@@ -119,19 +119,6 @@ describe("AI runtime service", () => {
     }
   });
 
-  it("refuses to install an upstream OpenBot release", async () => {
-    const service = new AiRuntimeService({
-      runtimeDirectory: await mkdtemp(join(tmpdir(), "sahkarmi-runtime-test-")),
-      currentOpenCodeVersion: async () => "1.19.3",
-      installedToolVersions: () => ({}),
-      autoDownload: () => false,
-      log: () => undefined,
-    });
-    const status = await service.update("openbot");
-    expect(status.phase).toBe("error");
-    expect(status.message).toContain("not merged");
-  });
-
   it("keeps a downloaded runtime outside the installed app folder", async () => {
     const runtimeDirectory = await mkdtemp(join(tmpdir(), "sahkarmi-runtime-test-"));
     temporaryPaths.push(runtimeDirectory);

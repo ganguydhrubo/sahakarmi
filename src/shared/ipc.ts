@@ -102,6 +102,9 @@ export const IPC_CHANNELS = {
   orchestratorPauseRun: "orchestrator:pause-run",
   orchestratorResumeRun: "orchestrator:resume-run",
   orchestratorCancelRun: "orchestrator:cancel-run",
+  memoryList: "memory:list",
+  memorySave: "memory:save",
+  memoryDelete: "memory:delete",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -145,7 +148,7 @@ export type AiRuntimePhase =
   | "up-to-date"
   | "error";
 
-export const AI_TOOL_IDS = ["opencode", "codex", "claude", "gemini", "openbot"] as const;
+export const AI_TOOL_IDS = ["opencode", "codex", "claude", "gemini"] as const;
 export type AiToolId = (typeof AI_TOOL_IDS)[number];
 
 export function isAiToolId(value: unknown): value is AiToolId {
@@ -1425,4 +1428,24 @@ export interface SahkarmiDesktopApi {
   aiRuntime: AiRuntimeDesktopApi;
   maintenance: MaintenanceDesktopApi;
   orchestrator: OrchestratorDesktopApi;
+  memory: MemoryDesktopApi;
+}
+
+export interface AgentMemory {
+  id: string;
+  category: "architecture" | "preference" | "decision" | "fact";
+  key: string;
+  content: string;
+  authorBotId?: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryDesktopApi {
+  list: (category?: string) => Promise<AgentMemory[]>;
+  save: (
+    entry: Omit<AgentMemory, "id" | "createdAt" | "updatedAt"> & { id?: string },
+  ) => Promise<AgentMemory>;
+  delete: (id: string) => Promise<boolean>;
 }

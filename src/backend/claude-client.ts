@@ -681,6 +681,34 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             },
             (args) => call("sahkarmi", "create_coworker", args),
           ),
+          tool(
+            "save_memory",
+            "Save a persistent piece of knowledge, project decision, technical fact, or owner preference into long-term team memory.",
+            {
+              key: z.string().min(1).max(120),
+              content: z.string().min(1).max(8000),
+              category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
+              tags: z.array(z.string()).optional(),
+            },
+            (args) => call("sahkarmi", "save_memory", args),
+          ),
+          tool(
+            "search_memory",
+            "Search long-term team memory by keyword to recall previous decisions, standards, or facts.",
+            {
+              query: z.string(),
+              category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
+            },
+            (args) => call("sahkarmi", "search_memory", args),
+          ),
+          tool(
+            "list_memories",
+            "List all memories currently retained in the team long-term memory hub.",
+            {
+              category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
+            },
+            (args) => call("sahkarmi", "list_memories", args),
+          ),
         ],
       }),
     };

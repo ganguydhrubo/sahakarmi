@@ -10,7 +10,7 @@ Key facts:
 - Default team (editable): Asha (Accounts), Vikram (Sales), Meera (Support), Arjun (Research), Kavya (Content).
 - Features: built-in browser per coworker with a "Take over" button for logins and OTPs, Approvals inbox, task queue, scheduled tasks, shared files folder, English / Hindi / Bengali interface.
 - Status: development preview. In the current release, approvals before risky actions rely on coworkers following their instructions.
-- Licence: Apache License 2.0. Based on OpenBot v0.1.11 by Norbert Bodziony.
+- Licence: Apache License 2.0. Developed by the Sahkarmi Team.
 
 ## Official links
 

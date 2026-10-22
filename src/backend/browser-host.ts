@@ -741,8 +741,6 @@ function browserUserAgent(sessionUserAgent: string, url?: string): string {
     app.getName(),
     "Sahkarmi",
     "sahkarmi",
-    "OpenBot",
-    "openbot",
   ]);
 }
 
