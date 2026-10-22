@@ -368,7 +368,7 @@ export const workspaceEn = {
 
   navOrchestrator: "Multi-Agent",
   orchestratorTitle: "Adaptive Multi-Agent Engine",
-  orchestratorSubtitle: "OpenBots-inspired autonomous task graph & multi-specialist collaboration",
+  orchestratorSubtitle: "Autonomous task graph & multi-specialist coworker collaboration",
   orchestratorObjectivePlaceholder:
     "Describe your goal (e.g. Build authentication system with JWT and test suite)...",
   orchestratorStart: "Launch Orchestration",
@@ -743,7 +743,7 @@ export const workspaceHi: WorkspaceDictionary = {
 
   navOrchestrator: "मल्टी-एजेंट",
   orchestratorTitle: "अनुकूली मल्टी-एजेंट इंजन",
-  orchestratorSubtitle: "ओपनबॉट्स-प्रेरित स्वायत्त टास्क ग्राफ और मल्टी-विशेषज्ञ सहयोग",
+  orchestratorSubtitle: "स्वायत्त टास्क ग्राफ और मल्टी-विशेषज्ञ सहकर्मी सहयोग",
   orchestratorObjectivePlaceholder: "अपना लक्ष्य बताएं (उदा. JWT प्रमाणीकरण प्रणाली और टेस्ट सूट बनाएं)...",
   orchestratorStart: "ऑर्केस्ट्रेशन शुरू करें",
   orchestratorFastPath: "सिंगल-एजेंट फ़ास्ट पाथ",
@@ -1112,7 +1112,7 @@ export const workspaceBn: WorkspaceDictionary = {
 
   navOrchestrator: "মাল্টি-এজেন্ট",
   orchestratorTitle: "অ্যাডাপ্টিভ মাল্টি-এজেন্ট ইঞ্জিন",
-  orchestratorSubtitle: "OpenBots-অনুপ্রাণিত স্বায়ত্তশাসিত টাস্ক গ্রাফ এবং বহু-বিশেষজ্ঞ সমন্বয়",
+  orchestratorSubtitle: "স্বায়ত্তশাসিত টাস্ক গ্রাফ এবং বহু-বিশেষজ্ঞ সহকর্মী সমন্বয়",
   orchestratorObjectivePlaceholder: "আপনার লক্ষ্য লিখুন (যেমন: JWT প্রমাণীকরণ এবং টেস্ট স্যুট তৈরি করুন)...",
   orchestratorStart: "অর্কেস্ট্রেশন শুরু করুন",
   orchestratorFastPath: "সিঙ্গেল-এজেন্ট ফাস্ট পাথ",
