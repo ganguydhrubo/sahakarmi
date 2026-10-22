@@ -24,6 +24,7 @@ import { UsageRings } from "./UsageRings";
 export type CenterView =
   | "coworker"
   | "tasks"
+  | "orchestrator"
   | "files"
   | "approvals"
   | "schedules"
@@ -41,6 +42,7 @@ const RAIL_ITEMS: Array<{
   icon: () => JSX.Element;
 }> = [
   { view: "tasks", label: "navTasks", feature: null, icon: TasksIcon },
+  { view: "orchestrator", label: "navOrchestrator", feature: null, icon: OrchestratorIcon },
   { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
   { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
   { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
@@ -147,6 +149,22 @@ function MarketplaceIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
       <path d="M3.5 7.5 4.6 3.8h10.8l1.1 3.7M3.5 7.5c0 1.2 1 2.1 2.2 2.1s2.1-.9 2.1-2.1c0 1.2 1 2.1 2.2 2.1s2.1-.9 2.1-2.1c0 1.2 1 2.1 2.2 2.1s2.2-.9 2.2-2.1M3.5 7.5h13M4.8 9.4v6.8h10.4V9.4M8.3 16.2v-3.6h3.4v3.6" />
+    </svg>
+  );
+}
+
+function OrchestratorIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <circle cx="10" cy="4" r="2.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="4.5" cy="15" r="2.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="15.5" cy="15" r="2.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path
+        d="M8.5 6 5.5 12.8M11.5 6l3 6.8M7.2 15h5.6"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      />
     </svg>
   );
 }
