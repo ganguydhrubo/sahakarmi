@@ -35,7 +35,18 @@ export function ProviderUpdates(props: {
   const added = () =>
     Object.values(props.refreshes).reduce((sum, refresh) => sum + (refresh?.addedModels ?? 0), 0);
   const runtime = () => props.runtime;
-  const tools = () => runtime()?.tools ?? [];
+  const tools = () => {
+    const list = runtime()?.tools ?? [];
+    return list.map((t) => {
+      if (!t.installed) {
+        const matchingProvider = props.status.providers?.find((p) => p.id === t.id);
+        if (matchingProvider?.version) {
+          return { ...t, installed: matchingProvider.version };
+        }
+      }
+      return t;
+    });
+  };
   return (
     <details class="provider-updates" onToggle={(event) => setExpanded(event.currentTarget.open)}>
       <summary>

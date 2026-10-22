@@ -653,6 +653,34 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             },
             (args) => call("sahkarmi", "send_message", args),
           ),
+          tool(
+            "create_coworker",
+            "Create a new coworker on the team with a name, role, description, and optional avatar shape/color.",
+            {
+              name: z.string().min(1).max(80),
+              role: z.string().min(1).max(80),
+              description: z.string().max(2000).optional(),
+              avatarShape: z
+                .enum(["blob", "pebble", "squircle", "tablet", "wedge", "hex", "cloud", "teardrop"])
+                .optional(),
+              avatarColor: z
+                .enum([
+                  "orange",
+                  "blue",
+                  "green",
+                  "cyan",
+                  "yellow",
+                  "violet",
+                  "magenta",
+                  "red",
+                  "brown",
+                  "black",
+                  "gray",
+                ])
+                .optional(),
+            },
+            (args) => call("sahkarmi", "create_coworker", args),
+          ),
         ],
       }),
     };

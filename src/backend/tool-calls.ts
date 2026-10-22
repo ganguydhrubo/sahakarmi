@@ -79,7 +79,12 @@ function toolKind(namespace: string | null, tool: string): ToolCallKind {
   const name = `${namespace ?? ""}.${tool}`.toLowerCase();
   if (namespace === SAHKARMI_BROWSER_NAMESPACE || name.includes("browser")) return "browser";
   if (name.includes("request_approval")) return "approval";
-  if (name.includes("send_message") || name.includes("list_agents")) return "coworker";
+  if (
+    name.includes("send_message") ||
+    name.includes("list_agents") ||
+    name.includes("create_coworker")
+  )
+    return "coworker";
   if (name.includes("search") || name.includes("fetch")) return "web";
   if (/\b(bash|shell|exec)\b/.test(name)) return "command";
   if (/(read|write|edit|glob|grep)/.test(tool.toLowerCase())) return "file";
@@ -94,6 +99,7 @@ const FRIENDLY_NAMES: Record<string, string> = {
   screenshot: "Screenshot",
   close_tab: "Close tab",
   list_agents: "Check team",
+  create_coworker: "Create coworker",
   send_message: "Message coworker",
   request_approval: "Ask for approval",
   request_browser_takeover: "Ask you to take over",

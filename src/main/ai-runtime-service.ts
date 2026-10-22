@@ -156,7 +156,9 @@ export interface AiRuntimeServiceOptions {
   /** Version of the OpenCode runtime that is running right now. */
   currentOpenCodeVersion: () => Promise<string | null>;
   /** Versions of the AI tools installed on this computer. */
-  installedToolVersions: () => Record<string, string | null>;
+  installedToolVersions: () =>
+    | Promise<Record<string, string | null>>
+    | Record<string, string | null>;
   /** True when the owner allows Sahkarmi to install updates without asking. */
   autoDownload: () => boolean;
   log: (level: "info" | "warn" | "error", message: string) => void;
@@ -191,10 +193,10 @@ export class AiRuntimeService {
     return () => this.#listeners.delete(listener);
   }
 
-  async check(): Promise<AiRuntimeStatus> {
+  async check(force = false): Promise<AiRuntimeStatus> {
     if (this.#working) return this.getStatus();
     const lastCheck = this.#status.checkedAt ? Date.parse(this.#status.checkedAt) : 0;
-    if (lastCheck && Date.now() - lastCheck < 60_000) return this.getStatus();
+    if (!force && lastCheck && Date.now() - lastCheck < 60_000) return this.getStatus();
     this.#working = true;
     let shouldAutoUpdate = false;
     let openCodeUpdate = false;
@@ -203,7 +205,7 @@ export class AiRuntimeService {
     try {
       const platform = this.#options.platform ?? process.platform;
       const arch = this.#options.arch ?? process.arch;
-      const installed = this.#options.installedToolVersions();
+      const installed = await this.#options.installedToolVersions();
       const tools: AiToolUpdate[] = [];
 
       const openCodePackage = openCodePlatformPackage(platform, arch);
@@ -280,6 +282,7 @@ export class AiRuntimeService {
   async update(toolId: AiToolId): Promise<AiRuntimeStatus> {
     if (this.#working) return this.getStatus();
     this.#working = true;
+    let succeeded = false;
     try {
       if (toolId === "openbot") {
         throw new Error("Upstream OpenBot releases are not merged into Sahkarmi by design.");
@@ -289,6 +292,7 @@ export class AiRuntimeService {
       } else {
         await this.#updateNpmTool(toolId);
       }
+      succeeded = true;
     } catch (error) {
       this.#options.log("error", `AI tool update failed: ${reasonOf(error)}`);
       this.#setStatus({
@@ -298,6 +302,9 @@ export class AiRuntimeService {
       });
     } finally {
       this.#working = false;
+    }
+    if (succeeded) {
+      await this.check(true);
     }
     return this.getStatus();
   }

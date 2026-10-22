@@ -992,10 +992,13 @@ export function App() {
               providerRefreshes={providerRefreshes()}
               onRefreshModels={async () => {
                 setModelOptions(await window.sahkarmi.agent.refreshModels());
+                setRuntimeStatus(await window.sahkarmi.aiRuntime.check());
               }}
               runtimeStatus={runtimeStatus() ?? undefined}
               onUpdateTool={async (toolId) => {
-                setRuntimeStatus(await window.sahkarmi.aiRuntime.update(toolId));
+                const status = await window.sahkarmi.aiRuntime.update(toolId);
+                setRuntimeStatus(status);
+                setModelOptions(await window.sahkarmi.agent.refreshModels());
               }}
             />
             <PanelResizer

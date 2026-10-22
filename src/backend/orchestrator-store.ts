@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   AgentCollaborationMessage,
@@ -107,11 +107,27 @@ export class OrchestratorStore {
     this.#writeQueue = this.#writeQueue
       .catch(() => {})
       .then(async () => {
-        const tempPath = `${this.#statePath}.tmp.${Date.now()}`;
+        const tempPath = `${this.#statePath}.${process.pid}.${Date.now()}.tmp`;
         const serialized = JSON.stringify(this.#state, null, 2);
         await writeFile(tempPath, serialized, { encoding: "utf8" });
-        await rename(tempPath, this.#statePath);
+        await this.#safeRename(tempPath, this.#statePath);
       });
     await this.#writeQueue;
+  }
+
+  async #safeRename(source: string, destination: string): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await rename(source, destination);
+        return;
+      } catch {
+        if (attempt === 4) {
+          await copyFile(source, destination);
+          await unlink(source).catch(() => {});
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));
+      }
+    }
   }
 }
