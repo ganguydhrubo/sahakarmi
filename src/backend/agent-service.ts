@@ -6,6 +6,7 @@ import type {
   AccountUsageLimit,
   AccountUsageWindow,
   AgentEvent,
+  AgentMemoryCategory,
   AgentModelOption,
   AgentPromptQuestion,
   AgentProviderStatus,

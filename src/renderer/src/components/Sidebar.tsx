@@ -374,6 +374,81 @@ export function Sidebar(props: SidebarProps) {
         )
       : props.bots;
   });
+
+  function formatBotTime(dateStr: string | null | undefined): string {
+    if (!dateStr) return "";
+    try {
+      const date = new Date(dateStr);
+      if (Number.isNaN(date.getTime())) return "";
+      const now = new Date();
+      const isToday =
+        date.getDate() === now.getDate() &&
+        date.getMonth() === now.getMonth() &&
+        date.getFullYear() === now.getFullYear();
+      if (isToday) {
+        return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      }
+      return date.toLocaleDateString([], { month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  }
+
+  const topBots = createMemo(() => {
+    return [...props.bots]
+      .sort((a, b) => {
+        const unreadA = props.unread[a.id] ?? 0;
+        const unreadB = props.unread[b.id] ?? 0;
+        if (unreadB !== unreadA) return unreadB - unreadA;
+        const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return timeB - timeA;
+      })
+      .slice(0, 5);
+  });
+
+  interface WorkspaceGroup {
+    id: string;
+    name: string;
+    bots: BotProfile[];
+  }
+
+  const workspaceGroups = createMemo<WorkspaceGroup[]>(() => {
+    const bots = filteredBots();
+    if (bots.length === 0) return [];
+
+    const activeWs = activeWorkspace();
+    const activeWsId = activeWs?.id ?? "default";
+    const activeWsName = activeWs?.name ?? "Main Team";
+
+    const allWorkspaces = props.workspaces.workspaces;
+    const wsMap = new Map<string, WorkspaceGroup>();
+
+    // Put active workspace first
+    wsMap.set(activeWsId, {
+      id: activeWsId,
+      name: activeWsName,
+      bots: [],
+    });
+
+    for (const bot of bots) {
+      const wsId = bot.workspaceId || "default";
+      let group = wsMap.get(wsId);
+      if (!group) {
+        const matchingWs = allWorkspaces.find((w) => w.id === wsId);
+        group = {
+          id: wsId,
+          name: matchingWs?.name || (wsId === "default" ? "Unassigned" : "Other"),
+          bots: [],
+        };
+        wsMap.set(wsId, group);
+      }
+      group.bots.push(bot);
+    }
+
+    return Array.from(wsMap.values()).filter((g) => g.bots.length > 0);
+  });
+
   const deleteTarget = createMemo(() => props.bots.find((bot) => bot.id === deleteTargetId()));
 
   onMount(() => {
@@ -557,11 +632,6 @@ export function Sidebar(props: SidebarProps) {
         </Show>
       </div>
 
-      <div class="rail-section-heading">
-        <span>{t("team")}</span>
-        <span class="rail-count">{props.bots.length}</span>
-      </div>
-
       <Show when={props.bots.length > 0}>
         <div class="sidebar-search-wrap">
           <label class="search-field">
@@ -578,60 +648,122 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
 
+      <Show when={topBots().length > 1 && !query().trim()}>
+        <div class="pinned-coworkers-strip" role="toolbar" aria-label="Pinned Coworkers">
+          <For each={topBots()}>
+            {(bot) => {
+              const unread = () => props.unread[bot.id] ?? 0;
+              const isSelected = () => props.view === "coworker" && props.activeBotId === bot.id;
+              return (
+                <div
+                  role="tab"
+                  tabIndex={0}
+                  class="pinned-coworker-item"
+                  onClick={() => props.onSelectBot(bot.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      props.onSelectBot(bot.id);
+                    }
+                  }}
+                  title={`${bot.name} (${bot.role || "Coworker"})`}
+                >
+                  <div
+                    class="pinned-coworker-avatar-wrap"
+                    classList={{ "pinned-active": isSelected() }}
+                  >
+                    <AgentAvatar bot={bot} />
+                    <Show when={unread() > 0}>
+                      <span class="team-row-unread-badge" aria-hidden="true">
+                        {unread()}
+                      </span>
+                    </Show>
+                  </div>
+                  <span class="pinned-coworker-name">{bot.name.split(" ")[0]}</span>
+                </div>
+              );
+            }}
+          </For>
+        </div>
+      </Show>
+
       <nav aria-label={t("team")} class="bot-list team-list">
         <Show
-          when={filteredBots().length > 0}
+          when={workspaceGroups().length > 0}
           fallback={
             <p class="empty-search">{props.bots.length ? t("noMatches") : t("noCoworkers")}</p>
           }
         >
-          <For each={filteredBots()}>
-            {(bot) => {
-              const status = () => props.statuses[bot.id] ?? "idle";
-              const aura = statusAura(status);
-              const unread = () => props.unread[bot.id] ?? 0;
-              return (
-                <button
-                  type="button"
-                  class="bot-row team-row"
-                  classList={{
-                    "bot-row-active": props.view === "coworker" && props.activeBotId === bot.id,
-                    "bot-row-menu-open": contextMenu()?.botId === bot.id,
+          <For each={workspaceGroups()}>
+            {(group) => (
+              <div class="workspace-group-section">
+                <div class="workspace-group-header">
+                  <span>{group.name}</span>
+                  <span class="workspace-group-count">{group.bots.length}</span>
+                </div>
+                <For each={group.bots}>
+                  {(bot) => {
+                    const status = () => props.statuses[bot.id] ?? "idle";
+                    const aura = statusAura(status);
+                    const unread = () => props.unread[bot.id] ?? 0;
+                    return (
+                      <button
+                        type="button"
+                        class="bot-row team-row"
+                        classList={{
+                          "bot-row-active":
+                            props.view === "coworker" && props.activeBotId === bot.id,
+                          "bot-row-menu-open": contextMenu()?.botId === bot.id,
+                        }}
+                        aria-pressed={props.view === "coworker" && props.activeBotId === bot.id}
+                        aria-label={`${bot.name}, ${bot.role || t("newCoworker")}, ${statusLabel(status())}`}
+                        onClick={() => props.onSelectBot(bot.id)}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          openContextMenu(bot.id, event.clientX, event.clientY);
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key !== "ContextMenu" &&
+                            !(event.shiftKey && event.key === "F10")
+                          ) {
+                            return;
+                          }
+                          event.preventDefault();
+                          const bounds = event.currentTarget.getBoundingClientRect();
+                          openContextMenu(bot.id, bounds.left + 28, bounds.top + 32);
+                        }}
+                      >
+                        <span class="bot-row-avatar">
+                          <AvatarAura state={aura()}>
+                            <AgentAvatar bot={bot} />
+                          </AvatarAura>
+                          <StatusDot status={status()} class="team-row-status" />
+                        </span>
+                        <span class="bot-row-copy">
+                          <span class="bot-row-heading">
+                            <span class="bot-row-title-wrap">
+                              <strong>{bot.name}</strong>
+                              <Show when={bot.role}>
+                                <span class="team-row-role-pill">{bot.role}</span>
+                              </Show>
+                            </span>
+                            <Show when={bot.updatedAt}>
+                              <time class="bot-row-time">{formatBotTime(bot.updatedAt)}</time>
+                            </Show>
+                          </span>
+                          <span class="team-row-role">{bot.preview || bot.role || "—"}</span>
+                        </span>
+                        <Show when={unread() > 0}>
+                          <span class="team-row-unread" aria-hidden="true">
+                            {unread()}
+                          </span>
+                        </Show>
+                      </button>
+                    );
                   }}
-                  aria-pressed={props.view === "coworker" && props.activeBotId === bot.id}
-                  aria-label={`${bot.name}, ${bot.role || t("newCoworker")}, ${statusLabel(status())}`}
-                  onClick={() => props.onSelectBot(bot.id)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    openContextMenu(bot.id, event.clientX, event.clientY);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
-                      return;
-                    }
-                    event.preventDefault();
-                    const bounds = event.currentTarget.getBoundingClientRect();
-                    openContextMenu(bot.id, bounds.left + 28, bounds.top + 32);
-                  }}
-                >
-                  <span class="bot-row-avatar">
-                    <AvatarAura state={aura()}>
-                      <AgentAvatar bot={bot} />
-                    </AvatarAura>
-                    <StatusDot status={status()} class="team-row-status" />
-                  </span>
-                  <span class="bot-row-copy">
-                    <strong>{bot.name}</strong>
-                    <span class="team-row-role">{bot.preview || bot.role || "—"}</span>
-                  </span>
-                  <Show when={unread() > 0}>
-                    <span class="team-row-unread" aria-hidden="true">
-                      {unread()}
-                    </span>
-                  </Show>
-                </button>
-              );
-            }}
+                </For>
+              </div>
+            )}
           </For>
         </Show>
         <button type="button" class="new-coworker-button" onClick={props.onCreateBot}>

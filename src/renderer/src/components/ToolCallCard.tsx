@@ -25,36 +25,87 @@ export function formatToolDisplay(tool: ToolCallSummary): {
 } {
   const rawInput = tool.input?.trim() ?? "";
   const cleanInput = rawInput;
-  let title = tool.name;
+  let title = "";
   let subtitle = "";
 
   // Attempt JSON extraction
+  let parsed: Record<string, unknown> | null = null;
   if (rawInput.startsWith("{") && rawInput.endsWith("}")) {
     try {
-      const parsed = JSON.parse(rawInput);
-      if (parsed.path || parsed.file_path || parsed.filePath) {
-        const fullPath = String(parsed.path || parsed.file_path || parsed.filePath);
-        const fileName = fullPath.split(/[/\\]/).filter(Boolean).pop() ?? fullPath;
-        const op = tool.name.includes("edit")
-          ? "Edit"
-          : tool.name.includes("write")
-            ? "Write"
-            : tool.name.includes("read")
-              ? "Read"
-              : "File";
-        title = `${op} ${fileName}`;
-        subtitle = fullPath;
-      } else if (parsed.command || parsed.cmd) {
-        const cmd = String(parsed.command || parsed.cmd).trim();
-        title = cmd.split("\n")[0].slice(0, 75);
-        subtitle = "Terminal command";
-      }
+      parsed = JSON.parse(rawInput);
     } catch {
       // not strict JSON, proceed
     }
   }
 
-  if (!subtitle) {
+  // Handle Sahkarmi & Agent Orchestration tools with first-class human readable titles
+  if (tool.name === "sahkarmi_create_coworker" || tool.name.endsWith("create_coworker")) {
+    const name = typeof parsed?.name === "string" ? parsed.name : "New Coworker";
+    const role = typeof parsed?.role === "string" ? ` (${parsed.role})` : "";
+    title = `✨ Create Coworker: ${name}${role}`;
+    subtitle =
+      typeof parsed?.description === "string"
+        ? parsed.description
+        : "Initialized coworker workspace and persona";
+  } else if (tool.name === "sahkarmi_send_message" || tool.name.endsWith("send_message")) {
+    const target =
+      typeof parsed?.to === "string"
+        ? parsed.to
+        : typeof parsed?.recipient === "string"
+          ? parsed.recipient
+          : typeof parsed?.recipientBotId === "string"
+            ? parsed.recipientBotId
+            : "Coworker";
+    const msg =
+      typeof parsed?.message === "string"
+        ? parsed.message
+        : typeof parsed?.body === "string"
+          ? parsed.body
+          : typeof parsed?.content === "string"
+            ? parsed.content
+            : "";
+    title = `💬 Message to ${target}`;
+    subtitle = msg
+      ? msg.length > 80
+        ? `${msg.slice(0, 77)}…`
+        : msg
+      : "Dispatched task to coworker";
+  } else if (tool.name === "save_memory") {
+    const key = typeof parsed?.key === "string" ? parsed.key : "Note";
+    const content = typeof parsed?.content === "string" ? parsed.content : "";
+    title = `🧠 Save Memory: ${key}`;
+    subtitle = content
+      ? content.length > 80
+        ? `${content.slice(0, 77)}…`
+        : content
+      : String(parsed?.category ?? "Persistent Memory");
+  } else if (tool.name === "search_memory") {
+    title = "🔍 Search Memory";
+    subtitle =
+      typeof parsed?.query === "string" ? `Query: "${parsed.query}"` : "Querying knowledge base";
+  } else if (tool.name === "list_memories") {
+    title = "📋 List Memories";
+    subtitle =
+      typeof parsed?.category === "string" ? `Category: ${parsed.category}` : "All stored memories";
+  } else if (parsed && (parsed.path || parsed.file_path || parsed.filePath)) {
+    const fullPath = String(parsed.path || parsed.file_path || parsed.filePath);
+    const fileName = fullPath.split(/[/\\]/).filter(Boolean).pop() ?? fullPath;
+    const op = tool.name.includes("edit")
+      ? "Edit"
+      : tool.name.includes("write")
+        ? "Write"
+        : tool.name.includes("read")
+          ? "Read"
+          : "File";
+    title = `${op} ${fileName}`;
+    subtitle = fullPath;
+  } else if (parsed && (parsed.command || parsed.cmd)) {
+    const cmd = String(parsed.command || parsed.cmd).trim();
+    title = cmd.split("\n")[0].slice(0, 75);
+    subtitle = "Terminal command";
+  }
+
+  if (!title) {
     if (tool.kind === "file") {
       const cleaned = rawInput
         .split("\n")[0]
@@ -71,11 +122,15 @@ export function formatToolDisplay(tool: ToolCallSummary): {
       title = firstLine.length > 75 ? `${firstLine.slice(0, 72)}…` : firstLine;
       subtitle = "Command";
     } else {
+      const cleanedName = (tool.name || "Tool")
+        .replace(/^sahkarmi_/, "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
       const firstLine = rawInput
         .split("\n")[0]
         .trim()
         .replace(/[\s{]+$/, "");
-      title = tool.name || "Tool";
+      title = cleanedName;
       subtitle = firstLine.length > 75 ? `${firstLine.slice(0, 72)}…` : firstLine;
     }
   }

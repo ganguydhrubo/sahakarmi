@@ -1222,6 +1222,7 @@ function toBotProfile(stored: BotSummary): BotProfile {
     avatarColor: stored.avatarColor ?? "orange",
     time: stored.updatedAt ? formatTime(stored.updatedAt) : "now",
     preview: cleanPreview(stored.preview),
+    updatedAt: stored.updatedAt,
   };
 }
 

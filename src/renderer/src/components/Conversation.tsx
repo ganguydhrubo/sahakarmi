@@ -476,6 +476,12 @@ function ExchangeSystemRow(props: {
                 <span>{agentCountLabel()}</span>
               </button>
               <Show when={agentsOpen()}>
+                <button
+                  type="button"
+                  class="exchange-agent-backdrop"
+                  aria-label="Close list"
+                  onClick={() => setAgentsOpen(false)}
+                />
                 <div class="exchange-agent-menu" role="menu">
                   <For each={recipients()}>
                     {(recipientId) => {
@@ -2187,11 +2193,20 @@ export function Conversation(props: ConversationProps) {
 
       <div class="composer-wrap">
         <Show when={showAttachments()}>
+          <button
+            type="button"
+            class="attachment-menu-backdrop"
+            aria-label="Close attachment menu"
+            onClick={() => setShowAttachments(false)}
+          />
           <div class="attachment-menu">
             <button
               type="button"
               disabled={attachmentBusy()}
-              onClick={() => void chooseAttachments()}
+              onClick={() => {
+                setShowAttachments(false);
+                void chooseAttachments();
+              }}
             >
               <FileIcon />
               {attachmentBusy() ? "Importing…" : "Attach files"}

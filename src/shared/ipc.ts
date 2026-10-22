@@ -1442,6 +1442,8 @@ export interface AgentMemory {
   updatedAt: string;
 }
 
+export type AgentMemoryCategory = AgentMemory["category"];
+
 export interface MemoryDesktopApi {
   list: (category?: string) => Promise<AgentMemory[]>;
   save: (

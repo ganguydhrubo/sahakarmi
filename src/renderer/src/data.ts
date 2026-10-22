@@ -54,6 +54,7 @@ export interface BotProfile {
   avatarColor: BotAvatarColor;
   time: string;
   preview: string;
+  updatedAt?: string | null;
 }
 
 export function accentForAvatarColor(color: BotAvatarColor): BotAccent {
