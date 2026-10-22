@@ -1,7 +1,7 @@
 {
   "name": "sahkarmi",
   "productName": "Sahkarmi",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Sahkarmi (सहकर्मी) — AI coworkers for Indian businesses. A local-first desktop app where each coworker has its own workspace, browser, memory and task queue.",
   "author": {
     "name": "Sahkarmi Team",
@@ -45,6 +45,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run",
+    "upstream:check": "node scripts/check-upstream.mjs",
     "test:backend": "vitest run src/backend",
     "test:browser": "bun scripts/browser-smoke.ts",
     "test:codex": "bun scripts/codex-doctor.ts --strict",
@@ -93,10 +94,5 @@
     "vite": "7.3.6",
     "vite-plugin-solid": "2.11.14",
     "vitest": "4.1.10"
-  },
-  "contributors": [
-    {
-      "name": "Norbert Bodziony (original OpenBot author, Apache-2.0 upstream)"
-    }
-  ]
+  }
 }

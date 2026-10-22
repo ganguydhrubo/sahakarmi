@@ -40,15 +40,6 @@ function runtime(overrides: Partial<AiRuntimeStatus> = {}): AiRuntimeStatus {
         command: "npm install -g @openai/codex@latest",
         note: null,
       },
-      {
-        id: "openbot",
-        label: "OpenBot (upstream project)",
-        installed: null,
-        latest: "v0.46.0",
-        managed: false,
-        command: null,
-        note: "Upstream code is never merged",
-      },
     ],
     ...overrides,
   };
@@ -77,7 +68,6 @@ describe("AI tool updates", () => {
     await openPanel();
     expect(screen.getByText(/update available: v1\.20\.0/)).toBeTruthy();
     expect(screen.getByText(/update available: v0\.163\.0/)).toBeTruthy();
-    expect(screen.getByText(/Upstream code is never merged/)).toBeTruthy();
     const buttons = screen.getAllByRole("button", { name: "Update now" });
     expect(buttons.length).toBe(2);
     await fireEvent.click(buttons[0]);

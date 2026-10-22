@@ -183,14 +183,8 @@ under Apache-2.0. Community behavior is governed by the [Code of Conduct](CODE_O
 
 ## License and attribution
 
-Sahkarmi is licensed under the [Apache License 2.0](LICENSE).
+Sahkarmi is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE).
 
-It is a fork of **OpenBot v0.1.11** by Norbert Bodziony
-([nightly-labs/openbot@v0.1.11](https://github.com/nightly-labs/openbot/tree/v0.1.11)), the last
-release published under Apache-2.0. Later OpenBot releases use the PolyForm Noncommercial license,
-and no code from them is included. The upstream LICENSE and attribution are preserved; see
-[NOTICE](NOTICE).
-
-Sahkarmi is an independent project. It is not affiliated with, endorsed by, or sponsored by
-OpenAI, Anthropic, or any other AI company. Codex and Claude are named only to describe
+Sahkarmi is an independent project developed by the Sahkarmi Team. It is not affiliated with, endorsed by, or sponsored by
+OpenAI, Anthropic, Google, or any other AI company. Codex, Claude, and Gemini are named only to describe
 compatibility with their CLIs.

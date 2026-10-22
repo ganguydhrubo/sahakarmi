@@ -1,14 +1,14 @@
 # Sahkarmi — Adaptive Multi-Agent Architecture Review
-**Inspired by OpenBots Engineering Principles**
+**Native Distributed Agent Engineering Principles**
 
 ## 1. Executive Summary
-This document reviews the architectural foundations of Sahkarmi in relation to the public engineering patterns of [OpenBots](https://github.com/r2hu1/openbots). It outlines the design for Sahkarmi's **Adaptive Multi-Agent Engine**: a high-performance, deterministic execution environment that dynamically scales between a single-agent fast path and a structured, dependency-aware multi-agent task graph (DAG).
+This document reviews the architectural foundations of Sahkarmi's **Adaptive Multi-Agent Engine**: a high-performance, deterministic execution environment that dynamically scales between a single-agent fast path and a structured, dependency-aware multi-agent task graph (DAG).
 
 ---
 
-## 2. OpenBots Architecture & Transferable Engineering Principles
+## 2. Core Architectural Engineering Principles
 
-OpenBots demonstrates several key architectural strengths for production-grade agent environments:
+The architecture adheres to key engineering strengths for production-grade agent environments:
 
 1. **Separation of Concerns:**
    - Persistent Agent Definitions (roles, system prompts, permission templates) are decoupled from ephemeral **Agent Execution Instances** (runtime memory, assigned subtask, active scratchpads, execution logs).
@@ -28,7 +28,7 @@ OpenBots demonstrates several key architectural strengths for production-grade a
 
 ## 3. Sahkarmi Baseline & Gap Analysis
 
-| Architectural Dimension | Existing Sahkarmi Implementation | OpenBots Pattern to Adapt | Engine Upgrade Target |
+| Architectural Dimension | Existing Sahkarmi Implementation | Distributed Pattern to Adapt | Engine Upgrade Target |
 | :--- | :--- | :--- | :--- |
 | **Agent Modeling** | `BotProfile` / `BotSummary` in `BotStore`. Represents persistent coworker bots. | Decoupled persistent bot profile from runtime execution instance. | Create `AgentExecutionInstance` spawned per task with unique context, workspace, and lifecycle. |
 | **Orchestration Policy** | Single-agent FIFO queue in `MailboxStore`. Requests processed turn-by-turn per bot. | Adaptive DAG orchestrator evaluating task complexity, dependencies, and specialist roles. | Create `AdaptiveOrchestrator` with complexity evaluator, DAG planner, and parallel task scheduler. |

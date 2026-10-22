@@ -281,9 +281,6 @@ export class AiRuntimeService {
     this.#working = true;
     let succeeded = false;
     try {
-      if (toolId === "openbot") {
-        throw new Error("Upstream OpenBot releases are not merged into Sahkarmi by design.");
-      }
       if (toolId === "opencode") {
         await this.#updateOpenCodeRuntime();
       } else {

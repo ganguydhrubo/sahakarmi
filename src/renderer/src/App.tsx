@@ -51,6 +51,7 @@ import { SchedulesView } from "./components/SchedulesView";
 import { SharedFilesView } from "./components/SharedFilesView";
 import { AppNavigation, type CenterView, Sidebar } from "./components/Sidebar";
 import { UpdateControl } from "./components/UpdateControl";
+import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 import { loadFeatures } from "./features";
 import { rememberSettingsSection } from "./settings-section";
@@ -79,6 +80,9 @@ const TasksView = lazy(() =>
 );
 const OrchestratorView = lazy(() =>
   import("./components/OrchestratorView").then((module) => ({ default: module.OrchestratorView })),
+);
+const MemoryView = lazy(() =>
+  import("./components/MemoryView").then((module) => ({ default: module.MemoryView })),
 );
 
 const FALLBACK_STATUS: AgentStatus = {
@@ -1028,6 +1032,9 @@ export function App() {
               <Match when={view() === "orchestrator"}>
                 <OrchestratorView bots={workspaceBots()} onOpenCoworker={selectBot} />
               </Match>
+              <Match when={view() === "memory"}>
+                <MemoryView />
+              </Match>
               <Match when={view() === "approvals"}>
                 <ApprovalsView
                   approvals={approvals()}
@@ -1187,6 +1194,7 @@ export function App() {
               onClose={() => setPermissionsOpen(false)}
             />
           </Show>
+          <WhatsNewDialog version={appInfo()?.version ?? "0.5.4"} />
         </div>
       </Show>
     </Show>

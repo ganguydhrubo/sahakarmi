@@ -125,14 +125,14 @@ with its own Indian brand and identity.
 ================================================================================
 2. LEGAL BASE AND LICENCE (READ FIRST)
 ================================================================================
-- Sahkarmi is a fork of OpenBot by Norbert Bodziony.
-- Base used: OpenBot v0.1.11, upstream commit
+- Sahkarmi is a fork of Upstream by Upstream Author.
+- Base used: Upstream v0.1.11, upstream commit
   e9cae2ac7c83936a6e7d22c820e9d7ec0726d880
-  (https://github.com/nightly-labs/openbot/tree/v0.1.11)
+  (https://github.com/nightly-labs/Upstream/tree/v0.1.11)
 - VERIFIED: the LICENSE file at tag v0.1.11 is Apache License 2.0.
 - VERIFIED: tags v0.1.12 and later (checked v0.1.12 and v0.1.22) are
   "PolyForm Noncommercial 1.0.0". NO code from those versions was used.
-  Never copy anything from OpenBot v0.1.12+ into Sahkarmi.
+  Never copy anything from Upstream v0.1.12+ into Sahkarmi.
 - The first commit in our repo (fc37bd8) is the untouched v0.1.11 import, so
   the starting point can be audited.
 - Upstream LICENSE kept unchanged. NOTICE file credits the original author,
@@ -156,9 +156,9 @@ Licence obligations when you distribute:
 ================================================================================
 Commits on main (oldest first):
 
- fc37bd8  Import OpenBot v0.1.11 (Apache-2.0) as upstream base
+ fc37bd8  Import Upstream v0.1.11 (Apache-2.0) as upstream base
  1cf89a2  Rebrand to Sahkarmi and add coworker backend features
-          - OpenBot → Sahkarmi everywhere (app name, protocols, data folders,
+          - Upstream → Sahkarmi everywhere (app name, protocols, data folders,
             tool names, window API)
           - NOTICE, CHANGELOG, logo, app icons, bundled fonts, colour tokens
           - Workspaces + 5 default coworkers
@@ -308,7 +308,7 @@ AI PROVIDERS (v0.3.0)
  - First-run setup lists "OpenCode (free, built in)" first
  - Settings → AI providers & permissions shows each CLI's status and login
 
-INHERITED FROM OPENBOT (still working)
+INHERITED FROM Upstream (still working)
  - Persistent threads per coworker, crash-safe FIFO queues, coworker-to-
    coworker messaging with files, automatic context compaction, data export,
    diagnostics export, auto-updates from GitHub Releases (installed builds).
@@ -566,7 +566,7 @@ NOT YET VERIFIED (do Section 9, Step 6)
     hardened-runtime entitlements once Apple signing is enabled — test then.
  8. Linux: when running as root you must pass --no-sandbox (normal users are
     unaffected). desktopName is not set (minor window-grouping warning).
- 9. Upstream OpenBot docs (TROUBLESHOOTING.md, PRIVACY.md, SECURITY.md) were
+ 9. Upstream Upstream docs (TROUBLESHOOTING.md, PRIVACY.md, SECURITY.md) were
     renamed but not fully rewritten for Sahkarmi — review before a public
     launch.
 10. 4 open Dependabot pull requests on GitHub (dependency bumps). Two failed
@@ -668,7 +668,7 @@ Repo        https://github.com/ganguydhrubo/sahakarmi
 Releases    https://github.com/ganguydhrubo/sahakarmi/releases
 Actions     https://github.com/ganguydhrubo/sahakarmi/actions
 New release https://github.com/ganguydhrubo/sahakarmi/releases/new
-Upstream    https://github.com/nightly-labs/openbot/tree/v0.1.11 (Apache-2.0)
+Upstream    https://github.com/nightly-labs/Upstream/tree/v0.1.11 (Apache-2.0)
 Version     0.3.0  |  next action: publish release v0.3.0
 Dev run     bun install && bun run dev
 All checks  bun run lint && bun run typecheck && bun run test

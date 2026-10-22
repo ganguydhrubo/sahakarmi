@@ -376,6 +376,12 @@ export const workspaceEn = {
   orchestratorMultiAgent: "Adaptive Multi-Agent DAG",
   orchestratorNoRuns:
     "No orchestration runs yet. Enter an objective above to launch your autonomous agent team.",
+  whatsNewTitle: "What's New in Sahkarmi",
+  whatsNewDismiss: "Got it",
+  navMemory: "Memory",
+  memoryTitle: "Coworker Memory Hub",
+  memorySubtitle: "Persistent project facts, user preferences, and research saved by your AI team",
+  memoryEmpty: "No memories saved yet. Coworkers record critical project decisions and facts here.",
 };
 
 export type WorkspaceDictionary = typeof workspaceEn;
@@ -749,6 +755,12 @@ export const workspaceHi: WorkspaceDictionary = {
   orchestratorFastPath: "सिंगल-एजेंट फ़ास्ट पाथ",
   orchestratorMultiAgent: "अनुकूली मल्टी-एजेंट DAG",
   orchestratorNoRuns: "अभी तक कोई ऑर्केस्ट्रेशन रन नहीं है। ऊपर एक लक्ष्य दर्ज करें।",
+  whatsNewTitle: "सहकर्मी में क्या नया है",
+  whatsNewDismiss: "समझ गया",
+  navMemory: "स्मृति",
+  memoryTitle: "सहकर्मी स्मृति हब",
+  memorySubtitle: "आपकी AI टीम द्वारा सहेजा गया स्थायी प्रोजेक्ट ज्ञान, प्राथमिकताएं और रिसर्च",
+  memoryEmpty: "अभी तक कोई स्मृति सहेजी नहीं गई है। सहकर्मी महत्वपूर्ण प्रोजेक्ट निर्णयों को यहाँ रिकॉर्ड करते हैं।",
 };
 
 export const workspaceBn: WorkspaceDictionary = {
@@ -1118,4 +1130,10 @@ export const workspaceBn: WorkspaceDictionary = {
   orchestratorFastPath: "সিঙ্গেল-এজেন্ট ফাস্ট পাথ",
   orchestratorMultiAgent: "অ্যাডাপ্টিভ মাল্টি-এজেন্ট DAG",
   orchestratorNoRuns: "এখনও কোনও অর্কেস্ট্রেশন রান নেই। উপরে একটি লক্ষ্য লিখুন।",
+  whatsNewTitle: "সহকর্মীতে নতুন কী এসেছে",
+  whatsNewDismiss: "বুঝেছি",
+  navMemory: "স্মৃতি",
+  memoryTitle: "সহকর্মী স্মৃতি হাব",
+  memorySubtitle: "আপনার AI টিমের সংরক্ষিত স্থায়ী প্রজেক্ট তথ্য, পছন্দসমূহ ও গবেষণা",
+  memoryEmpty: "এখনও কোনও স্মৃতি সংরক্ষিত হয়নি। সহকর্মীরা গুরুত্বপূর্ণ প্রজেক্ট সিদ্ধান্ত ও তথ্য এখানে রেকর্ড করে।",
 };

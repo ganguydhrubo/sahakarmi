@@ -171,14 +171,14 @@ describe("Sahkarmi connected desktop shell", () => {
           getStatus: vi.fn().mockResolvedValue({
             phase: "ready",
             cliVersion: "0.144.1",
-            auth: { kind: "chatgpt", email: "norbert@example.com" },
+            auth: { kind: "chatgpt", email: "alex@example.com" },
             providers: [
               {
                 id: "codex",
                 state: "available",
                 version: "0.144.1",
                 message: null,
-                email: "norbert@example.com",
+                email: "alex@example.com",
               },
               {
                 id: "claude",
@@ -582,7 +582,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(screen.getByRole("dialog", { name: "Providers & permissions" })).toBeInTheDocument();
     const providers = screen.getByRole("radiogroup", { name: "Default provider" });
     expect(within(providers).getByRole("radio", { name: /Codex.*Available/ })).toBeChecked();
-    expect(within(providers).getByText("norbert@example.com")).toBeInTheDocument();
+    expect(within(providers).getByText("alex@example.com")).toBeInTheDocument();
     expect(within(providers).getByText("claude@example.com")).toBeInTheDocument();
     await fireEvent.click(within(providers).getByRole("radio", { name: /Claude.*Available/ }));
     await fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -1213,7 +1213,7 @@ describe("Sahkarmi connected desktop shell", () => {
       status: {
         phase: "ready",
         cliVersion: "0.144.1",
-        auth: { kind: "chatgpt", email: "norbert@example.com" },
+        auth: { kind: "chatgpt", email: "alex@example.com" },
         capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
         message: null,
         fullAccess: true,
@@ -1370,7 +1370,7 @@ describe("Sahkarmi connected desktop shell", () => {
     vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValueOnce({
       phase: "ready",
       cliVersion: "0.144.1",
-      auth: { kind: "chatgpt", email: "norbert@example.com" },
+      auth: { kind: "chatgpt", email: "alex@example.com" },
       providers: [
         { id: "codex", state: "available", version: "0.144.1", message: null },
         {
@@ -1536,7 +1536,7 @@ describe("Sahkarmi connected desktop shell", () => {
     vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValueOnce({
       phase: "ready",
       cliVersion: "0.144.1",
-      auth: { kind: "chatgpt", email: "norbert@example.com" },
+      auth: { kind: "chatgpt", email: "alex@example.com" },
       providers: [
         { id: "codex", state: "available", version: "0.144.1", message: null },
         {

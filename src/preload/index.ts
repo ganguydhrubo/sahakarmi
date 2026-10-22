@@ -235,6 +235,11 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     resumeRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResumeRun, runId),
     cancelRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorCancelRun, runId),
   },
+  memory: {
+    list: (category) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, category),
+    save: (entry) => ipcRenderer.invoke(IPC_CHANNELS.memorySave, entry),
+    delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, id),
+  },
 };
 
 contextBridge.exposeInMainWorld("sahkarmi", sahkarmiApi);
