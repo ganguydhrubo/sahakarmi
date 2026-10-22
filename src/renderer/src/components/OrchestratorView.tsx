@@ -110,7 +110,7 @@ export function OrchestratorView(props: {
               border: "1px solid rgba(249, 115, 22, 0.3)",
             }}
           >
-            OpenBots DAG Engine
+            Adaptive DAG Engine
           </span>
         </div>
         <p style={{ margin: 0, color: "var(--color-text-muted, #888)", "font-size": "14px" }}>

@@ -117,7 +117,8 @@ const en = {
   about: "About",
   aboutBody:
     "Sahkarmi runs on your computer. Coworkers use your local Codex or Claude sign-in; there is no Sahkarmi cloud account.",
-  attribution: "Built on OpenBot v0.1.11 by Norbert Bodziony, used under the Apache License 2.0.",
+  attribution:
+    "Sahkarmi — Autonomous AI Coworkers for India. Designed & Developed by Dhrubo Ganguly.",
   stopAll: "Stop all coworkers",
   role: "Role",
   messagePlaceholder: "Message {name}",
@@ -243,7 +244,7 @@ const hi: Dictionary = {
   about: "परिचय",
   aboutBody:
     "सहकर्मी आपके कंप्यूटर पर चलता है। सहकर्मी आपके लोकल Codex या Claude साइन-इन का उपयोग करते हैं; कोई Sahkarmi क्लाउड खाता नहीं है।",
-  attribution: "Norbert Bodziony के OpenBot v0.1.11 पर आधारित, Apache License 2.0 के तहत।",
+  attribution: "सहकर्मी — भारत के लिए स्वायत्त AI सहकर्मी। ध्रुबो गांगुली द्वारा डिज़ाइन एवं विकसित।",
   stopAll: "सभी सहकर्मियों को रोकें",
   role: "भूमिका",
   messagePlaceholder: "{name} को संदेश",
@@ -366,7 +367,7 @@ const bn: Dictionary = {
   about: "পরিচিতি",
   aboutBody:
     "সহকর্মী আপনার কম্পিউটারে চলে। সহকর্মীরা আপনার লোকাল Codex বা Claude সাইন-ইন ব্যবহার করে; কোনো Sahkarmi ক্লাউড অ্যাকাউন্ট নেই।",
-  attribution: "Norbert Bodziony-র OpenBot v0.1.11-এর উপর তৈরি, Apache License 2.0 অনুযায়ী।",
+  attribution: "সহকর্মী — ভারতের জন্য স্বায়ত্তশাসিত AI সহকর্মী। ধ্রুব গাঙ্গুলী কর্তৃক ডিজাইন ও তৈরি।",
   stopAll: "সব সহকর্মীকে থামান",
   role: "ভূমিকা",
   messagePlaceholder: "{name}-কে বার্তা",

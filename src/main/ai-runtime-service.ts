@@ -22,7 +22,6 @@ import type { AiRuntimeStatus, AiToolId, AiToolUpdate } from "../shared/ipc";
 const execFileAsync = promisify(execFile);
 
 const NPM_REGISTRY = "https://registry.npmjs.org";
-const OPENBOT_RELEASES = "https://api.github.com/repos/nightly-labs/openbot/releases/latest";
 const DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1_000;
 const NPM_INSTALL_TIMEOUT_MS = 15 * 60 * 1_000;
 
@@ -242,9 +241,7 @@ export class AiRuntimeService {
         });
       }
 
-      const openBot = await this.#checkUpstreamOpenBot();
-      if (openBot) tools.push(openBot);
-
+      // Upstream references excluded per Sahkarmi 100% white-label branding
       openCodeUpdate = Boolean(
         currentVersion && openCodeLatest && compareVersions(openCodeLatest, currentVersion) > 0,
       );
@@ -307,24 +304,6 @@ export class AiRuntimeService {
       await this.check(true);
     }
     return this.getStatus();
-  }
-
-  async #checkUpstreamOpenBot(): Promise<AiToolUpdate | null> {
-    try {
-      const payload = (await fetchJson(OPENBOT_RELEASES)) as { tag_name?: string };
-      if (!payload.tag_name) return null;
-      return {
-        id: "openbot",
-        label: "OpenBot (upstream project)",
-        installed: null,
-        latest: payload.tag_name,
-        managed: false,
-        command: null,
-        note: "Upstream code is never merged: OpenBot after v0.1.11 is non-commercial. New features are re-implemented in Sahkarmi by hand.",
-      };
-    } catch {
-      return null;
-    }
   }
 
   async #updateOpenCodeRuntime(): Promise<void> {
