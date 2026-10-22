@@ -4,6 +4,23 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.3] - 2026-10-22
+
+### Added
+
+- Adaptive Multi-Agent Engine: OpenBots-inspired autonomous task graph DAG and specialist execution engine with single-agent fast path routing and real-time Multi-Agent UI visualizer.
+- Action-Observation tool execution loop with permission boundaries and sensitive credential/secret redaction.
+- Evidence-based verification gates with bounded defect repair loops.
+- Inter-agent collaboration bus with cycle/recursion prevention.
+- Added `create_coworker` tool to coworker agents: AI coworkers can now autonomously assemble and spin up specialist dev and business teams on user request.
+- 100% Sahkarmi-branded attribution across all languages.
+
+### Fixed
+
+- Prevented silent NSIS installer relaunch loop on app quit and added automatic cleanup of stale pending updater files.
+- Accurately resolves installed AI runtime tool CLI versions (Codex CLI, Claude Code, Gemini CLI) and refreshes live UI status on update without stuck "Update now" buttons.
+- Hardened Windows file-write persistence with retry backoff against transient EPERM locks.
+
 ## [0.5.2] - 2026-10-22
 
 ### Added
