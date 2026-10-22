@@ -751,7 +751,9 @@ export class MailboxStore {
 
   async #readState(): Promise<StoredState> {
     try {
-      const value: unknown = JSON.parse(await readFile(this.#statePath, "utf8"));
+      const raw = await readFile(this.#statePath, "utf8");
+      const cleaned = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+      const value: unknown = JSON.parse(cleaned);
       if (!isStoredState(value)) {
         throw new Error(
           "Mailbox state is corrupt or from a newer Sahkarmi version; refusing to overwrite it.",
