@@ -979,7 +979,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (codexClient) void this.#refreshUsage(codexClient).catch(() => undefined);
     await this.#adoptAvailableProvider();
     await this.#reconcileUnresolvedDeliveries();
-    for (const bot of this.#store.list()) this.#scheduleDrain(bot.id);
+    for (const bot of this.#store.list()) {
+      if (this.#mailbox.nextQueued(bot.id)) {
+        this.#scheduleDrain(bot.id);
+      }
+    }
   }
 
   /**
@@ -1831,7 +1835,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       );
       this.#emitQueue(delivery.recipientBotId);
       this.#emitError("delivery_start_failed", error, delivery.recipientBotId);
-      this.#scheduleDrain(delivery.recipientBotId);
     }
   }
 
