@@ -26,7 +26,14 @@ import { ApprovalStore } from "../backend/approval-store";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
-import { resolveOpenCodeCli, setRuntimeDirectory, setToolsDirectory } from "../backend/cli";
+import {
+  resolveClaudeCli,
+  resolveCodexCli,
+  resolveGeminiCli,
+  resolveOpenCodeCli,
+  setRuntimeDirectory,
+  setToolsDirectory,
+} from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -225,9 +232,11 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.updateInstall, () => updater.installUpdate());
   handleTrusted(IPC_CHANNELS.aiRuntimeGetStatus, () => aiRuntime.getStatus());
   handleTrusted(IPC_CHANNELS.aiRuntimeCheck, () => aiRuntime.check());
-  handleTrusted(IPC_CHANNELS.aiRuntimeUpdate, (toolId: unknown) =>
-    aiRuntime.update(parseAiToolId(toolId)),
-  );
+  handleTrusted(IPC_CHANNELS.aiRuntimeUpdate, async (toolId: unknown) => {
+    const result = await aiRuntime.update(parseAiToolId(toolId));
+    void service.refreshModels().catch(() => {});
+    return result;
+  });
   handleTrusted(IPC_CHANNELS.maintenanceExportData, () =>
     exportSahkarmiData({ service, mailbox, parentWindow: mainWindow }),
   );
@@ -949,10 +958,13 @@ if (!hasSingleInstanceLock) {
             "error",
             `${event.code}${event.botId ? ` (${event.botId})` : ""}: ${event.message}`,
           );
-        else if (event.type === "models-changed")
+        else if (event.type === "models-changed") {
           appLog.write("info", "model catalog refreshed", { count: event.models.length });
-        else if (event.type === "status")
+          void aiRuntimeService?.check(true);
+        } else if (event.type === "status") {
           appLog.write("info", `agent status: ${event.status.phase}`, event.status.providers);
+          void aiRuntimeService?.check(true);
+        }
       });
       updateService.on("status", forwardUpdateStatus);
       updateService.start();
@@ -970,10 +982,25 @@ if (!hasSingleInstanceLock) {
             return null;
           }
         },
-        installedToolVersions: () => {
+        installedToolVersions: async () => {
           const versions: Record<string, string | null> = {};
           for (const provider of service.getStatus().providers ?? []) {
             versions[provider.id] = provider.version ?? null;
+          }
+          if (!versions.codex) {
+            versions.codex = await resolveCodexCli()
+              .then((c) => c.version)
+              .catch(() => null);
+          }
+          if (!versions.claude) {
+            versions.claude = await resolveClaudeCli()
+              .then((c) => c.version)
+              .catch(() => null);
+          }
+          if (!versions.gemini) {
+            versions.gemini = await resolveGeminiCli()
+              .then((c) => c.version)
+              .catch(() => null);
           }
           return versions;
         },
