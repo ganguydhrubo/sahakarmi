@@ -636,8 +636,8 @@ export function Sidebar(props: SidebarProps) {
               const unread = () => props.unread[bot.id] ?? 0;
               const isSelected = () => props.view === "coworker" && props.activeBotId === bot.id;
               return (
-                <button
-                  type="button"
+                // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: Pinned coworkers quick-bar item
+                <div
                   class="pinned-coworker-item"
                   onClick={() => props.onSelectBot(bot.id)}
                   title={bot.name}
@@ -654,7 +654,7 @@ export function Sidebar(props: SidebarProps) {
                     </Show>
                   </div>
                   <span class="pinned-coworker-name">{bot.name.split(" ")[0]}</span>
-                </button>
+                </div>
               );
             }}
           </For>
