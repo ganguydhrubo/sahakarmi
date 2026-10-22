@@ -3625,9 +3625,15 @@ textarea {
   height: 18px;
 }
 
+.exchange-agent-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+
 .exchange-agent-menu {
   position: absolute;
-  z-index: 20;
+  z-index: 100;
   top: calc(100% + 8px);
   left: 50%;
   display: grid;
@@ -4334,18 +4340,25 @@ textarea {
   line-height: 18px;
 }
 
+.attachment-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+}
+
 .attachment-menu {
   position: absolute;
-  bottom: 57px;
-  left: 20px;
+  bottom: calc(100% + 10px);
+  left: 12px;
+  z-index: 50;
   display: grid;
   gap: 3px;
-  width: 190px;
+  width: 220px;
   border: 1px solid var(--sahkarmi-line-strong);
   border-radius: 13px;
-  background: var(--surface-3);
+  background: var(--surface-2);
   padding: 6px;
-  box-shadow: 0 16px 32px rgb(var(--shade-rgb) / 0.3);
+  box-shadow: 0 16px 34px rgb(var(--shade-rgb) / 0.4);
 }
 
 .attachment-menu button {
@@ -5370,6 +5383,113 @@ body {
   text-align: center;
 }
 
+.bot-row-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.team-row-role-pill {
+  overflow: hidden;
+  max-width: 120px;
+  padding: 1px 6px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.14);
+  border-radius: 5px;
+  background: rgb(var(--ink-rgb) / 0.06);
+  color: rgb(var(--ink-rgb) / 0.7);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bot-row-time {
+  flex-shrink: 0;
+  color: rgb(var(--ink-rgb) / 0.4);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pinned-coworkers-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--sahkarmi-line);
+}
+
+.pinned-coworker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 48px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pinned-coworker-avatar-wrap {
+  position: relative;
+  border-radius: 12px;
+  padding: 3px;
+  transition: all 150ms ease;
+}
+
+.pinned-coworker-item:hover .pinned-coworker-avatar-wrap {
+  background: rgb(var(--ink-rgb) / 0.08);
+}
+
+.pinned-coworker-avatar-wrap.pinned-active {
+  box-shadow: 0 0 0 2px var(--warning);
+}
+
+.pinned-coworker-name {
+  max-width: 52px;
+  overflow: hidden;
+  color: rgb(var(--ink-rgb) / 0.75);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-coworker-item:hover .pinned-coworker-name {
+  color: var(--text-primary);
+}
+
+.workspace-group-section {
+  margin-top: 10px;
+}
+
+.workspace-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px 4px 16px;
+  color: rgb(var(--ink-rgb) / 0.5);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.workspace-group-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgb(var(--ink-rgb) / 0.08);
+  color: rgb(var(--ink-rgb) / 0.6);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 16px;
+}
+
 .new-coworker-button {
   display: flex;
   width: 100%;
@@ -5692,9 +5812,19 @@ body {
 }
 
 .tool-card details {
-  border: 1px solid var(--sahkarmi-line);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
+  border: 1px solid rgb(var(--ink-rgb) / 0.12);
+  border-radius: 10px;
+  background: rgb(var(--ink-rgb) / 0.035);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.tool-card details:hover {
+  background: rgb(var(--ink-rgb) / 0.06);
+  border-color: rgb(var(--ink-rgb) / 0.18);
 }
 
 .tool-card summary {
@@ -5703,8 +5833,8 @@ body {
   gap: 8px;
   cursor: pointer;
   list-style: none;
-  padding: 6px 10px;
-  font-size: 13px;
+  padding: 5px 10px;
+  font-size: 12.5px;
 }
 
 .tool-card summary::-webkit-details-marker {
@@ -5769,9 +5899,11 @@ body {
   align-items: center;
   gap: 5px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 1px 8px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tool-card-status-running {
@@ -7683,6 +7815,12 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
 /* Voice notes */
 .voice-recorder {
   position: relative;
+}
+
+.voice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
 }
 
 .voice-panel {

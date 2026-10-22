@@ -4,6 +4,20 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.5] - 2026-10-22
+
+### Added
+
+- Segregated & Organized Workspace Sidebar: OpenBot-style layout featuring top search, horizontal pinned/recent coworker avatar quick-switcher bar, and collapsible workspace sections with coworker counts.
+- Enhanced Coworker Row Anatomy: Each coworker row now showcases bold title, role pill tag, right-aligned timestamp (e.g. `12:21 PM`), and truncated latest message preview.
+- Human-Friendly Tool Display: Replaced raw snake_case tool labels and bulky debug blocks with clean, elegant action titles (`✨ Create Coworker`, `💬 Message to Coworker`, `🧠 Save Memory`) and compact status cards.
+
+### Fixed
+
+- Resolved attachment menu positioning so it floats cleanly above the toolbar without blocking the message input area, with auto-dismiss on outside click.
+- Fixed exchange recipient dropdown menu z-index stacking and backdrop dismiss so it never gets trapped behind message bubbles.
+- Added backdrop dismiss to voice recorder modal.
+
 ## [0.5.4] - 2026-10-22
 
 ### Added

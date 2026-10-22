@@ -181,6 +181,12 @@ export function VoiceRecorder(props: {
         </Show>
       </button>
       <Show when={open()}>
+        <button
+          type="button"
+          class="voice-backdrop"
+          aria-label="Cancel recording"
+          onClick={cancel}
+        />
         <div class="voice-panel" role="dialog" aria-label={t("voiceRecord")}>
           <div class="voice-panel-head">
             <span class={`voice-phase voice-phase-${phase()}`} role="status" aria-live="polite">
