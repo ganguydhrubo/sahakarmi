@@ -448,7 +448,7 @@ export function App() {
             .catch(() => null),
         ),
       ).then((entries) => {
-        const batch: Record<string, QueuedMessageReceipt[]> = {};
+        const batch: Record<string, QueueSnapshot> = {};
         for (const entry of entries) {
           if (entry) batch[entry[0]] = entry[1];
         }

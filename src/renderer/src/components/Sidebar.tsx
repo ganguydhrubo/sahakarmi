@@ -636,15 +636,10 @@ export function Sidebar(props: SidebarProps) {
               const unread = () => props.unread[bot.id] ?? 0;
               const isSelected = () => props.view === "coworker" && props.activeBotId === bot.id;
               return (
-                <div
-                  tabIndex={0}
+                <button
+                  type="button"
                   class="pinned-coworker-item"
                   onClick={() => props.onSelectBot(bot.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      props.onSelectBot(bot.id);
-                    }
-                  }}
                   title={bot.name}
                 >
                   <div
@@ -659,7 +654,7 @@ export function Sidebar(props: SidebarProps) {
                     </Show>
                   </div>
                   <span class="pinned-coworker-name">{bot.name.split(" ")[0]}</span>
-                </div>
+                </button>
               );
             }}
           </For>

@@ -295,7 +295,9 @@ export class BotStore {
 
   async #readState(): Promise<StoredState> {
     try {
-      const parsed: unknown = JSON.parse(await readFile(this.#statePath, "utf8"));
+      const raw = await readFile(this.#statePath, "utf8");
+      const cleaned = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+      const parsed: unknown = JSON.parse(cleaned);
       if (
         !isRecord(parsed) ||
         (parsed.version !== 1 && parsed.version !== 2) ||
