@@ -306,9 +306,11 @@ export function App() {
       .catch(() => undefined);
   });
 
+  const isAgentReady = createMemo(() => agentStatus().phase === "ready");
+
   createEffect(() => {
     const botId = activeBotId();
-    agentStatus().phase;
+    isAgentReady();
     if (!botId) return;
     void Promise.all([
       window.sahkarmi.agent.readConversation(botId),
@@ -436,16 +438,24 @@ export function App() {
     );
     // Status dots need every coworker's queue, not only the one on screen.
     const known = queues();
-    for (const profile of profiles) {
-      if (known[profile.id]) continue;
-      void window.sahkarmi.agent
-        .listQueue(profile.id)
-        .then((queue) =>
-          setQueues((current) =>
-            current[profile.id] ? current : { ...current, [profile.id]: queue },
-          ),
-        )
-        .catch(() => undefined);
+    const missing = profiles.filter((p) => !known[p.id]);
+    if (missing.length > 0) {
+      void Promise.all(
+        missing.map((p) =>
+          window.sahkarmi.agent
+            .listQueue(p.id)
+            .then((queue) => [p.id, queue] as const)
+            .catch(() => null),
+        ),
+      ).then((entries) => {
+        const batch: Record<string, QueuedMessageReceipt[]> = {};
+        for (const entry of entries) {
+          if (entry) batch[entry[0]] = entry[1];
+        }
+        if (Object.keys(batch).length > 0) {
+          setQueues((current) => ({ ...current, ...batch }));
+        }
+      });
     }
   }
 

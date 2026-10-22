@@ -4,6 +4,17 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.6] - 2026-10-22
+
+### Fixed
+
+- Eliminated 100% CPU freeze / "Not Responding" lockup caused by reactive IPC cascade between renderer and agent service on status changes.
+- Narrowed renderer status dependency to a memoized readiness check, preventing recursive round-trip queries.
+- Batched coworker queue updates on startup to eliminate repeated sidebar re-renders.
+- Fixed startup drain stampede in agent service to only schedule drains for coworkers with actual pending work.
+- Fixed delivery start error handling to prevent double drain queue scheduling.
+
+
 ## [0.5.5] - 2026-10-22
 
 ### Added
