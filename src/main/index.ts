@@ -1131,9 +1131,13 @@ async function prepareForShutdown(): Promise<void> {
   providerSetup?.stop();
   scheduleStore?.stop();
   routineStore?.stop();
-  await (browserHost?.destroy() ?? Promise.resolve());
-  await (agentService?.stop() ?? Promise.resolve());
-  await (usageService?.flush().catch(() => undefined) ?? Promise.resolve());
+  const cleanupTasks = Promise.all([
+    browserHost?.destroy().catch(() => {}),
+    agentService?.stop().catch(() => {}),
+    usageService?.flush().catch(() => {}),
+  ]);
+  const timeout = new Promise((resolve) => setTimeout(resolve, 2500));
+  await Promise.race([cleanupTasks, timeout]);
 }
 
 function parseSaveTarget(value: unknown): SaveBusinessTargetInput {

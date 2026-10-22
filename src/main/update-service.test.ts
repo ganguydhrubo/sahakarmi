@@ -152,7 +152,7 @@ describe("UpdateService", () => {
     service.start(false);
 
     expect(updater.autoDownload).toBe(false);
-    expect(updater.autoInstallOnAppQuit).toBe(true);
+    expect(updater.autoInstallOnAppQuit).toBe(false);
     expect(updater.allowPrerelease).toBe(false);
 
     await service.checkForUpdates();

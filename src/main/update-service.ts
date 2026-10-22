@@ -89,8 +89,11 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#started = true;
     // The service owns automatic downloads so it can cancel stalls and retry safely.
     this.#updater.autoDownload = false;
-    this.#updater.autoInstallOnAppQuit = true;
+    this.#updater.autoInstallOnAppQuit = false;
     this.#updater.allowPrerelease = false;
+
+    // Clean up any stale pending update artifacts from earlier crashes/loops
+    void cleanStalePendingUpdates();
 
     this.#updater.on("checking-for-update", () => {
       this.#setStatus({ phase: "checking", progress: null, message: null });
@@ -337,4 +340,18 @@ export function reasonOf(error: unknown): string {
 
 function clampProgress(value: number): number {
   return Math.max(0, Math.min(100, Number.isFinite(value) ? Math.round(value) : 0));
+}
+
+async function cleanStalePendingUpdates(): Promise<void> {
+  try {
+    const localAppData = process.env.LOCALAPPDATA;
+    if (process.platform === "win32" && localAppData) {
+      const { join } = await import("node:path");
+      const { rm } = await import("node:fs/promises");
+      const pendingDir = join(localAppData, "sahkarmi-updater", "pending");
+      await rm(pendingDir, { recursive: true, force: true }).catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
 }
