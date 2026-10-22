@@ -375,25 +375,6 @@ export function Sidebar(props: SidebarProps) {
       : props.bots;
   });
 
-  function formatBotTime(dateStr: string | null | undefined): string {
-    if (!dateStr) return "";
-    try {
-      const date = new Date(dateStr);
-      if (Number.isNaN(date.getTime())) return "";
-      const now = new Date();
-      const isToday =
-        date.getDate() === now.getDate() &&
-        date.getMonth() === now.getMonth() &&
-        date.getFullYear() === now.getFullYear();
-      if (isToday) {
-        return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      }
-      return date.toLocaleDateString([], { month: "short", day: "numeric" });
-    } catch {
-      return "";
-    }
-  }
-
   const topBots = createMemo(() => {
     return [...props.bots]
       .sort((a, b) => {
@@ -421,7 +402,7 @@ export function Sidebar(props: SidebarProps) {
     const activeWsId = activeWs?.id ?? "default";
     const activeWsName = activeWs?.name ?? "Main Team";
 
-    const allWorkspaces = props.workspaces.workspaces;
+    const allWorkspaces = props.workspaces?.workspaces ?? [];
     const wsMap = new Map<string, WorkspaceGroup>();
 
     // Put active workspace first
@@ -656,7 +637,6 @@ export function Sidebar(props: SidebarProps) {
               const isSelected = () => props.view === "coworker" && props.activeBotId === bot.id;
               return (
                 <div
-                  role="tab"
                   tabIndex={0}
                   class="pinned-coworker-item"
                   onClick={() => props.onSelectBot(bot.id)}
@@ -665,7 +645,7 @@ export function Sidebar(props: SidebarProps) {
                       props.onSelectBot(bot.id);
                     }
                   }}
-                  title={`${bot.name} (${bot.role || "Coworker"})`}
+                  title={bot.name}
                 >
                   <div
                     class="pinned-coworker-avatar-wrap"
@@ -747,8 +727,8 @@ export function Sidebar(props: SidebarProps) {
                                 <span class="team-row-role-pill">{bot.role}</span>
                               </Show>
                             </span>
-                            <Show when={bot.updatedAt}>
-                              <time class="bot-row-time">{formatBotTime(bot.updatedAt)}</time>
+                            <Show when={bot.time && bot.time !== "now"}>
+                              <time class="bot-row-time">{bot.time}</time>
                             </Show>
                           </span>
                           <span class="team-row-role">{bot.preview || bot.role || "—"}</span>
