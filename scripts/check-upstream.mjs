@@ -6,7 +6,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,20 +34,22 @@ async function checkUpstream() {
 
   try {
     openbotRelease = await fetchJson(
-      "https://api.github.com/repos/nightly-labs/openbot/releases/latest"
+      "https://api.github.com/repos/nightly-labs/openbot/releases/latest",
     );
-    console.log(`✅ nightly-labs/openbot latest release: ${openbotRelease.tag_name} (${openbotRelease.published_at})`);
+    console.log(
+      `✅ nightly-labs/openbot latest release: ${openbotRelease.tag_name} (${openbotRelease.published_at})`,
+    );
   } catch (err) {
     console.warn(`⚠️ Failed to fetch nightly-labs/openbot release: ${err.message}`);
   }
 
   try {
     const commits = await fetchJson(
-      "https://api.github.com/repos/r2hu1/openbots/commits?per_page=1"
+      "https://api.github.com/repos/r2hu1/openbots/commits?per_page=1",
     );
     openbotsCommit = commits[0];
     console.log(
-      `✅ r2hu1/openbots latest commit: ${openbotsCommit?.sha?.slice(0, 7)} - "${openbotsCommit?.commit?.message?.split("\n")[0]}"`
+      `✅ r2hu1/openbots latest commit: ${openbotsCommit?.sha?.slice(0, 7)} - "${openbotsCommit?.commit?.message?.split("\n")[0]}"`,
     );
   } catch (err) {
     console.warn(`⚠️ Failed to fetch r2hu1/openbots commits: ${err.message}`);
