@@ -1,11 +1,11 @@
 {
   "name": "sahkarmi",
   "productName": "Sahkarmi",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Sahkarmi (सहकर्मी) — AI coworkers for Indian businesses. A local-first desktop app where each coworker has its own workspace, browser, memory and task queue.",
   "author": {
-    "name": "Dhrubo Ganguly",
-    "email": "gangulydhrubo@gmail.com"
+    "name": "Sahkarmi Team",
+    "email": "team@sahkarmi.site"
   },
   "license": "Apache-2.0",
   "repository": {
