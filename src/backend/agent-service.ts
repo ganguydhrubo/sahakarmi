@@ -123,6 +123,10 @@ interface ThreadContextBudget {
 
 const CONTEXT_COMPACTION_THRESHOLD = 0.8;
 const CONTEXT_COMPACTION_TIMEOUT_MS = 120_000;
+/** Upper bound on full-conversation snapshots per coworker sent to the window. */
+const CONVERSATION_EMIT_INTERVAL_MS = 50;
+/** Recently finished turn ids, kept to ignore out-of-order start events and responses. */
+const MAX_REMEMBERED_FINISHED_TURNS = 500;
 
 const INITIAL_STATUS: AgentStatus = {
   phase: "idle",
@@ -258,6 +262,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #scheduledDrains = new Set<string>();
   readonly #drainTasks = new Map<string, Promise<void>>();
   readonly #lastConversationSignatures = new Map<string, string>();
+  readonly #pendingConversations = new Map<string, ConversationSnapshot>();
+  readonly #finishedTurnIds = new Set<string>();
+  #conversationFlushTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #contextBudgets = new Map<string, ThreadContextBudget>();
   readonly #compactingBots = new Set<string>();
   readonly #compactionTimers = new Map<string, NodeJS.Timeout>();
@@ -614,6 +621,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
     this.#snapshots.delete(botId);
     this.#lastConversationSignatures.delete(botId);
+    this.#pendingConversations.delete(botId);
     this.#drainingBots.delete(botId);
     this.#scheduledDrains.delete(botId);
     if (bot.threadId) {
@@ -687,6 +695,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await Promise.allSettled([...this.#turnAssociations.values()]);
     await Promise.allSettled([...this.#completionTasks]);
     this.#turnAssociations.clear();
+    if (this.#conversationFlushTimer) clearTimeout(this.#conversationFlushTimer);
+    this.#conversationFlushTimer = null;
+    for (const botId of [...this.#pendingConversations.keys()]) this.#flushConversation(botId);
     this.#setStatus({ phase: "stopped", message: null });
   }
 
@@ -1021,6 +1032,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (this.#clients.get(client.provider) !== client || this.#stopping) return;
     this.#clients.delete(client.provider);
     void client.stop().catch(() => undefined);
+    // Turns on the dead process will never complete; a stale activeTurnId would keep these
+    // coworkers "busy" forever and stop their queued messages from ever starting.
+    for (const bot of this.#store.list()) {
+      if (providerForBot(bot) !== client.provider) continue;
+      const snapshot = this.#snapshots.get(bot.id);
+      if (snapshot?.activeTurnId) snapshot.activeTurnId = null;
+    }
     this.#loadedThreads.clear();
     this.#clearCompactionRuntime();
     this.#pendingPrompts.clear();
@@ -1673,14 +1691,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       return;
     }
     this.#scheduledDrains.add(botId);
-    queueMicrotask(() => {
+    // A macrotask, not queueMicrotask: a drain that re-schedules itself must still let I/O,
+    // IPC and the window's events run in between.
+    setTimeout(() => {
       this.#scheduledDrains.delete(botId);
       if (this.#stopping) return;
       const task = this.#drainBot(botId).finally(() => {
         if (this.#drainTasks.get(botId) === task) this.#drainTasks.delete(botId);
       });
       this.#drainTasks.set(botId, task);
-    });
+    }, 0);
   }
 
   async #drainBot(botId: string): Promise<void> {
@@ -1692,11 +1712,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     )
       return;
     this.#drainingBots.add(botId);
+    // Only retry once real work was attempted. Returning early because the bot is busy must
+    // not reschedule: #scheduleDrain uses a microtask, and this early return happens before
+    // any await, so re-queueing here would spin forever without yielding (the app froze
+    // whenever one coworker delegated to another that was mid-turn). #completeTurn drains
+    // again when the active turn ends.
+    let attempted = false;
     try {
       const snapshot = this.#snapshots.get(botId);
       if (snapshot?.activeTurnId) return;
       const context = this.#mailbox.nextQueued(botId);
       if (!context) return;
+      attempted = true;
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
@@ -1705,7 +1732,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       await this.#startDelivery(context);
     } finally {
       this.#drainingBots.delete(botId);
-      if (this.#mailbox.nextQueued(botId)) this.#scheduleDrain(botId);
+      if (attempted && this.#mailbox.nextQueued(botId)) this.#scheduleDrain(botId);
     }
   }
 
@@ -1814,8 +1841,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           sandboxPolicy: { type: "dangerFullAccess" },
         },
       );
-      await this.#mailbox.markRunning(delivery.id, response.turn.id);
-      snapshot.activeTurnId = response.turn.id;
+      // Fast turns (and busy machines) can deliver turn/completed before the turn/start
+      // response. Marking a finished turn active again left the coworker "busy" forever, so
+      // nothing queued for it (steering messages, teammates' requests) could ever start.
+      if (!this.#finishedTurnIds.has(response.turn.id)) {
+        await this.#mailbox.markRunning(delivery.id, response.turn.id);
+      }
+      if (!this.#finishedTurnIds.has(response.turn.id)) snapshot.activeTurnId = response.turn.id;
       this.#syncDeliveryMessage(snapshot, delivery.id);
       this.#emitQueue(bot.id);
       this.#emitConversation(snapshot);
@@ -2077,6 +2109,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           contextBudget.compactionTurnId = turnId;
           return;
         }
+        if (this.#finishedTurnIds.has(turnId)) return; // a late, out-of-order start
         const snapshot = this.#ensureSnapshot(botId, threadId);
         snapshot.activeTurnId = turnId;
         const association = this.#associateStartedTurn(botId, turnId, snapshot);
@@ -2229,6 +2262,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     turnId: string,
     status: string,
   ): Promise<void> {
+    this.#finishedTurnIds.add(turnId);
+    if (this.#finishedTurnIds.size > MAX_REMEMBERED_FINISHED_TURNS) {
+      const oldest = this.#finishedTurnIds.values().next().value;
+      if (oldest !== undefined) this.#finishedTurnIds.delete(oldest);
+    }
     await this.#turnAssociations.get(turnId)?.catch(() => undefined);
     const shouldCompact = this.#reserveContextCompaction(botId, threadId);
     this.#browser.endControl(threadId, turnId);
@@ -2585,7 +2623,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "status", status: this.getStatus() });
   }
 
+  /**
+   * Full snapshots are coalesced per coworker: each one sorts, serialises and clones the
+   * whole history and crosses IPC, and with several coworkers streaming tool events this ran
+   * many times a second on the main thread and froze the window. The newest snapshot wins;
+   * any other event for that coworker flushes it first, so the renderer sees the same order.
+   */
   #emitConversation(snapshot: ConversationSnapshot): void {
+    this.#pendingConversations.set(snapshot.botId, snapshot);
+    if (this.#conversationFlushTimer) return;
+    this.#conversationFlushTimer = setTimeout(() => {
+      this.#conversationFlushTimer = null;
+      for (const botId of [...this.#pendingConversations.keys()]) this.#flushConversation(botId);
+    }, CONVERSATION_EMIT_INTERVAL_MS);
+  }
+
+  #flushConversation(botId: string): void {
+    const snapshot = this.#pendingConversations.get(botId);
+    if (!snapshot) return;
+    this.#pendingConversations.delete(botId);
     sortConversationMessages(snapshot.messages);
     const signature = JSON.stringify({
       threadId: snapshot.threadId,
@@ -2608,6 +2664,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   #emit(event: AgentEvent): void {
+    if (event.type !== "conversation") {
+      // Keep ordering: a coalesced snapshot that introduced a message goes out before the
+      // deltas, completions or errors that refer to it.
+      const botId = "botId" in event ? event.botId : undefined;
+      if (botId) this.#flushConversation(botId);
+      else for (const pending of [...this.#pendingConversations.keys()]) this.#flushConversation(pending);
+    }
     this.emit("event", event);
   }
 }

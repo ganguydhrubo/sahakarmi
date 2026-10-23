@@ -102,13 +102,23 @@ export function mergeConversationSnapshots(
 }
 
 export function sortConversationMessages(messages: ConversationMessage[]): void {
+  // Parse each timestamp once, not on every comparison (n log n Date.parse calls per emit).
+  const times = new Map<ConversationMessage, number>();
+  const timeOf = (message: ConversationMessage): number => {
+    let time = times.get(message);
+    if (time === undefined) {
+      time = Date.parse(message.createdAt);
+      times.set(message, time);
+    }
+    return time;
+  };
   messages.sort((left, right) => {
     if (left.turnId && left.turnId === right.turnId) {
       const rankDifference = turnMessageRank(left) - turnMessageRank(right);
       if (rankDifference !== 0) return rankDifference;
     }
-    const leftTime = Date.parse(left.createdAt);
-    const rightTime = Date.parse(right.createdAt);
+    const leftTime = timeOf(left);
+    const rightTime = timeOf(right);
     if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime)) return 0;
     return leftTime - rightTime;
   });
