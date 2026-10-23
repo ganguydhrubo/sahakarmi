@@ -32,3 +32,7 @@ Automated checks run via `.github/workflows/upstream-watch.yml` or locally via `
 ### Check on 2026-10-22
 - **nightly-labs/openbot**: Latest release [v0.47.1](https://github.com/nightly-labs/openbot/releases/tag/v0.47.1) (published 2026-10-21).
 - **r2hu1/openbots**: Latest commit `0862bf6` ("Update user-menu.tsx").
+
+### Check on 2026-10-23
+- **nightly-labs/openbot**: Latest release [v0.48.1](https://github.com/nightly-labs/openbot/releases/tag/v0.48.1) (published 2026-10-22).
+- **r2hu1/openbots**: Latest commit `0862bf6` ("Update user-menu.tsx").
