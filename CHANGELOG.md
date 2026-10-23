@@ -4,6 +4,24 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.7] - 2026-10-23
+
+### Added
+
+- Official Google Antigravity ACP provider integration with pinned SHA-256 runtime validation, Terms of Service gate, OAuth-personal Google sign-in and API key support, and trilingual Connect UI tiles in English, Hindi, and Bengali.
+- Sibling localharness runtime binding for local ACP execution.
+
+### Fixed
+
+- Resolved multi-agent infinite microtask drain loop freeze when steering or delegating mid-turn.
+- Resolved out-of-order turn association race condition when turn/completed arrives before turn/start response.
+- Recover starting/running deliveries gracefully on dead provider process exit.
+- Batched streamed IPC deltas on a 33ms cadence and guarded SolidJS reactive signal updates.
+- Optimized MailboxStore with O(1) Map indexes, precomputed message exchange projections, and compact non-blocking JSON persistence.
+- Stabilized RichMarkdown streaming re-renders with block equality caching.
+- Optimized ACP client leak regex windowing and O(1) stdout chunk line buffering.
+
+
 ## [0.5.6] - 2026-10-22
 
 ### Fixed
