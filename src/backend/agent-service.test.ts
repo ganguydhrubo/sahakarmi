@@ -26,6 +26,7 @@ beforeEach(async () => {
   process.env.SAHKARMI_CLAUDE_PATH = join(root, "missing-claude");
   // Keep tests hermetic: never spawn a real bundled OpenCode or installed Gemini CLI.
   process.env.SAHKARMI_GEMINI_PATH = join(root, "missing-gemini");
+  process.env.SAHKARMI_ANTIGRAVITY_PATH = join(root, "missing-antigravity");
   process.env.SAHKARMI_OPENCODE_PATH = join(root, "missing-opencode");
 });
 
@@ -38,6 +39,7 @@ afterEach(async () => {
   else process.env.SAHKARMI_CLAUDE_PATH = originalClaudePath;
   delete process.env.SAHKARMI_FAKE_CODEX_LOG;
   delete process.env.SAHKARMI_GEMINI_PATH;
+  delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
   delete process.env.SAHKARMI_OPENCODE_PATH;
   delete process.env.SAHKARMI_FAKE_AGENT_TOOL;
   delete process.env.SAHKARMI_FAKE_TOOL_CALL;
