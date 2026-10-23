@@ -411,17 +411,19 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   }
 
   async #connectAntigravity(): Promise<void> {
+    let cliFound = false;
     try {
       await resolveAntigravityCli();
+      cliFound = true;
     } catch {
       // Local installation fallback
     }
     const account = await readAntigravityAccount();
-    if (account.account) {
+    if (cliFound || account.account) {
       await this.#options.recheck("antigravity");
       this.#set("antigravity", {
         phase: "connected",
-        message: `Connected to Google Antigravity${account.account.email ? ` (${account.account.email})` : ""}.`,
+        message: `Connected to Google Antigravity${account.account?.email ? ` (${account.account.email})` : ""}.`,
         url: null,
       });
       return;
