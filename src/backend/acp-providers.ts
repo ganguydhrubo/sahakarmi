@@ -52,68 +52,6 @@ export function openCodeModelValue(model: AgentModelId, options: AcpModelOption[
   return values.find((value) => value.startsWith("opencode/") && value.endsWith("-free")) ?? null;
 }
 
-export function createGeminiClient(cli: AcpCliInfo, transcriptRoot: string): AcpAgentClient {
-  return new AcpAgentClient({
-    provider: "gemini",
-    label: "Gemini CLI",
-    executable: cli.executable,
-    args: ["--acp", "--model", "auto"],
-    transcriptDir: join(transcriptRoot, "gemini"),
-    models: [
-      { model: "gemini-auto", displayName: "Gemini Auto" },
-      { model: "gemini-pro", displayName: "Gemini Pro" },
-      { model: "gemini-flash", displayName: "Gemini Flash" },
-    ],
-    readAccount: readGeminiAccount,
-    modelValue: geminiModelValue,
-  });
-}
-
-export function geminiModelValue(model: AgentModelId, options: AcpModelOption[]): string | null {
-  if (!["gemini-auto", "gemini-pro", "gemini-flash"].includes(model)) {
-    const wire = modelWireId(model);
-    return options.some((option) => option.value === wire) ? wire : null;
-  }
-  const alias = model === "gemini-pro" ? "pro" : model === "gemini-flash" ? "flash" : "auto";
-  const values = options.map((option) => option.value);
-  if (values.includes(alias)) return alias;
-  if (alias === "flash") {
-    return values.find((value) => value.includes("flash") && !value.includes("lite")) ?? null;
-  }
-  return values.find((value) => value.includes(alias)) ?? null;
-}
-
-/** Uses the login Gemini CLI already has: Google sign-in (free tier), API key, or Vertex AI. */
-export async function readGeminiAccount(
-  home = homedir(),
-  environment: NodeJS.ProcessEnv = process.env,
-): Promise<{
-  account: { type: string; email: string | null } | null;
-  requiresOpenaiAuth: boolean;
-}> {
-  const geminiHome = join(home, ".gemini");
-  const hasKey = Boolean(
-    environment.GEMINI_API_KEY?.trim() ||
-      environment.GOOGLE_API_KEY?.trim() ||
-      environment.GOOGLE_GENAI_USE_VERTEXAI?.trim(),
-  );
-  const hasOauth = await access(join(geminiHome, "oauth_creds.json")).then(
-    () => true,
-    () => false,
-  );
-  if (!hasKey && !hasOauth) return { account: null, requiresOpenaiAuth: false };
-  let email: string | null = null;
-  try {
-    const accounts: unknown = JSON.parse(
-      await readFile(join(geminiHome, "google_accounts.json"), "utf8"),
-    );
-    if (isRecord(accounts) && typeof accounts.active === "string") email = accounts.active;
-  } catch {
-    // Email is optional; API-key users have none.
-  }
-  return { account: { type: "gemini", email }, requiresOpenaiAuth: false };
-}
-
 export function createAntigravityClient(cli: AcpCliInfo, transcriptRoot: string): AcpAgentClient {
   const harnessExecutable =
     process.platform === "win32" ? "localharness_external.exe" : "localharness_external";
@@ -130,6 +68,8 @@ export function createAntigravityClient(cli: AcpCliInfo, transcriptRoot: string)
     env: {
       ANTIGRAVITY_HARNESS_PATH: harnessPath,
     },
+    // Google's server takes 30-60 s to answer initialize and a few seconds per session.
+    modelListTimeoutMs: 30_000,
   });
 }
 
@@ -146,6 +86,17 @@ export function antigravityModelValue(
   return values[0] ?? null;
 }
 
+/** Where Google's ACP server keeps its own sign-in, and where Sahkarmi notes the account it saw. */
+export function antigravityAcpHome(home = homedir()): string {
+  return join(home, ".gemini", "antigravity-acp");
+}
+
+export const ANTIGRAVITY_ACCOUNT_FILE = "sahkarmi-account.json";
+
+/**
+ * Uses the sign-in Google's Antigravity ACP server already has (Log in with Google, or an API key).
+ * Only the server's own token counts: a Gemini CLI or Antigravity IDE login is a different thing.
+ */
 export async function readAntigravityAccount(
   home = homedir(),
   environment: NodeJS.ProcessEnv = process.env,
@@ -153,47 +104,29 @@ export async function readAntigravityAccount(
   account: { type: string; email: string | null; tier?: string | null } | null;
   requiresOpenaiAuth: boolean;
 }> {
-  const geminiHome = join(home, ".gemini");
-  const antigravityHome = join(geminiHome, "antigravity");
-  const antigravityAcpHome = join(geminiHome, "antigravity-acp");
+  const acpHome = antigravityAcpHome(home);
   const hasKey = Boolean(
     environment.ANTIGRAVITY_API_KEY?.trim() ||
       environment.GEMINI_API_KEY?.trim() ||
       environment.GOOGLE_API_KEY?.trim(),
   );
-  const [hasAcpToken, hasOauth, hasGeminiOauth] = await Promise.all([
-    access(join(antigravityAcpHome, "acp_token.json")).then(
-      () => true,
-      () => false,
-    ),
-    access(join(antigravityHome, "oauth_creds.json")).then(
-      () => true,
-      () => false,
-    ),
-    access(join(geminiHome, "oauth_creds.json")).then(
-      () => true,
-      () => false,
-    ),
-  ]);
-  if (!hasKey && !hasAcpToken && !hasOauth && !hasGeminiOauth) {
-    return { account: null, requiresOpenaiAuth: false };
-  }
+  const hasToken = await access(join(acpHome, "acp_token.json")).then(
+    () => true,
+    () => false,
+  );
+  if (!hasKey && !hasToken) return { account: null, requiresOpenaiAuth: false };
   let email: string | null = null;
-  let tier: string | null = "Antigravity Pro";
+  let tier: string | null = hasToken ? null : "API key";
   try {
-    const raw = await readFile(join(geminiHome, "google_accounts.json"), "utf8").catch(() =>
-      readFile(join(antigravityHome, "google_accounts.json"), "utf8"),
+    const noted: unknown = JSON.parse(
+      await readFile(join(acpHome, ANTIGRAVITY_ACCOUNT_FILE), "utf8"),
     );
-    const accounts: unknown = JSON.parse(raw);
-    if (isRecord(accounts)) {
-      if (typeof accounts.active === "string") email = accounts.active;
-      else if (Array.isArray(accounts.old) && typeof accounts.old[0] === "string") {
-        email = accounts.old[0];
-      }
-      if (typeof accounts.tier === "string") tier = accounts.tier;
+    if (isRecord(noted)) {
+      if (typeof noted.email === "string") email = noted.email;
+      if (typeof noted.tier === "string") tier = noted.tier;
     }
   } catch {
-    // Email is optional
+    // Sahkarmi has not noted the account yet (signed in before 0.6.0, or an API key).
   }
   return { account: { type: "antigravity", email, tier }, requiresOpenaiAuth: false };
 }

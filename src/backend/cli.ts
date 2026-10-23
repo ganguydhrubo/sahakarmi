@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { constants, existsSync, readdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, join, resolve, win32 } from "node:path";
+import { basename, dirname, extname, join, resolve, win32 } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -18,7 +18,7 @@ export interface ClaudeCliInfo {
   version: string;
 }
 
-/** Any CLI found on this machine or bundled with Sahkarmi (Gemini CLI, OpenCode). */
+/** Any ACP agent found on this machine or set up by Sahkarmi (OpenCode, Google Antigravity). */
 export interface AcpCliInfo {
   executable: string;
   version: string;
@@ -200,78 +200,34 @@ export async function resolveClaudeCli(
   );
 }
 
-export async function resolveGeminiCli(): Promise<AcpCliInfo> {
-  const candidates = await collectCandidates("gemini", process.env.SAHKARMI_GEMINI_PATH);
-  for (const candidate of candidates) {
-    if (!(await isExecutable(candidate))) continue;
-    try {
-      return {
-        executable: candidate,
-        version: parseSemver(await readCliVersion(candidate), "Gemini CLI"),
-        bundled: false,
-      };
-    } catch {
-      // Try the next executable candidate.
-    }
-  }
-  throw new CodexCliError(
-    "Gemini CLI was not found. Install it with `npm install -g @google/gemini-cli`, run `gemini` once to sign in with Google (free tier), then restart Sahkarmi.",
-    "missing",
-  );
-}
-
-export function bundledAntigravityPaths(platform: NodeJS.Platform = process.platform): string[] {
-  const home = homedir();
-  if (platform === "win32") {
-    return [
-      join(home, "AppData", "Local", "Programs", "antigravity", "Antigravity.exe"),
-      join(home, "AppData", "Roaming", "Antigravity", "bin", "agy-node.cmd"),
-    ];
-  }
-  if (platform === "darwin") {
-    return [
-      "/Applications/Antigravity.app/Contents/MacOS/Antigravity",
-      join(home, "Applications", "Antigravity.app", "Contents", "MacOS", "Antigravity"),
-    ];
-  }
-  return ["/usr/bin/antigravity", "/usr/local/bin/antigravity"];
-}
-
-export async function resolveAntigravityCli(
-  bundledCandidates: string[] = bundledAntigravityPaths(),
-): Promise<AcpCliInfo> {
+/**
+ * Google's Antigravity ACP server (agy_acp_server), downloaded by the Connect button into
+ * <runtime>/antigravity/<version>/. The Antigravity IDE itself is not an agent server and is never used.
+ */
+export async function resolveAntigravityCli(): Promise<AcpCliInfo> {
   const override = process.env.SAHKARMI_ANTIGRAVITY_PATH?.trim();
   const managed = override ? [] : managedAntigravityPaths();
-  const bundled = override ? [] : bundledCandidates;
   const candidates = override
     ? [override]
-    : [
-        ...managed,
-        ...bundled,
-        ...(await collectCandidates("agy_acp_server", undefined)),
-        ...(await collectCandidates("antigravity", undefined)),
-        ...(await collectCandidates("Antigravity", undefined)),
-      ];
+    : [...managed, ...(await collectCandidates("agy_acp_server", undefined))];
   for (const candidate of candidates) {
     if (!(await isExecutable(candidate))) continue;
-    try {
-      return {
-        executable: candidate,
-        version: "1.0.0",
-        bundled: managed.includes(candidate) || bundled.includes(candidate),
-      };
-    } catch {
-      return {
-        executable: candidate,
-        version: "1.0.0",
-        bundled: managed.includes(candidate) || bundled.includes(candidate),
-      };
-    }
+    return {
+      executable: candidate,
+      version: antigravityVersionOf(candidate),
+      bundled: managed.includes(candidate),
+    };
   }
   throw new CodexCliError(
-    "Google Antigravity was not found. Install or connect Google Antigravity from Settings.",
+    "Google Antigravity is not set up yet. Click Connect next to Google Antigravity in Settings.",
     "missing",
   );
+}
+
+/** The version folder a managed agy_acp_server sits in, or "unknown" for a copy found on PATH. */
+function antigravityVersionOf(executable: string): string {
+  const parent = basename(dirname(executable));
+  return /^\d+\.\d+\.\d+$/.test(parent) ? parent : "unknown";
 }
 
 /**

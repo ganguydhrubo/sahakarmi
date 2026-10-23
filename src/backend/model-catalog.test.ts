@@ -7,7 +7,7 @@ afterEach(() => vi.useRealTimers());
 
 describe("provider model catalogs", () => {
   it("accepts new provider-reported IDs without an app release and keeps provider routing", () => {
-    for (const provider of ["codex", "claude", "gemini", "opencode"] as const) {
+    for (const provider of ["codex", "claude", "antigravity", "opencode"] as const) {
       const wire = "vendor/future-model-v2";
       const models = mergeProviderCatalog(
         provider,

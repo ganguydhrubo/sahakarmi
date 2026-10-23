@@ -1,4 +1,4 @@
-# AI Tool Updates (Bundled OpenCode Runtime, Codex, Claude, Gemini)
+# AI Tool Updates (Bundled OpenCode Runtime, Codex, Claude, Google Antigravity)
 
 ## Runtime Update Architecture
 
@@ -8,7 +8,8 @@ Sahkarmi manages three distinct categories of runtime updates safely without dis
 |---|---|---|
 | **Sahkarmi Desktop App** | Yes | `electron-updater` checks GitHub releases periodically and prompts or updates seamlessly. |
 | **Bundled OpenCode runtime** | Yes | Downloads the signed official package, verifies sha512 integrity, and stores it in `<userData>/runtime/opencode/<version>/`. |
-| **Codex CLI, Claude Code, Gemini CLI** | On request | These are the user's global npm tools. Sahkarmi resolves installed CLI versions, displays available updates, and invokes npm update commands when triggered. |
+| **Codex CLI, Claude Code** | On request | These are the user's global npm tools. Sahkarmi resolves installed CLI versions, displays available updates, and invokes npm update commands when triggered. |
+| **Google Antigravity (agy-acp-server)** | On Connect | Downloaded from Google's release URL, verified against the SHA-256 pinned in `src/backend/antigravity-runtime.ts`, unpacked into `<runtime>/antigravity/<version>/`. Bump the version and pins together. |
 
 ## How Automatic OpenCode Runtime Update Works
 

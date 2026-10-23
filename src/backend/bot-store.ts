@@ -13,6 +13,7 @@ import {
   isAvatarColor,
   isAvatarShape,
   isReasoningEffort,
+  legacyModelReplacement,
   providerForModel,
   type UpdateBotInput,
   type WorkspaceState,
@@ -317,11 +318,16 @@ export class BotStore {
       const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
       const fallbackWorkspaceId = workspaces[0]?.id ?? DEFAULT_WORKSPACE_ID;
       // Version 1 files predate workspaces; their coworkers join the first workspace.
-      const bots: unknown[] = parsed.bots.map((bot: unknown) =>
-        isRecord(bot) && (typeof bot.workspaceId !== "string" || !workspaceIds.has(bot.workspaceId))
-          ? { ...bot, workspaceId: fallbackWorkspaceId }
-          : bot,
-      );
+      const bots: unknown[] = parsed.bots.map((bot: unknown) => {
+        if (!isRecord(bot)) return bot;
+        const workspaceId =
+          typeof bot.workspaceId !== "string" || !workspaceIds.has(bot.workspaceId)
+            ? fallbackWorkspaceId
+            : bot.workspaceId;
+        // A coworker on a provider Sahkarmi no longer ships moves to the bundled free model.
+        const model = legacyModelReplacement(bot.model) ?? bot.model;
+        return { ...bot, workspaceId, model };
+      });
       if (!bots.every(isStoredBot)) {
         throw new Error(
           "Coworker state is corrupt or from a newer Sahkarmi version; refusing to overwrite it.",

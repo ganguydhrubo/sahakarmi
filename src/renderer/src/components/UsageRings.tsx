@@ -4,7 +4,6 @@ import type { AgentProviderId, ProviderUsageSummary } from "../../../shared/ipc"
 const NAMES: Record<AgentProviderId, string> = {
   codex: "ChatGPT",
   claude: "Claude",
-  gemini: "Gemini",
   antigravity: "Antigravity",
   opencode: "OpenCode",
 };

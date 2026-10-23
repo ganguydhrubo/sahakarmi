@@ -5,18 +5,17 @@ export type TaskProfile = "quick" | "analysis" | "writing" | "general";
 
 /** Preference order per task profile. Only a suggestion: nothing switches without a click. */
 export const PROFILE_MODELS: Record<TaskProfile, AgentModelId[]> = {
-  quick: ["gemini-flash", "opencode-free", "gpt-5.6-luna", "claude-fable-5", "gemini-auto"],
+  quick: ["opencode-free", "antigravity-default", "gpt-5.6-luna", "claude-fable-5"],
   analysis: [
     "claude-opus-5",
     "gpt-5.6-sol",
-    "gemini-pro",
     "claude-sonnet-5",
     "gpt-5.6-terra",
-    "gemini-auto",
+    "antigravity-default",
     "opencode-free",
   ],
-  writing: ["claude-sonnet-5", "gpt-5.6-terra", "gemini-pro", "gemini-auto", "opencode-free"],
-  general: ["gemini-auto", "claude-sonnet-5", "gpt-5.6-terra", "opencode-free"],
+  writing: ["claude-sonnet-5", "gpt-5.6-terra", "antigravity-default", "opencode-free"],
+  general: ["antigravity-default", "claude-sonnet-5", "gpt-5.6-terra", "opencode-free"],
 };
 
 /** Providers billed to the owner's own paid plan (as opposed to free models or free tiers). */

@@ -8,31 +8,43 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { AgentProviderId, ProviderSetupState } from "../shared/ipc";
-import { readAntigravityAccount } from "./acp-providers";
-import { downloadAntigravity } from "./antigravity-runtime";
+import type { AcpAgentClient } from "./acp-client";
 import {
+  ANTIGRAVITY_ACCOUNT_FILE,
+  antigravityAcpHome,
+  createAntigravityClient,
+  readAntigravityAccount,
+} from "./acp-providers";
+import { ANTIGRAVITY_TERMS_URL, downloadAntigravity } from "./antigravity-runtime";
+import {
+  type AcpCliInfo,
   managedCodexPath,
   resolveAntigravityCli,
   resolveClaudeCli,
   resolveCodexCli,
-  resolveGeminiCli,
 } from "./cli";
 
 /** Codex build fetched by Connect when none is installed (Apache-2.0, published by OpenAI on npm). */
 export const CODEX_VERSION = "0.163.0";
 const LOGIN_TIMEOUT_MS = 10 * 60_000;
 const URL_PATTERN = /https:\/\/[^\s"'<>]+/;
+/** Google's server returns from `authenticate` once the owner finishes the sign-in page. */
+const ANTIGRAVITY_SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
 export interface ProviderSetupOptions {
   toolsDirectory: string;
+  /** Where downloaded agent runtimes live (Google's Antigravity server goes under it). */
+  runtimeDirectory?: string;
   /** Re-checks a provider after sign-in so the app switches it to Connected. */
   recheck: (provider: AgentProviderId) => Promise<void>;
-  /** Opens a terminal window running a command (Gemini's sign-in is interactive). */
-  openTerminal?: (command: string, title: string) => Promise<void>;
   fetchImpl?: typeof fetch;
   spawnImpl?: typeof spawn;
   platform?: NodeJS.Platform;
   arch?: string;
+  /** Home folder (tests point it at a temporary one). */
+  home?: string;
+  /** Builds the ACP client used for the Antigravity sign-in (tests supply a fake). */
+  antigravityClient?: (cli: AcpCliInfo) => AcpAgentClient;
 }
 
 interface ProviderSetupEvents {
@@ -48,6 +60,7 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   readonly #options: ProviderSetupOptions;
   readonly #states = new Map<AgentProviderId, ProviderSetupState>();
   readonly #logins = new Map<AgentProviderId, ChildProcess>();
+  #antigravitySignIn: AcpAgentClient | null = null;
 
   constructor(options: ProviderSetupOptions) {
     super();
@@ -70,9 +83,6 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
           await this.#loginWithProcess(provider, claude.executable, ["auth", "login"]);
           break;
         }
-        case "gemini":
-          await this.#connectGemini();
-          break;
         case "antigravity":
           await this.#connectAntigravity();
           break;
@@ -101,108 +111,29 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   async setApiKey(provider: AgentProviderId, apiKey: string): Promise<ProviderSetupState> {
     const key = apiKey.trim();
     if (!key) throw new Error("API key cannot be empty.");
-    if (provider === "gemini") {
-      process.env.GEMINI_API_KEY = key;
-      process.env.GOOGLE_API_KEY = key;
-      if (process.platform === "win32") {
-        try {
-          execFile(
-            "powershell",
-            [
-              "-NoProfile",
-              "-Command",
-              `[System.Environment]::SetEnvironmentVariable('GEMINI_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
-            ],
-            { windowsHide: true },
-            () => {},
-          );
-        } catch {
-          // ignore
-        }
-      }
-      try {
-        const geminiDir = join(homedir(), ".gemini");
-        await mkdir(geminiDir, { recursive: true });
-        await writeFile(join(geminiDir, "gemini_api_key.txt"), key, "utf8");
-      } catch {
-        // ignore
-      }
-    } else if (provider === "codex") {
+    if (provider === "codex") {
       process.env.OPENAI_API_KEY = key;
-      if (process.platform === "win32") {
-        try {
-          execFile(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-Command",
-              `[System.Environment]::SetEnvironmentVariable('OPENAI_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
-            ],
-            { windowsHide: true },
-            () => {},
-          );
-        } catch {
-          // ignore
-        }
-      }
-      try {
-        const codexDir = join(homedir(), ".codex");
-        await mkdir(codexDir, { recursive: true });
-        await writeFile(join(codexDir, "openai_api_key.txt"), key, "utf8");
-      } catch {
-        // ignore
-      }
+      persistUserEnvironment("OPENAI_API_KEY", key);
+      await saveKeyFile(join(this.#home(), ".codex"), "openai_api_key.txt", key);
     } else if (provider === "claude") {
       process.env.ANTHROPIC_API_KEY = key;
-      if (process.platform === "win32") {
-        try {
-          execFile(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-Command",
-              `[System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
-            ],
-            { windowsHide: true },
-            () => {},
-          );
-        } catch {
-          // ignore
-        }
-      }
-      try {
-        const claudeDir = join(homedir(), ".claude");
-        await mkdir(claudeDir, { recursive: true });
-        await writeFile(join(claudeDir, "anthropic_api_key.txt"), key, "utf8");
-      } catch {
-        // ignore
-      }
+      persistUserEnvironment("ANTHROPIC_API_KEY", key);
+      await saveKeyFile(join(this.#home(), ".claude"), "anthropic_api_key.txt", key);
     } else if (provider === "antigravity") {
+      // Google's server accepts a Google AI Studio key through its `gemini-api-key` sign-in method.
       process.env.ANTIGRAVITY_API_KEY = key;
+      process.env.GEMINI_API_KEY = key;
       process.env.GOOGLE_API_KEY = key;
-      if (process.platform === "win32") {
-        try {
-          execFile(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-Command",
-              `[System.Environment]::SetEnvironmentVariable('ANTIGRAVITY_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
-            ],
-            { windowsHide: true },
-            () => {},
-          );
-        } catch {
-          // ignore
-        }
-      }
+      persistUserEnvironment("GEMINI_API_KEY", key);
+      await saveKeyFile(antigravityAcpHome(this.#home()), "api_key.txt", key);
       try {
-        const agyDir = join(homedir(), ".gemini", "antigravity");
-        await mkdir(agyDir, { recursive: true });
-        await writeFile(join(agyDir, "api_key.txt"), key, "utf8");
-      } catch {
-        // ignore
+        await this.#connectAntigravity("gemini-api-key");
+      } catch (error) {
+        this.#set(provider, { phase: "failed", message: messageOf(error) });
       }
+      return this.#get(provider);
+    } else {
+      throw new Error("This provider does not use an API key.");
     }
 
     try {
@@ -234,10 +165,16 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     const login = this.#logins.get(provider);
     this.#logins.delete(provider);
     if (login && login.exitCode === null) login.kill();
+    if (provider === "antigravity" && this.#antigravitySignIn) {
+      const client = this.#antigravitySignIn;
+      this.#antigravitySignIn = null;
+      void client.stop().catch(() => undefined);
+    }
   }
 
   stop(): void {
     for (const provider of [...this.#logins.keys()]) this.cancel(provider);
+    this.cancel("antigravity");
   }
 
   async #codexExecutable(): Promise<string> {
@@ -393,70 +330,112 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     });
   }
 
-  async #connectGemini(): Promise<void> {
-    if (!this.#options.openTerminal) throw new Error("Gemini sign-in needs a terminal window.");
-    let command: string;
-    try {
-      command = quote((await resolveGeminiCli()).executable);
-    } catch {
-      command = "npm install -g @google/gemini-cli && gemini";
-    }
-    await this.#options.openTerminal(command, "Gemini sign-in");
-    this.#set("gemini", {
-      phase: "terminal",
-      message:
-        "A window opened: choose “Login with Google” and finish in the browser, then close it and click Check again.",
-      url: null,
-    });
-  }
-
-  async #connectAntigravity(): Promise<void> {
-    let cliFound = false;
-    try {
-      await resolveAntigravityCli();
-      cliFound = true;
-    } catch {
-      // Local installation fallback
-    }
-    const account = await readAntigravityAccount();
-    if (cliFound || account.account) {
-      await this.#options.recheck("antigravity");
-      this.#set("antigravity", {
-        phase: "connected",
-        message: `Connected to Google Antigravity${account.account?.email ? ` (${account.account.email})` : ""}.`,
-        url: null,
-      });
-      return;
-    }
-
-    if (this.#options.openTerminal) {
-      const command = "npm install -g @google/gemini-cli && gemini";
-      await this.#options.openTerminal(command, "Google Antigravity sign-in");
-    }
+  /**
+   * Google Antigravity, the same way as Claude and Codex: get Google's agent server (downloaded
+   * once), ask it whether it is signed in, and if not run its own "Log in with Google" sign-in,
+   * which opens the Google page in the browser. No terminal, no password handled by Sahkarmi.
+   */
+  async #connectAntigravity(methodId: "oauth-personal" | "gemini-api-key" = "oauth-personal") {
+    const executable = await this.installAntigravity();
+    const cli: AcpCliInfo = {
+      executable,
+      version: antigravityVersionOf(executable),
+      bundled: true,
+    };
     this.#set("antigravity", {
-      phase: "terminal",
+      phase: "checking",
       message:
-        "Sign in with Google on the page that opened in your browser, then close it and click Check again.",
-      url: "https://accounts.google.com/",
+        "Starting Google's Antigravity agent and checking your sign-in (about a minute the first time)…",
+      url: null,
+      progress: null,
+    });
+    const transcripts = join(this.#options.toolsDirectory, "antigravity-sign-in");
+    const client =
+      this.#options.antigravityClient?.(cli) ?? createAntigravityClient(cli, transcripts);
+    this.#antigravitySignIn = client;
+    const diagnostics: string[] = [];
+    client.on("diagnostic", (message) => diagnostics.push(message));
+    client.on("exit", () => undefined);
+    try {
+      client.start();
+      await client.request("initialize", {});
+      let signedIn = !(await client.needsSignIn());
+      let noted: { email: string | null; tier: string | null } | null = null;
+      if (!signedIn) {
+        this.#set("antigravity", {
+          phase: "waiting",
+          message:
+            methodId === "gemini-api-key"
+              ? "Checking the API key with Google…"
+              : "Sign in with Google on the page that opened in your browser.",
+          url: methodId === "gemini-api-key" ? null : "https://accounts.google.com/",
+        });
+        const result = await client.signIn(methodId, ANTIGRAVITY_SIGN_IN_TIMEOUT_MS);
+        noted = accountFromSignIn(result);
+        signedIn = !(await client.needsSignIn());
+      }
+      if (!signedIn) {
+        throw new Error(
+          lastDiagnostic(diagnostics) ||
+            "Google did not finish the sign-in. Click Connect to try again.",
+        );
+      }
+      await this.#noteAntigravityAccount(noted);
+    } finally {
+      if (this.#antigravitySignIn === client) this.#antigravitySignIn = null;
+      await client.stop().catch(() => undefined);
+    }
+    await this.#options.recheck("antigravity");
+    const account = await readAntigravityAccount(this.#home());
+    const who = [account.account?.email, account.account?.tier].filter(Boolean).join(" · ");
+    this.#set("antigravity", {
+      phase: "connected",
+      message: `Connected to Google Antigravity${who ? ` (${who})` : ""}.`,
+      url: null,
+      progress: null,
     });
   }
 
+  /** Downloads Google's Antigravity server for this computer when it is not there yet. */
   async installAntigravity(): Promise<string> {
     try {
-      const cli = await resolveAntigravityCli();
-      return cli.executable;
+      return (await resolveAntigravityCli()).executable;
     } catch {
-      return downloadAntigravity({
-        runtimeDirectory: this.#options.toolsDirectory,
-        termsAccepted: true,
-        platform: this.#options.platform,
-        arch: this.#options.arch,
-        fetchImpl: this.#options.fetchImpl,
-        onProgress: (progress) => {
-          this.#set("antigravity", { phase: "installing", progress });
-        },
-      });
+      // Not downloaded yet.
     }
+    const runtimeDirectory = this.#options.runtimeDirectory;
+    if (!runtimeDirectory) throw new Error("Sahkarmi has no runtime folder for downloads.");
+    this.#set("antigravity", {
+      phase: "installing",
+      message: `Getting Google Antigravity ready (Google's terms apply: ${ANTIGRAVITY_TERMS_URL})…`,
+      url: null,
+      progress: 0,
+    });
+    return downloadAntigravity({
+      runtimeDirectory,
+      // Clicking Connect on the tile, which names the terms, is the owner's acceptance.
+      termsAccepted: true,
+      platform: this.#options.platform,
+      arch: this.#options.arch,
+      fetchImpl: this.#options.fetchImpl,
+      onProgress: (progress) => this.#set("antigravity", { phase: "installing", progress }),
+    });
+  }
+
+  /** Remembers which Google account and tier the sign-in reported, next to the server's own token. */
+  async #noteAntigravityAccount(noted: { email: string | null; tier: string | null } | null) {
+    if (!noted || (!noted.email && !noted.tier)) return;
+    try {
+      const home = antigravityAcpHome(this.#home());
+      await mkdir(home, { recursive: true });
+      await writeFile(join(home, ANTIGRAVITY_ACCOUNT_FILE), `${JSON.stringify(noted)}\n`, "utf8");
+    } catch {
+      // The note is only for the Connected label.
+    }
+  }
+
+  #home(): string {
+    return this.#options.home ?? homedir();
   }
 
   #get(provider: AgentProviderId): ProviderSetupState {
@@ -478,16 +457,72 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   }
 }
 
+/** Email and tier from Google's `authenticate` result, whichever fields it includes. */
+export function accountFromSignIn(result: Record<string, unknown>): {
+  email: string | null;
+  tier: string | null;
+} {
+  const pick = (source: unknown, keys: string[]): string | null => {
+    if (!source || typeof source !== "object") return null;
+    for (const key of keys) {
+      const value = (source as Record<string, unknown>)[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return null;
+  };
+  const nested = [result, result.account, result.user, result._meta, result.meta];
+  let email: string | null = null;
+  let tier: string | null = null;
+  for (const source of nested) {
+    email ??= pick(source, ["email", "userEmail", "user_email"]);
+    tier ??= pick(source, ["tierName", "tier_name", "tier", "plan", "planName"]);
+  }
+  return { email, tier };
+}
+
+function antigravityVersionOf(executable: string): string {
+  const parent = executable.split(/[\\/]/).at(-2) ?? "";
+  return /^\d+\.\d+\.\d+$/.test(parent) ? parent : "unknown";
+}
+
+function lastDiagnostic(diagnostics: string[]): string {
+  return (diagnostics.at(-1) ?? "").replace(/^[^:]+:\s*/, "").slice(0, 200);
+}
+
+/** Keeps a key for next time (Windows user environment); best effort, never blocks Connect. */
+function persistUserEnvironment(name: string, value: string): void {
+  if (process.platform !== "win32") return;
+  try {
+    execFile(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        `[System.Environment]::SetEnvironmentVariable('${name}', '${value.replace(/'/g, "''")}', 'User')`,
+      ],
+      { windowsHide: true },
+      () => {},
+    );
+  } catch {
+    // ignore
+  }
+}
+
+async function saveKeyFile(directory: string, fileName: string, key: string): Promise<void> {
+  try {
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, fileName), key, "utf8");
+  } catch {
+    // ignore
+  }
+}
+
 function extract(archive: string, directory: string): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     execFile("tar", ["-xzf", archive, "-C", directory], { windowsHide: true }, (error) =>
       error ? reject(new Error(`Could not unpack Codex: ${error.message}`)) : resolvePromise(),
     );
   });
-}
-
-function quote(path: string): string {
-  return /\s/.test(path) ? `"${path}"` : path;
 }
 
 function lastLine(output: string): string {

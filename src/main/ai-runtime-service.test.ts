@@ -87,7 +87,7 @@ describe("AI runtime service", () => {
       if (url.includes("@openai/codex") || url.includes("%40openai%2Fcodex")) {
         return jsonResponse({ version: "0.163.0", dist: { tarball: "", integrity: null } });
       }
-      if (url.includes("claude-code") || url.includes("gemini-cli")) {
+      if (url.includes("claude-code")) {
         return jsonResponse({ version: "9.9.9", dist: { tarball: "", integrity: null } });
       }
       throw new Error(`Unexpected request: ${url}`);
@@ -97,7 +97,7 @@ describe("AI runtime service", () => {
       const service = new AiRuntimeService({
         runtimeDirectory: join(tmpdir(), "sahkarmi-runtime-test"),
         currentOpenCodeVersion: async () => "1.19.3",
-        installedToolVersions: () => ({ codex: "0.162.0", claude: "2.1.304", gemini: "0.63.0" }),
+        installedToolVersions: () => ({ codex: "0.162.0", claude: "2.1.304" }),
         autoDownload: () => false,
         log: () => undefined,
         platform: "win32",

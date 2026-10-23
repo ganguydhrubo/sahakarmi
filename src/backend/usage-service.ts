@@ -60,10 +60,6 @@ export const USAGE_SOURCES: Record<AgentProviderId, { limits: string; tokens: st
     limits: "Claude Agent SDK · rate_limit_event (sent during a task)",
     tokens: "Claude Agent SDK · result.modelUsage",
   },
-  gemini: {
-    limits: "Gemini CLI does not report quota over ACP",
-    tokens: "Gemini CLI does not report token usage over ACP",
-  },
   opencode: {
     limits: "OpenCode free models publish no quota",
     tokens: "OpenCode ACP · usage_update (context size and session cost)",

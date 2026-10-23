@@ -38,6 +38,39 @@ class FakeLogin extends EventEmitter {
   }
 }
 
+/** Stands in for Google's Antigravity ACP server: signed out until `signIn` runs. */
+class FakeAcpClient extends EventEmitter {
+  requests: string[] = [];
+  signIns: string[] = [];
+  stopped = false;
+  #signedIn: boolean;
+  constructor(
+    private readonly onSignIn: () => Promise<Record<string, unknown>>,
+    signedOut = true,
+    private readonly stayLoggedOut = false,
+  ) {
+    super();
+    this.#signedIn = !signedOut;
+  }
+  start(): void {}
+  async request(method: string): Promise<unknown> {
+    this.requests.push(method);
+    return {};
+  }
+  async needsSignIn(): Promise<boolean> {
+    return !this.#signedIn;
+  }
+  async signIn(methodId: string): Promise<Record<string, unknown>> {
+    this.signIns.push(methodId);
+    const result = await this.onSignIn();
+    if (!this.stayLoggedOut) this.#signedIn = true;
+    return result;
+  }
+  async stop(): Promise<void> {
+    this.stopped = true;
+  }
+}
+
 async function fakeCli(name: string, version: string): Promise<string> {
   const path = join(root, process.platform === "win32" ? `${name} mock.cmd` : name);
   await writeFile(
@@ -160,34 +193,92 @@ describe("ProviderSetup", () => {
     await expect(setup.installCodex()).rejects.toThrow(/checksum/);
   });
 
-  it("opens a terminal for Gemini's Google sign-in and waits for Check again", async () => {
-    process.env.SAHKARMI_GEMINI_PATH = join(root, "missing-gemini");
-    const openTerminal = vi.fn(async () => undefined);
+  it("connects Google Antigravity with its own Log in with Google, like Claude and Codex", async () => {
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.4.2");
+    const acpHome = join(root, "home", ".gemini", "antigravity-acp");
+    const client = new FakeAcpClient(async () => {
+      await mkdir(acpHome, { recursive: true });
+      await writeFile(join(acpHome, "acp_token.json"), "{}");
+      return { email: "owner@example.in", tierName: "Google AI Pro" };
+    });
     const recheck = vi.fn(async () => undefined);
-    const setup = new ProviderSetup({ toolsDirectory: join(root, "tools"), recheck, openTerminal });
-    const state = await setup.connect("gemini");
-    expect(openTerminal).toHaveBeenCalledWith(
-      "npm install -g @google/gemini-cli && gemini",
-      "Gemini sign-in",
-    );
-    expect(state.phase).toBe("terminal");
-    expect((await setup.check("gemini")).phase).toBe("connected");
-    delete process.env.SAHKARMI_GEMINI_PATH;
-  });
-
-  it("connects Google Antigravity and saves its API key", async () => {
-    process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.0.0");
-    const recheck = vi.fn(async () => undefined);
-    const setup = new ProviderSetup({ toolsDirectory: join(root, "tools"), recheck });
+    const states: ProviderSetupState[] = [];
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck,
+      home: join(root, "home"),
+      antigravityClient: () => client as never,
+    });
+    setup.on("state", (state) => states.push(state));
 
     const state = await setup.connect("antigravity");
+    expect(client.requests).toEqual(["initialize"]);
+    expect(client.signIns).toEqual(["oauth-personal"]);
+    expect(client.stopped).toBe(true);
     expect(recheck).toHaveBeenCalledWith("antigravity");
+    expect(states.map((s) => s.phase)).toEqual(["checking", "waiting", "connected"]);
+    expect(states[1]?.url).toBe("https://accounts.google.com/");
     expect(state.phase).toBe("connected");
+    expect(state.message).toBe(
+      "Connected to Google Antigravity (owner@example.in · Google AI Pro).",
+    );
+    expect(JSON.parse(await readFile(join(acpHome, "sahkarmi-account.json"), "utf8"))).toEqual({
+      email: "owner@example.in",
+      tier: "Google AI Pro",
+    });
+    delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
+  });
 
-    const keyState = await setup.setApiKey("antigravity", "test-antigravity-key");
-    expect(keyState.phase).toBe("connected");
-    expect(process.env.ANTIGRAVITY_API_KEY).toBe("test-antigravity-key");
+  it("skips the sign-in page when Google's server is already signed in", async () => {
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.4.2");
+    const client = new FakeAcpClient(async () => ({}), false);
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck: vi.fn(async () => undefined),
+      home: join(root, "home"),
+      antigravityClient: () => client as never,
+    });
+    const state = await setup.connect("antigravity");
+    expect(client.signIns).toEqual([]);
+    expect(state.phase).toBe("connected");
+    delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
+  });
+
+  it("saves a Google AI Studio key for Antigravity and signs in with it", async () => {
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.4.2");
+    const client = new FakeAcpClient(async () => ({}));
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck: vi.fn(async () => undefined),
+      home: join(root, "home"),
+      antigravityClient: () => client as never,
+    });
+    const state = await setup.setApiKey("antigravity", "AIzaSy-test");
+    expect(client.signIns).toEqual(["gemini-api-key"]);
+    expect(state.phase).toBe("connected");
+    expect(process.env.ANTIGRAVITY_API_KEY).toBe("AIzaSy-test");
+    expect(
+      await readFile(join(root, "home", ".gemini", "antigravity-acp", "api_key.txt"), "utf8"),
+    ).toBe("AIzaSy-test");
     delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
     delete process.env.ANTIGRAVITY_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+  });
+
+  it("reports a sign-in that Google did not finish instead of pretending it worked", async () => {
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.4.2");
+    const client = new FakeAcpClient(async () => ({}), true, true);
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck: vi.fn(async () => undefined),
+      home: join(root, "home"),
+      antigravityClient: () => client as never,
+    });
+    const state = await setup.connect("antigravity");
+    expect(state.phase).toBe("failed");
+    expect(state.message).toMatch(/did not finish the sign-in/);
+    expect(client.stopped).toBe(true);
+    delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
   });
 });

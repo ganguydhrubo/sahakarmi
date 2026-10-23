@@ -28,7 +28,6 @@ const PROVIDERS: Array<{
   { id: "opencode", name: "OpenCode (free, built in)" },
   { id: "claude", name: "Claude" },
   { id: "codex", name: "ChatGPT (Codex)" },
-  { id: "gemini", name: "Gemini" },
   { id: "antigravity", name: "Google Antigravity" },
 ];
 

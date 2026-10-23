@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readModelOptions, stripLeakedToolCalls } from "./acp-client";
-import { geminiModelValue, openCodeModelValue, readGeminiAccount } from "./acp-providers";
+import { openCodeModelValue, readAntigravityAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
@@ -21,7 +21,6 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "sahkarmi-acp-test-"));
   process.env.SAHKARMI_CODEX_PATH = join(root, "missing-codex");
   process.env.SAHKARMI_CLAUDE_PATH = join(root, "missing-claude");
-  process.env.SAHKARMI_GEMINI_PATH = join(root, "missing-gemini");
   process.env.SAHKARMI_ANTIGRAVITY_PATH = join(root, "missing-antigravity");
   process.env.SAHKARMI_OPENCODE_PATH = await createFakeAcpAgent(root);
   process.env.SAHKARMI_FAKE_ACP_LOG = join(root, "acp.jsonl");
@@ -139,17 +138,21 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
   });
 
   it("moves the never-run team to the provider chosen in setup even when another AI is connected", async () => {
-    // Gemini CLI (same fake ACP agent, API-key login) and OpenCode are both connected.
-    process.env.SAHKARMI_GEMINI_PATH = process.env.SAHKARMI_OPENCODE_PATH;
+    // Google Antigravity (same fake ACP agent, API-key sign-in) and OpenCode are both connected.
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = process.env.SAHKARMI_OPENCODE_PATH;
     process.env.GEMINI_API_KEY = "test-key";
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
     service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex");
     await service.initialize();
     expect(service.getStatus().phase).toBe("ready");
-    expect(service.getStatus().providers?.find((p) => p.id === "gemini")?.state).toBe("available");
+    expect(service.getStatus().providers?.find((p) => p.id === "antigravity")?.state).toBe(
+      "available",
+    );
     // Codex (the stale preference) is missing, so the team landed on the first connected AI.
-    expect(new Set(service.listBots().map((bot) => bot.model))).toEqual(new Set(["gemini-auto"]));
+    expect(new Set(service.listBots().map((bot) => bot.model))).toEqual(
+      new Set(["antigravity-default"]),
+    );
 
     // The owner picks "OpenCode (free, built in)" on the setup screen.
     await service.setPreferredProvider("opencode");
@@ -158,8 +161,8 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     expect((await service.createBot()).model).toBe("opencode-free");
 
     // A coworker the owner already pointed somewhere else, or that has run, is left alone.
-    await service.updateBot({ botId: "asha-accounts", model: "gemini-flash" });
-    await service.setPreferredProvider("gemini");
+    await service.updateBot({ botId: "asha-accounts", model: "antigravity-default" });
+    await service.setPreferredProvider("antigravity");
     await service.setPreferredProvider("opencode");
     expect(service.listBots().find((bot) => bot.id === "asha-accounts")?.model).toBe(
       "opencode-free",
@@ -245,36 +248,41 @@ describe("provider helpers", () => {
     );
     expect(openCodeModelValue("opencode-default", options)).toBeNull();
     expect(openCodeModelValue("opencode:opencode/glm-free", options)).toBe("opencode/glm-free");
-    const gemini = [
-      { value: "auto", name: "Auto" },
-      { value: "gemini-3-pro", name: "Pro" },
-      { value: "gemini-3-flash-lite", name: "Lite" },
-      { value: "gemini-3-flash", name: "Flash" },
-    ];
-    expect(geminiModelValue("gemini:gemini-3-flash", gemini)).toBe("gemini-3-flash");
-    expect(geminiModelValue("gemini-auto", gemini)).toBe("auto");
-    expect(geminiModelValue("gemini-pro", gemini)).toBe("gemini-3-pro");
-    expect(geminiModelValue("gemini-flash", gemini)).toBe("gemini-3-flash");
   });
 
-  it("detects an existing Gemini CLI login without copying it", async () => {
-    const home = join(root, "gemini-home");
-    expect((await readGeminiAccount(home, {})).account).toBeNull();
-    expect((await readGeminiAccount(home, { GEMINI_API_KEY: "x" })).account).toEqual({
-      type: "gemini",
+  it("trusts only Google Antigravity's own sign-in, never a Gemini CLI or IDE login", async () => {
+    const { mkdir } = await import("node:fs/promises");
+    const home = join(root, "agy-home");
+    expect((await readAntigravityAccount(home, {})).account).toBeNull();
+    expect((await readAntigravityAccount(home, { GEMINI_API_KEY: "x" })).account).toEqual({
+      type: "antigravity",
       email: null,
+      tier: "API key",
     });
-    await import("node:fs/promises").then(async ({ mkdir }) => {
-      await mkdir(join(home, ".gemini"), { recursive: true });
-      await writeFile(join(home, ".gemini", "oauth_creds.json"), "{}");
-      await writeFile(
-        join(home, ".gemini", "google_accounts.json"),
-        JSON.stringify({ active: "owner@example.in" }),
-      );
+    // Gemini CLI credentials and an Antigravity IDE account do not count.
+    await mkdir(join(home, ".gemini", "antigravity"), { recursive: true });
+    await writeFile(join(home, ".gemini", "oauth_creds.json"), "{}");
+    await writeFile(
+      join(home, ".gemini", "google_accounts.json"),
+      JSON.stringify({ active: "ide@example.in" }),
+    );
+    expect((await readAntigravityAccount(home, {})).account).toBeNull();
+    // The ACP server's own token does.
+    await mkdir(join(home, ".gemini", "antigravity-acp"), { recursive: true });
+    await writeFile(join(home, ".gemini", "antigravity-acp", "acp_token.json"), "{}");
+    expect((await readAntigravityAccount(home, {})).account).toEqual({
+      type: "antigravity",
+      email: null,
+      tier: null,
     });
-    expect((await readGeminiAccount(home, {})).account).toEqual({
-      type: "gemini",
+    await writeFile(
+      join(home, ".gemini", "antigravity-acp", "sahkarmi-account.json"),
+      JSON.stringify({ email: "owner@example.in", tier: "Google AI Pro" }),
+    );
+    expect((await readAntigravityAccount(home, {})).account).toEqual({
+      type: "antigravity",
       email: "owner@example.in",
+      tier: "Google AI Pro",
     });
   });
 });

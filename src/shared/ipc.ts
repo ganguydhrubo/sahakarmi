@@ -148,7 +148,7 @@ export type AiRuntimePhase =
   | "up-to-date"
   | "error";
 
-export const AI_TOOL_IDS = ["opencode", "codex", "claude", "gemini", "antigravity"] as const;
+export const AI_TOOL_IDS = ["opencode", "codex", "claude", "antigravity"] as const;
 export type AiToolId = (typeof AI_TOOL_IDS)[number];
 
 export function isAiToolId(value: unknown): value is AiToolId {
@@ -184,7 +184,7 @@ export type AgentPhase = "idle" | "starting" | "ready" | "restarting" | "blocked
 
 export type CapabilityState = "ready" | "setup-required" | "unavailable";
 
-export const AGENT_PROVIDERS = ["codex", "claude", "gemini", "opencode", "antigravity"] as const;
+export const AGENT_PROVIDERS = ["codex", "claude", "antigravity", "opencode"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
 
 export function isAgentProvider(value: unknown): value is AgentProviderId {
@@ -195,7 +195,6 @@ export function isAgentProvider(value: unknown): value is AgentProviderId {
 export const PROVIDER_LABELS: Record<AgentProviderId, string> = {
   codex: "ChatGPT (Codex)",
   claude: "Claude",
-  gemini: "Gemini",
   opencode: "OpenCode (free)",
   antigravity: "Google Antigravity",
 };
@@ -239,7 +238,6 @@ export type AgentAuthState =
   | { kind: "unsupported"; accountType: string }
   | { kind: "chatgpt"; email: string | null }
   | { kind: "claude"; email: string | null }
-  | { kind: "gemini"; email: string | null }
   | { kind: "opencode"; email: string | null }
   | { kind: "antigravity"; email: string | null; tier?: string | null };
 
@@ -450,9 +448,6 @@ export const AGENT_MODELS = [
   "claude-fable-5",
   "claude-opus-5",
   "claude-sonnet-5",
-  "gemini-auto",
-  "gemini-pro",
-  "gemini-flash",
   "opencode-free",
   "opencode-default",
   "antigravity-default",
@@ -501,9 +496,21 @@ export type BotAvatarColor = (typeof BOT_AVATAR_COLORS)[number];
 export function isAgentModel(value: unknown): value is AgentModelId {
   if (typeof value !== "string") return false;
   if (AGENT_MODELS.some((model) => model === value)) return true;
-  return /^(codex|claude|gemini|opencode|antigravity):[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,179}$/.test(
-    value,
-  );
+  return /^(codex|claude|opencode|antigravity):[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,179}$/.test(value);
+}
+
+/**
+ * Models from providers Sahkarmi no longer ships (Gemini CLI was removed in 0.6.0). A saved coworker on
+ * one of these moves to the bundled free model instead of being treated as corrupt.
+ */
+export function legacyModelReplacement(model: unknown): AgentModelId | null {
+  if (typeof model !== "string") return null;
+  return model === "gemini-auto" ||
+    model === "gemini-pro" ||
+    model === "gemini-flash" ||
+    model.startsWith("gemini:")
+    ? "opencode-free"
+    : null;
 }
 
 export function isClaudeModel(model: AgentModelId): boolean {
@@ -511,7 +518,7 @@ export function isClaudeModel(model: AgentModelId): boolean {
 }
 
 export function modelWireId(model: AgentModelId): string {
-  return /^(codex|claude|gemini|opencode|antigravity):/.test(model)
+  return /^(codex|claude|opencode|antigravity):/.test(model)
     ? model.slice(model.indexOf(":") + 1)
     : model;
 }
@@ -527,7 +534,6 @@ export function providerForModel(model: AgentModelId): AgentProviderId {
   const prefix = model.split(":", 1)[0];
   if (AGENT_PROVIDERS.some((provider) => provider === prefix)) return prefix as AgentProviderId;
   if (model.startsWith("claude-")) return "claude";
-  if (model.startsWith("gemini-")) return "gemini";
   if (model.startsWith("opencode-")) return "opencode";
   if (model.startsWith("antigravity-")) return "antigravity";
   return "codex";
@@ -537,7 +543,6 @@ export function providerForModel(model: AgentModelId): AgentProviderId {
 export const DEFAULT_MODEL_FOR_PROVIDER: Record<AgentProviderId, AgentModelId> = {
   codex: "gpt-5.6-luna",
   claude: "claude-opus-5",
-  gemini: "gemini-auto",
   opencode: "opencode-free",
   antigravity: "antigravity-default",
 };

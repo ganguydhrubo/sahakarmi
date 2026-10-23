@@ -19,7 +19,7 @@ afterEach(async () => {
 const providers: AgentProviderStatus[] = [
   { id: "codex", state: "not-installed", version: null, message: null },
   { id: "claude", state: "sign-in-required", version: "2", message: null },
-  { id: "gemini", state: "available", version: "1", message: null },
+  { id: "antigravity", state: "available", version: "1", message: null },
   { id: "opencode", state: "available", version: "1", message: null },
 ];
 const context = { platform: "win32" as const, appVersion: "0.4.0", providers };
@@ -38,7 +38,7 @@ describe("FeatureRegistry", () => {
       reason: "ChatGPT (Codex) is not installed on this computer.",
     });
     expect(list.find((f) => f.id === "provider-claude")?.reason).toContain("Sign in");
-    expect(list.find((f) => f.id === "provider-gemini")?.availability).toBe("available");
+    expect(list.find((f) => f.id === "provider-antigravity")?.availability).toBe("available");
     expect(list.find((f) => f.id === "live-dictation")?.enabled).toBe(false);
   });
 

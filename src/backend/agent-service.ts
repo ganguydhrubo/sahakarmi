@@ -39,7 +39,7 @@ import {
   PROVIDER_LABELS,
   providerForModel,
 } from "../shared/ipc";
-import { createAntigravityClient, createGeminiClient, createOpenCodeClient } from "./acp-providers";
+import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
@@ -59,7 +59,6 @@ import {
   resolveAntigravityCli,
   resolveClaudeCli,
   resolveCodexCli,
-  resolveGeminiCli,
   resolveOpenCodeCli,
 } from "./cli";
 import {
@@ -134,7 +133,7 @@ const INITIAL_STATUS: AgentStatus = {
   providers: [
     { id: "codex", state: "not-started", version: null, message: null },
     { id: "claude", state: "not-started", version: null, message: null },
-    { id: "gemini", state: "not-started", version: null, message: null },
+    { id: "antigravity", state: "not-started", version: null, message: null },
     { id: "opencode", state: "not-started", version: null, message: null },
   ],
   capabilities: {
@@ -188,27 +187,6 @@ const FALLBACK_MODELS: AgentModelOption[] = [
     description: "Balanced Claude model for general agent work.",
     defaultReasoningEffort: "high",
     supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
-  },
-  {
-    id: "gemini-auto",
-    name: "Gemini Auto",
-    description: "Gemini CLI picks Pro or Flash per task. Free tier with a Google sign-in.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: ["medium"],
-  },
-  {
-    id: "gemini-pro",
-    name: "Gemini Pro",
-    description: "Most capable Gemini model for complex work.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: ["medium"],
-  },
-  {
-    id: "gemini-flash",
-    name: "Gemini Flash",
-    description: "Fast Gemini model for everyday work.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: ["medium"],
   },
   {
     id: "opencode-free",
@@ -376,7 +354,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     > = {
       codex: resolveCodexCli,
       claude: resolveClaudeCli,
-      gemini: resolveGeminiCli,
       antigravity: resolveAntigravityCli,
       opencode: resolveOpenCodeCli,
     };
@@ -901,7 +878,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     );
 
     const failures: string[] = [];
-    for (const provider of requestedProviders) {
+    // Google's Antigravity server takes up to a minute to answer initialize; start it last so the
+    // quick providers show as available right away.
+    const startOrder = [...requestedProviders].sort(
+      (left, right) => Number(left === "antigravity") - Number(right === "antigravity"),
+    );
+    for (const provider of startOrder) {
       if (this.#clients.has(provider)) continue;
       let client: AgentClient | null = null;
       let cli: CodexCliInfo | ClaudeCliInfo | AcpCliInfo | null = null;
@@ -913,10 +895,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         } else if (provider === "claude") {
           cli = await resolveClaudeCli();
           client = new ClaudeAgentClient(cli);
-        } else if (provider === "gemini") {
-          const gemini = await resolveGeminiCli();
-          cli = gemini;
-          client = createGeminiClient(gemini, transcripts);
         } else if (provider === "antigravity") {
           const antigravity = await resolveAntigravityCli();
           cli = antigravity;
@@ -3023,9 +3001,8 @@ function isDynamicToolCall(value: unknown): value is DynamicToolCallParams {
 const SIGN_IN_HINTS: Record<AgentProvider, string> = {
   codex: "Run `codex login` to use ChatGPT (Codex).",
   claude: "Run `claude auth login` to use Claude.",
-  gemini: "Run `gemini` once and sign in with Google (free tier) to use Gemini.",
   opencode: "Run `opencode auth login` to use OpenCode.",
-  antigravity: "Sign in with Google to use Google Antigravity.",
+  antigravity: "Click Connect next to Google Antigravity in Settings to sign in with Google.",
 };
 
 function authFor(provider: AgentProvider, email: string | null): AgentStatus["auth"] {

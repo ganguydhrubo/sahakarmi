@@ -65,9 +65,9 @@ nothing blocks while you are away.
 | Provider | How Sahkarmi uses it | Cost |
 | --- | --- | --- |
 | **OpenCode (built in)** | Bundled inside the installer, nothing to install. Free models, no login. | Free |
-| **Gemini** | Your installed Gemini CLI and its Google sign-in, API key or Vertex AI | Free tier |
 | **Claude** | Your installed Claude Code CLI and its login | Your plan |
 | **ChatGPT (Codex)** | Your installed Codex CLI and its ChatGPT login | Your plan |
+| **Google Antigravity** | Google's own Antigravity agent (agy_acp_server), downloaded by Sahkarmi on Connect. One click opens Log in with Google; a Google AI Studio API key also works | Your Google plan |
 
 Sahkarmi detects every installed CLI and **reuses its existing login**. It never copies tokens. Any
 extra provider you sign in to inside OpenCode (`opencode auth login`: API keys, Copilot and more)
@@ -77,9 +77,8 @@ Optional installs:
 
 - Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (Windows: `irm https://claude.ai/install.ps1 | iex`), then `claude auth login`
 - Codex: `npm install -g @openai/codex`, then `codex login`
-- Gemini CLI: `npm install -g @google/gemini-cli`, then run `gemini` once and sign in with Google
 
-Gemini CLI and OpenCode are driven over the open [Agent Client Protocol](https://agentclientprotocol.com);
+Google Antigravity and OpenCode are driven over the open [Agent Client Protocol](https://agentclientprotocol.com);
 Sahkarmi's browser, approval and team tools reach them through a loopback-only MCP bridge.
 
 ## Development
@@ -186,5 +185,5 @@ under Apache-2.0. Community behavior is governed by the [Code of Conduct](CODE_O
 Sahkarmi is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE).
 
 Sahkarmi is an independent project developed by the Sahkarmi Team. It is not affiliated with, endorsed by, or sponsored by
-OpenAI, Anthropic, Google, or any other AI company. Codex, Claude, and Gemini are named only to describe
-compatibility with their CLIs.
+OpenAI, Anthropic, Google, or any other AI company. Codex, Claude, and Google Antigravity are named only to describe
+compatibility with their agent programs.

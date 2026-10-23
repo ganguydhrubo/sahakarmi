@@ -58,13 +58,6 @@ export const AI_TOOLS: AiToolDefinition[] = [
     managed: false,
     command: "npm install -g @anthropic-ai/claude-code@latest",
   },
-  {
-    id: "gemini",
-    label: "Gemini CLI",
-    packageName: "@google/gemini-cli",
-    managed: false,
-    command: "npm install -g @google/gemini-cli@latest",
-  },
 ];
 
 /** The npm package that carries the OpenCode binary for one platform. */

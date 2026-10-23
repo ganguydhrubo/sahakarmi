@@ -21,12 +21,11 @@ interface ProviderModelPickerProps {
   onChange: (model: AgentModelId) => void;
 }
 
-const PROVIDERS: AgentProviderId[] = ["opencode", "claude", "codex", "gemini", "antigravity"];
+const PROVIDERS: AgentProviderId[] = ["opencode", "claude", "codex", "antigravity"];
 const DEFAULT_MODELS: Record<AgentProviderId, AgentModelId> = DEFAULT_MODEL_FOR_PROVIDER;
 const CLI_NAMES: Record<AgentProviderId, string> = {
   claude: "Claude Code",
   codex: "Codex CLI",
-  gemini: "Gemini CLI",
   antigravity: "Google Antigravity",
   opencode: "OpenCode",
 };
@@ -427,14 +426,14 @@ export function isFreeModel(id: string): boolean {
 function ProviderMark(props: { provider: AgentProviderId; large?: boolean }) {
   return (
     <Show
-      when={props.provider !== "gemini" && props.provider !== "opencode"}
+      when={props.provider !== "antigravity" && props.provider !== "opencode"}
       fallback={
         <span
           class={`provider-model-mark provider-model-letter provider-model-letter-${props.provider}`}
           classList={{ "provider-model-mark-large": props.large }}
           aria-hidden="true"
         >
-          {props.provider === "gemini" ? "G" : "O"}
+          {props.provider === "antigravity" ? "G" : "O"}
         </span>
       }
     >
