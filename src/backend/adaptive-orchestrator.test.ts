@@ -21,7 +21,15 @@ async function makeTempDir(): Promise<string> {
 }
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map(async (r) => {
+      try {
+        await rm(r, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      } catch {
+        // Ignore transient Windows file handle release delay
+      }
+    }),
+  );
 });
 
 describe("AdaptiveOrchestrator Complexity Evaluation", () => {

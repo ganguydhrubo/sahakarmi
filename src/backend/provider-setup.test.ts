@@ -174,4 +174,20 @@ describe("ProviderSetup", () => {
     expect((await setup.check("gemini")).phase).toBe("connected");
     delete process.env.SAHKARMI_GEMINI_PATH;
   });
+
+  it("connects Google Antigravity and saves its API key", async () => {
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.0.0");
+    const recheck = vi.fn(async () => undefined);
+    const setup = new ProviderSetup({ toolsDirectory: join(root, "tools"), recheck });
+
+    const state = await setup.connect("antigravity");
+    expect(recheck).toHaveBeenCalledWith("antigravity");
+    expect(state.phase).toBe("connected");
+
+    const keyState = await setup.setApiKey("antigravity", "test-antigravity-key");
+    expect(keyState.phase).toBe("connected");
+    expect(process.env.ANTIGRAVITY_API_KEY).toBe("test-antigravity-key");
+    delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
+    delete process.env.ANTIGRAVITY_API_KEY;
+  });
 });

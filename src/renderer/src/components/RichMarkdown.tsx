@@ -10,9 +10,39 @@ interface RichMarkdownProps {
   inline: (text: string) => JSX.Element;
 }
 
-/** Block-level rendering of a reply. Parsed once per body change (memoised while streaming). */
+function isBlockEqual(a: MarkdownBlock, b: MarkdownBlock): boolean {
+  if (a.type !== b.type) return false;
+  switch (a.type) {
+    case "paragraph":
+      return a.text === (b as typeof a).text;
+    case "code":
+      return (
+        a.language === (b as typeof a).language &&
+        a.code === (b as typeof a).code &&
+        a.closed === (b as typeof a).closed
+      );
+    case "heading":
+      return a.level === (b as typeof a).level && a.text === (b as typeof a).text;
+    case "rule":
+      return true;
+    default:
+      return JSON.stringify(a) === JSON.stringify(b);
+  }
+}
+
+/** Block-level rendering of a reply. Parsed once per body change (memoised and block-stabilized while streaming). */
 export function RichMarkdown(props: RichMarkdownProps) {
-  const blocks = createMemo(() => parseMarkdown(props.body));
+  const blocks = createMemo<MarkdownBlock[]>((prev = []) => {
+    const next = parseMarkdown(props.body);
+    if (!prev || prev.length === 0) return next;
+    return next.map((newBlock, i) => {
+      const oldBlock = prev[i];
+      if (oldBlock && isBlockEqual(oldBlock, newBlock)) {
+        return oldBlock;
+      }
+      return newBlock;
+    });
+  });
   return (
     <div class="rich-markdown">
       <Blocks blocks={blocks()} inline={props.inline} />
