@@ -4,6 +4,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.5.8] - 2026-10-23
+
+### Fixed
+
+- Google Antigravity provider connect: seamless connection via locally installed Antigravity desktop app and Google account detection or browser sign-in without 404 download errors.
+
+
 ## [0.5.7] - 2026-10-23
 
 ### Added
