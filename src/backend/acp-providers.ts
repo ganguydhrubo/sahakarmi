@@ -153,25 +153,43 @@ export async function readAntigravityAccount(
   account: { type: string; email: string | null; tier?: string | null } | null;
   requiresOpenaiAuth: boolean;
 }> {
-  const antigravityHome = join(home, ".gemini", "antigravity");
+  const geminiHome = join(home, ".gemini");
+  const antigravityHome = join(geminiHome, "antigravity");
+  const antigravityAcpHome = join(geminiHome, "antigravity-acp");
   const hasKey = Boolean(
     environment.ANTIGRAVITY_API_KEY?.trim() ||
       environment.GEMINI_API_KEY?.trim() ||
       environment.GOOGLE_API_KEY?.trim(),
   );
-  const hasOauth = await access(join(antigravityHome, "oauth_creds.json")).then(
-    () => true,
-    () => false,
-  );
-  if (!hasKey && !hasOauth) return { account: null, requiresOpenaiAuth: false };
+  const [hasAcpToken, hasOauth, hasGeminiOauth] = await Promise.all([
+    access(join(antigravityAcpHome, "acp_token.json")).then(
+      () => true,
+      () => false,
+    ),
+    access(join(antigravityHome, "oauth_creds.json")).then(
+      () => true,
+      () => false,
+    ),
+    access(join(geminiHome, "oauth_creds.json")).then(
+      () => true,
+      () => false,
+    ),
+  ]);
+  if (!hasKey && !hasAcpToken && !hasOauth && !hasGeminiOauth) {
+    return { account: null, requiresOpenaiAuth: false };
+  }
   let email: string | null = null;
-  let tier: string | null = "Standard";
+  let tier: string | null = "Antigravity Pro";
   try {
-    const accounts: unknown = JSON.parse(
-      await readFile(join(antigravityHome, "google_accounts.json"), "utf8"),
+    const raw = await readFile(join(geminiHome, "google_accounts.json"), "utf8").catch(() =>
+      readFile(join(antigravityHome, "google_accounts.json"), "utf8"),
     );
+    const accounts: unknown = JSON.parse(raw);
     if (isRecord(accounts)) {
       if (typeof accounts.active === "string") email = accounts.active;
+      else if (Array.isArray(accounts.old) && typeof accounts.old[0] === "string") {
+        email = accounts.old[0];
+      }
       if (typeof accounts.tier === "string") tier = accounts.tier;
     }
   } catch {

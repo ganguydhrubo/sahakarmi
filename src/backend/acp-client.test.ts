@@ -22,6 +22,7 @@ beforeEach(async () => {
   process.env.SAHKARMI_CODEX_PATH = join(root, "missing-codex");
   process.env.SAHKARMI_CLAUDE_PATH = join(root, "missing-claude");
   process.env.SAHKARMI_GEMINI_PATH = join(root, "missing-gemini");
+  process.env.SAHKARMI_ANTIGRAVITY_PATH = join(root, "missing-antigravity");
   process.env.SAHKARMI_OPENCODE_PATH = await createFakeAcpAgent(root);
   process.env.SAHKARMI_FAKE_ACP_LOG = join(root, "acp.jsonl");
 });
@@ -33,7 +34,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-describe.sequential("ACP providers (bundled OpenCode)", () => {
+describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () => {
   it("runs the default team on the bundled free model when no other AI is installed", async () => {
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { AgentProviderId, ProviderSetupState } from "../shared/ipc";
+import { readAntigravityAccount } from "./acp-providers";
 import { downloadAntigravity } from "./antigravity-runtime";
 import {
   managedCodexPath,
@@ -413,38 +414,47 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     try {
       await resolveAntigravityCli();
     } catch {
-      await this.installAntigravity();
+      // Local installation fallback
     }
-    await this.#options.recheck("antigravity");
+    const account = await readAntigravityAccount();
+    if (account.account) {
+      await this.#options.recheck("antigravity");
+      this.#set("antigravity", {
+        phase: "connected",
+        message: `Connected to Google Antigravity${account.account.email ? ` (${account.account.email})` : ""}.`,
+        url: null,
+      });
+      return;
+    }
+
+    if (this.#options.openTerminal) {
+      const command = "npm install -g @google/gemini-cli && gemini";
+      await this.#options.openTerminal(command, "Google Antigravity sign-in");
+    }
     this.#set("antigravity", {
-      phase: "connected",
-      message: "Google Antigravity is connected.",
-      url: null,
+      phase: "terminal",
+      message:
+        "Sign in with Google on the page that opened in your browser, then close it and click Check again.",
+      url: "https://accounts.google.com/",
     });
   }
 
   async installAntigravity(): Promise<string> {
-    this.#set("antigravity", {
-      phase: "installing",
-      message: "Getting Google Antigravity ready…",
-      progress: 0,
-    });
-    const executable = await downloadAntigravity({
-      runtimeDirectory: this.#options.toolsDirectory,
-      termsAccepted: true,
-      platform: this.#options.platform,
-      arch: this.#options.arch,
-      fetchImpl: this.#options.fetchImpl,
-      onProgress: (progress) => {
-        this.#set("antigravity", { phase: "installing", progress });
-      },
-    });
-    this.#set("antigravity", {
-      phase: "waiting",
-      message: "Google Antigravity is ready.",
-      progress: null,
-    });
-    return executable;
+    try {
+      const cli = await resolveAntigravityCli();
+      return cli.executable;
+    } catch {
+      return downloadAntigravity({
+        runtimeDirectory: this.#options.toolsDirectory,
+        termsAccepted: true,
+        platform: this.#options.platform,
+        arch: this.#options.arch,
+        fetchImpl: this.#options.fetchImpl,
+        onProgress: (progress) => {
+          this.#set("antigravity", { phase: "installing", progress });
+        },
+      });
+    }
   }
 
   #get(provider: AgentProviderId): ProviderSetupState {
