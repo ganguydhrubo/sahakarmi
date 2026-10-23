@@ -220,29 +220,51 @@ export async function resolveGeminiCli(): Promise<AcpCliInfo> {
   );
 }
 
-export async function resolveAntigravityCli(): Promise<AcpCliInfo> {
+export function bundledAntigravityPaths(platform: NodeJS.Platform = process.platform): string[] {
+  const home = homedir();
+  if (platform === "win32") {
+    return [
+      join(home, "AppData", "Local", "Programs", "antigravity", "Antigravity.exe"),
+      join(home, "AppData", "Roaming", "Antigravity", "bin", "agy-node.cmd"),
+    ];
+  }
+  if (platform === "darwin") {
+    return [
+      "/Applications/Antigravity.app/Contents/MacOS/Antigravity",
+      join(home, "Applications", "Antigravity.app", "Contents", "MacOS", "Antigravity"),
+    ];
+  }
+  return ["/usr/bin/antigravity", "/usr/local/bin/antigravity"];
+}
+
+export async function resolveAntigravityCli(
+  bundledCandidates: string[] = bundledAntigravityPaths(),
+): Promise<AcpCliInfo> {
   const override = process.env.SAHKARMI_ANTIGRAVITY_PATH?.trim();
   const managed = override ? [] : managedAntigravityPaths();
+  const bundled = override ? [] : bundledCandidates;
   const candidates = override
     ? [override]
     : [
         ...managed,
+        ...bundled,
         ...(await collectCandidates("agy_acp_server", undefined)),
         ...(await collectCandidates("antigravity", undefined)),
+        ...(await collectCandidates("Antigravity", undefined)),
       ];
   for (const candidate of candidates) {
     if (!(await isExecutable(candidate))) continue;
     try {
       return {
         executable: candidate,
-        version: parseSemver(await readCliVersion(candidate), "Google Antigravity"),
-        bundled: managed.includes(candidate),
+        version: "1.0.0",
+        bundled: managed.includes(candidate) || bundled.includes(candidate),
       };
     } catch {
       return {
         executable: candidate,
         version: "1.0.0",
-        bundled: managed.includes(candidate),
+        bundled: managed.includes(candidate) || bundled.includes(candidate),
       };
     }
   }
