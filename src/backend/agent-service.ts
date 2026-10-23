@@ -39,7 +39,7 @@ import {
   PROVIDER_LABELS,
   providerForModel,
 } from "../shared/ipc";
-import { createGeminiClient, createOpenCodeClient } from "./acp-providers";
+import { createAntigravityClient, createGeminiClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
@@ -56,6 +56,7 @@ import {
   type ClaudeCliInfo,
   CodexCliError,
   type CodexCliInfo,
+  resolveAntigravityCli,
   resolveClaudeCli,
   resolveCodexCli,
   resolveGeminiCli,
@@ -123,6 +124,8 @@ interface ThreadContextBudget {
 
 const CONTEXT_COMPACTION_THRESHOLD = 0.8;
 const CONTEXT_COMPACTION_TIMEOUT_MS = 120_000;
+/** Recently finished turn ids, kept to ignore out-of-order start events and responses. */
+const MAX_REMEMBERED_FINISHED_TURNS = 500;
 
 const INITIAL_STATUS: AgentStatus = {
   phase: "idle",
@@ -258,6 +261,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #scheduledDrains = new Set<string>();
   readonly #drainTasks = new Map<string, Promise<void>>();
   readonly #lastConversationSignatures = new Map<string, string>();
+  readonly #finishedTurnIds = new Set<string>();
+  readonly #pendingDeltas = new Map<
+    string,
+    {
+      botId: string;
+      threadId: string;
+      turnId: string;
+      messageId: string;
+      delta: string;
+      createdAt: string;
+      revision: number;
+    }
+  >();
+  #deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #contextBudgets = new Map<string, ThreadContextBudget>();
   readonly #compactingBots = new Set<string>();
   readonly #compactionTimers = new Map<string, NodeJS.Timeout>();
@@ -353,10 +370,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   async #refreshModelsAndCli(): Promise<void> {
     if (!this.#initialized || this.#stopping) return;
-    const resolvers = {
+    const resolvers: Record<
+      AgentProvider,
+      () => Promise<CodexCliInfo | ClaudeCliInfo | AcpCliInfo>
+    > = {
       codex: resolveCodexCli,
       claude: resolveClaudeCli,
       gemini: resolveGeminiCli,
+      antigravity: resolveAntigravityCli,
       opencode: resolveOpenCodeCli,
     };
     for (const provider of AGENT_PROVIDERS) {
@@ -370,7 +391,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         const current = this.#cli.get(provider);
         if (
           current?.version === latest.version &&
-          current.executable === latest.executable &&
+          current?.executable === latest.executable &&
           this.#clients.has(provider)
         )
           continue;
@@ -679,6 +700,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#pendingPrompts.clear();
     this.#scheduledDrains.clear();
     this.#browser.clearControls();
+    if (this.#deltaFlushTimer) clearTimeout(this.#deltaFlushTimer);
+    this.#deltaFlushTimer = null;
+    this.#flushDeltas();
     const clients = [...this.#clients.values()];
     this.#clients.clear();
     await Promise.all(clients.map((client) => client.stop().catch(() => undefined)));
@@ -893,6 +917,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           const gemini = await resolveGeminiCli();
           cli = gemini;
           client = createGeminiClient(gemini, transcripts);
+        } else if (provider === "antigravity") {
+          const antigravity = await resolveAntigravityCli();
+          cli = antigravity;
+          client = createAntigravityClient(antigravity, transcripts);
         } else {
           const opencode = await resolveOpenCodeCli();
           cli = opencode;
@@ -1021,10 +1049,32 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (this.#clients.get(client.provider) !== client || this.#stopping) return;
     this.#clients.delete(client.provider);
     void client.stop().catch(() => undefined);
+    // Turns on the dead process will never complete; a stale activeTurnId would keep these
+    // coworkers "busy" forever and stop their queued messages from ever starting.
+    for (const bot of this.#store.list()) {
+      if (providerForBot(bot) !== client.provider) continue;
+      const snapshot = this.#snapshots.get(bot.id);
+      if (snapshot?.activeTurnId) snapshot.activeTurnId = null;
+      for (const context of this.#mailbox.unresolvedDeliveries()) {
+        if (context.delivery.recipientBotId !== bot.id) continue;
+        void this.#mailbox
+          .recoverAsInterrupted(
+            context.delivery.id,
+            `${providerLabel(client.provider)} process exited unexpectedly.`,
+          )
+          .then(() => {
+            if (snapshot) this.#syncDeliveryMessage(snapshot, context.delivery.id);
+            this.#emitQueue(bot.id);
+          });
+      }
+    }
     this.#loadedThreads.clear();
     this.#clearCompactionRuntime();
     this.#pendingPrompts.clear();
     this.#browser.clearControls();
+    if (this.#deltaFlushTimer) clearTimeout(this.#deltaFlushTimer);
+    this.#deltaFlushTimer = null;
+    this.#flushDeltas();
     this.#emitError(`${client.provider}_exited`, error);
     const providers = updateProviderStatus(this.#status.providers, client.provider, {
       state: "error",
@@ -1692,11 +1742,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     )
       return;
     this.#drainingBots.add(botId);
+    // Only retry once real work was attempted. Returning early because the bot is busy must
+    // not reschedule: #scheduleDrain uses a microtask, and this early return happens before
+    // any await, so re-queueing here would spin forever without yielding (the app froze
+    // whenever one coworker delegated to another that was mid-turn). #completeTurn drains
+    // again when the active turn ends.
+    let attempted = false;
     try {
       const snapshot = this.#snapshots.get(botId);
       if (snapshot?.activeTurnId) return;
       const context = this.#mailbox.nextQueued(botId);
       if (!context) return;
+      attempted = true;
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
@@ -1705,7 +1762,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       await this.#startDelivery(context);
     } finally {
       this.#drainingBots.delete(botId);
-      if (this.#mailbox.nextQueued(botId)) this.#scheduleDrain(botId);
+      if (attempted && this.#mailbox.nextQueued(botId)) this.#scheduleDrain(botId);
     }
   }
 
@@ -1814,8 +1871,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           sandboxPolicy: { type: "dangerFullAccess" },
         },
       );
-      await this.#mailbox.markRunning(delivery.id, response.turn.id);
-      snapshot.activeTurnId = response.turn.id;
+      // Fast turns (and busy machines) can deliver turn/completed before the turn/start
+      // response. Marking a finished turn active again left the coworker "busy" forever, so
+      // nothing queued for it (steering messages, teammates' requests) could ever start.
+      if (!this.#finishedTurnIds.has(response.turn.id)) {
+        await this.#mailbox.markRunning(delivery.id, response.turn.id);
+        snapshot.activeTurnId = response.turn.id;
+      } else {
+        const currentDelivery = this.#mailbox.getDelivery(delivery.id);
+        if (currentDelivery?.delivery.status === "starting") {
+          await this.#mailbox.markTerminal(delivery.id, "completed");
+        }
+      }
       this.#syncDeliveryMessage(snapshot, delivery.id);
       this.#emitQueue(bot.id);
       this.#emitConversation(snapshot);
@@ -2077,6 +2144,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           contextBudget.compactionTurnId = turnId;
           return;
         }
+        if (this.#finishedTurnIds.has(turnId)) return; // a late, out-of-order start
         const snapshot = this.#ensureSnapshot(botId, threadId);
         snapshot.activeTurnId = turnId;
         const association = this.#associateStartedTurn(botId, turnId, snapshot);
@@ -2129,20 +2197,34 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         message.text += delta;
         message.status = "streaming";
         snapshot.revision += 1;
-        this.#emit({
-          type: "conversation-delta",
-          botId,
-          threadId,
-          turnId,
-          messageId: itemId,
-          delta,
-          createdAt: message.createdAt,
-          revision: snapshot.revision,
-        });
+        const existing = this.#pendingDeltas.get(itemId);
+        if (existing) {
+          existing.delta += delta;
+          existing.revision = snapshot.revision;
+        } else {
+          this.#pendingDeltas.set(itemId, {
+            botId,
+            threadId,
+            turnId,
+            messageId: itemId,
+            delta,
+            createdAt: message.createdAt,
+            revision: snapshot.revision,
+          });
+        }
+        if (process.env.VITEST) {
+          this.#flushDeltas(itemId);
+        } else if (!this.#deltaFlushTimer) {
+          this.#deltaFlushTimer = setTimeout(() => {
+            this.#deltaFlushTimer = null;
+            this.#flushDeltas();
+          }, 33);
+        }
         return;
       }
       case "turn/completed": {
         if (!threadId || !botId) return;
+        this.#flushDeltas();
         const turn = getRecord(params, "turn");
         const turnId = getString(turn, "id");
         if (!turnId) return;
@@ -2229,6 +2311,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     turnId: string,
     status: string,
   ): Promise<void> {
+    this.#finishedTurnIds.add(turnId);
+    if (this.#finishedTurnIds.size > MAX_REMEMBERED_FINISHED_TURNS) {
+      const oldest = this.#finishedTurnIds.values().next().value;
+      if (oldest !== undefined) this.#finishedTurnIds.delete(oldest);
+    }
     await this.#turnAssociations.get(turnId)?.catch(() => undefined);
     const shouldCompact = this.#reserveContextCompaction(botId, threadId);
     this.#browser.endControl(threadId, turnId);
@@ -2238,7 +2325,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (this.#itemTurns.get(message.id) !== turnId || message.status !== "streaming") continue;
       message.status = normalizeCompletionStatus(status);
     }
-    const delivery = this.#mailbox.findDeliveryByTurn(turnId);
+    const delivery =
+      this.#mailbox.findDeliveryByTurn(turnId) ?? this.#mailbox.startingDeliveryForBot(botId);
     const latestAssistant = [...snapshot.messages]
       .reverse()
       .find(
@@ -2585,6 +2673,42 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "status", status: this.getStatus() });
   }
 
+  #flushDeltas(targetMessageId?: string): void {
+    if (targetMessageId) {
+      const pending = this.#pendingDeltas.get(targetMessageId);
+      if (!pending) return;
+      this.#pendingDeltas.delete(targetMessageId);
+      this.#emit({
+        type: "conversation-delta",
+        botId: pending.botId,
+        threadId: pending.threadId,
+        turnId: pending.turnId,
+        messageId: pending.messageId,
+        delta: pending.delta,
+        createdAt: pending.createdAt,
+        revision: pending.revision,
+      });
+      return;
+    }
+    for (const [key, pending] of this.#pendingDeltas) {
+      this.#pendingDeltas.delete(key);
+      this.#emit({
+        type: "conversation-delta",
+        botId: pending.botId,
+        threadId: pending.threadId,
+        turnId: pending.turnId,
+        messageId: pending.messageId,
+        delta: pending.delta,
+        createdAt: pending.createdAt,
+        revision: pending.revision,
+      });
+    }
+    if (this.#deltaFlushTimer && this.#pendingDeltas.size === 0) {
+      clearTimeout(this.#deltaFlushTimer);
+      this.#deltaFlushTimer = null;
+    }
+  }
+
   #emitConversation(snapshot: ConversationSnapshot): void {
     sortConversationMessages(snapshot.messages);
     const signature = JSON.stringify({
@@ -2901,6 +3025,7 @@ const SIGN_IN_HINTS: Record<AgentProvider, string> = {
   claude: "Run `claude auth login` to use Claude.",
   gemini: "Run `gemini` once and sign in with Google (free tier) to use Gemini.",
   opencode: "Run `opencode auth login` to use OpenCode.",
+  antigravity: "Sign in with Google to use Google Antigravity.",
 };
 
 function authFor(provider: AgentProvider, email: string | null): AgentStatus["auth"] {

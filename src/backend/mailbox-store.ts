@@ -102,11 +102,28 @@ export class MailboxStore {
   readonly #transfersRoot: string;
   #state: StoredState = structuredClone(EMPTY_STATE);
   #writeQueue: Promise<void> = Promise.resolve();
+  readonly #messageIndex = new Map<string, StoredMessage>();
+  readonly #sourceTurnIndex = new Map<string, string>();
 
   constructor(userDataPath: string, sharedRoot: string) {
     this.#statePath = join(userDataPath, "mailbox.json");
     this.#draftsRoot = join(userDataPath, "attachment-drafts");
     this.#transfersRoot = join(sharedRoot, "Transfers");
+  }
+
+  #rebuildIndexes(): void {
+    this.#messageIndex.clear();
+    for (const msg of this.#state.messages) {
+      this.#messageIndex.set(msg.id, msg);
+    }
+    this.#sourceTurnIndex.clear();
+    for (const [key, messageId] of Object.entries(this.#state.idempotency)) {
+      const parts = key.split(":");
+      if (parts.length >= 3) {
+        const turnId = parts.at(-2);
+        if (turnId) this.#sourceTurnIndex.set(messageId, turnId);
+      }
+    }
   }
 
   async initialize(): Promise<void> {
@@ -116,6 +133,7 @@ export class MailboxStore {
       mkdir(this.#transfersRoot, { recursive: true, mode: 0o700 }),
     ]);
     this.#state = await this.#readState();
+    this.#rebuildIndexes();
     if (this.#state.drafts.length > 0) {
       this.#state.drafts = [];
       await this.#persist();
@@ -262,8 +280,16 @@ export class MailboxStore {
     }));
 
     this.#state.messages.push(message);
+    this.#messageIndex.set(message.id, message);
     this.#state.deliveries.push(...deliveries);
-    if (input.idempotencyKey) this.#state.idempotency[input.idempotencyKey] = messageId;
+    if (input.idempotencyKey) {
+      this.#state.idempotency[input.idempotencyKey] = messageId;
+      const parts = input.idempotencyKey.split(":");
+      if (parts.length >= 3) {
+        const turnId = parts.at(-2);
+        if (turnId) this.#sourceTurnIndex.set(messageId, turnId);
+      }
+    }
     this.#state.drafts = this.#state.drafts.filter(
       (draft) => !(input.draftIds ?? []).includes(draft.id),
     );
@@ -272,6 +298,8 @@ export class MailboxStore {
     } catch (error) {
       const deliveryIds = new Set(deliveries.map((delivery) => delivery.id));
       this.#state.messages = this.#state.messages.filter((candidate) => candidate.id !== messageId);
+      this.#messageIndex.delete(messageId);
+      this.#sourceTurnIndex.delete(messageId);
       this.#state.deliveries = this.#state.deliveries.filter(
         (candidate) => !deliveryIds.has(candidate.id),
       );
@@ -314,6 +342,30 @@ export class MailboxStore {
     }
     for (const message of this.#state.messages) {
       const deliveries = deliveriesByMessage.get(message.id) ?? [];
+      const recipientBotIds = deliveries.map((item) => item.recipientBotId);
+      let exchangeDeliveries: Array<{
+        id: string;
+        recipientBotId: string;
+        status: QueueDeliveryStatus;
+        position: number | null;
+        error: string | null;
+      }> | null = null;
+      const getExchangeDeliveries = () => {
+        if (!exchangeDeliveries) {
+          exchangeDeliveries = deliveries.map((item) => {
+            const delivery = this.#publicDelivery(item, positions);
+            return {
+              id: delivery.id,
+              recipientBotId: delivery.recipientBotId,
+              status: delivery.status,
+              position: delivery.position,
+              error: delivery.error,
+            };
+          });
+        }
+        return exchangeDeliveries;
+      };
+
       if (message.sender.kind === "bot" && message.sender.botId === botId) {
         messages.push({
           id: `outbox-${message.id}`,
@@ -327,18 +379,9 @@ export class MailboxStore {
             direction: "outgoing",
             messageId: message.id,
             senderBotId: botId,
-            recipientBotIds: deliveries.map((item) => item.recipientBotId),
+            recipientBotIds,
             replyToMessageId: message.replyToMessageId,
-            deliveries: deliveries.map((item) => {
-              const delivery = this.#publicDelivery(item, positions);
-              return {
-                id: delivery.id,
-                recipientBotId: delivery.recipientBotId,
-                status: delivery.status,
-                position: delivery.position,
-                error: delivery.error,
-              };
-            }),
+            deliveries: getExchangeDeliveries(),
           },
           createdAt: message.createdAt,
           status: "completed",
@@ -369,18 +412,9 @@ export class MailboxStore {
                   direction: "incoming",
                   messageId: message.id,
                   senderBotId: message.sender.botId,
-                  recipientBotIds: deliveries.map((item) => item.recipientBotId),
+                  recipientBotIds,
                   replyToMessageId: message.replyToMessageId,
-                  deliveries: deliveries.map((item) => {
-                    const publicItem = this.#publicDelivery(item, positions);
-                    return {
-                      id: publicItem.id,
-                      recipientBotId: publicItem.recipientBotId,
-                      status: publicItem.status,
-                      position: publicItem.position,
-                      error: publicItem.error,
-                    };
-                  }),
+                  deliveries: getExchangeDeliveries(),
                 }
               : undefined,
           createdAt: message.createdAt,
@@ -438,12 +472,16 @@ export class MailboxStore {
   }
 
   #sourceTurnId(messageId: string): string | undefined {
+    const cached = this.#sourceTurnIndex.get(messageId);
+    if (cached !== undefined) return cached;
     const key = Object.entries(this.#state.idempotency).find(
       ([, value]) => value === messageId,
     )?.[0];
     if (!key) return undefined;
     const parts = key.split(":");
-    return parts.length >= 3 ? parts.at(-2) : undefined;
+    const turnId = parts.length >= 3 ? parts.at(-2) : undefined;
+    if (turnId) this.#sourceTurnIndex.set(messageId, turnId);
+    return turnId;
   }
 
   senderBotIdsForRecipient(botId: string): string[] {
@@ -744,7 +782,8 @@ export class MailboxStore {
   }
 
   #requireMessage(id: string): StoredMessage {
-    const message = this.#state.messages.find((candidate) => candidate.id === id);
+    const message =
+      this.#messageIndex.get(id) ?? this.#state.messages.find((candidate) => candidate.id === id);
     if (!message) throw new Error(`Mailbox message is missing: ${id}`);
     return message;
   }
@@ -767,7 +806,7 @@ export class MailboxStore {
   }
 
   async #persist(): Promise<void> {
-    const serialized = `${JSON.stringify(this.#state, null, 2)}\n`;
+    const serialized = `${JSON.stringify(this.#state)}\n`;
     const temporaryPath = `${this.#statePath}.${process.pid}.${randomUUID()}.tmp`;
     this.#writeQueue = this.#writeQueue
       .catch(() => undefined)

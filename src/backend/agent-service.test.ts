@@ -53,6 +53,8 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY;
   delete process.env.SAHKARMI_FAKE_WARNING;
   delete process.env.SAHKARMI_FAKE_RETRY;
+  delete process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY;
+  delete process.env.SAHKARMI_FAKE_EXIT_ON_TURN;
   // Windows may briefly retain handles after the child process and atomic writes close.
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
@@ -520,6 +522,7 @@ describe.sequential("AgentService", () => {
         { id: "claude", state: "not-installed", version: null },
         { id: "gemini", state: "not-installed", version: null },
         { id: "opencode", state: "not-installed", version: null },
+        { id: "antigravity", state: "not-installed", version: null },
       ],
       capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
     });
@@ -591,6 +594,7 @@ describe.sequential("AgentService", () => {
         },
         { id: "gemini", state: "not-installed" },
         { id: "opencode", state: "not-installed" },
+        { id: "antigravity", state: "not-installed" },
       ],
     });
     await service.setPreferredProvider("codex");
@@ -1077,6 +1081,87 @@ describe.sequential("AgentService", () => {
     );
     expect(service.listBots().some((bot) => bot.id === "chief")).toBe(true);
   });
+
+  it("keeps event loop running when a second message arrives mid-turn and drains after first turn completes", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "First turn answer";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "150";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "First turn" });
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "running");
+
+    await service.sendMessage({ botId: "chief", text: "Steering message" });
+    expect(service.listQueue("chief").deliveries[1]?.status).toBe("queued");
+
+    let timerFired = false;
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        timerFired = true;
+        resolve();
+      }, 0);
+    });
+    expect(timerFired).toBe(true);
+
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "completed");
+    await waitFor(() => service?.listQueue("chief").deliveries[1]?.status === "completed");
+    expect(service.listQueue("chief").deliveries).toHaveLength(2);
+  });
+
+  it("does not stay busy when turn/completed arrives before the turn/start response", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Completed early";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "20";
+    process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY = "150";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "Fast turn" });
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "completed");
+
+    // Wait past the turn/start response delay to ensure late start response has arrived
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const snapshot = await service.readConversation("chief");
+    expect(snapshot.activeTurnId).toBeNull();
+
+    // Next queued message must start and complete
+    await service.sendMessage({ botId: "chief", text: "Followup message" });
+    await waitFor(() => service?.listQueue("chief").deliveries[1]?.status === "completed");
+    expect(service.listQueue("chief").deliveries[1]?.status).toBe("completed");
+  }, 15_000);
+
+  it("starts queued messages after restart when provider process exits mid-turn", async () => {
+    process.env.SAHKARMI_FAKE_EXIT_ON_TURN = "1";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "Crash on turn 1" });
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "running");
+
+    await service.sendMessage({ botId: "chief", text: "Queued during turn 1" });
+    expect(service.listQueue("chief").deliveries[1]?.status).toBe("queued");
+
+    // Wait for codex to exit mid-turn
+    await waitFor(() =>
+      events.some((event) => event.type === "error" && event.code === "codex_exited"),
+    );
+    delete process.env.SAHKARMI_FAKE_EXIT_ON_TURN;
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Answer after restart";
+
+    // Coworker's activeTurnId must be cleared so it is not stuck busy
+    const snapshot = await service.readConversation("chief");
+    expect(snapshot.activeTurnId).toBeNull();
+
+    // Service reconnects codex and resumes draining the queue
+    await waitFor(() => service?.getStatus().phase === "ready");
+    await waitFor(() => service?.listQueue("chief").deliveries[1]?.status === "completed");
+    expect(service.listQueue("chief").deliveries[1]?.status).toBe("completed");
+  }, 15_000);
 });
 
 function stores(): { store: BotStore; mailbox: MailboxStore } {
@@ -1220,6 +1305,7 @@ process.stdin.on("data", (chunk) => {
         if (process.env.SAHKARMI_FAKE_AGENT_TOOL === "1" && turnCounter === 1) {
           setTimeout(() => write({ id: "agent-tool-1", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-1", namespace: "sahkarmi", tool: "send_message", arguments: { recipientBotIds: ["sales-outbound", "inbox-manager"], text: "Please prepare your reports.", paths: JSON.parse(process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS || "[]") } } }), 30);
         }
+        const completeDelay = Number(process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY || 20);
         if (process.env.SAHKARMI_FAKE_AUTO_COMPLETE) {
           setTimeout(() => {
             const text = process.env.SAHKARMI_FAKE_AUTO_COMPLETE;
@@ -1231,7 +1317,12 @@ process.stdin.on("data", (chunk) => {
             }
             write({ method: "item/completed", params: { threadId: message.params.threadId, turnId, item } });
             write({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: turnId, status: "completed" } } });
-          }, 20);
+          }, completeDelay);
+        }
+        if (process.env.SAHKARMI_FAKE_EXIT_ON_TURN === String(turnCounter)) {
+          setTimeout(() => {
+            process.exit(1);
+          }, 30);
         }
       }
       if (message.method === "thread/compact/start") {

@@ -492,7 +492,11 @@ export function App() {
 
   function applyConversationDeltaNow(event: Extract<AgentEvent, { type: "conversation-delta" }>) {
     if (event.revision <= (conversationRevisions()[event.botId] ?? -1)) return;
-    setConversationRevisions((current) => ({ ...current, [event.botId]: event.revision }));
+    setConversationRevisions((current) =>
+      current[event.botId] === event.revision
+        ? current
+        : { ...current, [event.botId]: event.revision },
+    );
 
     const existing = liveMessages()[event.botId]?.find((message) => message.id === event.messageId);
     if (existing) {
@@ -514,7 +518,9 @@ export function App() {
         [event.botId]: [...(current[event.botId] ?? []), message],
       }));
     }
-    setConversationLoaded((current) => ({ ...current, [event.botId]: true }));
+    if (!conversationLoaded()[event.botId]) {
+      setConversationLoaded((current) => ({ ...current, [event.botId]: true }));
+    }
   }
 
   function applyConversation(snapshot: ConversationSnapshot) {

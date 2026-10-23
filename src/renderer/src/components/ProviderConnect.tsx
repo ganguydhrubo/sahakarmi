@@ -11,6 +11,7 @@ const PROVIDERS: Array<{ id: AgentProviderId; name: string; hint: MessageKey }> 
   { id: "codex", name: "ChatGPT (Codex)", hint: "connectCodexHint" },
   { id: "claude", name: "Claude", hint: "connectClaudeHint" },
   { id: "gemini", name: "Gemini", hint: "connectGeminiHint" },
+  { id: "antigravity", name: "Google Antigravity", hint: "connectAntigravityHint" },
   { id: "opencode", name: "OpenCode (free)", hint: "connectOpenCodeHint" },
 ];
 

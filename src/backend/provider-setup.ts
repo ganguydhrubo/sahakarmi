@@ -8,7 +8,14 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { AgentProviderId, ProviderSetupState } from "../shared/ipc";
-import { managedCodexPath, resolveClaudeCli, resolveCodexCli, resolveGeminiCli } from "./cli";
+import { downloadAntigravity } from "./antigravity-runtime";
+import {
+  managedCodexPath,
+  resolveAntigravityCli,
+  resolveClaudeCli,
+  resolveCodexCli,
+  resolveGeminiCli,
+} from "./cli";
 
 /** Codex build fetched by Connect when none is installed (Apache-2.0, published by OpenAI on npm). */
 export const CODEX_VERSION = "0.163.0";
@@ -64,6 +71,9 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
         }
         case "gemini":
           await this.#connectGemini();
+          break;
+        case "antigravity":
+          await this.#connectAntigravity();
           break;
         case "opencode":
           await this.check(provider);
@@ -163,6 +173,32 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
         const claudeDir = join(homedir(), ".claude");
         await mkdir(claudeDir, { recursive: true });
         await writeFile(join(claudeDir, "anthropic_api_key.txt"), key, "utf8");
+      } catch {
+        // ignore
+      }
+    } else if (provider === "antigravity") {
+      process.env.ANTIGRAVITY_API_KEY = key;
+      process.env.GOOGLE_API_KEY = key;
+      if (process.platform === "win32") {
+        try {
+          execFile(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-Command",
+              `[System.Environment]::SetEnvironmentVariable('ANTIGRAVITY_API_KEY', '${key.replace(/'/g, "''")}', 'User')`,
+            ],
+            { windowsHide: true },
+            () => {},
+          );
+        } catch {
+          // ignore
+        }
+      }
+      try {
+        const agyDir = join(homedir(), ".gemini", "antigravity");
+        await mkdir(agyDir, { recursive: true });
+        await writeFile(join(agyDir, "api_key.txt"), key, "utf8");
       } catch {
         // ignore
       }
@@ -371,6 +407,44 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
         "A window opened: choose “Login with Google” and finish in the browser, then close it and click Check again.",
       url: null,
     });
+  }
+
+  async #connectAntigravity(): Promise<void> {
+    try {
+      await resolveAntigravityCli();
+    } catch {
+      await this.installAntigravity();
+    }
+    await this.#options.recheck("antigravity");
+    this.#set("antigravity", {
+      phase: "connected",
+      message: "Google Antigravity is connected.",
+      url: null,
+    });
+  }
+
+  async installAntigravity(): Promise<string> {
+    this.#set("antigravity", {
+      phase: "installing",
+      message: "Getting Google Antigravity ready…",
+      progress: 0,
+    });
+    const executable = await downloadAntigravity({
+      runtimeDirectory: this.#options.toolsDirectory,
+      termsAccepted: true,
+      platform: this.#options.platform,
+      arch: this.#options.arch,
+      fetchImpl: this.#options.fetchImpl,
+      onProgress: (progress) => {
+        this.#set("antigravity", { phase: "installing", progress });
+      },
+    });
+    this.#set("antigravity", {
+      phase: "waiting",
+      message: "Google Antigravity is ready.",
+      progress: null,
+    });
+    return executable;
   }
 
   #get(provider: AgentProviderId): ProviderSetupState {
