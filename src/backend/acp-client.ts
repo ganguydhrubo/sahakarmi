@@ -43,7 +43,7 @@ export interface AcpModelOption {
 }
 
 export interface AcpAgentConfig {
-  provider: Extract<AgentProvider, "gemini" | "opencode">;
+  provider: Extract<AgentProvider, "gemini" | "opencode" | "antigravity">;
   label: string;
   executable: string;
   args: string[];
@@ -51,6 +51,8 @@ export interface AcpAgentConfig {
   transcriptDir: string;
   models: Array<{ model: AgentModelId; displayName: string }>;
   readAccount: () => Promise<AccountReadResult>;
+  /** Optional authentication hook (e.g. for Antigravity ACP server when session/new requires auth). */
+  authenticate?: () => Promise<void>;
   /** Maps a Sahkarmi model id to one of the agent's model values, or null to keep its default. */
   modelValue: (model: AgentModelId, options: AcpModelOption[]) => string | null;
   /** Extra environment for the agent process (merged over the app's environment). */
@@ -319,7 +321,20 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       }
     }
     if (!result) {
-      result = await this.#call<Record<string, unknown>>("session/new", { cwd, mcpServers });
+      try {
+        result = await this.#call<Record<string, unknown>>("session/new", { cwd, mcpServers });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes("Authentication required") &&
+          this.#config.authenticate
+        ) {
+          await this.#config.authenticate();
+          result = await this.#call<Record<string, unknown>>("session/new", { cwd, mcpServers });
+        } else {
+          throw error;
+        }
+      }
       acpSessionId = requiredString(result, "sessionId");
     }
     const threadId = existingThreadId ?? (acpSessionId as string);
@@ -479,7 +494,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         const delta = contentText(update.content);
         if (!delta) return;
         turn.text += delta;
-        if (turn.leakedToolCall || LEAKED_TOOL_CALL_HINT.test(turn.text)) {
+        const checkWindow =
+          turn.text.length <= 160 ? turn.text : turn.text.slice(-Math.max(delta.length + 80, 160));
+        if (turn.leakedToolCall || LEAKED_TOOL_CALL_HINT.test(checkWindow)) {
           turn.leakedToolCall = true;
           return;
         }
@@ -746,11 +763,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
 
   #onStdout(chunk: string): void {
     this.#buffer += chunk;
-    let newline = this.#buffer.indexOf("\n");
+    let start = 0;
+    let newline = this.#buffer.indexOf("\n", start);
     while (newline >= 0) {
-      const line = this.#buffer.slice(0, newline).trim();
-      this.#buffer = this.#buffer.slice(newline + 1);
-      newline = this.#buffer.indexOf("\n");
+      const line = this.#buffer.slice(start, newline).trim();
+      start = newline + 1;
+      newline = this.#buffer.indexOf("\n", start);
       if (!line) continue;
       let message: unknown;
       try {
@@ -760,6 +778,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         continue;
       }
       this.#onMessage(message);
+    }
+    if (start > 0) {
+      this.#buffer = this.#buffer.slice(start);
     }
   }
 

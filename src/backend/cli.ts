@@ -67,6 +67,24 @@ export function managedOpenCodePaths(platform: NodeJS.Platform = process.platfor
   return existsSync(path) ? [path] : [];
 }
 
+/**
+ * A downloaded Google Antigravity runtime: <runtime>/antigravity/<version>/agy_acp_server(.exe).
+ */
+export function managedAntigravityPaths(platform: NodeJS.Platform = process.platform): string[] {
+  if (!runtimeDirectory) return [];
+  const root = join(runtimeDirectory, "antigravity");
+  if (!existsSync(root)) return [];
+  const versions = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort(compareVersionStrings);
+  const newest = versions.at(-1);
+  if (!newest) return [];
+  const binary = platform === "win32" ? "agy_acp_server.exe" : "agy_acp_server";
+  const path = join(root, newest, binary);
+  return existsSync(path) ? [path] : [];
+}
+
 function compareVersionStrings(left: string, right: string): number {
   const leftParts = left.split(".").map(Number);
   const rightParts = right.split(".").map(Number);
@@ -198,6 +216,38 @@ export async function resolveGeminiCli(): Promise<AcpCliInfo> {
   }
   throw new CodexCliError(
     "Gemini CLI was not found. Install it with `npm install -g @google/gemini-cli`, run `gemini` once to sign in with Google (free tier), then restart Sahkarmi.",
+    "missing",
+  );
+}
+
+export async function resolveAntigravityCli(): Promise<AcpCliInfo> {
+  const override = process.env.SAHKARMI_ANTIGRAVITY_PATH?.trim();
+  const managed = override ? [] : managedAntigravityPaths();
+  const candidates = override
+    ? [override]
+    : [
+        ...managed,
+        ...(await collectCandidates("agy_acp_server", undefined)),
+        ...(await collectCandidates("antigravity", undefined)),
+      ];
+  for (const candidate of candidates) {
+    if (!(await isExecutable(candidate))) continue;
+    try {
+      return {
+        executable: candidate,
+        version: parseSemver(await readCliVersion(candidate), "Google Antigravity"),
+        bundled: managed.includes(candidate),
+      };
+    } catch {
+      return {
+        executable: candidate,
+        version: "1.0.0",
+        bundled: managed.includes(candidate),
+      };
+    }
+  }
+  throw new CodexCliError(
+    "Google Antigravity was not found. Install or connect Google Antigravity from Settings.",
     "missing",
   );
 }

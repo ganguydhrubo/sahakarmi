@@ -29,6 +29,7 @@ const PROVIDERS: Array<{
   { id: "claude", name: "Claude" },
   { id: "codex", name: "ChatGPT (Codex)" },
   { id: "gemini", name: "Gemini" },
+  { id: "antigravity", name: "Google Antigravity" },
 ];
 
 const PERMISSIONS: Array<{

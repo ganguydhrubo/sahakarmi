@@ -68,6 +68,10 @@ export const USAGE_SOURCES: Record<AgentProviderId, { limits: string; tokens: st
     limits: "OpenCode free models publish no quota",
     tokens: "OpenCode ACP · usage_update (context size and session cost)",
   },
+  antigravity: {
+    limits: "Google Antigravity quota",
+    tokens: "Google Antigravity usage_update",
+  },
 };
 
 /**

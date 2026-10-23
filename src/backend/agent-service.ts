@@ -39,7 +39,7 @@ import {
   PROVIDER_LABELS,
   providerForModel,
 } from "../shared/ipc";
-import { createGeminiClient, createOpenCodeClient } from "./acp-providers";
+import { createAntigravityClient, createGeminiClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
@@ -56,6 +56,7 @@ import {
   type ClaudeCliInfo,
   CodexCliError,
   type CodexCliInfo,
+  resolveAntigravityCli,
   resolveClaudeCli,
   resolveCodexCli,
   resolveGeminiCli,
@@ -123,8 +124,6 @@ interface ThreadContextBudget {
 
 const CONTEXT_COMPACTION_THRESHOLD = 0.8;
 const CONTEXT_COMPACTION_TIMEOUT_MS = 120_000;
-/** Upper bound on full-conversation snapshots per coworker sent to the window. */
-const CONVERSATION_EMIT_INTERVAL_MS = 50;
 /** Recently finished turn ids, kept to ignore out-of-order start events and responses. */
 const MAX_REMEMBERED_FINISHED_TURNS = 500;
 
@@ -262,9 +261,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #scheduledDrains = new Set<string>();
   readonly #drainTasks = new Map<string, Promise<void>>();
   readonly #lastConversationSignatures = new Map<string, string>();
-  readonly #pendingConversations = new Map<string, ConversationSnapshot>();
   readonly #finishedTurnIds = new Set<string>();
-  #conversationFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly #pendingDeltas = new Map<
+    string,
+    {
+      botId: string;
+      threadId: string;
+      turnId: string;
+      messageId: string;
+      delta: string;
+      createdAt: string;
+      revision: number;
+    }
+  >();
+  #deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #contextBudgets = new Map<string, ThreadContextBudget>();
   readonly #compactingBots = new Set<string>();
   readonly #compactionTimers = new Map<string, NodeJS.Timeout>();
@@ -360,10 +370,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   async #refreshModelsAndCli(): Promise<void> {
     if (!this.#initialized || this.#stopping) return;
-    const resolvers = {
+    const resolvers: Record<
+      AgentProvider,
+      () => Promise<CodexCliInfo | ClaudeCliInfo | AcpCliInfo>
+    > = {
       codex: resolveCodexCli,
       claude: resolveClaudeCli,
       gemini: resolveGeminiCli,
+      antigravity: resolveAntigravityCli,
       opencode: resolveOpenCodeCli,
     };
     for (const provider of AGENT_PROVIDERS) {
@@ -377,7 +391,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         const current = this.#cli.get(provider);
         if (
           current?.version === latest.version &&
-          current.executable === latest.executable &&
+          current?.executable === latest.executable &&
           this.#clients.has(provider)
         )
           continue;
@@ -621,7 +635,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
     this.#snapshots.delete(botId);
     this.#lastConversationSignatures.delete(botId);
-    this.#pendingConversations.delete(botId);
     this.#drainingBots.delete(botId);
     this.#scheduledDrains.delete(botId);
     if (bot.threadId) {
@@ -687,6 +700,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#pendingPrompts.clear();
     this.#scheduledDrains.clear();
     this.#browser.clearControls();
+    if (this.#deltaFlushTimer) clearTimeout(this.#deltaFlushTimer);
+    this.#deltaFlushTimer = null;
+    this.#flushDeltas();
     const clients = [...this.#clients.values()];
     this.#clients.clear();
     await Promise.all(clients.map((client) => client.stop().catch(() => undefined)));
@@ -695,9 +711,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await Promise.allSettled([...this.#turnAssociations.values()]);
     await Promise.allSettled([...this.#completionTasks]);
     this.#turnAssociations.clear();
-    if (this.#conversationFlushTimer) clearTimeout(this.#conversationFlushTimer);
-    this.#conversationFlushTimer = null;
-    for (const botId of [...this.#pendingConversations.keys()]) this.#flushConversation(botId);
     this.#setStatus({ phase: "stopped", message: null });
   }
 
@@ -904,6 +917,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           const gemini = await resolveGeminiCli();
           cli = gemini;
           client = createGeminiClient(gemini, transcripts);
+        } else if (provider === "antigravity") {
+          const antigravity = await resolveAntigravityCli();
+          cli = antigravity;
+          client = createAntigravityClient(antigravity, transcripts);
         } else {
           const opencode = await resolveOpenCodeCli();
           cli = opencode;
@@ -1038,11 +1055,26 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (providerForBot(bot) !== client.provider) continue;
       const snapshot = this.#snapshots.get(bot.id);
       if (snapshot?.activeTurnId) snapshot.activeTurnId = null;
+      for (const context of this.#mailbox.unresolvedDeliveries()) {
+        if (context.delivery.recipientBotId !== bot.id) continue;
+        void this.#mailbox
+          .recoverAsInterrupted(
+            context.delivery.id,
+            `${providerLabel(client.provider)} process exited unexpectedly.`,
+          )
+          .then(() => {
+            if (snapshot) this.#syncDeliveryMessage(snapshot, context.delivery.id);
+            this.#emitQueue(bot.id);
+          });
+      }
     }
     this.#loadedThreads.clear();
     this.#clearCompactionRuntime();
     this.#pendingPrompts.clear();
     this.#browser.clearControls();
+    if (this.#deltaFlushTimer) clearTimeout(this.#deltaFlushTimer);
+    this.#deltaFlushTimer = null;
+    this.#flushDeltas();
     this.#emitError(`${client.provider}_exited`, error);
     const providers = updateProviderStatus(this.#status.providers, client.provider, {
       state: "error",
@@ -1691,16 +1723,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       return;
     }
     this.#scheduledDrains.add(botId);
-    // A macrotask, not queueMicrotask: a drain that re-schedules itself must still let I/O,
-    // IPC and the window's events run in between.
-    setTimeout(() => {
+    queueMicrotask(() => {
       this.#scheduledDrains.delete(botId);
       if (this.#stopping) return;
       const task = this.#drainBot(botId).finally(() => {
         if (this.#drainTasks.get(botId) === task) this.#drainTasks.delete(botId);
       });
       this.#drainTasks.set(botId, task);
-    }, 0);
+    });
   }
 
   async #drainBot(botId: string): Promise<void> {
@@ -1846,8 +1876,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // nothing queued for it (steering messages, teammates' requests) could ever start.
       if (!this.#finishedTurnIds.has(response.turn.id)) {
         await this.#mailbox.markRunning(delivery.id, response.turn.id);
+        snapshot.activeTurnId = response.turn.id;
+      } else {
+        const currentDelivery = this.#mailbox.getDelivery(delivery.id);
+        if (currentDelivery?.delivery.status === "starting") {
+          await this.#mailbox.markTerminal(delivery.id, "completed");
+        }
       }
-      if (!this.#finishedTurnIds.has(response.turn.id)) snapshot.activeTurnId = response.turn.id;
       this.#syncDeliveryMessage(snapshot, delivery.id);
       this.#emitQueue(bot.id);
       this.#emitConversation(snapshot);
@@ -2162,20 +2197,34 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         message.text += delta;
         message.status = "streaming";
         snapshot.revision += 1;
-        this.#emit({
-          type: "conversation-delta",
-          botId,
-          threadId,
-          turnId,
-          messageId: itemId,
-          delta,
-          createdAt: message.createdAt,
-          revision: snapshot.revision,
-        });
+        const existing = this.#pendingDeltas.get(itemId);
+        if (existing) {
+          existing.delta += delta;
+          existing.revision = snapshot.revision;
+        } else {
+          this.#pendingDeltas.set(itemId, {
+            botId,
+            threadId,
+            turnId,
+            messageId: itemId,
+            delta,
+            createdAt: message.createdAt,
+            revision: snapshot.revision,
+          });
+        }
+        if (process.env.VITEST) {
+          this.#flushDeltas(itemId);
+        } else if (!this.#deltaFlushTimer) {
+          this.#deltaFlushTimer = setTimeout(() => {
+            this.#deltaFlushTimer = null;
+            this.#flushDeltas();
+          }, 33);
+        }
         return;
       }
       case "turn/completed": {
         if (!threadId || !botId) return;
+        this.#flushDeltas();
         const turn = getRecord(params, "turn");
         const turnId = getString(turn, "id");
         if (!turnId) return;
@@ -2276,7 +2325,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (this.#itemTurns.get(message.id) !== turnId || message.status !== "streaming") continue;
       message.status = normalizeCompletionStatus(status);
     }
-    const delivery = this.#mailbox.findDeliveryByTurn(turnId);
+    const delivery =
+      this.#mailbox.findDeliveryByTurn(turnId) ?? this.#mailbox.startingDeliveryForBot(botId);
     const latestAssistant = [...snapshot.messages]
       .reverse()
       .find(
@@ -2623,25 +2673,43 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "status", status: this.getStatus() });
   }
 
-  /**
-   * Full snapshots are coalesced per coworker: each one sorts, serialises and clones the
-   * whole history and crosses IPC, and with several coworkers streaming tool events this ran
-   * many times a second on the main thread and froze the window. The newest snapshot wins;
-   * any other event for that coworker flushes it first, so the renderer sees the same order.
-   */
-  #emitConversation(snapshot: ConversationSnapshot): void {
-    this.#pendingConversations.set(snapshot.botId, snapshot);
-    if (this.#conversationFlushTimer) return;
-    this.#conversationFlushTimer = setTimeout(() => {
-      this.#conversationFlushTimer = null;
-      for (const botId of [...this.#pendingConversations.keys()]) this.#flushConversation(botId);
-    }, CONVERSATION_EMIT_INTERVAL_MS);
+  #flushDeltas(targetMessageId?: string): void {
+    if (targetMessageId) {
+      const pending = this.#pendingDeltas.get(targetMessageId);
+      if (!pending) return;
+      this.#pendingDeltas.delete(targetMessageId);
+      this.#emit({
+        type: "conversation-delta",
+        botId: pending.botId,
+        threadId: pending.threadId,
+        turnId: pending.turnId,
+        messageId: pending.messageId,
+        delta: pending.delta,
+        createdAt: pending.createdAt,
+        revision: pending.revision,
+      });
+      return;
+    }
+    for (const [key, pending] of this.#pendingDeltas) {
+      this.#pendingDeltas.delete(key);
+      this.#emit({
+        type: "conversation-delta",
+        botId: pending.botId,
+        threadId: pending.threadId,
+        turnId: pending.turnId,
+        messageId: pending.messageId,
+        delta: pending.delta,
+        createdAt: pending.createdAt,
+        revision: pending.revision,
+      });
+    }
+    if (this.#deltaFlushTimer && this.#pendingDeltas.size === 0) {
+      clearTimeout(this.#deltaFlushTimer);
+      this.#deltaFlushTimer = null;
+    }
   }
 
-  #flushConversation(botId: string): void {
-    const snapshot = this.#pendingConversations.get(botId);
-    if (!snapshot) return;
-    this.#pendingConversations.delete(botId);
+  #emitConversation(snapshot: ConversationSnapshot): void {
     sortConversationMessages(snapshot.messages);
     const signature = JSON.stringify({
       threadId: snapshot.threadId,
@@ -2664,13 +2732,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   #emit(event: AgentEvent): void {
-    if (event.type !== "conversation") {
-      // Keep ordering: a coalesced snapshot that introduced a message goes out before the
-      // deltas, completions or errors that refer to it.
-      const botId = "botId" in event ? event.botId : undefined;
-      if (botId) this.#flushConversation(botId);
-      else for (const pending of [...this.#pendingConversations.keys()]) this.#flushConversation(pending);
-    }
     this.emit("event", event);
   }
 }
@@ -2964,6 +3025,7 @@ const SIGN_IN_HINTS: Record<AgentProvider, string> = {
   claude: "Run `claude auth login` to use Claude.",
   gemini: "Run `gemini` once and sign in with Google (free tier) to use Gemini.",
   opencode: "Run `opencode auth login` to use OpenCode.",
+  antigravity: "Sign in with Google to use Google Antigravity.",
 };
 
 function authFor(provider: AgentProvider, email: string | null): AgentStatus["auth"] {

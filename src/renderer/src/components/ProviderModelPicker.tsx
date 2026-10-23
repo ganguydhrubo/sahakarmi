@@ -21,12 +21,13 @@ interface ProviderModelPickerProps {
   onChange: (model: AgentModelId) => void;
 }
 
-const PROVIDERS: AgentProviderId[] = ["opencode", "claude", "codex", "gemini"];
+const PROVIDERS: AgentProviderId[] = ["opencode", "claude", "codex", "gemini", "antigravity"];
 const DEFAULT_MODELS: Record<AgentProviderId, AgentModelId> = DEFAULT_MODEL_FOR_PROVIDER;
 const CLI_NAMES: Record<AgentProviderId, string> = {
   claude: "Claude Code",
   codex: "Codex CLI",
   gemini: "Gemini CLI",
+  antigravity: "Google Antigravity",
   opencode: "OpenCode",
 };
 

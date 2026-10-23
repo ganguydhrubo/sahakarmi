@@ -113,3 +113,69 @@ export async function readGeminiAccount(
   }
   return { account: { type: "gemini", email }, requiresOpenaiAuth: false };
 }
+
+export function createAntigravityClient(cli: AcpCliInfo, transcriptRoot: string): AcpAgentClient {
+  const harnessExecutable =
+    process.platform === "win32" ? "localharness_external.exe" : "localharness_external";
+  const harnessPath = join(cli.executable, "..", harnessExecutable);
+  return new AcpAgentClient({
+    provider: "antigravity",
+    label: "Google Antigravity",
+    executable: cli.executable,
+    args: [],
+    transcriptDir: join(transcriptRoot, "antigravity"),
+    models: [{ model: "antigravity-default", displayName: "Antigravity Default" }],
+    readAccount: readAntigravityAccount,
+    modelValue: antigravityModelValue,
+    env: {
+      ANTIGRAVITY_HARNESS_PATH: harnessPath,
+    },
+  });
+}
+
+export function antigravityModelValue(
+  model: AgentModelId,
+  options: AcpModelOption[],
+): string | null {
+  if (model !== "antigravity-default") {
+    const wire = modelWireId(model);
+    return options.some((option) => option.value === wire) ? wire : null;
+  }
+  const values = options.map((option) => option.value);
+  if (values.includes("default")) return "default";
+  return values[0] ?? null;
+}
+
+export async function readAntigravityAccount(
+  home = homedir(),
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<{
+  account: { type: string; email: string | null; tier?: string | null } | null;
+  requiresOpenaiAuth: boolean;
+}> {
+  const antigravityHome = join(home, ".gemini", "antigravity");
+  const hasKey = Boolean(
+    environment.ANTIGRAVITY_API_KEY?.trim() ||
+      environment.GEMINI_API_KEY?.trim() ||
+      environment.GOOGLE_API_KEY?.trim(),
+  );
+  const hasOauth = await access(join(antigravityHome, "oauth_creds.json")).then(
+    () => true,
+    () => false,
+  );
+  if (!hasKey && !hasOauth) return { account: null, requiresOpenaiAuth: false };
+  let email: string | null = null;
+  let tier: string | null = "Standard";
+  try {
+    const accounts: unknown = JSON.parse(
+      await readFile(join(antigravityHome, "google_accounts.json"), "utf8"),
+    );
+    if (isRecord(accounts)) {
+      if (typeof accounts.active === "string") email = accounts.active;
+      if (typeof accounts.tier === "string") tier = accounts.tier;
+    }
+  } catch {
+    // Email is optional
+  }
+  return { account: { type: "antigravity", email, tier }, requiresOpenaiAuth: false };
+}

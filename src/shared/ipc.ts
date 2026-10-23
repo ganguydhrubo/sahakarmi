@@ -148,7 +148,7 @@ export type AiRuntimePhase =
   | "up-to-date"
   | "error";
 
-export const AI_TOOL_IDS = ["opencode", "codex", "claude", "gemini"] as const;
+export const AI_TOOL_IDS = ["opencode", "codex", "claude", "gemini", "antigravity"] as const;
 export type AiToolId = (typeof AI_TOOL_IDS)[number];
 
 export function isAiToolId(value: unknown): value is AiToolId {
@@ -184,7 +184,7 @@ export type AgentPhase = "idle" | "starting" | "ready" | "restarting" | "blocked
 
 export type CapabilityState = "ready" | "setup-required" | "unavailable";
 
-export const AGENT_PROVIDERS = ["codex", "claude", "gemini", "opencode"] as const;
+export const AGENT_PROVIDERS = ["codex", "claude", "gemini", "opencode", "antigravity"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
 
 export function isAgentProvider(value: unknown): value is AgentProviderId {
@@ -197,6 +197,7 @@ export const PROVIDER_LABELS: Record<AgentProviderId, string> = {
   claude: "Claude",
   gemini: "Gemini",
   opencode: "OpenCode (free)",
+  antigravity: "Google Antigravity",
 };
 export type AgentProviderState =
   | "not-started"
@@ -239,7 +240,8 @@ export type AgentAuthState =
   | { kind: "chatgpt"; email: string | null }
   | { kind: "claude"; email: string | null }
   | { kind: "gemini"; email: string | null }
-  | { kind: "opencode"; email: string | null };
+  | { kind: "opencode"; email: string | null }
+  | { kind: "antigravity"; email: string | null; tier?: string | null };
 
 export interface AccountUsageWindow {
   usedPercent: number;
@@ -453,6 +455,7 @@ export const AGENT_MODELS = [
   "gemini-flash",
   "opencode-free",
   "opencode-default",
+  "antigravity-default",
 ] as const;
 export type KnownAgentModelId = (typeof AGENT_MODELS)[number];
 export type AgentModelId = KnownAgentModelId | `${AgentProviderId}:${string}`;
@@ -498,7 +501,9 @@ export type BotAvatarColor = (typeof BOT_AVATAR_COLORS)[number];
 export function isAgentModel(value: unknown): value is AgentModelId {
   if (typeof value !== "string") return false;
   if (AGENT_MODELS.some((model) => model === value)) return true;
-  return /^(codex|claude|gemini|opencode):[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,179}$/.test(value);
+  return /^(codex|claude|gemini|opencode|antigravity):[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,179}$/.test(
+    value,
+  );
 }
 
 export function isClaudeModel(model: AgentModelId): boolean {
@@ -506,7 +511,7 @@ export function isClaudeModel(model: AgentModelId): boolean {
 }
 
 export function modelWireId(model: AgentModelId): string {
-  return /^(codex|claude|gemini|opencode):/.test(model)
+  return /^(codex|claude|gemini|opencode|antigravity):/.test(model)
     ? model.slice(model.indexOf(":") + 1)
     : model;
 }
@@ -524,6 +529,7 @@ export function providerForModel(model: AgentModelId): AgentProviderId {
   if (model.startsWith("claude-")) return "claude";
   if (model.startsWith("gemini-")) return "gemini";
   if (model.startsWith("opencode-")) return "opencode";
+  if (model.startsWith("antigravity-")) return "antigravity";
   return "codex";
 }
 
@@ -533,6 +539,7 @@ export const DEFAULT_MODEL_FOR_PROVIDER: Record<AgentProviderId, AgentModelId> =
   claude: "claude-opus-5",
   gemini: "gemini-auto",
   opencode: "opencode-free",
+  antigravity: "antigravity-default",
 };
 
 export function isReasoningEffort(value: unknown): value is AgentReasoningEffort {

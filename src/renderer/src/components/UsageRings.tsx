@@ -5,6 +5,7 @@ const NAMES: Record<AgentProviderId, string> = {
   codex: "ChatGPT",
   claude: "Claude",
   gemini: "Gemini",
+  antigravity: "Antigravity",
   opencode: "OpenCode",
 };
 const REFRESH_MS = 60_000;
