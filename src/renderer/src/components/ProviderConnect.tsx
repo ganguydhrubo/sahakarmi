@@ -10,7 +10,6 @@ import { type MessageKey, t } from "../i18n";
 const PROVIDERS: Array<{ id: AgentProviderId; name: string; hint: MessageKey }> = [
   { id: "codex", name: "ChatGPT (Codex)", hint: "connectCodexHint" },
   { id: "claude", name: "Claude", hint: "connectClaudeHint" },
-  { id: "gemini", name: "Gemini", hint: "connectGeminiHint" },
   { id: "antigravity", name: "Google Antigravity", hint: "connectAntigravityHint" },
   { id: "opencode", name: "OpenCode (free)", hint: "connectOpenCodeHint" },
 ];
@@ -111,7 +110,9 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                 </Show>
                 <Show
                   when={
-                    provider.id === "gemini" || provider.id === "codex" || provider.id === "claude"
+                    provider.id === "antigravity" ||
+                    provider.id === "codex" ||
+                    provider.id === "claude"
                   }
                 >
                   <button
@@ -144,8 +145,8 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                       type="password"
                       value={apiKeys()[provider.id] ?? ""}
                       placeholder={
-                        provider.id === "gemini"
-                          ? "Enter Gemini API Key (from Google AI Studio)"
+                        provider.id === "antigravity"
+                          ? "Google AI Studio API key (AIzaSy…)"
                           : `Enter ${provider.name} API Key`
                       }
                       aria-label="API Key"
@@ -157,7 +158,7 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                     <button type="submit" class="button-primary">
                       Save & Connect
                     </button>
-                    <Show when={provider.id === "gemini"}>
+                    <Show when={provider.id === "antigravity"}>
                       <button
                         type="button"
                         class="link-button"
@@ -231,7 +232,7 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                       <input
                         type="password"
                         value={apiKeys()[provider.id] ?? ""}
-                        placeholder="Paste your Gemini API key (AIzaSy...)"
+                        placeholder="Paste your Google AI Studio API key (AIzaSy…)"
                         aria-label="API Key"
                         onInput={(event) => {
                           const value = event.currentTarget.value;

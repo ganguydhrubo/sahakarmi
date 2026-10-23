@@ -68,12 +68,12 @@ const USAGE: UsageOverview = {
       lastActivityAt: "2026-10-20T09:00:00.000Z",
     },
     {
-      provider: "gemini",
+      provider: "antigravity",
       connection: "available",
       plan: null,
       limits: [],
       limitsLabel: "unavailable",
-      limitsNote: "Gemini CLI does not report quota over ACP",
+      limitsNote: "Google Antigravity quota",
       tokensToday: null,
       tokens7d: null,
       tokens30d: null,
@@ -187,7 +187,7 @@ describe("Sahkarmi connected desktop shell", () => {
                 message: null,
                 email: "claude@example.com",
               },
-              { id: "gemini", state: "not-installed", version: null, message: null },
+              { id: "antigravity", state: "not-installed", version: null, message: null },
               { id: "opencode", state: "not-installed", version: null, message: null },
             ],
             capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
@@ -546,9 +546,13 @@ describe("Sahkarmi connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
-    const gemini = (await screen.findByText("Gemini", { selector: "strong" })).closest("li");
-    await fireEvent.click(within(gemini as HTMLElement).getByRole("button", { name: "Connect" }));
-    expect(window.sahkarmi.providerSetup.connect).toHaveBeenCalledWith("gemini");
+    const antigravity = (
+      await screen.findByText("Google Antigravity", { selector: "strong" })
+    ).closest("li");
+    await fireEvent.click(
+      within(antigravity as HTMLElement).getByRole("button", { name: "Connect" }),
+    );
+    expect(window.sahkarmi.providerSetup.connect).toHaveBeenCalledWith("antigravity");
 
     emitProviderSetup?.({
       provider: "claude",
@@ -601,12 +605,12 @@ describe("Sahkarmi connected desktop shell", () => {
     const codex = screen.getByRole("article", { name: "ChatGPT (Codex)" });
     expect(within(codex).getByText("91%")).toBeInTheDocument();
     expect(within(codex).getAllByText("Verified").length).toBeGreaterThan(0);
-    const gemini = screen.getByRole("article", { name: "Gemini" });
+    const antigravity = screen.getByRole("article", { name: "Google Antigravity" });
     expect(
-      within(gemini).getByText("This provider does not report token usage."),
+      within(antigravity).getByText("This provider does not report token usage."),
     ).toBeInTheDocument();
-    expect(within(gemini).getAllByText("Unavailable").length).toBe(2);
-    expect(within(gemini).queryByText(/\d+%/)).not.toBeInTheDocument();
+    expect(within(antigravity).getAllByText("Unavailable").length).toBe(2);
+    expect(within(antigravity).queryByText(/\d+%/)).not.toBeInTheDocument();
     expect(window.sahkarmi.usage.refresh).toHaveBeenCalled();
   });
 

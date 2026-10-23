@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -29,7 +29,6 @@ import { BusinessStore } from "../backend/business-store";
 import {
   resolveClaudeCli,
   resolveCodexCli,
-  resolveGeminiCli,
   resolveOpenCodeCli,
   setRuntimeDirectory,
   setToolsDirectory,
@@ -786,47 +785,18 @@ function registerProviderSetupHandlers(setup: ProviderSetup): void {
   });
 }
 
-/** Opens a visible terminal running one command (used for Gemini's interactive Google sign-in). */
-function openTerminal(command: string, title: string): Promise<void> {
-  return new Promise((resolvePromise, reject) => {
-    let child: ReturnType<typeof spawn>;
-    if (process.platform === "win32") {
-      child = spawn("cmd.exe", ["/c", "start", `"${title}"`, "cmd.exe", "/k", command], {
-        detached: true,
-        windowsVerbatimArguments: true,
-        stdio: "ignore",
-      });
-    } else if (process.platform === "darwin") {
-      const script = `tell application "Terminal" to do script ${JSON.stringify(command)}`;
-      child = spawn("osascript", ["-e", script, "-e", 'tell application "Terminal" to activate'], {
-        detached: true,
-        stdio: "ignore",
-      });
-    } else {
-      child = spawn("x-terminal-emulator", ["-e", "bash", "-lc", `${command}; exec bash`], {
-        detached: true,
-        stdio: "ignore",
-      });
-    }
-    child.once("error", (error) =>
-      reject(new Error(`Could not open a terminal: ${error.message}`)),
-    );
-    child.once("spawn", () => {
-      child.unref();
-      resolvePromise();
-    });
-  });
-}
-
 async function restoreSavedApiKeys(): Promise<void> {
   const home = homedir();
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      const key = await readFile(join(home, ".gemini", "gemini_api_key.txt"), "utf8").catch(
-        () => "",
-      );
+    if (!process.env.GEMINI_API_KEY && !process.env.ANTIGRAVITY_API_KEY) {
+      // A Google AI Studio key saved from the Google Antigravity tile.
+      const key = await readFile(
+        join(home, ".gemini", "antigravity-acp", "api_key.txt"),
+        "utf8",
+      ).catch(() => "");
       const trimmed = key.trim();
       if (trimmed) {
+        process.env.ANTIGRAVITY_API_KEY = trimmed;
         process.env.GEMINI_API_KEY = trimmed;
         process.env.GOOGLE_API_KEY = trimmed;
       }
@@ -1023,11 +993,6 @@ if (!hasSingleInstanceLock) {
               .then((c) => c.version)
               .catch(() => null);
           }
-          if (!versions.gemini) {
-            versions.gemini = await resolveGeminiCli()
-              .then((c) => c.version)
-              .catch(() => null);
-          }
           return versions;
         },
         autoDownload: () => permissions.get().levels.app_updates === "auto",
@@ -1037,8 +1002,8 @@ if (!hasSingleInstanceLock) {
       scheduleAiRuntimeChecks();
       providerSetup = new ProviderSetup({
         toolsDirectory,
+        runtimeDirectory,
         recheck: (provider) => service.ensureProvider(provider),
-        openTerminal,
       });
       providerSetup.on("state", (state) => {
         if (mainWindow && !mainWindow.isDestroyed()) {

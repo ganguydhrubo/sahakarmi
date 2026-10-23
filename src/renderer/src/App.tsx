@@ -92,7 +92,6 @@ const FALLBACK_STATUS: AgentStatus = {
   providers: [
     { id: "codex", state: "not-started", version: null, message: null },
     { id: "claude", state: "not-started", version: null, message: null },
-    { id: "gemini", state: "not-started", version: null, message: null },
     { id: "opencode", state: "not-started", version: null, message: null },
   ],
   capabilities: { chat: "unavailable", browser: "unavailable", computerUse: "unavailable" },

@@ -71,9 +71,13 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     "providers",
     [{ type: "provider", provider: "claude" }],
   ),
-  feature("provider-gemini", "Gemini", "Use your Google sign-in through Gemini CLI.", "providers", [
-    { type: "provider", provider: "gemini" },
-  ]),
+  feature(
+    "provider-antigravity",
+    "Google Antigravity",
+    "Use your Google sign-in through Google's Antigravity agent.",
+    "providers",
+    [{ type: "provider", provider: "antigravity" }],
+  ),
   feature(
     "provider-opencode",
     "OpenCode (free)",

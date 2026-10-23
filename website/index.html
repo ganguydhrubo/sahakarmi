@@ -106,7 +106,7 @@
           "Scheduled tasks: once, hourly, daily, weekdays or weekly",
           "Shared files folder for the whole team",
           "English, Hindi and Bengali interface",
-          "Free built-in AI through bundled OpenCode; optional ChatGPT (Codex), Claude and Gemini sign-ins"
+          "Free built-in AI through bundled OpenCode; optional ChatGPT (Codex), Claude and Google Antigravity sign-ins"
         ]
       },
       {
@@ -160,10 +160,10 @@
           },
           {
             "@type": "Question",
-            "name": "Do I need ChatGPT, Claude or Gemini?",
+            "name": "Do I need ChatGPT, Claude or Google Antigravity?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "No. The free built-in AI works without any account. If you already use Codex (ChatGPT), Claude Code or Gemini CLI on the same computer, Sahkarmi can use those logins too."
+              "text": "No. The free built-in AI works without any account. If you already use Codex (ChatGPT) or Claude Code on the same computer, Sahkarmi can use those logins too, and Google Antigravity connects with one Log in with Google."
             }
           },
           {
@@ -947,7 +947,7 @@
             <thead><tr><th scope="col" data-i18n="thProvider">Provider</th><th scope="col" data-i18n="thHow">How Sahkarmi uses it</th><th scope="col" data-i18n="thCost">Cost</th></tr></thead>
             <tbody>
               <tr><td>OpenCode (built in)</td><td data-i18n="pOpen">Bundled in the installer. Free models, no login.</td><td data-i18n="pOpenC">Free</td></tr>
-              <tr><td>Gemini</td><td data-i18n="pGem">Your installed Gemini CLI and its Google sign-in or API key.</td><td data-i18n="pGemC">Free tier</td></tr>
+              <tr><td>Google Antigravity</td><td data-i18n="pGem">Google's own Antigravity agent, downloaded by Sahkarmi. One click opens Log in with Google; an API key also works.</td><td data-i18n="pGemC">Your Google plan</td></tr>
               <tr><td>Claude</td><td data-i18n="pCla">Your installed Claude Code and its login.</td><td data-i18n="pClaC">Your plan</td></tr>
               <tr><td>ChatGPT (Codex)</td><td data-i18n="pCod">Your installed Codex CLI and its ChatGPT login.</td><td data-i18n="pCodC">Your plan</td></tr>
             </tbody>
@@ -962,7 +962,7 @@
         <h2 id="priv-h" data-i18n="privH2">Local-first, and honest about it</h2>
         <ul class="grid">
           <li class="card"><p data-i18n="priv1">Your coworkers, chats, files and settings are stored on your computer. There is no Sahkarmi cloud account.</p></li>
-          <li class="card"><p data-i18n="priv2">When a coworker thinks, the text it needs is sent to the AI provider you chose (OpenCode, Gemini, Claude or ChatGPT) under that provider’s terms.</p></li>
+          <li class="card"><p data-i18n="priv2">When a coworker thinks, the text it needs is sent to the AI provider you chose (OpenCode, Google Antigravity, Claude or ChatGPT) under that provider’s terms.</p></li>
           <li class="card"><p data-i18n="priv3">Sahkarmi is a development preview. Coworkers can use files, commands and the network on your PC. Run tasks you trust and keep backups.</p></li>
           <li class="card"><p data-i18n="priv4">The code is open source under the Apache License 2.0, so anyone can check what it does.</p></li>
         </ul>
@@ -1001,8 +1001,8 @@
             <p data-i18n="a4">On your computer. Sahkarmi has no cloud account of its own. The text a coworker works on is sent to the AI provider you chose, under that provider’s privacy terms.</p>
           </details>
           <details>
-            <summary data-i18n="q5">Do I need ChatGPT, Claude or Gemini?</summary>
-            <p data-i18n="a5">No. The free built-in AI works without any account. If you already use Codex (ChatGPT), Claude Code or Gemini CLI on the same computer, Sahkarmi can use those logins too.</p>
+            <summary data-i18n="q5">Do I need ChatGPT, Claude or Google Antigravity?</summary>
+            <p data-i18n="a5">No. The free built-in AI works without any account. If you already use Codex (ChatGPT) or Claude Code on the same computer, Sahkarmi can use those logins too, and Google Antigravity connects with one Log in with Google.</p>
           </details>
           <details>
             <summary data-i18n="q6">Which languages does it support?</summary>
@@ -1154,8 +1154,8 @@
         thCost: "Cost",
         pOpen: "Bundled in the installer. Free models, no login.",
         pOpenC: "Free",
-        pGem: "Your installed Gemini CLI and its Google sign-in or API key.",
-        pGemC: "Free tier",
+        pGem: "Google's own Antigravity agent, downloaded by Sahkarmi. One click opens Log in with Google; an API key also works.",
+        pGemC: "Your Google plan",
         pCla: "Your installed Claude Code and its login.",
         pClaC: "Your plan",
         pCod: "Your installed Codex CLI and its ChatGPT login.",
@@ -1164,7 +1164,7 @@
         privEyebrow: "Privacy and safety",
         privH2: "Local-first, and honest about it",
         priv1: "Your coworkers, chats, files and settings are stored on your computer. There is no Sahkarmi cloud account.",
-        priv2: "When a coworker thinks, the text it needs is sent to the AI provider you chose (OpenCode, Gemini, Claude or ChatGPT) under that provider’s terms.",
+        priv2: "When a coworker thinks, the text it needs is sent to the AI provider you chose (OpenCode, Google Antigravity, Claude or ChatGPT) under that provider’s terms.",
         priv3: "Sahkarmi is a development preview. Coworkers can use files, commands and the network on your PC. Run tasks you trust and keep backups.",
         priv4: "The code is open source under the Apache License 2.0, so anyone can check what it does.",
         startEyebrow: "Get started",
@@ -1185,8 +1185,8 @@
         a3: "Coworkers are instructed to stop and file an approval request before payments, messages to customers or vendors, publishing and form submissions, and you approve or reject each one. In the current preview this relies on the AI following those instructions, so watch new tasks closely and never share card details or OTPs with a coworker.",
         q4: "Where is my data stored?",
         a4: "On your computer. Sahkarmi has no cloud account of its own. The text a coworker works on is sent to the AI provider you chose, under that provider’s privacy terms.",
-        q5: "Do I need ChatGPT, Claude or Gemini?",
-        a5: "No. The free built-in AI works without any account. If you already use Codex (ChatGPT), Claude Code or Gemini CLI on the same computer, Sahkarmi can use those logins too.",
+        q5: "Do I need ChatGPT, Claude or Google Antigravity?",
+        a5: "No. The free built-in AI works without any account. If you already use Codex (ChatGPT) or Claude Code on the same computer, Sahkarmi can use those logins too, and Google Antigravity connects with one Log in with Google.",
         q6: "Which languages does it support?",
         a6: "The app interface is in English, Hindi and Bengali, and coworkers reply in the language you write in.",
         q7: "Who makes Sahkarmi?",
@@ -1263,8 +1263,8 @@
         thCost: "क़ीमत",
         pOpen: "इंस्टॉलर के अंदर ही. मुफ़्त मॉडल, कोई लॉगिन नहीं.",
         pOpenC: "मुफ़्त",
-        pGem: "आपका इंस्टॉल Gemini CLI और उसका Google साइन-इन या API key.",
-        pGemC: "फ़्री टियर",
+        pGem: "Google का अपना Antigravity एजेंट, जिसे सहकर्मी डाउनलोड करता है. एक क्लिक पर Log in with Google खुलता है; API key भी चलेगी.",
+        pGemC: "आपका Google प्लान",
         pCla: "आपका इंस्टॉल Claude Code और उसका लॉगिन.",
         pClaC: "आपका प्लान",
         pCod: "आपका इंस्टॉल Codex CLI और उसका ChatGPT लॉगिन.",
@@ -1273,7 +1273,7 @@
         privEyebrow: "गोपनीयता और सुरक्षा",
         privH2: "लोकल-फ़र्स्ट, और इसके बारे में साफ़",
         priv1: "आपके सहकर्मी, बातचीत, फ़ाइलें और सेटिंग्स आपके कंप्यूटर पर रहती हैं. सहकर्मी का कोई क्लाउड अकाउंट नहीं है.",
-        priv2: "जब कोई सहकर्मी सोचता है, तो ज़रूरी टेक्स्ट आपके चुने AI प्रदाता (OpenCode, Gemini, Claude या ChatGPT) को उनकी शर्तों के तहत भेजा जाता है.",
+        priv2: "जब कोई सहकर्मी सोचता है, तो ज़रूरी टेक्स्ट आपके चुने AI प्रदाता (OpenCode, Google Antigravity, Claude या ChatGPT) को उनकी शर्तों के तहत भेजा जाता है.",
         priv3: "सहकर्मी अभी डेवलपमेंट प्रीव्यू है. सहकर्मी आपके PC की फ़ाइलें, कमांड और इंटरनेट इस्तेमाल कर सकते हैं. भरोसे वाले काम ही चलाएँ और बैकअप रखें.",
         priv4: "कोड Apache License 2.0 के तहत ओपन सोर्स है, इसलिए कोई भी जाँच सकता है कि यह क्या करता है.",
         startEyebrow: "शुरू करें",
@@ -1294,8 +1294,8 @@
         a3: "सहकर्मियों को निर्देश है कि भुगतान, ग्राहक या वेंडर को मैसेज, पोस्ट और फ़ॉर्म जमा करने से पहले रुकें और अप्रूवल का अनुरोध भेजें. हर अनुरोध को आप मंज़ूर या नामंज़ूर करते हैं. मौजूदा प्रीव्यू में यह AI के निर्देश मानने पर टिका है, इसलिए नए कामों पर नज़र रखें और कार्ड की जानकारी या OTP किसी सहकर्मी को न दें.",
         q4: "मेरा डेटा कहाँ रहता है?",
         a4: "आपके कंप्यूटर पर. सहकर्मी का अपना कोई क्लाउड अकाउंट नहीं है. सहकर्मी जिस टेक्स्ट पर काम करता है, वह आपके चुने AI प्रदाता को उनकी गोपनीयता शर्तों के तहत भेजा जाता है.",
-        q5: "क्या मुझे ChatGPT, Claude या Gemini चाहिए?",
-        a5: "नहीं. मुफ़्त AI बिना किसी अकाउंट के चलता है. अगर आप उसी कंप्यूटर पर पहले से Codex (ChatGPT), Claude Code या Gemini CLI इस्तेमाल करते हैं, तो सहकर्मी उन लॉगिन का भी इस्तेमाल कर सकता है.",
+        q5: "क्या मुझे ChatGPT, Claude या Google Antigravity चाहिए?",
+        a5: "नहीं. मुफ़्त AI बिना किसी अकाउंट के चलता है. अगर आप उसी कंप्यूटर पर पहले से Codex (ChatGPT) या Claude Code इस्तेमाल करते हैं, तो सहकर्मी उन लॉगिन का भी इस्तेमाल कर सकता है, और Google Antigravity एक Log in with Google से जुड़ जाता है.",
         q6: "कौन-सी भाषाएँ चलती हैं?",
         a6: "ऐप English, हिन्दी और বাংলা में है, और सहकर्मी उसी भाषा में जवाब देते हैं जिसमें आप लिखते हैं.",
         q7: "सहकर्मी कौन बनाता है?",

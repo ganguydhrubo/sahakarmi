@@ -24,7 +24,7 @@ import {
 /**
  * Agent Client Protocol (https://agentclientprotocol.com) adapter.
  *
- * Drives any ACP agent CLI — Gemini CLI (`gemini --acp`) and OpenCode (`opencode acp`) — and
+ * Drives any ACP agent — OpenCode (`opencode acp`) and Google Antigravity (`agy_acp_server`) — and
  * translates it into the App Server notifications AgentService already understands, exactly like
  * the Claude adapter does. Sahkarmi's own tools (browser, approvals, coworker messages) reach the
  * agent through a loopback-only MCP server with an unguessable per-session URL.
@@ -43,7 +43,7 @@ export interface AcpModelOption {
 }
 
 export interface AcpAgentConfig {
-  provider: Extract<AgentProvider, "gemini" | "opencode" | "antigravity">;
+  provider: Extract<AgentProvider, "opencode" | "antigravity">;
   label: string;
   executable: string;
   args: string[];
@@ -57,6 +57,8 @@ export interface AcpAgentConfig {
   modelValue: (model: AgentModelId, options: AcpModelOption[]) => string | null;
   /** Extra environment for the agent process (merged over the app's environment). */
   env?: Record<string, string>;
+  /** How long model discovery (a throwaway session/new) may take; Google's server needs longer. */
+  modelListTimeoutMs?: number;
 }
 
 interface ActiveTurn {
@@ -219,7 +221,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           const result = await this.#call<Record<string, unknown>>(
             "session/new",
             { cwd: this.#config.transcriptDir, mcpServers: [] },
-            5_000,
+            this.#config.modelListTimeoutMs ?? 5_000,
           );
           const options = readModelOptions(result);
           if (options.length) this.#catalogOptions = options;
@@ -299,6 +301,37 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   }
 
   // ---------------------------------------------------------------------------
+  // Sign-in (ACP `authenticate`): used by the Connect button, never during a coworker's task.
+
+  /**
+   * True when the agent can open a session right now, false when it first needs `signIn`.
+   * Opens a throwaway session in the transcript folder: no prompt, tools or model inference.
+   */
+  async needsSignIn(timeoutMs = 90_000): Promise<boolean> {
+    await mkdir(this.#config.transcriptDir, { recursive: true });
+    try {
+      await this.#call(
+        "session/new",
+        { cwd: this.#config.transcriptDir, mcpServers: [] },
+        timeoutMs,
+      );
+      return false;
+    } catch (error) {
+      if (error instanceof Error && /authentication required/i.test(error.message)) return true;
+      throw error;
+    }
+  }
+
+  /**
+   * Runs the agent's own sign-in. Google's Antigravity server opens the Google sign-in page in the
+   * browser itself and returns once the owner has finished there (the token stays with the server).
+   */
+  async signIn(methodId: string, timeoutMs: number): Promise<Record<string, unknown>> {
+    const result = await this.#call<unknown>("authenticate", { methodId }, timeoutMs);
+    return isRecord(result) ? result : {};
+  }
+
+  // ---------------------------------------------------------------------------
   // Sessions and turns
 
   async #openSession(params: unknown, existingThreadId: string | null): Promise<AcpSession> {
@@ -331,6 +364,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         ) {
           await this.#config.authenticate();
           result = await this.#call<Record<string, unknown>>("session/new", { cwd, mcpServers });
+        } else if (error instanceof Error && /authentication required/i.test(error.message)) {
+          throw new Error(
+            `${this.#config.label} needs a sign-in. Open Settings and click Connect next to it.`,
+          );
         } else {
           throw error;
         }
@@ -731,7 +768,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           ? null
           : setTimeout(() => {
               this.#pending.delete(id);
-              reject(new Error(`${this.#config.label} model discovery timed out.`));
+              reject(new Error(`${this.#config.label} did not answer \`${method}\` in time.`));
             }, timeoutMs);
       const clear = () => {
         if (timer) clearTimeout(timer);

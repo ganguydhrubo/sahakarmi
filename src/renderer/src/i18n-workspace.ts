@@ -353,8 +353,8 @@ export const workspaceEn = {
     "Click Connect and sign in with the account where you have that AI plan. Your password is only ever typed on the provider's own page.",
   connectCodexHint: "ChatGPT Plus, Pro or Business account",
   connectClaudeHint: "Claude Pro or Max account",
-  connectGeminiHint: "Google account (free tier works)",
-  connectAntigravityHint: "Google account (Antigravity tier) or API key",
+  connectAntigravityHint:
+    "Google account (Log in with Google) or a Google AI Studio API key · Google's Antigravity terms apply",
   connectOpenCodeHint: "Built in. Free, no sign-in",
   connectConnected: "Connected",
   connectNotYet: "Not connected yet",
@@ -735,8 +735,8 @@ export const workspaceHi: WorkspaceDictionary = {
     "कनेक्ट दबाएँ और उसी अकाउंट से साइन इन करें जिसमें आपका AI प्लान है. पासवर्ड सिर्फ़ कंपनी के अपने पेज पर डाला जाता है.",
   connectCodexHint: "ChatGPT Plus, Pro या Business अकाउंट",
   connectClaudeHint: "Claude Pro या Max अकाउंट",
-  connectGeminiHint: "Google अकाउंट (फ़्री भी चलेगा)",
-  connectAntigravityHint: "Google अकाउंट (Antigravity) या API कुंजी",
+  connectAntigravityHint:
+    "Google अकाउंट (Log in with Google) या Google AI Studio API key · Google Antigravity की शर्तें लागू",
   connectOpenCodeHint: "पहले से शामिल. फ़्री, साइन इन नहीं",
   connectConnected: "कनेक्टेड",
   connectNotYet: "अभी कनेक्ट नहीं",
@@ -1111,8 +1111,8 @@ export const workspaceBn: WorkspaceDictionary = {
     "কানেক্ট চাপুন এবং যে অ্যাকাউন্টে আপনার AI প্ল্যান আছে সেটি দিয়ে সাইন ইন করুন। পাসওয়ার্ড শুধু কোম্পানির নিজের পেজেই দেওয়া হয়।",
   connectCodexHint: "ChatGPT Plus, Pro বা Business অ্যাকাউন্ট",
   connectClaudeHint: "Claude Pro বা Max অ্যাকাউন্ট",
-  connectGeminiHint: "Google অ্যাকাউন্ট (ফ্রি-ও চলবে)",
-  connectAntigravityHint: "Google অ্যাকাউন্ট (Antigravity) বা API কি",
+  connectAntigravityHint:
+    "Google অ্যাকাউন্ট (Log in with Google) বা Google AI Studio API key · Google Antigravity-র শর্ত প্রযোজ্য",
   connectOpenCodeHint: "আগে থেকেই আছে। ফ্রি, সাইন ইন লাগে না",
   connectConnected: "কানেক্টেড",
   connectNotYet: "এখনও কানেক্ট হয়নি",

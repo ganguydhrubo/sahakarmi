@@ -207,7 +207,7 @@ export function classifyClaudeTool(
   }
 }
 
-/** ACP tool-call kinds (Gemini CLI, OpenCode) → category. */
+/** ACP tool-call kinds (OpenCode, Google Antigravity) → category. */
 export function classifyAcpTool(
   kind: string | null,
   title: string,

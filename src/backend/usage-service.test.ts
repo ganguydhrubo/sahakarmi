@@ -22,7 +22,7 @@ afterEach(async () => {
 const PROVIDERS: AgentProviderStatus[] = [
   { id: "codex", state: "available", version: "1", message: null },
   { id: "claude", state: "sign-in-required", version: "1", message: null },
-  { id: "gemini", state: "available", version: "1", message: null },
+  { id: "antigravity", state: "available", version: "1", message: null },
   { id: "opencode", state: "available", version: "1", message: null },
 ];
 
@@ -106,8 +106,10 @@ describe("UsageService", () => {
   it("never invents numbers for providers that report nothing", async () => {
     const usage = new UsageService(root, clock);
     await usage.initialize();
-    const gemini = usage.overview(PROVIDERS).providers.find((p) => p.provider === "gemini");
-    expect(gemini).toMatchObject({
+    const antigravity = usage
+      .overview(PROVIDERS)
+      .providers.find((p) => p.provider === "antigravity");
+    expect(antigravity).toMatchObject({
       tokensToday: null,
       tokens30d: null,
       tokensLabel: "unavailable",

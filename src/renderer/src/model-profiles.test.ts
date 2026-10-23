@@ -11,8 +11,12 @@ describe("model suggestions", () => {
   });
 
   it("keeps a free coworker on free models and marks any paid alternative", () => {
-    const result = suggestModels("analysis", "opencode-free", ["opencode", "gemini", "claude"]);
-    expect(result.sameCost).toEqual({ model: "gemini-pro", movesToPaid: false });
+    const result = suggestModels("analysis", "opencode-free", [
+      "opencode",
+      "antigravity",
+      "claude",
+    ]);
+    expect(result.sameCost).toEqual({ model: "antigravity-default", movesToPaid: false });
     expect(result.paidAlternative).toEqual({ model: "claude-opus-5", movesToPaid: true });
   });
 

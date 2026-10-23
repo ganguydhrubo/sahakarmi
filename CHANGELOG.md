@@ -4,6 +4,22 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.6.0] - 2026-10-23
+
+### Changed
+
+- Google Antigravity now connects the same way as Claude and Codex: Connect downloads Google's own
+  Antigravity agent (agy_acp_server 1.4.2 from dl.google.com, SHA-256 pinned), asks it whether it is
+  signed in, and if not runs its "Log in with Google" sign-in, which opens the Google page in the
+  browser. No terminal window, no separate install. A Google AI Studio API key also works.
+- The Antigravity IDE (Antigravity.exe) is no longer treated as an agent server; this was the cause of
+  "Google Antigravity exited with code 0".
+
+### Removed
+
+- The Gemini CLI provider. Google has moved individual use to Antigravity, and the Gemini CLI sign-in
+  needed a terminal window. Coworkers saved on a Gemini model move to the bundled free model.
+
 ## [0.5.9] - 2026-10-23
 
 ### Fixed
