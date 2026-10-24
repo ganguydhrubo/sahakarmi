@@ -112,9 +112,11 @@ const STALE_DRAIN_MAX_MS = 120_000;
 
 /**
  * A turn in which the agent sends nothing at all (no text, thought, tool call or permission
- * request) for this long is failed with a readable reason. OpenCode's ACP server swallows a
- * "Free usage limit reached" stream error and never answers session/prompt, which left the
- * coworker "working" for ever. Tests shorten it through SAHKARMI_ACP_SILENT_TURN_MS.
+ * request) for this long after the prompt is failed with a readable reason. OpenCode's ACP
+ * server swallows a "Free usage limit reached" stream error and never answers session/prompt,
+ * which left the coworker "working" for ever. The watchdog is disarmed by the first sign of
+ * life, so a long tool run or an approval the owner takes minutes to answer is never cut
+ * short. Tests shorten it through SAHKARMI_ACP_SILENT_TURN_MS.
  */
 const SILENT_TURN_MS = 60_000;
 /** How long a free model that stopped answering is skipped before Sahkarmi tries it again. */
@@ -530,11 +532,16 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     return { turn: { id: turnId, status: "inProgress" } };
   }
 
-  /** (Re)starts the silence watchdog: any sign of life from the agent pushes it back. */
+  /** Starts the silence watchdog for a fresh turn; the first sign of life disarms it for good. */
   #armSilenceWatch(session: AcpSession, turn: ActiveTurn): void {
-    if (turn.silenceTimer) clearTimeout(turn.silenceTimer);
+    this.#clearSilenceWatch(turn);
     turn.silenceTimer = setTimeout(() => this.#failSilentTurn(session, turn), silentTurnMs());
     turn.silenceTimer.unref?.();
+  }
+
+  #clearSilenceWatch(turn: ActiveTurn): void {
+    if (turn.silenceTimer) clearTimeout(turn.silenceTimer);
+    turn.silenceTimer = undefined;
   }
 
   #failSilentTurn(session: AcpSession, turn: ActiveTurn): void {
@@ -582,8 +589,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #finishTurn(session: AcpSession, turn: ActiveTurn, status: string, error: unknown): void {
     if (session.activeTurn !== turn) return;
     session.activeTurn = null;
-    if (turn.silenceTimer) clearTimeout(turn.silenceTimer);
-    turn.silenceTimer = undefined;
+    this.#clearSilenceWatch(turn);
     if (status === "interrupted" || turn.cancelledBySahkarmi) {
       session.drainingSince = Date.now();
       session.lastStaleUpdateAt = Date.now();
@@ -650,7 +656,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     }
     // Updates outside a turn are history replays from session/load; Sahkarmi keeps its own.
     if (!session || !turn) return;
-    this.#armSilenceWatch(session, turn);
+    this.#clearSilenceWatch(turn);
 
     switch (update.sessionUpdate) {
       case "agent_message_chunk": {
@@ -970,7 +976,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     if (method === "session/request_permission") {
       const sessionId = getString(message.params, "sessionId");
       const session = [...this.#sessions.values()].find((item) => item.acpSessionId === sessionId);
-      if (session?.activeTurn) this.#armSilenceWatch(session, session.activeTurn);
+      if (session?.activeTurn) this.#clearSilenceWatch(session.activeTurn);
       void this.#answerPermission(id, message.params).then((answer) => {
         if (this.#child?.stdin.writable) this.#write(answer);
       });
