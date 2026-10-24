@@ -218,36 +218,45 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
   it("fails a turn in which the agent never says anything, with a readable reason", async () => {
     // OpenCode at its free usage limit never answers session/prompt and sends no update at all.
     process.env.SAHKARMI_ACP_SILENT_TURN_MS = "400";
-    const store = new BotStore(join(root, "user-data"), join(root, "home"));
-    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
-    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
-    const events: Array<{ type: string; code?: string; message?: string }> = [];
-    service.on("event", (event) => events.push(event as { type: string; code?: string }));
-    await service.initialize();
-    await service.sendMessage({ botId: "meera-support", text: "stay silent" });
-    await waitFor(() => service?.listQueue("meera-support").deliveries[0]?.status === "failed");
-    const error = events.find(
-      (event) => event.type === "error" && /did not start answering/.test(event.message ?? ""),
-    );
-    expect(error?.message).toContain("free usage limit");
-    expect(error?.message).toContain("opencode/nemotron-free");
-    // The agent was asked to stop the dead turn.
-    await waitFor(async () => (await readLog()).some((m) => m.method === "session/cancel"));
-    // The same message went out again by itself on the next free model and got an answer.
-    await waitFor(() => service?.listQueue("meera-support").deliveries[1]?.status === "completed");
-    expect(service.listQueue("meera-support").deliveries[1]?.text).toBe("stay silent");
-    const selected = (await readLog())
-      .filter((m) => m.method === "session/set_config_option")
-      .map((m) => (m.params as { value?: string }).value);
-    expect(selected).toEqual(["opencode/big-pickle", "opencode/nemotron-free"]);
-    expect(
-      events.find((event) => event.type === "error" && event.code === "fallback_model")?.message,
-    ).toContain("next free model");
-    expect((await service.readConversation("meera-support")).activeTurnId).toBeNull();
-    // The coworker is not stuck: a further message starts normally on the working free model.
-    delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
-    await service.sendMessage({ botId: "meera-support", text: "Namaste" });
-    await waitFor(() => service?.listQueue("meera-support").deliveries[2]?.status === "completed");
+    try {
+      const store = new BotStore(join(root, "user-data"), join(root, "home"));
+      const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+      service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+      const events: Array<{ type: string; code?: string; message?: string }> = [];
+      service.on("event", (event) => events.push(event as { type: string; code?: string }));
+      await service.initialize();
+      await service.sendMessage({ botId: "meera-support", text: "stay silent" });
+      await waitFor(() => service?.listQueue("meera-support").deliveries[0]?.status === "failed");
+      const error = events.find(
+        (event) => event.type === "error" && /did not start answering/.test(event.message ?? ""),
+      );
+      expect(error?.message).toContain("free usage limit");
+      expect(error?.message).toContain("opencode/nemotron-free");
+      // The agent was asked to stop the dead turn.
+      await waitFor(async () => (await readLog()).some((m) => m.method === "session/cancel"));
+      // The same message went out again by itself on the next free model and got an answer.
+      await waitFor(
+        () => service?.listQueue("meera-support").deliveries[1]?.status === "completed",
+      );
+      expect(service.listQueue("meera-support").deliveries[1]?.text).toBe("stay silent");
+      const selected = (await readLog())
+        .filter((m) => m.method === "session/set_config_option")
+        .map((m) => (m.params as { value?: string }).value);
+      expect(selected).toEqual(["opencode/big-pickle", "opencode/nemotron-free"]);
+      expect(
+        events.find((event) => event.type === "error" && event.code === "fallback_model")?.message,
+      ).toContain("next free model");
+      // The coworker is not stuck once the re-sent turn is done, and a further message starts
+      // normally on the working free model.
+      expect((await service.readConversation("meera-support")).activeTurnId).toBeNull();
+      delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
+      await service.sendMessage({ botId: "meera-support", text: "Namaste" });
+      await waitFor(
+        () => service?.listQueue("meera-support").deliveries[2]?.status === "completed",
+      );
+    } finally {
+      delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
+    }
   });
 
   it("moves a coworker to the free model and re-sends when its provider answers nothing", async () => {
