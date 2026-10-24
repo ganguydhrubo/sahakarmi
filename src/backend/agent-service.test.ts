@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "../shared/ipc";
-import { AgentService, isNoisyDiagnostic, previewText, quotaNotice } from "./agent-service";
+import {
+  AgentService,
+  isNoisyDiagnostic,
+  previewText,
+  quotaNotice,
+  searchExcerpt,
+} from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
@@ -1427,5 +1433,17 @@ describe("Google Antigravity diagnostics", () => {
       isNoisyDiagnostic("antigravity", "Antigravity SDK error processing prompt for session x"),
     ).toBe(false);
     expect(isNoisyDiagnostic("opencode", "logging before google.Init")).toBe(false);
+  });
+});
+
+describe("search excerpts", () => {
+  it("show one line around the match with ellipses only where text was cut", () => {
+    expect(searchExcerpt("Diwali gift box", 0, 6)).toBe("Diwali gift box");
+    const long = `${"a ".repeat(60)}needle${" b".repeat(60)}`;
+    const excerpt = searchExcerpt(long, long.indexOf("needle"), 6);
+    expect(excerpt.startsWith("…")).toBe(true);
+    expect(excerpt.endsWith("…")).toBe(true);
+    expect(excerpt).toContain("needle");
+    expect(excerpt.length).toBeLessThan(140);
   });
 });

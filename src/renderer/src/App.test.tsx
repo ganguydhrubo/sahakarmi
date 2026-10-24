@@ -2719,11 +2719,15 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(screen.getByRole("menuitem", { name: "Delete coworker" }));
     expect(screen.getByRole("alertdialog", { name: "Delete Sales Outbound?" })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    await waitFor(() =>
-      expect(window.sahkarmi.agent.deleteBot).toHaveBeenCalledWith("sales-outbound"),
-    );
+    // The row goes at once; the backend delete runs after the 8-second Undo window.
     await waitFor(() => expect(sales).not.toBeInTheDocument());
-  });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    expect(window.sahkarmi.agent.deleteBot).not.toHaveBeenCalled();
+    await waitFor(
+      () => expect(window.sahkarmi.agent.deleteBot).toHaveBeenCalledWith("sales-outbound"),
+      { timeout: 9_500 },
+    );
+  }, 15_000);
 });
 
 function attachment(id: string, name: string, kind: "image" | "pdf") {

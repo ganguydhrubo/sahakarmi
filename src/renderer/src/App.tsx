@@ -44,6 +44,7 @@ import type { MarketplaceAgent } from "../../shared/marketplace";
 import { ERROR_TITLES } from "./activity-hinglish";
 import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation } from "./components/Conversation";
+import { GlobalSearch } from "./components/GlobalSearch";
 import { InitialSetup } from "./components/InitialSetup";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./components/PanelResizer";
 import type { ProviderRefresh } from "./components/ProviderUpdates";
@@ -54,6 +55,7 @@ import { UpdateControl } from "./components/UpdateControl";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
 import { loadFeatures } from "./features";
+import { t } from "./i18n";
 import { rememberSettingsSection } from "./settings-section";
 
 // Views opened from the rail load on demand, keeping start-up lean.
@@ -195,6 +197,12 @@ export function App() {
   const [setupLoaded, setSetupLoaded] = createSignal(false);
   const [permissionsOpen, setPermissionsOpen] = createSignal(false);
   const [view, setView] = createSignal<CenterView>("coworker");
+  const [searchOpen, setSearchOpen] = createSignal(false);
+  /** A coworker hidden from the list while its 8-second Undo window runs. */
+  const [pendingDelete, setPendingDelete] = createSignal<{
+    bot: BotProfile;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
   const [workspaces, setWorkspaces] = createSignal<WorkspaceState>({
     workspaces: [],
     activeWorkspaceId: "",
@@ -251,7 +259,37 @@ export function App() {
       .catch(() => undefined);
     const unsubscribeUpdate = window.sahkarmi.update.onEvent(setUpdateStatus);
     const unsubscribeRuntime = window.sahkarmi.aiRuntime.onEvent(setRuntimeStatus);
+    const onShortcut = (event: KeyboardEvent) => {
+      const modifier = event.ctrlKey || event.metaKey;
+      if (!modifier) {
+        if (event.key === "Escape" && searchOpen()) setSearchOpen(false);
+        return;
+      }
+      if (event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "k") {
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      } else if (key === "n" && !event.shiftKey) {
+        event.preventDefault();
+        void createAgent();
+      } else if (event.key === ",") {
+        event.preventDefault();
+        setAgentPickerOpen(false);
+        setView("settings");
+      } else if (/^[1-9]$/.test(event.key) && !event.shiftKey) {
+        const bot = workspaceBots()[Number(event.key) - 1];
+        if (bot) {
+          event.preventDefault();
+          selectBot(bot.id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
     onCleanup(() => {
+      window.removeEventListener("keydown", onShortcut);
+      const pending = pendingDelete();
+      if (pending) clearTimeout(pending.timer);
       unsubscribe();
       unsubscribeUpdate();
       unsubscribeRuntime();
@@ -675,7 +713,59 @@ export function App() {
     setSettingsRequest({ botId, nonce: Date.now() });
   }
 
-  async function deleteBot(botId: string) {
+  /** Opens a coworker and, after its conversation renders, scrolls to one message. */
+  function openSearchResult(botId: string, messageId?: string) {
+    selectBot(botId);
+    if (!messageId) return;
+    let attempts = 0;
+    const find = () => {
+      const element = document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+      if (element) {
+        element.scrollIntoView({ block: "center" });
+        element.classList.add("message-entry-highlight");
+        setTimeout(() => element.classList.remove("message-entry-highlight"), 2400);
+        return;
+      }
+      if (attempts++ < 20) setTimeout(find, 120);
+    };
+    setTimeout(find, 60);
+  }
+
+  /** Hides the coworker at once and really deletes it after 8 seconds unless undone. */
+  function deleteBot(botId: string): Promise<void> {
+    const bot = botList().find((candidate) => candidate.id === botId);
+    if (!bot) return Promise.resolve();
+    const earlier = pendingDelete();
+    if (earlier) {
+      clearTimeout(earlier.timer);
+      void commitDeleteBot(earlier.bot.id);
+    }
+    const remaining = botList().filter((candidate) => candidate.id !== botId);
+    setBotList(remaining);
+    setActiveBotId((current) => (current === botId ? (remaining[0]?.id ?? "") : current));
+    setSettingsRequest((current) => (current?.botId === botId ? null : current));
+    const timer = setTimeout(() => {
+      setPendingDelete(null);
+      void commitDeleteBot(botId);
+    }, 8000);
+    setPendingDelete({ bot, timer });
+    return Promise.resolve();
+  }
+
+  function undoDeleteBot() {
+    const pending = pendingDelete();
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    setPendingDelete(null);
+    setBotList((current) =>
+      current.some((candidate) => candidate.id === pending.bot.id)
+        ? current
+        : [pending.bot, ...current],
+    );
+    selectBot(pending.bot.id);
+  }
+
+  async function commitDeleteBot(botId: string) {
     try {
       await window.sahkarmi.agent.deleteBot(botId);
       const remaining = botList().filter((bot) => bot.id !== botId);
@@ -690,11 +780,18 @@ export function App() {
       setUnreadReplies((current) => withoutBot(current, botId));
       setRecentReplies((current) => withoutBot(current, botId));
       setQueues((current) => withoutBot(current, botId));
+      setPendingDelete((current) => (current?.bot.id === botId ? null : current));
       setPendingPrompts((current) => withoutBot(current, botId));
       const replyTimer = recentReplyTimers.get(botId);
       if (replyTimer) clearTimeout(replyTimer);
       recentReplyTimers.delete(botId);
     } catch (error) {
+      // The backend refused (it is still working): put the coworker back where it was.
+      const bot = pendingDelete()?.bot;
+      setPendingDelete(null);
+      if (bot && !botList().some((candidate) => candidate.id === bot.id)) {
+        setBotList((current) => [bot, ...current]);
+      }
       appendUiError(botId, error, ERROR_TITLES.delete);
       throw error;
     }
@@ -1195,6 +1292,7 @@ export function App() {
                   onOpenAiSettings={openAiSettings}
                   onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
                   onStop={stopActiveTurn}
+                  onDeleteBot={(botId) => void deleteBot(botId)}
                 />
               </Match>
             </Switch>
@@ -1210,6 +1308,23 @@ export function App() {
             />
           </Show>
           <WhatsNewDialog version={appInfo()?.version ?? "0.5.4"} />
+          <GlobalSearch
+            open={searchOpen()}
+            bots={workspaceBots()}
+            workspaceId={workspaces().activeWorkspaceId || null}
+            onClose={() => setSearchOpen(false)}
+            onOpenBot={openSearchResult}
+          />
+          <Show when={pendingDelete()}>
+            {(pending) => (
+              <div class="undo-toast" role="status">
+                <span>{t("deletedCoworker", { name: pending().bot.name })}</span>
+                <button type="button" onClick={undoDeleteBot}>
+                  {t("undo")}
+                </button>
+              </div>
+            )}
+          </Show>
         </div>
       </Show>
     </Show>
@@ -1263,9 +1378,9 @@ function toBotMessage(message: ConversationMessage): BotMessage {
         ? `Queued #${message.delivery.position}`
         : message.delivery?.status === "cancelled"
           ? "Cancelled"
-          : message.status === "failed"
+          : message.delivery?.status === "failed" || message.status === "failed"
             ? "Failed"
-            : message.status === "interrupted"
+            : message.delivery?.status === "interrupted" || message.status === "interrupted"
               ? "Interrupted"
               : undefined,
   };

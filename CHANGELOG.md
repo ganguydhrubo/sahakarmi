@@ -4,6 +4,28 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.7.0] - 2026-10-24
+
+### Added
+
+- Search everything with Ctrl/Cmd+K: coworkers by name or role, and every message in the
+  workspace, with a jump straight to the message.
+- Keyboard shortcuts: Ctrl+1–9 open a coworker, Ctrl+N new coworker, Ctrl+, settings, Esc close.
+- Settings → General: Interface size (Compact / Normal / Large) and the send key (Enter, or
+  Ctrl+Enter with Enter for a new line).
+- Deleting a coworker can be undone for 8 seconds, and Delete is now also in the coworker's own
+  settings panel.
+- "Send again" on a message whose reply failed or was stopped.
+- Backup model: when a paid provider answers nothing or is at its usage limit (quota, 429),
+  the coworker moves to the free model, says why, and sends the same message again there.
+- The window opens where you left it, at the same size.
+
+### Changed
+
+- The app is usable as soon as the quick providers are up; Google's Antigravity agent keeps
+  starting in the background instead of locking the composer for up to a minute.
+- A message whose reply failed or was stopped now shows that status under the message.
+
 ## [0.6.3] - 2026-10-24
 
 ### Fixed

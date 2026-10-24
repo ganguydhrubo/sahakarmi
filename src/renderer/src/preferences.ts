@@ -36,6 +36,13 @@ const ACTIVITY_STYLE_KEY = "sahkarmi:activity-style";
 /** masti: playful Hinglish while thinking (default) · seedha: plain factual lines only. */
 export type ActivityStyle = "masti" | "seedha";
 const LANGUAGE_KEY = "sahkarmi:language";
+const UI_SIZE_KEY = "sahkarmi:ui-size";
+const SEND_KEY_KEY = "sahkarmi:send-key";
+
+export type UiSize = "compact" | "normal" | "large";
+/** enter: Enter sends, Ctrl/Cmd+Enter adds a line · ctrl-enter: the other way round. */
+export type SendKey = "enter" | "ctrl-enter";
+const UI_ZOOM: Record<UiSize, string> = { compact: "0.9", normal: "", large: "1.12" };
 
 function readStored(key: string): string | null {
   try {
@@ -72,7 +79,31 @@ const [activityStyle, setActivityStyleSignal] = createSignal<ActivityStyle>(
   readStored(ACTIVITY_STYLE_KEY) === "masti" ? "masti" : "seedha",
 );
 
-export { activityStyle, language, theme };
+const [uiSize, setUiSizeSignal] = createSignal<UiSize>(parseUiSize(readStored(UI_SIZE_KEY)));
+const [sendKey, setSendKeySignal] = createSignal<SendKey>(
+  readStored(SEND_KEY_KEY) === "ctrl-enter" ? "ctrl-enter" : "enter",
+);
+
+function parseUiSize(value: string | null): UiSize {
+  return value === "compact" || value === "large" ? value : "normal";
+}
+
+export { activityStyle, language, sendKey, theme, uiSize };
+
+export function setUiSize(next: UiSize): void {
+  setUiSizeSignal(next);
+  writeStored(UI_SIZE_KEY, next);
+  applyUiSize(next);
+}
+
+export function setSendKey(next: SendKey): void {
+  setSendKeySignal(next);
+  writeStored(SEND_KEY_KEY, next);
+}
+
+function applyUiSize(next: UiSize): void {
+  (document.documentElement.style as CSSStyleDeclaration & { zoom: string }).zoom = UI_ZOOM[next];
+}
 
 export function setActivityStyle(next: ActivityStyle): void {
   setActivityStyleSignal(next);
@@ -99,6 +130,7 @@ function applyTheme(next: ThemePreference): void {
 
 export function applyStoredPreferences(): void {
   applyTheme(theme());
+  applyUiSize(uiSize());
   void window.sahkarmi?.setTheme?.(theme())?.catch(() => undefined);
   document.documentElement.lang = language();
 }

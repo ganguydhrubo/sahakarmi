@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { BotProfile } from "../data";
+import { sendKey } from "../preferences";
 import { AgentAvatar } from "./AgentAvatar";
 
 interface ComposerEditorProps {
@@ -156,6 +157,17 @@ export function ComposerEditor(props: ComposerEditorProps) {
     }
     if (event.key === "Enter") {
       event.preventDefault();
+      const modifier = event.ctrlKey || event.metaKey;
+      // "enter" sends on Enter and breaks the line on Ctrl/Cmd+Enter; "ctrl-enter" the reverse.
+      const sends = sendKey() === "ctrl-enter" ? modifier : !modifier;
+      if (!sends) {
+        if (!editor) return;
+        insertPlainText(editor, "\n");
+        emitValue();
+        updateMention();
+        editor.scrollTop = editor.scrollHeight;
+        return;
+      }
       props.onSubmit();
     }
   }

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
@@ -15,6 +15,7 @@ import {
   type OpenDialogOptions,
   powerMonitor,
   protocol,
+  screen,
   session,
   shell,
   systemPreferences,
@@ -270,6 +271,14 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown) =>
     service.readConversation(requireString(botId, "botId")),
   );
+  handleTrusted(IPC_CHANNELS.agentSearchMessages, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid search request.");
+    return service.searchMessages({
+      query: requireString(input.query, "query"),
+      workspaceId: typeof input.workspaceId === "string" ? input.workspaceId : undefined,
+      limit: typeof input.limit === "number" ? input.limit : undefined,
+    });
+  });
   handleTrusted(IPC_CHANNELS.agentSendMessage, (input: unknown) =>
     service.sendMessage(parseSendMessage(input)),
   );
@@ -610,11 +619,71 @@ function parseOpenSharedFile(value: unknown): OpenSharedFileInput {
   return { path: typeof value.path === "string" ? value.path : "", action: value.action };
 }
 
+interface WindowState {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  maximized?: boolean;
+}
+
+function windowStatePath(): string {
+  return join(app.getPath("userData"), "window-state.json");
+}
+
+/** The last window position and size, if it still lands on a connected display. */
+function readWindowState(): WindowState | null {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(windowStatePath(), "utf8"));
+    if (!isObject(parsed)) return null;
+    const { x, y, width, height, maximized } = parsed;
+    if (typeof width !== "number" || typeof height !== "number" || width < 960 || height < 640) {
+      return null;
+    }
+    const state: WindowState = { width, height, maximized: maximized === true };
+    if (typeof x === "number" && typeof y === "number") {
+      const visible = screen.getAllDisplays().some(({ workArea }) => {
+        return (
+          x + 80 < workArea.x + workArea.width &&
+          x + width - 80 > workArea.x &&
+          y + 40 < workArea.y + workArea.height &&
+          y >= workArea.y - 8
+        );
+      });
+      if (visible) Object.assign(state, { x, y });
+    }
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function rememberWindowState(window: BrowserWindow): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const save = () => {
+    if (window.isDestroyed() || window.isMinimized()) return;
+    const bounds = window.isMaximized() ? window.getNormalBounds() : window.getBounds();
+    const state: WindowState = { ...bounds, maximized: window.isMaximized() };
+    void writeFile(windowStatePath(), JSON.stringify(state)).catch(() => undefined);
+  };
+  const scheduleSave = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(save, 400);
+  };
+  window.on("resize", scheduleSave);
+  window.on("move", scheduleSave);
+  window.on("maximize", scheduleSave);
+  window.on("unmaximize", scheduleSave);
+  window.on("close", save);
+}
+
 function createWindow(): BrowserWindow {
   const icon = windowIcon();
+  const saved = readWindowState();
   const window = new BrowserWindow({
-    width: 1200,
-    height: 820,
+    width: saved?.width ?? 1200,
+    height: saved?.height ?? 820,
+    ...(saved?.x !== undefined && saved?.y !== undefined ? { x: saved.x, y: saved.y } : {}),
     minWidth: 960,
     minHeight: 640,
     show: false,
@@ -637,7 +706,11 @@ function createWindow(): BrowserWindow {
     window.setIcon(icon);
   }
 
-  window.once("ready-to-show", () => window.show());
+  window.once("ready-to-show", () => {
+    if (saved?.maximized) window.maximize();
+    window.show();
+  });
+  rememberWindowState(window);
   window.on("close", (event) => {
     if (process.platform === "darwin" && !isQuitting) {
       event.preventDefault();

@@ -27,6 +27,7 @@ export const IPC_CHANNELS = {
   agentUpdateBot: "agent:update-bot",
   agentDeleteBot: "agent:delete-bot",
   agentReadConversation: "agent:read-conversation",
+  agentSearchMessages: "agent:search-messages",
   agentSendMessage: "agent:send-message",
   agentSetMessageReaction: "agent:set-message-reaction",
   agentChooseAttachments: "agent:choose-attachments",
@@ -987,6 +988,21 @@ export interface ConversationSnapshot {
   messages: ConversationMessage[];
 }
 
+export interface SearchMessagesInput {
+  query: string;
+  workspaceId?: string;
+  limit?: number;
+}
+
+export interface MessageSearchHit {
+  botId: string;
+  botName: string;
+  messageId: string;
+  author: ConversationMessageAuthor;
+  excerpt: string;
+  createdAt: string;
+}
+
 export interface SendMessageInput {
   botId: string;
   text: string;
@@ -1281,6 +1297,7 @@ export interface AgentDesktopApi {
   updateBot: (input: UpdateBotInput) => Promise<BotSummary>;
   deleteBot: (botId: string) => Promise<void>;
   readConversation: (botId: string) => Promise<ConversationSnapshot>;
+  searchMessages: (input: SearchMessagesInput) => Promise<MessageSearchHit[]>;
   chooseAttachments: () => Promise<DraftAttachment[]>;
   /** Imports in-memory files (voice notes) as draft attachments. */
   importData: (data: AttachmentDataInput[]) => Promise<DraftAttachment[]>;
