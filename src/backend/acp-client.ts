@@ -53,8 +53,17 @@ export interface AcpAgentConfig {
   readAccount: () => Promise<AccountReadResult>;
   /** Optional authentication hook (e.g. for Antigravity ACP server when session/new requires auth). */
   authenticate?: () => Promise<void>;
-  /** Maps a Sahkarmi model id to one of the agent's model values, or null to keep its default. */
-  modelValue: (model: AgentModelId, options: AcpModelOption[]) => string | null;
+  /**
+   * Maps a Sahkarmi model id to one of the agent's model values, or null to keep its default.
+   * `exhausted` lists values whose free usage limit was hit recently (see #failSilentTurn).
+   */
+  modelValue: (
+    model: AgentModelId,
+    options: AcpModelOption[],
+    exhausted: ReadonlySet<string>,
+  ) => string | null;
+  /** The agent's free models in preference order; a used-up one is skipped for an hour. */
+  freeModels?: (options: AcpModelOption[]) => string[];
   /** Extra environment for the agent process (merged over the app's environment). */
   env?: Record<string, string>;
   /** How long model discovery (a throwaway session/new) may take; Google's server needs longer. */
@@ -83,6 +92,8 @@ interface AcpSession {
   instructions: string;
   instructionsSent: boolean;
   model: string | null;
+  /** The agent-side value the current model resolved to (a free model may rotate). */
+  modelValue: string | null;
   modelOptions: AcpModelOption[];
   activeTurn: ActiveTurn | null;
   mcpToken: string;
@@ -105,7 +116,11 @@ const STALE_DRAIN_MAX_MS = 120_000;
  * "Free usage limit reached" stream error and never answers session/prompt, which left the
  * coworker "working" for ever. Tests shorten it through SAHKARMI_ACP_SILENT_TURN_MS.
  */
-const SILENT_TURN_MS = 90_000;
+const SILENT_TURN_MS = 60_000;
+/** How long a free model that stopped answering is skipped before Sahkarmi tries it again. */
+const EXHAUSTED_FREE_MODEL_MS = 60 * 60 * 1_000;
+/** Marker in a silent-turn error that tells AgentService another free model is ready to try. */
+export const NEXT_FREE_MODEL_HINT = "Sahkarmi will try the next free model";
 const silentTurnMs = (): number =>
   Number(process.env.SAHKARMI_ACP_SILENT_TURN_MS) || SILENT_TURN_MS;
 
@@ -132,6 +147,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly #pending = new Map<number, Pending>();
   readonly #serverRequests = new Map<RequestId, Pending>();
   readonly #sessions = new Map<string, AcpSession>();
+  /** Free model value -> time until which it is skipped (its usage limit was hit). */
+  readonly #exhaustedUntil = new Map<string, number>();
   readonly #mcpRoutes = new Map<string, McpRoute>();
   #child: ChildProcessWithoutNullStreams | null = null;
   #buffer = "";
@@ -408,6 +425,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       instructions: getString(params, "developerInstructions") ?? "",
       instructionsSent: false,
       model: null,
+      modelValue: null,
       modelOptions: readModelOptions(result),
       activeTurn: null,
       mcpToken,
@@ -420,9 +438,14 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   }
 
   async #applyModel(session: AcpSession, model: string | null): Promise<void> {
-    if (!model || model === session.model) return;
+    if (!model) return;
     const explicit = !this.#config.models.some((option) => option.model === model);
-    const value = this.#config.modelValue(model as AgentModelId, session.modelOptions);
+    const value = this.#config.modelValue(
+      model as AgentModelId,
+      session.modelOptions,
+      this.#exhaustedFreeModels(),
+    );
+    if (model === session.model && value === session.modelValue) return;
     if (!value) {
       if (explicit || model === "opencode-free")
         throw new Error(
@@ -449,6 +472,15 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       }
     }
     session.model = model;
+    session.modelValue = value;
+  }
+
+  /** Free model values that hit their limit less than an hour ago. */
+  #exhaustedFreeModels(): ReadonlySet<string> {
+    const now = Date.now();
+    for (const [value, until] of this.#exhaustedUntil)
+      if (until <= now) this.#exhaustedUntil.delete(value);
+    return new Set(this.#exhaustedUntil.keys());
   }
 
   async #startTurn(params: unknown): Promise<unknown> {
@@ -508,6 +540,15 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #failSilentTurn(session: AcpSession, turn: ActiveTurn): void {
     if (session.activeTurn !== turn) return;
     turn.cancelledBySahkarmi = true;
+    // A free model that goes silent has most likely hit its own usage limit: skip it for a
+    // while so the next try (automatic, or the owner's "Send again") lands on another one.
+    let nextFree: string | null = null;
+    const free = this.#config.freeModels?.(session.modelOptions) ?? [];
+    if (session.modelValue && free.includes(session.modelValue)) {
+      this.#exhaustedUntil.set(session.modelValue, Date.now() + EXHAUSTED_FREE_MODEL_MS);
+      const exhausted = this.#exhaustedFreeModels();
+      nextFree = free.find((value) => !exhausted.has(value)) ?? null;
+    }
     if (this.#child?.stdin.writable) {
       this.#write({
         jsonrpc: "2.0",
@@ -515,7 +556,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         params: { sessionId: session.acpSessionId },
       });
     }
-    this.#finishTurn(session, turn, "failed", new Error(silentTurnMessage(this.#config)));
+    this.#finishTurn(
+      session,
+      turn,
+      "failed",
+      new Error(silentTurnMessage(this.#config, session.modelValue, nextFree)),
+    );
   }
 
   /** Waits for a cancelled answer to stop streaming (see AcpSession.drainingSince). */
@@ -1109,8 +1155,19 @@ function toolOutput(update: Record<string, unknown>): string | null {
   return typeof update.rawOutput === "string" ? update.rawOutput : JSON.stringify(update.rawOutput);
 }
 
-function silentTurnMessage(config: AcpAgentConfig): string {
+function silentTurnMessage(
+  config: AcpAgentConfig,
+  modelValue: string | null,
+  nextFree: string | null,
+): string {
   const seconds = Math.round(silentTurnMs() / 1000);
+  if (config.provider === "opencode" && nextFree) {
+    return (
+      `${config.label}'s free model ${modelValue ?? ""} did not start answering within ${seconds} ` +
+      `seconds, which usually means its free usage limit is used up for now. ${NEXT_FREE_MODEL_HINT} ` +
+      `(${nextFree}).`
+    );
+  }
   if (config.provider === "opencode") {
     return (
       `${config.label} did not start answering within ${seconds} seconds. On the free model this ` +
