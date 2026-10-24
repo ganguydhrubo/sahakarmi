@@ -36,6 +36,14 @@ export function classifyLicence(licenseText, packageLicense) {
   return LICENCE_VERDICTS.unknown;
 }
 
+/** Lines that touch the Windows build Sahkarmi ships (installer, signing, Windows-only fixes). */
+const WINDOWS_PATTERN =
+  /\b(windows|win32|winget|nsis|msi|\.exe|defender|smart app control|powershell|cmd\.exe|%appdata%|registry|taskbar|wsl)\b/i;
+
+export function windowsRelevant(bullets) {
+  return bullets.filter((line) => WINDOWS_PATTERN.test(line));
+}
+
 /** Signals that make a release worth reading today rather than this week. */
 const CRITICAL_RULES = [
   {
@@ -54,6 +62,7 @@ const CRITICAL_RULES = [
   { flag: "platform", pattern: /\b(electron \d|electron to|bun \d|bun to|chromium|node \d{2})/i },
   { flag: "data", pattern: /\b(data loss|corrupt|migration|wipe|delete.*(data|history))/i },
   { flag: "breaking", pattern: /\b(breaking|incompatib|removed support|no longer supports)\b/i },
+  { flag: "windows", pattern: WINDOWS_PATTERN },
 ];
 
 export function criticalFlags(body) {
@@ -109,6 +118,7 @@ export function analyzeRelease(release) {
     bullets,
     candidates: featureCandidates(bullets),
     dependencyBumps: sharedDependencyBumps(bullets),
+    windows: windowsRelevant(bullets),
     flags: criticalFlags(release.body),
   };
 }
@@ -146,6 +156,10 @@ All source changes of this revision (${licence.syncPermitted ? "pending human re
 
 ${list(analysis.candidates)}
 
+## Windows-relevant changes (installer, signing, Windows-only fixes)
+
+${list(analysis.windows, "_nothing Windows-specific in this release_")}
+
 ## Shared third-party dependency signals
 
 ${list(analysis.dependencyBumps, "_no shared dependency bumps mentioned_")}
@@ -175,6 +189,11 @@ export function renderMail({ analysis, licence, previousTag, issueUrl, reportUrl
     "Feature candidates:",
     ...(analysis.candidates.length ? analysis.candidates.map((c) => `  • ${c}`) : ["  (none)"]),
     "",
+    `Windows-relevant changes (${analysis.windows.length}):`,
+    ...(analysis.windows.length
+      ? analysis.windows.map((c) => `  • ${c}`)
+      : ["  (nothing Windows-specific in this release)"]),
+    "",
     analysis.dependencyBumps.length
       ? `Shared dependency signals:\n${analysis.dependencyBumps.map((c) => `  • ${c}`).join("\n")}\n`
       : "",
@@ -197,6 +216,8 @@ export function renderMail({ analysis, licence, previousTag, issueUrl, reportUrl
 <p>${escapeHtml(lines[0])}<br>${escapeHtml(lines[1])}<br><b>${escapeHtml(lines[2])}</b><br>${escapeHtml(lines[3])}</p>
 <p><b>Feature candidates</b></p>
 <ul>${analysis.candidates.length ? analysis.candidates.map((c) => `<li>${escapeHtml(c)}</li>`).join("") : "<li>(none)</li>"}</ul>
+<p><b>Windows-relevant changes (${analysis.windows.length})</b></p>
+<ul>${analysis.windows.length ? analysis.windows.map((c) => `<li>${escapeHtml(c)}</li>`).join("") : "<li>(nothing Windows-specific in this release)</li>"}</ul>
 ${analysis.dependencyBumps.length ? `<p><b>Shared dependency signals</b></p><ul>${analysis.dependencyBumps.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>` : ""}
 <p><b>All release notes (${analysis.bullets.length} lines)</b></p>
 <ul>${analysis.bullets.length ? analysis.bullets.map((c) => `<li>${escapeHtml(c)}</li>`).join("") : "<li>(the release has no notes)</li>"}</ul>
