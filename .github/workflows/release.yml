@@ -60,6 +60,9 @@ jobs:
   macos:
     name: Build macOS ARM64 release
     needs: validate
+    # Paused: Windows-only launch (24 Oct 2026). Set the repository variable
+    # RELEASE_ALL_PLATFORMS=true to build and publish this platform again.
+    if: ${{ vars.RELEASE_ALL_PLATFORMS == 'true' }}
     # Optional platform: a macOS failure must not block the Windows release.
     continue-on-error: true
     runs-on: macos-14
@@ -272,6 +275,9 @@ jobs:
   linux:
     name: Build Linux x64 AppImage
     needs: validate
+    # Paused: Windows-only launch (24 Oct 2026). Set the repository variable
+    # RELEASE_ALL_PLATFORMS=true to build and publish this platform again.
+    if: ${{ vars.RELEASE_ALL_PLATFORMS == 'true' }}
     # Optional platform: a Linux failure must not block the Windows release.
     continue-on-error: true
     runs-on: ubuntu-latest

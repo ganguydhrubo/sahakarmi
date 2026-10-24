@@ -25,6 +25,12 @@ All notable changes to Sahkarmi are documented here. The project follows
   skipped for an hour and your message is sent again on the next free model by itself, with a note
   in the chat.
 
+### Changed
+
+- Windows-only release. The macOS and Linux builds are paused until the project has tested them on
+  real hardware; the website and install guide say so. Installed 0.7.1 macOS and Linux builds keep
+  working but will not find an update until those builds return.
+
 ## [0.7.1] - 2026-10-24
 
 (0.7.0 was tagged but its Windows build did not publish; 0.7.1 is the same release.)

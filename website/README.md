@@ -16,7 +16,7 @@ privacy/security/permissions, FAQ, community and feedback, footer with contact.
   invented numbers. Screenshots in `assets/shots/` are real captures from the app (see
   `docs/qa/2026-10-24/`), served as responsive WebP (480/720/1440 px).
 - **Version and sizes:** never hard-code a version in translated strings. Elements with
-  `data-release-version` and `data-release-size="win|mac|linux"` are filled in at deploy time by
+  `data-release-version` and `data-release-size="win"` are filled in at deploy time by
   `scripts/inject-downloads.mjs` from the newest GitHub release, as are all download links
   (`data-download`, `data-platform`, `data-platform-tile`) on both pages and `softwareVersion` in
   the JSON-LD.
