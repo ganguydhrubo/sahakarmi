@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { renameSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AccountUsage,
@@ -32,6 +34,8 @@ import type {
 import {
   AGENT_PROVIDERS,
   APPROVAL_CATEGORIES,
+  type AttachmentSummary,
+  type ConversationMessage,
   DEFAULT_MODEL_FOR_PROVIDER,
   isAvatarColor,
   isAvatarShape,
@@ -47,6 +51,11 @@ import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
+import {
+  attachmentPromptBlocks,
+  deliverableFiles,
+  localAttachmentSummary,
+} from "./attachment-text";
 import type { BotStore } from "./bot-store";
 import {
   BROWSER_DYNAMIC_TOOLS,
@@ -249,6 +258,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #drainTasks = new Map<string, Promise<void>>();
   readonly #lastConversationSignatures = new Map<string, string>();
   readonly #finishedTurnIds = new Set<string>();
+  /** When each coworker's current turn began: files changed after this are its deliverables. */
+  readonly #turnStartedAt = new Map<string, number>();
+  /** Files each turn produced, by bot then turn; saved to disk so a thread re-read keeps them. */
+  #deliverables = new Map<string, Record<string, AttachmentSummary[]>>();
+  #deliverablesSaveTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #pendingDeltas = new Map<
     string,
     {
@@ -622,6 +636,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#emitTakeover();
     }
     this.#snapshots.delete(botId);
+    this.#deliverables.delete(botId);
+    this.#saveDeliverablesSoon();
     this.#lastConversationSignatures.delete(botId);
     this.#drainingBots.delete(botId);
     this.#scheduledDrains.delete(botId);
@@ -636,6 +652,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   async initialize(): Promise<void> {
+    await this.#loadDeliverables();
     this.#stopping = false;
     await Promise.all([
       this.#store.initialize(),
@@ -681,6 +698,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   async stop(): Promise<void> {
     this.#modelRefresh.stop();
     this.#stopping = true;
+    this.#flushDeliverables();
     this.#initialized = false;
     if (this.#restartTimer) clearTimeout(this.#restartTimer);
     this.#restartTimer = null;
@@ -1926,7 +1944,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       }
       if (managedAttachments.length) {
         text += `\n\nAttached local files:\n${managedAttachments.map((item) => `- ${item.name}: ${item.path}`).join("\n")}`;
+        // PDF, Word, Excel, PowerPoint and text attachments are read here so that every model,
+        // including free text-only ones, sees their content (images go as image input below).
+        text += await attachmentPromptBlocks(managedAttachments);
       }
+      this.#turnStartedAt.set(bot.id, Date.now() - 1_000);
       const input: Array<Record<string, unknown>> = [{ type: "text", text }];
       for (const attachment of managedAttachments) {
         input.push(
@@ -2141,6 +2163,78 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       message.reaction = reactions.get(message.id) ?? null;
     }
     sortConversationMessages(snapshot.messages);
+    this.#applyDeliverables(snapshot);
+  }
+
+  /** Puts each turn's saved files on that turn's reply (a thread re-read drops in-memory fields). */
+  #applyDeliverables(snapshot: ConversationSnapshot): void {
+    const byTurn = this.#deliverables.get(snapshot.botId);
+    if (!byTurn) return;
+    let changed = false;
+    for (const [turnId, items] of Object.entries(byTurn)) {
+      if (!items.length) continue;
+      let target = [...snapshot.messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.author === "assistant" &&
+            message.turnId === turnId &&
+            message.itemType !== "toolCall" &&
+            message.itemType !== "commentary",
+        );
+      if (!target) {
+        const prompt = snapshot.messages.find((message) => message.turnId === turnId);
+        if (!prompt && !snapshot.messages.some((message) => message.id === turnId)) continue;
+        target = newAssistantMessage(`${turnId}:files`, turnId);
+        target.status = "completed";
+        target.createdAt = prompt?.createdAt ?? target.createdAt;
+        snapshot.messages.push(target);
+        changed = true;
+      }
+      const have = new Set((target.attachments ?? []).map((item) => item.id));
+      const missing = items.filter((item) => !have.has(item.id));
+      if (missing.length) {
+        target.attachments = [...(target.attachments ?? []), ...missing];
+        changed = true;
+      }
+    }
+    if (changed) sortConversationMessages(snapshot.messages);
+  }
+
+  #deliverablesPath(): string {
+    return join(this.#store.userDataPath, "deliverables.json");
+  }
+
+  async #loadDeliverables(): Promise<void> {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(this.#deliverablesPath(), "utf8"));
+      if (!isRecord(parsed)) return;
+      for (const [botId, turns] of Object.entries(parsed)) {
+        if (isRecord(turns)) {
+          this.#deliverables.set(botId, turns as Record<string, AttachmentSummary[]>);
+        }
+      }
+    } catch {
+      // first run, or an unreadable file: start empty
+    }
+  }
+
+  #saveDeliverablesSoon(): void {
+    if (this.#deliverablesSaveTimer) clearTimeout(this.#deliverablesSaveTimer);
+    this.#deliverablesSaveTimer = setTimeout(() => this.#flushDeliverables(), 150);
+  }
+
+  /** Writes the deliverables file now (also on stop, so a restart keeps every file card). */
+  #flushDeliverables(): void {
+    if (this.#deliverablesSaveTimer) clearTimeout(this.#deliverablesSaveTimer);
+    this.#deliverablesSaveTimer = null;
+    try {
+      const path = this.#deliverablesPath();
+      writeFileSync(`${path}.tmp`, JSON.stringify(Object.fromEntries(this.#deliverables), null, 2));
+      renameSync(`${path}.tmp`, path);
+    } catch {
+      // best effort: the cards are rebuilt from the next turn's files anyway
+    }
   }
 
   #emitQueue(botId: string): void {
@@ -2258,6 +2352,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           return;
         }
         if (this.#finishedTurnIds.has(turnId)) return; // a late, out-of-order start
+        if (!this.#turnStartedAt.has(botId)) this.#turnStartedAt.set(botId, Date.now() - 1_000);
         const snapshot = this.#ensureSnapshot(botId, threadId);
         snapshot.activeTurnId = turnId;
         const association = this.#associateStartedTurn(botId, turnId, snapshot);
@@ -2460,6 +2555,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         await this.#relayAgentResult(botId, turnId, delivery, latestAssistant.text);
       }
     }
+    this.#attachDeliverables(botId, snapshot, turnId, latestAssistant);
     if (latestAssistant) {
       await this.#store.updatePreview(botId, previewText(latestAssistant.text));
       this.#emit({ type: "bots-changed", bots: this.#store.list() });
@@ -2864,6 +2960,48 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#lastConversationSignatures.set(snapshot.botId, signature);
     snapshot.revision += 1;
     this.#emit({ type: "conversation", snapshot: structuredClone(snapshot) });
+  }
+
+  /**
+   * Files the coworker wrote during the turn (images, PDFs, documents in its folder or the Shared
+   * folder) are shown under its reply: an image a coworker made belongs in the chat, not only in
+   * a folder view.
+   */
+  #attachDeliverables(
+    botId: string,
+    snapshot: ConversationSnapshot,
+    turnId: string,
+    latestAssistant: ConversationMessage | undefined,
+  ): void {
+    const since = this.#turnStartedAt.get(botId);
+    this.#turnStartedAt.delete(botId);
+    if (since === undefined) return;
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot) return;
+    let files: string[] = [];
+    try {
+      files = deliverableFiles({
+        roots: [bot.workspacePath, this.#store.sharedRoot],
+        excludeRoots: [join(this.#store.sharedRoot, "Transfers")],
+        since,
+      });
+    } catch {
+      return;
+    }
+    if (files.length === 0) return;
+    const attachments = files.map(localAttachmentSummary);
+    const seen = new Set(
+      snapshot.messages.flatMap((message) => (message.attachments ?? []).map((item) => item.id)),
+    );
+    const fresh = attachments.filter((item) => !seen.has(item.id));
+    if (fresh.length === 0) return;
+    void latestAssistant;
+    const byTurn = this.#deliverables.get(botId) ?? {};
+    byTurn[turnId] = [...(byTurn[turnId] ?? []), ...fresh];
+    this.#deliverables.set(botId, byTurn);
+    this.#saveDeliverablesSoon();
+    this.#applyDeliverables(snapshot);
+    snapshot.revision += 1;
   }
 
   /**

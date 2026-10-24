@@ -1,6 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -158,6 +159,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #running = false;
   #catalogOptions: AcpModelOption[] = [];
   #agentCapabilities: Record<string, unknown> = {};
+  #acceptsImages = false;
   #mcpServer: Server | null = null;
   #mcpPort: number | null = null;
   readonly #instanceId = randomUUID();
@@ -251,6 +253,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         this.#agentCapabilities = isRecord(result.agentCapabilities)
           ? result.agentCapabilities
           : {};
+        const promptCapabilities = isRecord(this.#agentCapabilities.promptCapabilities)
+          ? this.#agentCapabilities.promptCapabilities
+          : {};
+        this.#acceptsImages = promptCapabilities.image === true;
         return {} as T;
       }
       case "account/read":
@@ -515,6 +521,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     prompt.push({ type: "text", text: `${instructions}${text}` });
     for (const path of links) {
       prompt.push({ type: "resource_link", uri: pathToFileURL(path).href, name: basename(path) });
+      // An attached picture goes in as image input where the agent accepts it (ACP prompt
+      // capability "image"), so a vision model sees it rather than a file name.
+      const image = this.#acceptsImages ? inlineImage(path) : null;
+      if (image) prompt.push(image);
     }
 
     this.emit("notification", {
@@ -1236,6 +1246,27 @@ function requiredString(value: unknown, key: string): string {
   const result = getString(value, key);
   if (!result) throw new Error(`${key} is required.`);
   return result;
+}
+
+const INLINE_IMAGE_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+const MAX_INLINE_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function inlineImage(path: string): Record<string, unknown> | null {
+  const mimeType = INLINE_IMAGE_TYPES[extname(path).toLowerCase()];
+  if (!mimeType) return null;
+  try {
+    const data = readFileSync(path);
+    if (data.length > MAX_INLINE_IMAGE_BYTES) return null;
+    return { type: "image", mimeType, data: data.toString("base64") };
+  } catch {
+    return null;
+  }
 }
 
 function errorMessage(error: unknown): string {

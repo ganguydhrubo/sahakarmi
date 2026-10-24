@@ -729,6 +729,18 @@ function RichMessageText(props: {
   return (
     <For each={parts()}>
       {(part) => {
+        if (part.image) {
+          return (
+            <img
+              class="message-inline-image"
+              src={part.image}
+              alt={part.text}
+              title={part.text}
+              loading="lazy"
+              decoding="async"
+            />
+          );
+        }
         if (part.url) {
           return (
             <a
@@ -780,7 +792,25 @@ interface RichMessagePart {
   text: string;
   bot?: BotProfile;
   url?: string;
+  image?: string;
   emphasis?: "strong" | "code";
+}
+
+/** Image sources a reply may show inline: web, Sahkarmi's attachment protocol, or a local file. */
+function inlineImageSource(raw: string): string | null {
+  const value = raw.trim();
+  if (/^https?:\/\//i.test(value) || value.startsWith("sahkarmi-attachment://")) return value;
+  const local = value.startsWith("file:///")
+    ? decodeURIComponent(value.slice("file:///".length))
+    : value;
+  if (/^([a-zA-Z]:[\\/]|\/)/.test(local) && /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(local)) {
+    const bytes = new TextEncoder().encode(local.replace(/\//g, "\\"));
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const id = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `sahkarmi-attachment://local/${id}`;
+  }
+  return null;
 }
 
 function richMessageParts(body: string, bots: BotProfile[]): RichMessagePart[] {
@@ -813,21 +843,28 @@ function emphasisParts(text: string): RichMessagePart[] {
 }
 
 function linkedMessageParts(body: string): RichMessagePart[] {
-  const expression = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()]+)/giu;
+  const expression =
+    /!\[([^\]\n]*)\]\(([^\s)]+)\)|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()]+)/giu;
   const parts: RichMessagePart[] = [];
   let cursor = 0;
   for (const match of body.matchAll(expression)) {
     const index = match.index ?? 0;
     if (index > cursor) parts.push({ text: body.slice(cursor, index) });
-    const markdownUrl = match[2];
-    const rawUrl = match[3];
+    if (match[2] !== undefined) {
+      const image = inlineImageSource(match[2]);
+      parts.push(image ? { text: match[1] ?? "", image } : { text: match[0] });
+      cursor = index + match[0].length;
+      continue;
+    }
+    const markdownUrl = match[4];
+    const rawUrl = match[5];
     const rawLink = markdownUrl ?? rawUrl ?? "";
     const cleanLink = rawLink.replace(/[.,!?;:]+$/u, "");
     const url = safeBrowserUrl(cleanLink);
     if (!url) {
       parts.push({ text: match[0] });
     } else {
-      parts.push({ text: match[1] ?? cleanLink, url });
+      parts.push({ text: match[3] ?? cleanLink, url });
       const trailingText = rawLink.slice(cleanLink.length);
       if (trailingText) parts.push({ text: trailingText });
     }
@@ -1080,6 +1117,7 @@ export function Conversation(props: ConversationProps) {
       waitingForApproval: props.waitingForApproval === true,
       outcome: props.turnOutcome ?? null,
       now: activityNow(),
+      sending: submitting(),
     }),
   );
   const [activeSince, setActiveSince] = createSignal<number | null>(null);

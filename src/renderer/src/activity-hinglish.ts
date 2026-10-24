@@ -7,6 +7,7 @@
 
 export type ActivityPhase =
   | "idle"
+  | "sending"
   | "queued"
   | "paused"
   | "initializing"
@@ -39,6 +40,7 @@ export type ActivityCategory =
 /** Primary line: names the real event. Shown immediately when the event happens. */
 export const PRIMARY: Record<ActivityPhase, string> = {
   idle: "",
+  sending: "Message bheja ja raha hai…",
   queued: "Request line mein hai…",
   paused: "Queue abhi ruki hui hai",
   initializing: "Request receive ho gayi…",
@@ -73,6 +75,7 @@ export const TOOL_PRIMARY: Record<ActivityCategory, string> = {
 /** Secondary lines rotate under the primary line. Each pool only says what that event implies. */
 export const SECONDARY: Record<ActivityPhase, string[]> = {
   idle: [],
+  sending: ["Ek second, request ja rahi hai…"],
   queued: [
     "Pehle wala kaam khatam hote hi shuru hoga…",
     "Request safe hai, line mein intezaar ho raha hai…",
