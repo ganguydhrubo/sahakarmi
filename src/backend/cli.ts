@@ -387,6 +387,12 @@ function posixFallbackPaths(command: string): string[] {
   return paths;
 }
 
+/**
+ * `--version` of a 200 MB single-file binary (OpenCode, Google's agent) can take well over
+ * 5 s on a cold or busy disk; a short timeout made a working runtime look "not installed".
+ */
+const CLI_VERSION_TIMEOUT_MS = 25_000;
+
 async function readCliVersion(candidate: string): Promise<string> {
   if (process.platform === "win32" && [".bat", ".cmd"].includes(extname(candidate).toLowerCase())) {
     const commandProcessor = process.env.ComSpec?.trim() || "cmd.exe";
@@ -395,7 +401,7 @@ async function readCliVersion(candidate: string): Promise<string> {
       commandProcessor,
       ["/d", "/s", "/c", `""${escapedCandidate}" --version"`],
       {
-        timeout: 5_000,
+        timeout: CLI_VERSION_TIMEOUT_MS,
         maxBuffer: 64 * 1024,
         windowsHide: true,
         windowsVerbatimArguments: true,
@@ -405,7 +411,7 @@ async function readCliVersion(candidate: string): Promise<string> {
   }
 
   const { stdout } = await execFileAsync(candidate, ["--version"], {
-    timeout: 5_000,
+    timeout: CLI_VERSION_TIMEOUT_MS,
     maxBuffer: 64 * 1024,
     windowsHide: process.platform === "win32",
   });

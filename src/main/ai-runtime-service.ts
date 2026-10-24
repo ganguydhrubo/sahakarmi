@@ -171,6 +171,8 @@ export class AiRuntimeService {
   };
   #listeners = new Set<(status: AiRuntimeStatus) => void>();
   #working = false;
+  /** The bundled runtime is installed on its own at most once per app session. */
+  #autoUpdatedOpenCode = false;
 
   constructor(options: AiRuntimeServiceOptions) {
     this.#options = options;
@@ -185,7 +187,14 @@ export class AiRuntimeService {
     return () => this.#listeners.delete(listener);
   }
 
-  async check(force = false): Promise<AiRuntimeStatus> {
+  /**
+   * Looks up the newest versions. Only the bundled OpenCode runtime is ever installed on its
+   * own (once per app session). The owner's own npm tools (Codex, Claude) are never touched
+   * without "Update now": an automatic `npm install -g` ran in a loop on computers where
+   * Sahkarmi uses a copy of the CLI that npm does not own (the version never changed, so every
+   * check installed again), and it broke the other npm shims while it ran.
+   */
+  async check(force = false, autoUpdate = true): Promise<AiRuntimeStatus> {
     if (this.#working) return this.getStatus();
     const lastCheck = this.#status.checkedAt ? Date.parse(this.#status.checkedAt) : 0;
     if (!force && lastCheck && Date.now() - lastCheck < 60_000) return this.getStatus();
@@ -230,7 +239,9 @@ export class AiRuntimeService {
           latest: release?.version ?? null,
           managed: true,
           command: tool.command,
-          note: hasUpdate ? "Will be updated automatically in the background." : null,
+          note: hasUpdate
+            ? `Click Update now to run ${tool.command ?? "npm install -g"}. Sahkarmi never changes your own tools by itself.`
+            : null,
         });
       }
 
@@ -248,7 +259,8 @@ export class AiRuntimeService {
         message: null,
         tools,
       });
-      shouldAutoUpdate = anyUpdate && this.#options.autoDownload();
+      shouldAutoUpdate =
+        autoUpdate && openCodeUpdate && !this.#autoUpdatedOpenCode && this.#options.autoDownload();
     } catch (error) {
       this.#setStatus({
         phase: "error",
@@ -260,10 +272,8 @@ export class AiRuntimeService {
       this.#working = false;
     }
     if (shouldAutoUpdate) {
-      if (openCodeUpdate) await this.update("opencode");
-      for (const toolId of npmUpdatesToRun) {
-        await this.update(toolId);
-      }
+      this.#autoUpdatedOpenCode = true;
+      await this.update("opencode");
     }
     return this.getStatus();
   }
@@ -291,7 +301,19 @@ export class AiRuntimeService {
       this.#working = false;
     }
     if (succeeded) {
-      await this.check(true);
+      // Re-read versions, but never chain another install from here.
+      await this.check(true, false);
+      const tool = this.#status.tools.find((entry) => entry.id === toolId);
+      if (
+        toolId !== "opencode" &&
+        tool?.installed &&
+        tool.latest &&
+        tool.installed !== tool.latest
+      ) {
+        this.#setStatus({
+          message: `npm installed ${tool.label} ${tool.latest}, but Sahkarmi runs the copy it found first (${tool.installed}). Update that copy the way it was installed, or remove it so the npm one is used.`,
+        });
+      }
     }
     return this.getStatus();
   }

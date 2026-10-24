@@ -10,6 +10,20 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.6.2": [
+    {
+      icon: "🛠️",
+      badge: "Fix",
+      title: "Your AI tools are left alone",
+      desc: "Sahkarmi no longer re-installs Claude Code or Codex in the background (that loop was breaking both). Only the built-in free runtime updates itself; Update now is still there for your own tools.",
+    },
+    {
+      icon: "⏱️",
+      badge: "Fix",
+      title: "OpenCode no longer shows Not installed",
+      desc: "A slow disk made the version check time out. It now waits long enough.",
+    },
+  ],
   "0.6.1": [
     {
       icon: "⏹️",
