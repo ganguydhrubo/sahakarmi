@@ -434,6 +434,14 @@ function selfTest() {
   });
   assert(mail.subject.startsWith("[Sahkarmi upstream] OpenBot v9.9.9 — CRITICAL"), mail.subject);
   assert(mail.html.includes("<li>") && mail.text.includes("All release notes"), "mail body");
+  assert(
+    mail.text.includes("Windows-relevant changes") && report.includes("Windows-relevant"),
+    "windows",
+  );
+  assert(
+    criticalFlags("- Let the Windows installer choose the install disk").includes("windows"),
+    "win flag",
+  );
   assert(!mail.html.includes("<script"), "html safe");
   log("self-test passed");
 }
