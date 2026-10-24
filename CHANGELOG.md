@@ -4,7 +4,9 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
-## [0.7.0] - 2026-10-24
+## [0.7.1] - 2026-10-24
+
+(0.7.0 was tagged but its Windows build did not publish; 0.7.1 is the same release.)
 
 ### Added
 
