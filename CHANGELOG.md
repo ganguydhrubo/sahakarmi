@@ -4,6 +4,19 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.6.2] - 2026-10-24
+
+### Fixed
+
+- "AI updates" ran `npm install -g` for Claude Code and Codex again and again (hundreds of
+  times a day) on computers where Sahkarmi uses a copy of the CLI that npm does not own, which
+  also broke the npm shims while it ran: Codex showed "could not be started" and Claude asked
+  to sign in. Sahkarmi now never changes your own tools by itself; only the bundled OpenCode
+  runtime updates on its own, once per app session. "Update now" still runs the install for
+  you and then says which copy Sahkarmi actually uses.
+- OpenCode (and Google's agent) showed "Not installed" on a busy or cold disk because
+  `--version` of the 200 MB binary took longer than the 5-second limit. The limit is 25 s.
+
 ## [0.6.1] - 2026-10-24
 
 ### Fixed
