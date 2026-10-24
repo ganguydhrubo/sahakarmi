@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { createWriteStream } from "node:fs";
 import { cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { AgentProviderId, ProviderSetupState } from "../shared/ipc";
@@ -517,10 +517,16 @@ async function saveKeyFile(directory: string, fileName: string, key: string): Pr
   }
 }
 
+/** Relative paths from the archive's folder: GNU tar on Windows treats "C:\..." as a host name. */
 function extract(archive: string, directory: string): Promise<void> {
+  const cwd = dirname(archive);
   return new Promise((resolvePromise, reject) => {
-    execFile("tar", ["-xzf", archive, "-C", directory], { windowsHide: true }, (error) =>
-      error ? reject(new Error(`Could not unpack Codex: ${error.message}`)) : resolvePromise(),
+    execFile(
+      "tar",
+      ["-xzf", basename(archive), "-C", relative(cwd, directory) || "."],
+      { cwd, windowsHide: true },
+      (error) =>
+        error ? reject(new Error(`Could not unpack Codex: ${error.message}`)) : resolvePromise(),
     );
   });
 }

@@ -169,6 +169,49 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     );
   });
 
+  it("keeps a stopped answer out of the next turn and resumes the queue on the owner's next message", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+    await service.initialize();
+    await service.sendMessage({ botId: "meera-support", text: "keep talking" });
+    await waitFor(async () =>
+      (await service?.readConversation("meera-support"))?.messages.some((message) =>
+        message.text.includes("stale"),
+      ),
+    );
+    const running = await service.readConversation("meera-support");
+    expect(running.activeTurnId).toBeTruthy();
+    await service.interrupt("meera-support", running.activeTurnId as string);
+    await waitFor(() => service?.listQueue("meera-support").paused === true);
+    // Stop paused the queue; the owner's next message is the "go on" and must not sit queued.
+    await service.sendMessage({ botId: "meera-support", text: "Hello again" });
+    expect(service.listQueue("meera-support").paused).toBe(false);
+    await waitFor(() =>
+      service
+        ?.listQueue("meera-support")
+        .deliveries.every(
+          (delivery) =>
+            delivery.status !== "queued" &&
+            delivery.status !== "running" &&
+            delivery.status !== "starting",
+        ),
+    );
+    const conversation = await service.readConversation("meera-support");
+    const replies = conversation.messages.filter(
+      (message) =>
+        message.author === "assistant" &&
+        message.itemType !== "toolCall" &&
+        message.itemType !== "commentary",
+    );
+    // The stopped turn shows what it had said so far; the new turn carries only its own answer.
+    expect(replies.at(-1)?.text).toBe("Namaste! Done.");
+    expect(replies.at(-1)?.text).not.toContain("stale");
+    expect(
+      service.listQueue("meera-support").deliveries.map((delivery) => delivery.status),
+    ).toEqual(["interrupted", "completed"]);
+  });
+
   it("keeps the conversation after a restart from Sahkarmi's own transcript", async () => {
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
@@ -333,6 +376,7 @@ let buffer = "";
 let mcp = null;
 let nextId = 1000;
 const waiting = new Map();
+const cancellable = new Map();
 const update = (sessionId, update) => write({ method: "session/update", params: { sessionId, update } });
 async function mcpCall(method, params) {
   const response = await fetch(mcp.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params }) });
@@ -348,10 +392,20 @@ async function handle(message) {
     return write({ id, result: { sessionId: "ses_" + Date.now(), configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "anthropic/x", name: "X" }] }] } });
   }
   if (method === "session/set_config_option") return write({ id, result: {} });
-  if (method === "session/cancel") return;
+  if (method === "session/cancel") { const pending = cancellable.get(params.sessionId); cancellable.delete(params.sessionId); pending?.(); return; }
   if (method === "session/prompt") {
     const text = params.prompt.map((part) => part.text || "").join(" ");
     const sessionId = params.sessionId;
+    if (text.includes("keep talking")) {
+      let answered = false;
+      const answer = (stopReason) => { if (answered) return; answered = true; write({ id, result: { stopReason } }); };
+      cancellable.set(sessionId, () => answer("cancelled"));
+      for (let index = 0; index < 40; index += 1) {
+        setTimeout(() => update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "stale " } }), 30 * index);
+      }
+      setTimeout(() => answer("end_turn"), 30 * 41);
+      return;
+    }
     update(sessionId, { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thinking about it" } });
     update(sessionId, { sessionUpdate: "tool_call", toolCallId: "t1", title: "Read invoices.csv", kind: "read", status: "pending", rawInput: { path: "invoices.csv" } });
     const permission = await new Promise((resolve) => { const reqId = nextId++; waiting.set(reqId, resolve); write({ id: reqId, method: "session/request_permission", params: { sessionId, toolCall: { toolCallId: "t1", kind: "read", title: "Read invoices.csv", locations: [{ path: "invoices.csv" }] }, options: [{ optionId: "deny", kind: "reject_once", name: "No" }, { optionId: "once", kind: "allow_once", name: "Yes" }, { optionId: "always", kind: "allow_always", name: "Always" }] } }); });

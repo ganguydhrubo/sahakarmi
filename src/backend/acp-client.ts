@@ -82,7 +82,18 @@ interface AcpSession {
   modelOptions: AcpModelOption[];
   activeTurn: ActiveTurn | null;
   mcpToken: string;
+  /**
+   * Set when a turn was cancelled: OpenCode answers session/prompt with "cancelled" at once but
+   * keeps streaming the old answer, and those chunks would land in the next turn's bubble. The
+   * next turn waits until the session has been quiet for a moment.
+   */
+  drainingSince: number | null;
+  lastStaleUpdateAt: number;
 }
+
+/** How long a cancelled session must stay silent before the next turn starts, and the cap. */
+const STALE_QUIET_MS = 1_500;
+const STALE_DRAIN_MAX_MS = 120_000;
 
 interface DynamicNamespace {
   name: string;
@@ -386,6 +397,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       modelOptions: readModelOptions(result),
       activeTurn: null,
       mcpToken,
+      drainingSince: null,
+      lastStaleUpdateAt: 0,
     };
     this.#sessions.set(threadId, session);
     await this.#applyModel(session, getString(params, "model"));
@@ -428,6 +441,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const session = this.#requireSession(requiredString(params, "threadId"));
     if (session.activeTurn)
       throw new Error(`The ${this.#config.label} session already has an active turn.`);
+    await this.#awaitStaleStream(session);
     await this.#applyModel(session, getString(params, "model"));
 
     const clientId = getString(params, "clientUserMessageId");
@@ -469,9 +483,28 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     return { turn: { id: turnId, status: "inProgress" } };
   }
 
+  /** Waits for a cancelled answer to stop streaming (see AcpSession.drainingSince). */
+  async #awaitStaleStream(session: AcpSession): Promise<void> {
+    while (session.drainingSince !== null) {
+      const now = Date.now();
+      if (
+        now - session.lastStaleUpdateAt >= STALE_QUIET_MS ||
+        now - session.drainingSince >= STALE_DRAIN_MAX_MS
+      ) {
+        session.drainingSince = null;
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
   #finishTurn(session: AcpSession, turn: ActiveTurn, status: string, error: unknown): void {
     if (session.activeTurn !== turn) return;
     session.activeTurn = null;
+    if (status === "interrupted") {
+      session.drainingSince = Date.now();
+      session.lastStaleUpdateAt = Date.now();
+    }
     const threadId = session.threadId;
     for (const tool of turn.tools.values()) {
       if (tool.status === "inProgress") {
@@ -492,12 +525,16 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         true,
       );
     }
-    this.#emitItem(
-      threadId,
-      turn.id,
-      { id: turn.itemId, type: "agentMessage", text: stripLeakedToolCalls(turn.text) },
-      true,
-    );
+    const finalText = stripLeakedToolCalls(turn.text);
+    // A stopped or failed turn with nothing said leaves no empty bubble behind.
+    if (finalText.trim() || status === "completed") {
+      this.#emitItem(
+        threadId,
+        turn.id,
+        { id: turn.itemId, type: "agentMessage", text: finalText },
+        true,
+      );
+    }
     if (status === "failed" && error) {
       this.emit("notification", {
         method: "error",
@@ -523,6 +560,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       return;
     }
     const turn = session?.activeTurn;
+    if (session && !turn && session.drainingSince !== null) {
+      // The cancelled answer is still streaming; note it so the next turn keeps waiting.
+      session.lastStaleUpdateAt = Date.now();
+      return;
+    }
     // Updates outside a turn are history replays from session/load; Sahkarmi keeps its own.
     if (!session || !turn) return;
 

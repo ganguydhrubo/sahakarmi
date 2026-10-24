@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
@@ -408,8 +408,14 @@ async function readBinaryVersion(binary: string): Promise<string | null> {
   }
 }
 
+/**
+ * Runs tar from the tarball's folder with relative paths: GNU tar (first on PATH when Git is
+ * installed on Windows) reads an absolute "C:\..." path as a remote host and fails.
+ */
 async function extractTarball(tarball: string, destination: string): Promise<void> {
-  await execFileAsync("tar", ["-xzf", tarball, "-C", destination], {
+  const cwd = dirname(tarball);
+  await execFileAsync("tar", ["-xzf", basename(tarball), "-C", relative(cwd, destination) || "."], {
+    cwd,
     timeout: 120_000,
     windowsHide: true,
   });

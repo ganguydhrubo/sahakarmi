@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "../shared/ipc";
-import { AgentService } from "./agent-service";
+import { AgentService, isNoisyDiagnostic, previewText, quotaNotice } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
@@ -1387,3 +1387,45 @@ fi
   }
   return executable;
 }
+
+describe("sidebar previews", () => {
+  it("show the first line of a reply as plain text", () => {
+    expect(previewText("# Monsoon Farming: The Rhythm of Rain\n\nIn India...")).toBe(
+      "Monsoon Farming: The Rhythm of Rain",
+    );
+    expect(previewText("**Example Domain** — page heading (h1/title) of `example.com`.")).toBe(
+      "Example Domain — page heading (h1/title) of example.com.",
+    );
+    expect(previewText("```python\nprint(1)\n```\n- first *point* [link](https://x.y)")).toBe(
+      "first point link",
+    );
+    expect(previewText("   ")).toBe("");
+  });
+});
+
+describe("Google Antigravity diagnostics", () => {
+  it("turn a used-up quota into a sentence with the reset time", () => {
+    const stderr =
+      "harness stderr: received model response error: Error 429, Message: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 9h54m20s., Status: RESOURCE_EXHAUSTED";
+    expect(quotaNotice("antigravity", stderr)).toBe(
+      "Google Antigravity's quota for your account is used up; it resets in 9h54m20s. Switch this coworker to the free model for now, or wait.",
+    );
+    expect(
+      quotaNotice("antigravity", "System step error (HTTP 429): terminated. Error 429"),
+    ).toContain("rate-limited");
+    expect(quotaNotice("opencode", stderr)).toBeNull();
+  });
+
+  it("drop the harness start-up chatter but keep real failures", () => {
+    expect(
+      isNoisyDiagnostic(
+        "antigravity",
+        "I1024 00:05:59.296922 17628 local_connection.py:553] harness stderr: ERROR: logging before google.Init: E1024 filesystem_provider.go:583] Cannot resolve relative skills directory",
+      ),
+    ).toBe(true);
+    expect(
+      isNoisyDiagnostic("antigravity", "Antigravity SDK error processing prompt for session x"),
+    ).toBe(false);
+    expect(isNoisyDiagnostic("opencode", "logging before google.Init")).toBe(false);
+  });
+});

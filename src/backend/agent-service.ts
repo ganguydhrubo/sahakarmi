@@ -229,6 +229,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #computerUsePrerequisites: (() => ComputerUsePrerequisites) | null;
   readonly #requestTimeoutMs: number;
   readonly #snapshots = new Map<string, ConversationSnapshot>();
+  /** Last time a quota notice went to each coworker's chat (one per turn is plenty). */
+  readonly #quotaNoticeAt = new Map<string, number>();
   readonly #threadToBot = new Map<string, string>();
   readonly #loadedThreads = new Set<string>();
   readonly #pendingPrompts = new Map<RequestId, PendingPrompt>();
@@ -770,6 +772,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   async sendMessage(input: SendMessageInput): Promise<QueuedMessageReceipt> {
     const bot = await this.#store.getOrCreate(input.botId);
     await this.ensureProvider(providerForBot(bot));
+    // Stop pauses the queue so nothing else starts behind the owner's back; a new message from
+    // the owner is the clearest "go on" there is, so it resumes the queue instead of waiting.
+    if (this.#mailbox.listQueue(bot.id).paused) await this.#mailbox.setPaused(bot.id, false);
     const receipt = await this.#mailbox.enqueue({
       sender: { kind: "user" },
       recipientBotIds: [bot.id],
@@ -1016,6 +1021,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     client.on("notification", (notification) => this.#handleNotification(notification));
     client.on("request", (request) => void this.#handleServerRequest(client, request));
     client.on("diagnostic", (message) => {
+      const quota = quotaNotice(client.provider, message);
+      if (quota) {
+        const now = Date.now();
+        for (const botId of this.#botsWorkingOn(client.provider)) {
+          if (now - (this.#quotaNoticeAt.get(botId) ?? 0) < QUOTA_NOTICE_INTERVAL_MS) continue;
+          this.#quotaNoticeAt.set(botId, now);
+          this.#emitError("provider_quota", quota, botId);
+        }
+        return;
+      }
+      if (isNoisyDiagnostic(client.provider, message)) return;
       if (/error|failed|warning/i.test(message)) {
         this.#emitError(`${client.provider}_diagnostic`, message);
       }
@@ -2325,8 +2341,22 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       }
     }
     if (latestAssistant) {
-      await this.#store.updatePreview(botId, latestAssistant.text);
+      await this.#store.updatePreview(botId, previewText(latestAssistant.text));
       this.#emit({ type: "bots-changed", bots: this.#store.list() });
+    } else if (
+      status === "completed" &&
+      !snapshot.messages.some(
+        (message) => message.author === "assistant" && message.turnId === turnId,
+      )
+    ) {
+      // Google's server answers a quota error with an "ok" and no text; a blank is not an answer.
+      const bot = this.#store.list().find((candidate) => candidate.id === botId);
+      const label = bot ? PROVIDER_LABELS[providerForBot(bot)] : "The AI";
+      this.#emitError(
+        "empty_reply",
+        `${label} sent back an empty reply. Try again, or switch this coworker to another model.`,
+        botId,
+      );
     }
     this.#emit({ type: "turn-completed", botId, threadId, turnId, status });
     this.#emitConversation(snapshot);
@@ -2698,6 +2728,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#lastConversationSignatures.set(snapshot.botId, signature);
     snapshot.revision += 1;
     this.#emit({ type: "conversation", snapshot: structuredClone(snapshot) });
+  }
+
+  /** Coworkers with a turn running on this provider: who a provider-wide notice belongs to. */
+  #botsWorkingOn(provider: AgentProvider): string[] {
+    const result: string[] = [];
+    for (const [botId, snapshot] of this.#snapshots) {
+      if (!snapshot.activeTurnId) continue;
+      const bot = this.#store.list().find((candidate) => candidate.id === botId);
+      if (bot && providerForBot(bot) === provider) result.push(botId);
+    }
+    return result;
   }
 
   #emitError(code: string, error: unknown, botId?: string): void {
@@ -3127,4 +3168,59 @@ function codexLimitWindows(usage: AccountUsage): UsageLimitWindow[] {
     }
   }
   return windows;
+}
+
+/** First line of a reply as plain text: markdown marks read badly in the one-line sidebar preview. */
+export function previewText(markdown: string): string {
+  let inFence = false;
+  let line = "";
+  for (const raw of markdown.split("\n")) {
+    const candidate = raw.trim();
+    if (candidate.startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || !candidate || /^(---|\|[-\s|:]+\|)$/.test(candidate)) continue;
+    line = candidate;
+    break;
+  }
+  return line
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^[-*+]\s+|^\d+\.\s+|^>\s*/, "")
+    .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, "$1$2")
+    .replace(/(^|[^*\w])\*([^*\n]+)\*/g, "$1$2")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const QUOTA_NOTICE_INTERVAL_MS = 30_000;
+
+/**
+ * Google's Antigravity server reports a used-up quota only on stderr ("Error 429 ... Individual
+ * quota reached ... Resets in 9h54m20s") and then ends the turn with an empty answer. Turn that
+ * into a sentence the owner can act on.
+ */
+export function quotaNotice(provider: AgentProvider, message: string): string | null {
+  if (provider !== "antigravity") return null;
+  const quota =
+    /Individual quota reached[^\n]*?Resets in ([0-9]+h[0-9]+m[0-9]*s?|[0-9]+m[0-9]*s?|[0-9]+s)/i.exec(
+      message,
+    );
+  if (quota) {
+    return `Google Antigravity's quota for your account is used up; it resets in ${quota[1]}. Switch this coworker to the free model for now, or wait.`;
+  }
+  if (/Error 429|RESOURCE_EXHAUSTED/.test(message)) {
+    return "Google Antigravity is rate-limited right now (HTTP 429). Try again in a minute, or switch this coworker to the free model.";
+  }
+  return null;
+}
+
+/** Google's harness logs pages of startup chatter at ERROR level that mean nothing to the owner. */
+export function isNoisyDiagnostic(provider: AgentProvider, message: string): boolean {
+  if (provider !== "antigravity") return false;
+  return /logging before google\.Init|filesystem_provider\.go|mcp_servers\.py|encoder_embed\.go|harness stderr: I\d{4}|Failed to load\/parse MCP config/.test(
+    message,
+  );
 }

@@ -4,6 +4,24 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.6.1] - 2026-10-24
+
+### Fixed
+
+- Stopping a coworker no longer lets the stopped answer stream into the next turn (OpenCode keeps
+  talking after a cancel; the next turn now waits until that stream has gone quiet), and a stopped
+  turn with nothing said leaves no empty bubble.
+- A new message from the owner resumes a queue that Stop had paused, instead of sitting at
+  "Queued #1" until Resume was found.
+- AI tool updates (bundled OpenCode, Codex) failed on Windows with "tar: Cannot connect to C:"
+  when Git's tar was first on PATH. Extraction now runs with relative paths.
+- Google Antigravity: a used-up quota (HTTP 429) used to end the turn with a blank reply and pages
+  of harness chatter in the log. The coworker's chat now says the quota is used up and when it
+  resets, and start-up chatter stays out of the log. Any provider that ends a turn with nothing
+  said now gets a visible "empty reply" note.
+- Sidebar previews show plain text instead of raw markdown marks.
+- What's New shows this release's real changes (and nothing for versions without an entry).
+
 ## [0.6.0] - 2026-10-23
 
 ### Changed

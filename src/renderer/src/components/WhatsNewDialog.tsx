@@ -8,38 +8,49 @@ export interface WhatsNewFeature {
   icon: string;
 }
 
-const RELEASE_FEATURES: WhatsNewFeature[] = [
-  {
-    icon: "⚡",
-    badge: "Engine",
-    title: "Adaptive Multi-Agent DAG",
-    desc: "Single-agent fast path routing for small requests and full dynamic specialist teams for complex projects with live graph visualizer.",
-  },
-  {
-    icon: "👥",
-    badge: "Coworkers",
-    title: "Autonomous Dev Team Assembly",
-    desc: "AI Coworkers can now autonomously assemble and configure specialist coworkers (Frontend, Backend, QA, DevOps) on user request.",
-  },
-  {
-    icon: "🧠",
-    badge: "Memory",
-    title: "Persistent Coworker Memory ('Smriti')",
-    desc: "Coworkers now recall key project decisions, architectural standards, and user preferences across conversation threads.",
-  },
-  {
-    icon: "🛰️",
-    badge: "Platform",
-    title: "Automated Upstream Radar",
-    desc: "Continuous tracking of upstream OpenBot & OpenBots innovations cleanly implemented natively for Sahkarmi.",
-  },
-  {
-    icon: "🏎️",
-    badge: "Performance",
-    title: "Zero-Lag Idle CPU Polish",
-    desc: "Background polling and UI loops optimized for ultra-smooth responsiveness and lightweight memory footprint.",
-  },
-];
+/** One entry per release that is worth a dialog; versions without one show nothing. */
+const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.6.1": [
+    {
+      icon: "⏹️",
+      badge: "Coworkers",
+      title: "Stop really stops",
+      desc: "Stopping a coworker no longer lets the old answer leak into the next one, and your next message starts straight away instead of waiting behind a paused queue.",
+    },
+    {
+      icon: "🔄",
+      badge: "Updates",
+      title: "AI tool updates work on Windows",
+      desc: "OpenCode and Codex updates no longer fail with a tar error when Git is installed.",
+    },
+    {
+      icon: "🅖",
+      badge: "Google Antigravity",
+      title: "Clear message when Google's quota is over",
+      desc: "Instead of a silent blank reply, the chat tells you the quota is used up and when it resets, so you can switch that coworker to the free model.",
+    },
+  ],
+  "0.6.0": [
+    {
+      icon: "🅖",
+      badge: "Google Antigravity",
+      title: "One-click Google sign-in",
+      desc: "Connect downloads Google's own Antigravity agent and opens the Google sign-in page in your browser, the same way Claude and Codex connect. No terminal window.",
+    },
+    {
+      icon: "🔑",
+      badge: "Google Antigravity",
+      title: "API key also works",
+      desc: "Paste a Google AI Studio key in Settings if you prefer not to sign in.",
+    },
+    {
+      icon: "🧹",
+      badge: "Removed",
+      title: "Gemini CLI retired",
+      desc: "Google moved individual use to Antigravity. Coworkers that used a Gemini model now use the free model; switch them to Google Antigravity when you are signed in.",
+    },
+  ],
+};
 
 export function WhatsNewDialog(props: {
   version: string;
@@ -55,7 +66,7 @@ export function WhatsNewDialog(props: {
       return;
     }
     const seen = localStorage.getItem(storageKey);
-    if (!seen || seen !== props.version) {
+    if (seen !== props.version && RELEASE_FEATURES[props.version]) {
       setOpen(true);
     }
   });
@@ -94,7 +105,7 @@ export function WhatsNewDialog(props: {
           </div>
 
           <div class="py-4 space-y-3 overflow-y-auto pr-1 flex-1">
-            {RELEASE_FEATURES.map((item) => (
+            {(RELEASE_FEATURES[props.version] ?? []).map((item) => (
               <div class="bg-[#1F2333] border border-[#2B3044] rounded-xl p-3 flex gap-3 items-start hover:border-amber-500/40 transition-colors">
                 <span class="text-xl p-1.5 bg-[#181B26] rounded-lg border border-[#2B3044] flex-shrink-0">
                   {item.icon}
