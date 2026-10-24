@@ -9,6 +9,7 @@
 ## Radar log (v2)
 
 <!-- radar-v2-log -->
+- 2026-10-24 · [v0.49.0](https://github.com/nightly-labs/openbot/releases/tag/v0.49.0) · PolyForm Noncommercial 1.0.0 · **CRITICAL** (provider) · 37 candidates · [report](reports/v0.49.0.md) · [issue](https://github.com/ganguydhrubo/sahakarmi/issues/29)
 
 ---
 
