@@ -382,7 +382,13 @@ export class AiRuntimeService {
         message: `OpenCode ${release.version} is ready. Restart Sahkarmi to use it.`,
       });
     } finally {
-      rmSync(work, { recursive: true, force: true });
+      // Windows can still hold the extracted files for a moment (antivirus, the version probe);
+      // a leftover temp folder must not turn a finished update into "Could not update".
+      try {
+        rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      } catch (error) {
+        this.#options.log("warn", `Temporary update folder not removed: ${reasonOf(error)}`);
+      }
     }
   }
 
