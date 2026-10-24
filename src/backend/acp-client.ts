@@ -630,13 +630,17 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         params: { threadId, turnId: turn.id, message: errorMessage(error) },
       });
     }
-    this.emit("notification", {
-      method: "turn/completed",
-      params: { threadId, turn: { id: turn.id, status } },
+    // Save the turn to Sahkarmi's transcript before announcing it as finished: a thread read
+    // right after completion (the renderer refreshes then) must already contain this answer.
+    const announce = () =>
+      this.emit("notification", {
+        method: "turn/completed",
+        params: { threadId, turn: { id: turn.id, status } },
+      });
+    void this.#appendTranscript(session, turn, status).then(announce, (cause) => {
+      this.emit("diagnostic", `${this.#config.label}: transcript not saved (${String(cause)})`);
+      announce();
     });
-    void this.#appendTranscript(session, turn, status).catch((cause) =>
-      this.emit("diagnostic", `${this.#config.label}: transcript not saved (${String(cause)})`),
-    );
   }
 
   #handleSessionUpdate(params: unknown): void {
