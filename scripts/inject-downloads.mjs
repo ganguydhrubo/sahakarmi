@@ -13,7 +13,9 @@ import { fileURLToPath } from "node:url";
 
 const REPO = process.env.GITHUB_REPOSITORY || "ganguydhrubo/sahakarmi";
 const file = join(dirname(fileURLToPath(import.meta.url)), "..", "website", "index.html");
-const PATTERNS = { win: /-x64\.exe$/i, mac: /-arm64\.dmg$/i, linux: /\.AppImage$/i };
+// Windows only for now: the macOS and Linux builds are paused (release.yml, RELEASE_ALL_PLATFORMS).
+// When they return, add back  mac: /-arm64\.dmg$/i, linux: /\.AppImage$/i  and the site cards.
+const PATTERNS = { win: /-x64\.exe$/i };
 
 async function releases() {
   const headers = { accept: "application/vnd.github+json", "user-agent": "sahkarmi-site" };

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Sahkarmi — open-source AI coworkers for your own computer</title>
-  <meta name="description" content="Free, open-source desktop app for Windows, macOS and Linux: a team of AI coworkers with their own browser, memory and approvals. Local-first. English, Hindi, Bengali." />
+  <meta name="description" content="Free, open-source desktop app for Windows: a team of AI coworkers with their own browser, memory and approvals. Local-first. English, Hindi, Bengali." />
   <link rel="canonical" href="https://sahkarmi.site/" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <meta name="theme-color" content="#0F1220" />
@@ -20,7 +20,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://sahkarmi.site/" />
   <meta property="og:title" content="Sahkarmi — open-source AI coworkers for your own computer" />
-  <meta property="og:description" content="A free desktop app with a team of AI coworkers that work on your PC, each with its own browser, and ask you before they pay, send or post. Windows, macOS and Linux." />
+  <meta property="og:description" content="A free desktop app with a team of AI coworkers that work on your PC, each with its own browser, and ask you before they pay, send or post. Windows 10 and 11; macOS and Linux later." />
   <meta property="og:locale" content="en_IN" />
   <meta property="og:locale:alternate" content="hi_IN" />
   <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
@@ -86,7 +86,7 @@
         "name": "Sahkarmi",
         "alternateName": "सहकर्मी",
         "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Windows 10, Windows 11, macOS 12+ (Apple silicon), Linux x64",
+        "operatingSystem": "Windows 10, Windows 11",
         "softwareVersion": "0.7.1",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "isAccessibleForFree": true,
@@ -120,7 +120,7 @@
           {
             "@type": "Question",
             "name": "Which computers does it run on?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Windows 10 and 11 (64-bit) is the main build and the one the project tests. A macOS build for Apple silicon (macOS 12 or newer) and a Linux x64 AppImage are built in CI and published on GitHub Releases, but are not tested on real hardware for every release." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Windows 10 and 11 (64-bit). That is the build the project releases and tests. macOS and Linux builds are paused for now and will be published once they have been tested on real hardware; watch the GitHub repository for the announcement." }
           },
           {
             "@type": "Question",
@@ -473,7 +473,7 @@
             </a>
             <a class="btn btn-secondary" href="#see" data-i18n="watch">See it working</a>
           </div>
-          <p class="cta-meta"><span id="dl-meta" data-i18n="dlMeta">Free. No account, no card. 64-bit Windows 10 or 11.</span> <a href="#download" data-i18n="otherOs">Other systems</a> · <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer" data-i18n="source">Source code</a></p>
+          <p class="cta-meta"><span id="dl-meta" data-i18n="dlMeta">Free. No account, no card. 64-bit Windows 10 or 11.</span> <a href="#download" data-i18n="otherOs">macOS or Linux?</a> · <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer" data-i18n="source">Source code</a></p>
           <ul class="proof">
             <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--saffron-ink)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i18n="p1">Runs on your PC, data stays local</span></li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--turmeric)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="m9 12 2 2 4-4"/></svg><span data-i18n="p2">Asks before it pays or sends</span></li>
@@ -685,7 +685,7 @@
       <div class="wrap">
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="dlEyebrow">Download</p>
-          <h2 id="dl-h" data-i18n="dlH2">Choose your operating system</h2>
+          <h2 id="dl-h" data-i18n="dlH2">Download for Windows</h2>
           <p class="lead"><span data-i18n="dlLead">Every file is built by GitHub Actions from the public source, with SHA-256 checksums and a provenance attestation on the release page. Current version:</span> <strong data-release-version>0.7.1</strong></p>
         </div>
         <div class="dl-grid reveal">
@@ -696,19 +696,12 @@
             <a class="btn btn-primary" data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe"><span data-i18n="winBtn">Download .exe</span></a>
             <small><a href="/install.html#windows" data-i18n="winHelp">Windows install and first-launch steps</a></small>
           </div>
-          <div class="dl-card" id="card-mac">
-            <div class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.978 4.45z"/></svg><h3>macOS</h3></div>
-            <span class="status built" data-i18n="stMac">Built in CI, not tested on real hardware</span>
-            <p><span data-i18n="macP">Apple silicon (M1 or newer), macOS 12 or later. If macOS blocks the first launch, right-click Sahkarmi in Applications and choose Open. Intel Macs are not supported.</span> <span class="size">(<span data-release-size="mac">254 MB</span>)</span></p>
-            <a class="btn btn-secondary" data-platform-tile="mac" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-arm64.dmg"><span data-i18n="macBtn">Download .dmg</span></a>
-            <small><a href="/install.html#macos" data-i18n="macHelp">macOS install steps</a></small>
-          </div>
-          <div class="dl-card" id="card-linux">
-            <div class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M2 19h20M8 9l3 3-3 3M13 15h3"/></svg><h3>Linux</h3></div>
-            <span class="status built" data-i18n="stLinux">Built in CI, not tested on real hardware</span>
-            <p><span data-i18n="linuxP">x86-64 AppImage. Make it executable and run it; no package installation needed. Needs a desktop session (X11 or Wayland) and FUSE for AppImages.</span> <span class="size">(<span data-release-size="linux">381 MB</span>)</span></p>
-            <a class="btn btn-secondary" data-platform-tile="linux" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x86_64.AppImage"><span data-i18n="linuxBtn">Download .AppImage</span></a>
-            <small><a href="/install.html#linux" data-i18n="linuxHelp">Linux install steps</a></small>
+          <div class="dl-card" id="card-later">
+            <div class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><h3 data-i18n="laterH3">macOS and Linux</h3></div>
+            <span class="status none" data-i18n="stLater">Coming later</span>
+            <p data-i18n="laterP">Sahkarmi launches on Windows first. macOS and Linux builds are paused until they have been tested on real hardware, so nothing is offered for download for those systems yet. The source builds on all three.</p>
+            <a class="btn btn-secondary" href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer"><span data-i18n="laterBtn">Watch the repository for news</span></a>
+            <small><a href="/install.html#terminal" data-i18n="laterHelp">Build from source on any system</a></small>
           </div>
         </div>
         <div class="dl-help reveal">
@@ -720,8 +713,6 @@
         <p class="note" data-i18n="dlNote">A Windows Package Manager (winget) manifest has been submitted and is waiting for Microsoft's review; until it is accepted, use the installer above.</p>
         <p class="platforms sr-only">
           <a data-platform="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">Windows installer</a>
-          <a data-platform="mac" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-arm64.dmg">macOS disk image</a>
-          <a data-platform="linux" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x86_64.AppImage">Linux AppImage</a>
         </p>
       </div>
     </section>
@@ -759,7 +750,7 @@
           </details>
           <details>
             <summary data-i18n="q2">Which computers does it run on?</summary>
-            <p data-i18n="a2">Windows 10 and 11 (64-bit) is the main build and the one the project tests. A macOS build for Apple silicon (macOS 12 or newer) and a Linux x64 AppImage are built in CI and published on GitHub Releases, but are not tested on real hardware for every release.</p>
+            <p data-i18n="a2">Windows 10 and 11 (64-bit). That is the build the project releases and tests. macOS and Linux builds are paused for now and will be published once they have been tested on real hardware; watch the GitHub repository for the announcement.</p>
           </details>
           <details>
             <summary data-i18n="q3">Can a coworker pay, send or post without me?</summary>
@@ -862,15 +853,13 @@
         h1b: "on your own computer.",
         lead: "Sahkarmi is a free desktop app. Each coworker has its own workspace, memory, task queue and browser, works in the AI of your choice, and asks you before it pays, sends or posts. Made in India, for anyone.",
         download: "Download for Windows",
-        downloadMac: "Download for Mac",
-        downloadLinux: "Download for Linux",
+        downloadOther: "Windows only, for now",
         downloadAny: "Download",
         watch: "See it working",
         dlMeta: "Free. No account, no card. 64-bit Windows 10 or 11.",
-        dlMetaMac: "Free. No account, no card. Apple silicon, macOS 12 or later.",
-        dlMetaLinux: "Free. No account, no card. x86-64 AppImage.",
-        dlMetaMobile: "Free desktop app for Windows, macOS and Linux. Open this page on your computer to install.",
-        otherOs: "Other systems",
+        dlMetaOther: "Free. No account, no card. Windows 10 or 11 today; macOS and Linux builds come later.",
+        dlMetaMobile: "Free desktop app for Windows 10 and 11. Open this page on your Windows PC to install.",
+        otherOs: "macOS or Linux?",
         source: "Source code",
         p1: "Runs on your PC, data stays local",
         p2: "Asks before it pays or sends",
@@ -999,20 +988,17 @@
         pGemC: "Your Google plan",
         aiNote: "Paid plans are billed by those providers, not by Sahkarmi. Sahkarmi has no pricing, no account and no subscription.",
         dlEyebrow: "Download",
-        dlH2: "Choose your operating system",
+        dlH2: "Download for Windows",
         dlLead: "Every file is built by GitHub Actions from the public source, with SHA-256 checksums and a provenance attestation on the release page. Current version:",
         stWin: "Built and tested by the project",
         winP: "Windows 10 or 11, 64-bit. SmartScreen will warn because the installer is not code-signed yet: choose More info, then Run anyway.",
         winBtn: "Download .exe",
         winHelp: "Windows install and first-launch steps",
-        stMac: "Built in CI, not tested on real hardware",
-        macP: "Apple silicon (M1 or newer), macOS 12 or later. If macOS blocks the first launch, right-click Sahkarmi in Applications and choose Open. Intel Macs are not supported.",
-        macBtn: "Download .dmg",
-        macHelp: "macOS install steps",
-        stLinux: "Built in CI, not tested on real hardware",
-        linuxP: "x86-64 AppImage. Make it executable and run it; no package installation needed. Needs a desktop session (X11 or Wayland) and FUSE for AppImages.",
-        linuxBtn: "Download .AppImage",
-        linuxHelp: "Linux install steps",
+        laterH3: "macOS and Linux",
+        stLater: "Coming later",
+        laterP: "Sahkarmi launches on Windows first. macOS and Linux builds are paused until they have been tested on real hardware, so nothing is offered for download for those systems yet. The source builds on all three.",
+        laterBtn: "Watch the repository for news",
+        laterHelp: "Build from source on any system",
         allReleases: "All releases and checksums on GitHub",
         verifyLink: "Verify your download",
         terminalLink: "Terminal and source install",
@@ -1040,7 +1026,7 @@
         q1: "Is Sahkarmi free?",
         a1: "Yes. The app is free and open source under the Apache License 2.0. It includes free AI models through the bundled OpenCode runtime, with no login and no card. Those free models have usage limits set by OpenCode. If you connect a paid plan such as ChatGPT, Claude or Google Antigravity, that provider bills you directly; Sahkarmi charges nothing.",
         q2: "Which computers does it run on?",
-        a2: "Windows 10 and 11 (64-bit) is the main build and the one the project tests. A macOS build for Apple silicon (macOS 12 or newer) and a Linux x64 AppImage are built in CI and published on GitHub Releases, but are not tested on real hardware for every release.",
+        a2: "Windows 10 and 11 (64-bit). That is the build the project releases and tests. macOS and Linux builds are paused for now and will be published once they have been tested on real hardware; watch the GitHub repository for the announcement.",
         q3: "Can a coworker pay, send or post without me?",
         a3: "Coworkers are instructed to stop and file an approval request before payments, messages to customers or vendors, publishing and form submissions, and you approve or reject each one in the Approvals inbox. In the current preview this relies on the AI following those instructions, not on a hard technical block, so watch new tasks closely and never share card details or OTPs with a coworker.",
         q4: "Where is my data stored, and does Sahkarmi collect anything?",
@@ -1082,15 +1068,13 @@
         h1b: "आपके अपने कंप्यूटर पर.",
         lead: "सहकर्मी एक मुफ़्त डेस्कटॉप ऐप है. हर सहकर्मी का अपना वर्कस्पेस, याददाश्त, काम की कतार और ब्राउज़र है. वह आपके चुने AI में काम करता है, और पैसे भेजने, मैसेज करने या पोस्ट करने से पहले आपसे पूछता है. भारत में बना, सबके लिए.",
         download: "Windows के लिए डाउनलोड करें",
-        downloadMac: "Mac के लिए डाउनलोड करें",
-        downloadLinux: "Linux के लिए डाउनलोड करें",
+        downloadOther: "अभी सिर्फ़ Windows के लिए",
         downloadAny: "डाउनलोड करें",
         watch: "इसे काम करते देखें",
         dlMeta: "मुफ़्त. न अकाउंट, न कार्ड. 64-bit Windows 10 या 11.",
-        dlMetaMac: "मुफ़्त. न अकाउंट, न कार्ड. Apple silicon, macOS 12 या नया.",
-        dlMetaLinux: "मुफ़्त. न अकाउंट, न कार्ड. x86-64 AppImage.",
-        dlMetaMobile: "Windows, macOS और Linux के लिए मुफ़्त डेस्कटॉप ऐप. इंस्टॉल करने के लिए यह पेज अपने कंप्यूटर पर खोलें.",
-        otherOs: "दूसरे सिस्टम",
+        dlMetaOther: "मुफ़्त. न अकाउंट, न कार्ड. आज Windows 10 या 11; macOS और Linux बिल्ड बाद में.",
+        dlMetaMobile: "Windows 10 और 11 के लिए मुफ़्त डेस्कटॉप ऐप. इंस्टॉल करने के लिए यह पेज अपने Windows PC पर खोलें.",
+        otherOs: "macOS या Linux?",
         source: "सोर्स कोड",
         p1: "आपके PC पर चलता है, डेटा लोकल रहता है",
         p2: "भुगतान या मैसेज से पहले पूछता है",
@@ -1219,20 +1203,17 @@
         pGemC: "आपका Google प्लान",
         aiNote: "पेड प्लान का बिल वही प्रदाता भेजते हैं, सहकर्मी नहीं. सहकर्मी की न कोई क़ीमत है, न अकाउंट, न सब्सक्रिप्शन.",
         dlEyebrow: "डाउनलोड",
-        dlH2: "अपना ऑपरेटिंग सिस्टम चुनें",
+        dlH2: "Windows के लिए डाउनलोड करें",
         dlLead: "हर फ़ाइल GitHub Actions ने सार्वजनिक सोर्स से बनाई है, रिलीज़ पेज पर SHA-256 चेकसम और प्रोवेनेंस अटेस्टेशन के साथ. मौजूदा वर्ज़न:",
         stWin: "प्रोजेक्ट द्वारा बनाया और परखा गया",
         winP: "Windows 10 या 11, 64-bit. इंस्टॉलर पर अभी कोड-साइनिंग नहीं है, इसलिए SmartScreen चेतावनी देगा: More info, फिर Run anyway चुनें.",
         winBtn: ".exe डाउनलोड करें",
         winHelp: "Windows इंस्टॉल और पहली बार खोलने के कदम",
-        stMac: "CI में बना, असली हार्डवेयर पर नहीं परखा",
-        macP: "Apple silicon (M1 या नया), macOS 12 या बाद का. पहली बार macOS रोके तो Applications में Sahkarmi पर राइट-क्लिक करके Open चुनें. Intel Mac समर्थित नहीं.",
-        macBtn: ".dmg डाउनलोड करें",
-        macHelp: "macOS इंस्टॉल के कदम",
-        stLinux: "CI में बना, असली हार्डवेयर पर नहीं परखा",
-        linuxP: "x86-64 AppImage. इसे executable बनाकर चलाएँ; कोई पैकेज इंस्टॉल नहीं. डेस्कटॉप सेशन (X11 या Wayland) और AppImage के लिए FUSE चाहिए.",
-        linuxBtn: ".AppImage डाउनलोड करें",
-        linuxHelp: "Linux इंस्टॉल के कदम",
+        laterH3: "macOS और Linux",
+        stLater: "बाद में आएगा",
+        laterP: "सहकर्मी पहले Windows पर लॉन्च हो रहा है. macOS और Linux बिल्ड असली हार्डवेयर पर परखने तक रोके गए हैं, इसलिए उन सिस्टम के लिए अभी कोई डाउनलोड नहीं है. सोर्स तीनों पर बनता है.",
+        laterBtn: "ख़बर के लिए रिपॉज़िटरी देखें",
+        laterHelp: "किसी भी सिस्टम पर सोर्स से बनाएँ",
         allReleases: "सभी रिलीज़ और चेकसम GitHub पर",
         verifyLink: "अपना डाउनलोड जाँचें",
         terminalLink: "टर्मिनल और सोर्स से इंस्टॉल",
@@ -1260,7 +1241,7 @@
         q1: "क्या सहकर्मी मुफ़्त है?",
         a1: "हाँ. ऐप Apache License 2.0 के तहत मुफ़्त और ओपन सोर्स है. इसमें बंडल किए OpenCode रनटाइम के ज़रिए मुफ़्त AI मॉडल हैं, न लॉगिन, न कार्ड. उन मुफ़्त मॉडल पर OpenCode की तय उपयोग सीमाएँ हैं. अगर आप ChatGPT, Claude या Google Antigravity जैसा पेड प्लान जोड़ते हैं, तो उसका बिल वही प्रदाता भेजता है; सहकर्मी कुछ नहीं लेता.",
         q2: "यह किन कंप्यूटरों पर चलता है?",
-        a2: "मुख्य वर्ज़न Windows 10 और 11 (64-bit) के लिए है और प्रोजेक्ट उसी को परखता है. Apple silicon (macOS 12 या नया) के लिए macOS बिल्ड और Linux x64 AppImage CI में बनकर GitHub Releases पर आते हैं, लेकिन हर रिलीज़ में असली हार्डवेयर पर नहीं परखे जाते.",
+        a2: "Windows 10 और 11 (64-bit). यही बिल्ड प्रोजेक्ट रिलीज़ करता और परखता है. macOS और Linux बिल्ड अभी रोके गए हैं; असली हार्डवेयर पर परखने के बाद प्रकाशित होंगे. घोषणा के लिए GitHub रिपॉज़िटरी देखें.",
         q3: "क्या कोई सहकर्मी मुझसे पूछे बिना भुगतान, मैसेज या पोस्ट कर सकता है?",
         a3: "सहकर्मियों को निर्देश है कि भुगतान, ग्राहक या वेंडर को मैसेज, पोस्ट और फ़ॉर्म जमा करने से पहले रुकें और अप्रूवल का अनुरोध भेजें, और आप Approvals इनबॉक्स में हर अनुरोध मंज़ूर या नामंज़ूर करते हैं. मौजूदा प्रीव्यू में यह AI के निर्देश मानने पर टिका है, किसी सख़्त तकनीकी रोक पर नहीं, इसलिए नए कामों पर नज़र रखें और कार्ड की जानकारी या OTP किसी सहकर्मी को न दें.",
         q4: "मेरा डेटा कहाँ रहता है, और क्या सहकर्मी कुछ इकट्ठा करता है?",
@@ -1289,17 +1270,14 @@
       },
     };
 
-    const DOWNLOADS = {
-      win: document.querySelector('[data-platform="win"]').href,
-      mac: document.querySelector('[data-platform="mac"]').href,
-      linux: document.querySelector('[data-platform="linux"]').href,
-    };
+    // Windows is the only published build for now; macOS and Linux visitors are sent to the
+    // download section, which explains the status.
+    const DOWNLOADS = { win: document.querySelector('[data-platform="win"]').href };
 
     function detectPlatform() {
       const ua = navigator.userAgent;
       if (/iPhone|iPad|iPod|Android/i.test(ua)) return "mobile";
-      if (/Mac/i.test(ua)) return "mac";
-      if (/Linux|X11/i.test(ua) && !/Android/i.test(ua)) return "linux";
+      if (/Mac/i.test(ua) || (/Linux|X11/i.test(ua) && !/Android/i.test(ua))) return "other";
       return "win";
     }
 
@@ -1327,20 +1305,19 @@
       const label = document.getElementById("download-label");
       const meta = document.getElementById("dl-meta");
       const header = document.querySelector(".header-download");
-      const labels = { win: dict.download, mac: dict.downloadMac, linux: dict.downloadLinux, mobile: dict.downloadAny };
-      const metas = { win: dict.dlMeta, mac: dict.dlMetaMac, linux: dict.dlMetaLinux, mobile: dict.dlMetaMobile };
+      const labels = { win: dict.download, other: dict.downloadOther, mobile: dict.downloadAny };
+      const metas = { win: dict.dlMeta, other: dict.dlMetaOther, mobile: dict.dlMetaMobile };
       label.textContent = labels[platform];
       meta.textContent = metas[platform];
-      if (platform === "mobile") {
+      if (platform !== "win") {
         button.setAttribute("href", "#download");
         button.removeAttribute("data-download");
+        if (header) header.setAttribute("href", "#download");
       } else {
         button.setAttribute("href", DOWNLOADS[platform]);
         if (header) header.setAttribute("href", DOWNLOADS[platform]);
       }
-      for (const card of document.querySelectorAll(".dl-card")) card.classList.remove("primary");
-      const current = document.getElementById(`card-${platform === "mobile" ? "win" : platform}`);
-      if (current) current.classList.add("primary");
+      document.getElementById("card-win").classList.add("primary");
     }
 
     const params = new URLSearchParams(location.search);

@@ -12,7 +12,7 @@ Your AI team. Made in India. · आपकी AI टीम. भारत मे�
 [![CI](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml/badge.svg)](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml)
 [![Website](https://img.shields.io/badge/website-sahkarmi.site-E8772E)](https://sahkarmi.site/)
 
-Sahkarmi is a desktop app (Windows, macOS, Linux) where each AI coworker has its own workspace,
+Sahkarmi is a desktop app for Windows (macOS and Linux builds come later) where each AI coworker has its own workspace,
 browser, memory and task queue. You give them work in plain English, हिन्दी or বাংলা; they read
 files, browse in their own tab, hand work to each other, and stop to ask you before anything that
 spends money or talks to a customer. Free AI models are built in (no account); your existing
@@ -31,13 +31,12 @@ Claude Code, Codex (ChatGPT) and Google Antigravity sign-ins are reused if you h
 | Platform | File | Status |
 | --- | --- | --- |
 | Windows 10 / 11, 64-bit | `Sahkarmi-<version>-x64.exe` | Built and tested by the project |
-| macOS 12+, Apple silicon | `Sahkarmi-<version>-arm64.dmg` | Built in CI, not tested on hardware every release |
-| Linux x86-64 | `Sahkarmi-<version>-x86_64.AppImage` | Built in CI, not tested on hardware every release |
+| macOS, Linux | none yet | Paused until tested on real hardware; build from source meanwhile |
 
 1. Download from [GitHub Releases](https://github.com/ganguydhrubo/sahakarmi/releases/latest)
    (checksums in `SHA256SUMS.txt`; every release carries a GitHub build provenance attestation).
 2. Windows: the installer is not code-signed yet, so SmartScreen warns. Choose **More info →
-   Run anyway**. macOS: right-click the app → **Open** on first launch.
+   Run anyway**.
 3. First launch: keep **OpenCode (free, built in)** selected and click **Continue**. Pick a
    coworker and type a message.
 
@@ -155,8 +154,9 @@ SolidJS renderer
 ## Releases
 
 Releases are tag-driven: `bun run release:patch` (or `minor` / `major`) prepares the version and
-changelog; pushing the tag builds the Windows installer, macOS DMG/ZIP and Linux AppImage in
-GitHub Actions and publishes them with checksums, SBOMs and provenance attestations. Installed
+changelog; pushing the tag builds the Windows installer in GitHub Actions and publishes it with
+checksums, SBOM and provenance attestation. The macOS and Linux jobs are paused; set the repository
+variable `RELEASE_ALL_PLATFORMS` to `true` to build them again. Installed
 builds check GitHub Releases and update themselves. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Contributing
