@@ -263,6 +263,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #contextBudgets = new Map<string, ThreadContextBudget>();
   readonly #compactingBots = new Set<string>();
+  /** Deliveries #startDelivery is driving right now (their provider may still be connecting). */
+  readonly #startingDeliveries = new Set<string>();
   readonly #compactionTimers = new Map<string, NodeJS.Timeout>();
   #status: AgentStatus = structuredClone(INITIAL_STATUS);
   readonly #clients = new Map<AgentProvider, AgentClient>();
@@ -910,6 +912,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     requestedProviders: readonly AgentProvider[],
   ): Promise<void> {
     const hadClients = this.#clients.size > 0;
+    // Deliveries that a previous process, or a provider that went away, left unresolved. Only
+    // these are settled at the end; anything that starts while the providers come up is live.
+    const staleDeliveries = new Map(
+      this.#mailbox
+        .unresolvedDeliveries()
+        .map(({ delivery }) => [delivery.id, delivery.turnId ?? null]),
+    );
     const providerStatuses: AgentProviderStatus[] = structuredClone(
       this.#status.providers ?? INITIAL_STATUS.providers ?? [],
     );
@@ -1044,7 +1053,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     if (codexClient) void this.#refreshUsage(codexClient).catch(() => undefined);
     await this.#adoptAvailableProvider();
-    await this.#reconcileUnresolvedDeliveries();
+    // Reconcile only the providers that were (re)started here. A restart of one provider (a
+    // lazy start, the CLI/model refresh re-probing a signed-out Codex or Claude, a crash
+    // restart) must not touch the other providers' in-flight turns: it used to mark a
+    // coworker's running OpenCode turn "interrupted" as "Sahkarmi restarted" whenever Codex or
+    // Claude were re-checked, which happens on every window focus, so the very first message
+    // on a fresh install failed.
+    await this.#reconcileUnresolvedDeliveries(requestedProviders, staleDeliveries);
     for (const bot of this.#store.list()) {
       if (this.#mailbox.nextQueued(bot.id)) {
         this.#scheduleDrain(bot.id);
@@ -1848,6 +1863,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   async #startDelivery(context: DeliveryContext): Promise<void> {
     const { delivery, managedAttachments } = context;
+    this.#startingDeliveries.add(delivery.id);
     try {
       await this.#mailbox.markStarting(delivery.id);
       this.#emitQueue(delivery.recipientBotId);
@@ -1982,6 +1998,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       );
       this.#emitQueue(delivery.recipientBotId);
       this.#emitError("delivery_start_failed", error, delivery.recipientBotId);
+    } finally {
+      this.#startingDeliveries.delete(delivery.id);
     }
   }
 
@@ -2036,15 +2054,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "models-changed", models: this.listModels() });
   }
 
-  async #reconcileUnresolvedDeliveries(): Promise<void> {
+  /**
+   * Settles deliveries left "starting" or "running" by a previous process (or a provider that
+   * went away): only those already unresolved when the (re)connect began, for the given
+   * providers, and never one this service is starting right now or that moved on to a new turn
+   * meanwhile. Anything else is live work that the reconnect must not interrupt.
+   */
+  async #reconcileUnresolvedDeliveries(
+    providers: readonly AgentProvider[],
+    stale: ReadonlyMap<string, string | null>,
+  ): Promise<void> {
     for (const context of this.#mailbox.unresolvedDeliveries()) {
       const { delivery } = context;
+      if (!stale.has(delivery.id) || stale.get(delivery.id) !== (delivery.turnId ?? null)) continue;
+      if (this.#startingDeliveries.has(delivery.id)) continue;
+      const bot = this.#store.list().find((candidate) => candidate.id === delivery.recipientBotId);
+      if (bot && !providers.includes(providerForBot(bot))) continue;
       let terminal: "completed" | "failed" | "interrupted" = "interrupted";
       let reason = "Sahkarmi restarted before this delivery reached a confirmed terminal state.";
       try {
-        const bot = this.#store
-          .list()
-          .find((candidate) => candidate.id === delivery.recipientBotId);
         const client = bot ? this.#clientForBot(bot) : null;
         if (bot?.threadId && client) {
           const response = await client.request<ThreadResponse>("thread/read", {
