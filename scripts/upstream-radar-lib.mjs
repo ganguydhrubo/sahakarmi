@@ -187,21 +187,21 @@ export function renderMail({ analysis, licence, previousTag, issueUrl, reportUrl
     issueUrl ? `Tracking issue: ${issueUrl}` : "",
     reportUrl ? `Report: ${reportUrl}` : "",
   ].filter((line) => line !== "");
-  const escape = (value) =>
+  const escapeHtml = (value) =>
     String(value).replace(
       /[&<>"]/g,
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
     );
   const html = `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.5">
-<h2 style="margin:0 0 8px">OpenBot ${escape(analysis.tag)} ${critical ? '<span style="color:#b00020">CRITICAL</span>' : '<span style="color:#555">info</span>'}</h2>
-<p>${escape(lines[0])}<br>${escape(lines[1])}<br><b>${escape(lines[2])}</b><br>${escape(lines[3])}</p>
+<h2 style="margin:0 0 8px">OpenBot ${escapeHtml(analysis.tag)} ${critical ? '<span style="color:#b00020">CRITICAL</span>' : '<span style="color:#555">info</span>'}</h2>
+<p>${escapeHtml(lines[0])}<br>${escapeHtml(lines[1])}<br><b>${escapeHtml(lines[2])}</b><br>${escapeHtml(lines[3])}</p>
 <p><b>Feature candidates</b></p>
-<ul>${analysis.candidates.length ? analysis.candidates.map((c) => `<li>${escape(c)}</li>`).join("") : "<li>(none)</li>"}</ul>
-${analysis.dependencyBumps.length ? `<p><b>Shared dependency signals</b></p><ul>${analysis.dependencyBumps.map((c) => `<li>${escape(c)}</li>`).join("")}</ul>` : ""}
+<ul>${analysis.candidates.length ? analysis.candidates.map((c) => `<li>${escapeHtml(c)}</li>`).join("") : "<li>(none)</li>"}</ul>
+${analysis.dependencyBumps.length ? `<p><b>Shared dependency signals</b></p><ul>${analysis.dependencyBumps.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>` : ""}
 <p><b>All release notes (${analysis.bullets.length} lines)</b></p>
-<ul>${analysis.bullets.length ? analysis.bullets.map((c) => `<li>${escape(c)}</li>`).join("") : "<li>(the release has no notes)</li>"}</ul>
-<p><a href="${escape(analysis.url)}">Release notes</a>${issueUrl ? ` · <a href="${escape(issueUrl)}">Tracking issue</a>` : ""}${reportUrl ? ` · <a href="${escape(reportUrl)}">Report</a>` : ""}</p>
-<p style="color:#777;font-size:12px">Sent by the Sahkarmi Upstream Radar. No upstream code is copied: OpenBot is ${escape(licence.label)}.</p>
+<ul>${analysis.bullets.length ? analysis.bullets.map((c) => `<li>${escapeHtml(c)}</li>`).join("") : "<li>(the release has no notes)</li>"}</ul>
+<p><a href="${escapeHtml(analysis.url)}">Release notes</a>${issueUrl ? ` · <a href="${escapeHtml(issueUrl)}">Tracking issue</a>` : ""}${reportUrl ? ` · <a href="${escapeHtml(reportUrl)}">Report</a>` : ""}</p>
+<p style="color:#777;font-size:12px">Sent by the Sahkarmi Upstream Radar. No upstream code is copied: OpenBot is ${escapeHtml(licence.label)}.</p>
 </div>`;
   return { subject, text: lines.join("\n"), html };
 }
