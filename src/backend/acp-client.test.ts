@@ -226,7 +226,31 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       service.on("event", (event) => events.push(event as { type: string; code?: string }));
       await service.initialize();
       await service.sendMessage({ botId: "meera-support", text: "stay silent" });
-      await waitFor(() => service?.listQueue("meera-support").deliveries[0]?.status === "failed");
+      // On a failure, say what the service saw (CI runners differ in timing).
+      const explain = async (step: string) => {
+        console.log(
+          `silent-turn test: ${step}`,
+          JSON.stringify({
+            deliveries: service
+              ?.listQueue("meera-support")
+              .deliveries.map((d) => [d.status, d.error]),
+            errors: events.filter((e) => e.type === "error").map((e) => `${e.code}: ${e.message}`),
+            protocol: (await readLog()).map((m) => m.method),
+          }),
+        );
+      };
+      const waitOrExplain = async (step: string, check: () => boolean | undefined) => {
+        try {
+          await waitFor(check);
+        } catch (error) {
+          await explain(step);
+          throw error;
+        }
+      };
+      await waitOrExplain(
+        "first delivery failed",
+        () => service?.listQueue("meera-support").deliveries[0]?.status === "failed",
+      );
       const error = events.find(
         (event) => event.type === "error" && /did not start answering/.test(event.message ?? ""),
       );
@@ -235,7 +259,8 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       // The agent was asked to stop the dead turn.
       await waitFor(async () => (await readLog()).some((m) => m.method === "session/cancel"));
       // The same message went out again by itself on the next free model and got an answer.
-      await waitFor(
+      await waitOrExplain(
+        "re-sent delivery completed",
         () => service?.listQueue("meera-support").deliveries[1]?.status === "completed",
       );
       expect(service.listQueue("meera-support").deliveries[1]?.text).toBe("stay silent");
@@ -249,7 +274,8 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       // The coworker is not stuck: a further message starts normally on the working free model.
       delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
       await service.sendMessage({ botId: "meera-support", text: "Namaste" });
-      await waitFor(
+      await waitOrExplain(
+        "third delivery completed",
         () => service?.listQueue("meera-support").deliveries[2]?.status === "completed",
       );
     } finally {
