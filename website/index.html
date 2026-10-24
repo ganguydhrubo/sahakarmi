@@ -101,12 +101,12 @@
       },
       {
         "@type": "VideoObject",
-        "name": "Sahkarmi in 2 minutes",
-        "description": "A short walkthrough of the Sahkarmi desktop app: the coworker team, giving a task, the built-in browser, approvals and the free built-in AI.",
+        "name": "Sahkarmi in under 3 minutes",
+        "description": "A walkthrough recorded from the released Sahkarmi desktop app on a clean Windows PC: first launch, the coworker team, a real task on the free built-in model, search, the built-in browser, approvals and permissions, AI providers, and how to download. Hindi narration; an English version is at /assets/sahkarmi-explainer-en.mp4.",
         "thumbnailUrl": "https://sahkarmi.site/assets/poster.jpg",
         "contentUrl": "https://sahkarmi.site/assets/sahkarmi-explainer.mp4",
-        "uploadDate": "2026-10-20",
-        "duration": "PT1M57S",
+        "uploadDate": "2026-10-24",
+        "duration": "PT2M41S",
         "inLanguage": "hi"
       },
       {
@@ -331,6 +331,9 @@
     .play small { display: block; margin-top: 14px; font-size: 15px; }
     .play[hidden] { display: none; }
     .video-note { margin-top: 10px; color: var(--muted); font-size: 14px; }
+    .video-lang { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--text-2); }
+    .video-lang button { background: var(--card); border: 1px solid var(--line-2); color: var(--text-2); border-radius: 999px; padding: 5px 14px; font: 700 14px var(--font-ui); cursor: pointer; }
+    .video-lang button[aria-pressed="true"] { background: var(--saffron); color: #0f1220; border-color: transparent; }
     .gallery { display: grid; gap: 10px; }
     .gallery-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
     .gallery-tabs button { background: var(--card); border: 1px solid var(--line); color: var(--text-2); border-radius: 999px; padding: 7px 14px; font: 600 14px var(--font-ui); cursor: pointer; }
@@ -499,13 +502,19 @@
             <div class="frame" id="frame">
               <video id="video" playsinline preload="none" poster="/assets/poster.webp" controls>
                 <source src="/assets/sahkarmi-explainer.mp4" type="video/mp4" />
+                <track kind="subtitles" src="/assets/sahkarmi-explainer-hi.vtt" srclang="hi" label="हिन्दी" default />
               </video>
               <button class="play" id="play" type="button" aria-label="Play the explainer video">
                 <span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4.5v15l13-7.5z"/></svg></span>
-                <small data-i18n="playLabel">Play: Sahkarmi in 2 minutes (Hindi)</small>
+                <small data-i18n="playLabel">Play: Sahkarmi in under 3 minutes</small>
               </button>
             </div>
-            <p class="video-note" data-i18n="videoNote">Hindi narration with captions. An English version is in production.</p>
+            <div class="video-lang" role="group" aria-label="Video language">
+              <span data-i18n="videoLangLabel">Narration:</span>
+              <button type="button" data-video="hi" aria-pressed="true" lang="hi">हिन्दी</button>
+              <button type="button" data-video="en" aria-pressed="false">English</button>
+            </div>
+            <p class="video-note" data-i18n="videoNote">Recorded from the released app on a clean Windows PC with the free built-in model. Captions included in both languages; the one cut, where the first free model was at its limit, is marked on screen.</p>
           </div>
           <div class="gallery" id="gallery">
             <div class="gallery-tabs" role="tablist" aria-label="Screenshots">
@@ -870,8 +879,9 @@
         seeEyebrow: "See it working",
         seeH2: "Two minutes of the real app, and screenshots of every main screen",
         seeLead: "Everything here is captured from the released app. No mock-ups, no invented numbers.",
-        playLabel: "Play: Sahkarmi in 2 minutes (Hindi)",
-        videoNote: "Hindi narration with captions. An English version is in production.",
+        playLabel: "Play: Sahkarmi in under 3 minutes",
+        videoLangLabel: "Narration:",
+        videoNote: "Recorded from the released app on a clean Windows PC with the free built-in model. Captions included in both languages; the one cut, where the first free model was at its limit, is marked on screen.",
         gSetup: "First launch",
         gBrowser: "Built-in browser",
         gSearch: "Search",
@@ -1089,8 +1099,9 @@
         seeEyebrow: "इसे काम करते देखें",
         seeH2: "असली ऐप के दो मिनट, और हर मुख्य स्क्रीन के स्क्रीनशॉट",
         seeLead: "यहाँ सब कुछ रिलीज़ हुए ऐप से लिया गया है. कोई मॉक-अप नहीं, कोई बनाए हुए आँकड़े नहीं.",
-        playLabel: "चलाएँ: 2 मिनट में सहकर्मी (हिन्दी)",
-        videoNote: "हिन्दी नैरेशन, कैप्शन के साथ. English वर्ज़न बन रहा है.",
+        playLabel: "चलाएँ: 3 मिनट से कम में सहकर्मी",
+        videoLangLabel: "नैरेशन:",
+        videoNote: "साफ़ Windows PC पर रिलीज़ हुए ऐप से, मुफ़्त बिल्ट-इन मॉडल के साथ रिकॉर्ड. दोनों भाषाओं में कैप्शन; एक कट, जहाँ पहला मुफ़्त मॉडल अपनी सीमा पर था, स्क्रीन पर लिखा है.",
         gSetup: "पहली बार खोलना",
         gBrowser: "बिल्ट-इन ब्राउज़र",
         gSearch: "खोज",
@@ -1359,6 +1370,25 @@
       video.play().catch(() => { play.hidden = false; });
     });
     video.addEventListener("play", () => { play.hidden = true; });
+    const VIDEOS = {
+      hi: { src: "/assets/sahkarmi-explainer.mp4", track: "/assets/sahkarmi-explainer-hi.vtt", label: "हिन्दी", lang: "hi" },
+      en: { src: "/assets/sahkarmi-explainer-en.mp4", track: "/assets/sahkarmi-explainer-en.vtt", label: "English", lang: "en" },
+    };
+    for (const button of document.querySelectorAll(".video-lang button")) {
+      button.addEventListener("click", () => {
+        const choice = VIDEOS[button.dataset.video];
+        for (const other of document.querySelectorAll(".video-lang button")) {
+          other.setAttribute("aria-pressed", String(other === button));
+        }
+        const wasPlaying = !video.paused;
+        video.pause();
+        video.querySelector("source").src = choice.src;
+        const track = video.querySelector("track");
+        track.src = choice.track; track.srclang = choice.lang; track.label = choice.label;
+        video.load();
+        if (wasPlaying) video.play().catch(() => undefined);
+      });
+    }
 
     // Screenshot gallery tabs
     const tabs = [...document.querySelectorAll('#gallery [role="tab"]')];
