@@ -1136,6 +1136,33 @@ describe.sequential("AgentService", () => {
     expect(service.listQueue("chief").deliveries[1]?.status).toBe("completed");
   }, 15_000);
 
+  it("keeps a running turn when the refresh loop re-probes a signed-out provider", async () => {
+    // Fresh install on launch day: OpenCode/Codex answer, Claude is installed but signed out.
+    // Every window focus re-probes Claude; its restart must not reconcile the other
+    // provider's in-flight delivery as "Sahkarmi restarted" (that interrupted the first message).
+    process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root, false);
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
+      "sign-in-required",
+    );
+    await service.sendMessage({ botId: "chief", text: "Hold the turn open" });
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "running");
+    const turnId = (await service.readConversation("chief")).activeTurnId;
+    expect(turnId).toBeTruthy();
+
+    await service.refreshModels(true);
+    expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
+      "sign-in-required",
+    );
+    expect(service.listQueue("chief").deliveries[0]?.status).toBe("running");
+    expect((await service.readConversation("chief")).activeTurnId).toBe(turnId);
+
+    await service.interrupt("chief", turnId ?? "");
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "interrupted");
+  }, 20_000);
+
   it("starts queued messages after restart when provider process exits mid-turn", async () => {
     process.env.SAHKARMI_FAKE_EXIT_ON_TURN = "1";
     const { store, mailbox } = stores();
@@ -1365,16 +1392,19 @@ process.stdin.on("data", (chunk) => {
   return scriptPath;
 }
 
-async function createFakeClaude(directory: string): Promise<string> {
+async function createFakeClaude(directory: string, loggedIn = true): Promise<string> {
   const executable =
     process.platform === "win32" ? join(directory, "claude.cmd") : join(directory, "claude");
+  const status = loggedIn
+    ? '{"loggedIn":true,"email":"claude@example.com","subscriptionType":"max"}'
+    : '{"loggedIn":false}';
   if (process.platform === "win32") {
     await writeFile(
       executable,
       `@if "%1"=="--version" (
   @echo 2.1.231 (Claude Code)
 ) else if "%1"=="auth" (
-  @echo {"loggedIn":true,"email":"claude@example.com","subscriptionType":"max"}
+  @echo ${status}
 )
 `,
     );
@@ -1385,7 +1415,7 @@ async function createFakeClaude(directory: string): Promise<string> {
 if [ "$1" = "--version" ]; then
   printf '%s\\n' '2.1.231 (Claude Code)'
 elif [ "$1" = "auth" ]; then
-  printf '%s' '{"loggedIn":true,"email":"claude@example.com","subscriptionType":"max"}'
+  printf '%s' '${status}'
 fi
 `,
     );
