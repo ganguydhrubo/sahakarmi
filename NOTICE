@@ -13,6 +13,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
+Portions of this software are derived from a project released under the Apache License 2.0,
+whose NOTICE file reads:
+
+  OpenBot
+  Copyright 2026 Norbert Bodziony
+
+  This product includes software developed by Norbert Bodziony.
+
 Bundled software:
   OpenCode — MIT License, Copyright (c) 2025 opencode
   (https://github.com/sst/opencode). Shipped unmodified as resources/bin/opencode;

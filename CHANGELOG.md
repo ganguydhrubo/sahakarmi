@@ -177,7 +177,7 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ### Added
 
-- Segregated & Organized Workspace Sidebar: OpenBot-style layout featuring top search, horizontal pinned/recent coworker avatar quick-switcher bar, and collapsible workspace sections with coworker counts.
+- Segregated & Organized Workspace Sidebar: compact layout featuring top search, horizontal pinned/recent coworker avatar quick-switcher bar, and collapsible workspace sections with coworker counts.
 - Enhanced Coworker Row Anatomy: Each coworker row now showcases bold title, role pill tag, right-aligned timestamp (e.g. `12:21 PM`), and truncated latest message preview.
 - Human-Friendly Tool Display: Replaced raw snake_case tool labels and bulky debug blocks with clean, elegant action titles (`✨ Create Coworker`, `💬 Message to Coworker`, `🧠 Save Memory`) and compact status cards.
 
