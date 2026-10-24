@@ -249,8 +249,26 @@ async function main() {
   );
   for (const ref of refs) {
     if (ref === "/" || ref.startsWith("//")) continue;
-    const asset = await load(ref.startsWith("/") ? ref : `/${ref}`);
+    const path = ref.split("#")[0];
+    if (!path) continue;
+    const asset = await load(path.startsWith("/") ? path : `/${path}`);
     check(`local reference exists: ${ref}`, asset.status === 200, String(asset.status));
+  }
+  // Secondary pages: indexable, canonical, titled.
+  for (const page of ["/install.html"]) {
+    const secondary = await load(page);
+    check(`${page} returns 200`, secondary.status === 200, String(secondary.status));
+    const secondaryTitle = secondary.text.match(/<title>([^<]*)<\/title>/)?.[1] ?? "";
+    check(
+      `${page} title present and 30–70 chars`,
+      secondaryTitle.length >= 30 && secondaryTitle.length <= 70,
+      String(secondaryTitle.length),
+    );
+    check(
+      `${page} has its own canonical`,
+      secondary.text.includes(`<link rel="canonical" href="${ORIGIN}${page}" />`),
+    );
+    check(`${page} has one h1`, (secondary.text.match(/<h1[\s>]/g) ?? []).length === 1);
   }
   check(
     "images declare width and height",
