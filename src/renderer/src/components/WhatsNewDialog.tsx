@@ -10,7 +10,7 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
-  "0.7.0": [
+  "0.7.1": [
     {
       icon: "🔍",
       badge: "New",
