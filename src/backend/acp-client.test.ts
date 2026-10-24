@@ -215,6 +215,30 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     ).toEqual(["interrupted", "completed"]);
   });
 
+  it("fails a turn in which the agent never says anything, with a readable reason", async () => {
+    // OpenCode at its free usage limit never answers session/prompt and sends no update at all.
+    process.env.SAHKARMI_ACP_SILENT_TURN_MS = "400";
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+    const events: Array<{ type: string; code?: string; message?: string }> = [];
+    service.on("event", (event) => events.push(event as { type: string; code?: string }));
+    await service.initialize();
+    await service.sendMessage({ botId: "meera-support", text: "stay silent" });
+    await waitFor(() => service?.listQueue("meera-support").deliveries[0]?.status === "failed");
+    const error = events.find(
+      (event) => event.type === "error" && /did not start answering/.test(event.message ?? ""),
+    );
+    expect(error?.message).toContain("free usage limit");
+    expect((await service.readConversation("meera-support")).activeTurnId).toBeNull();
+    // The agent was asked to stop the dead turn.
+    await waitFor(async () => (await readLog()).some((m) => m.method === "session/cancel"));
+    // The next message starts normally (the coworker is not stuck "working").
+    delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
+    await service.sendMessage({ botId: "meera-support", text: "Namaste" });
+    await waitFor(() => service?.listQueue("meera-support").deliveries[1]?.status === "completed");
+  });
+
   it("moves a coworker to the free model and re-sends when its provider answers nothing", async () => {
     // Google Antigravity is the same fake ACP agent here; "say nothing" makes it end the turn empty.
     process.env.SAHKARMI_ANTIGRAVITY_PATH = process.env.SAHKARMI_OPENCODE_PATH;
@@ -460,6 +484,7 @@ async function handle(message) {
     const sessionId = params.sessionId;
     // Empty once per test (the log is shared by every fake process): the re-send must get an answer.
     if (text.includes("say nothing") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("say-nothing-done")) { log({ method: "say-nothing-done" }); return write({ id, result: { stopReason: "end_turn" } }); }
+    if (text.includes("stay silent")) { cancellable.set(sessionId, () => write({ id, result: { stopReason: "cancelled" } })); return; }
     if (text.includes("keep talking")) {
       let answered = false;
       const answer = (stopReason) => { if (answered) return; answered = true; write({ id, result: { stopReason } }); };

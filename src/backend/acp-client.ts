@@ -64,6 +64,10 @@ export interface AcpAgentConfig {
 interface ActiveTurn {
   /** The model echoed its tool call as text; deltas are held back and the final text cleaned. */
   leakedToolCall?: boolean;
+  /** Fires when the agent has sent nothing at all for SILENT_TURN_MS (see #armSilenceWatch). */
+  silenceTimer?: ReturnType<typeof setTimeout>;
+  /** Sahkarmi cancelled this turn itself; the agent may still stream a late answer. */
+  cancelledBySahkarmi?: boolean;
   id: string;
   itemId: string;
   text: string;
@@ -94,6 +98,16 @@ interface AcpSession {
 /** How long a cancelled session must stay silent before the next turn starts, and the cap. */
 const STALE_QUIET_MS = 1_500;
 const STALE_DRAIN_MAX_MS = 120_000;
+
+/**
+ * A turn in which the agent sends nothing at all (no text, thought, tool call or permission
+ * request) for this long is failed with a readable reason. OpenCode's ACP server swallows a
+ * "Free usage limit reached" stream error and never answers session/prompt, which left the
+ * coworker "working" for ever. Tests shorten it through SAHKARMI_ACP_SILENT_TURN_MS.
+ */
+const SILENT_TURN_MS = 90_000;
+const silentTurnMs = (): number =>
+  Number(process.env.SAHKARMI_ACP_SILENT_TURN_MS) || SILENT_TURN_MS;
 
 interface DynamicNamespace {
   name: string;
@@ -456,6 +470,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       tools: new Map(),
     };
     session.activeTurn = turn;
+    this.#armSilenceWatch(session, turn);
 
     const prompt: Array<Record<string, unknown>> = [];
     const instructions =
@@ -483,6 +498,26 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     return { turn: { id: turnId, status: "inProgress" } };
   }
 
+  /** (Re)starts the silence watchdog: any sign of life from the agent pushes it back. */
+  #armSilenceWatch(session: AcpSession, turn: ActiveTurn): void {
+    if (turn.silenceTimer) clearTimeout(turn.silenceTimer);
+    turn.silenceTimer = setTimeout(() => this.#failSilentTurn(session, turn), silentTurnMs());
+    turn.silenceTimer.unref?.();
+  }
+
+  #failSilentTurn(session: AcpSession, turn: ActiveTurn): void {
+    if (session.activeTurn !== turn) return;
+    turn.cancelledBySahkarmi = true;
+    if (this.#child?.stdin.writable) {
+      this.#write({
+        jsonrpc: "2.0",
+        method: "session/cancel",
+        params: { sessionId: session.acpSessionId },
+      });
+    }
+    this.#finishTurn(session, turn, "failed", new Error(silentTurnMessage(this.#config)));
+  }
+
   /** Waits for a cancelled answer to stop streaming (see AcpSession.drainingSince). */
   async #awaitStaleStream(session: AcpSession): Promise<void> {
     while (session.drainingSince !== null) {
@@ -501,7 +536,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #finishTurn(session: AcpSession, turn: ActiveTurn, status: string, error: unknown): void {
     if (session.activeTurn !== turn) return;
     session.activeTurn = null;
-    if (status === "interrupted") {
+    if (turn.silenceTimer) clearTimeout(turn.silenceTimer);
+    turn.silenceTimer = undefined;
+    if (status === "interrupted" || turn.cancelledBySahkarmi) {
       session.drainingSince = Date.now();
       session.lastStaleUpdateAt = Date.now();
     }
@@ -567,6 +604,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     }
     // Updates outside a turn are history replays from session/load; Sahkarmi keeps its own.
     if (!session || !turn) return;
+    this.#armSilenceWatch(session, turn);
 
     switch (update.sessionUpdate) {
       case "agent_message_chunk": {
@@ -884,6 +922,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       return;
     }
     if (method === "session/request_permission") {
+      const sessionId = getString(message.params, "sessionId");
+      const session = [...this.#sessions.values()].find((item) => item.acpSessionId === sessionId);
+      if (session?.activeTurn) this.#armSilenceWatch(session, session.activeTurn);
       void this.#answerPermission(id, message.params).then((answer) => {
         if (this.#child?.stdin.writable) this.#write(answer);
       });
@@ -1066,6 +1107,19 @@ function toolOutput(update: Record<string, unknown>): string | null {
   if (text) return text;
   if (update.rawOutput === undefined || update.rawOutput === null) return null;
   return typeof update.rawOutput === "string" ? update.rawOutput : JSON.stringify(update.rawOutput);
+}
+
+function silentTurnMessage(config: AcpAgentConfig): string {
+  const seconds = Math.round(silentTurnMs() / 1000);
+  if (config.provider === "opencode") {
+    return (
+      `${config.label} did not start answering within ${seconds} seconds. On the free model this ` +
+      "usually means OpenCode's free usage limit is used up for now (its own log says \"Free " +
+      'usage limit reached"): try again later, or connect Claude, ChatGPT or Google Antigravity ' +
+      "under Settings \u2192 AI and models."
+    );
+  }
+  return `${config.label} did not start answering within ${seconds} seconds. Try again, or switch this coworker to another model.`;
 }
 
 function stopStatus(stopReason: string | null): string {
