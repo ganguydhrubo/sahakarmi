@@ -10,6 +10,14 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.6.3": [
+    {
+      icon: "🧭",
+      badge: "Fix",
+      title: "Honest provider status",
+      desc: 'A provider that could not start says so (with the reason) instead of "Sign-in needed", and Update now is only offered for tools Sahkarmi can actually see.',
+    },
+  ],
   "0.6.2": [
     {
       icon: "🛠️",
