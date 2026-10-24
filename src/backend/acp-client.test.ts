@@ -30,7 +30,7 @@ afterEach(async () => {
   await service?.stop();
   service = null;
   process.env = { ...savedEnv };
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
 });
 
 describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () => {
