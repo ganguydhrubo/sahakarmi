@@ -16,7 +16,9 @@ export interface ProviderRefresh {
 
 function toolNeedsUpdate(tool: AiToolUpdate): boolean {
   if (!tool.latest) return false;
-  if (!tool.installed) return tool.managed;
+  // A tool Sahkarmi could not detect is not "out of date": offering npm install for it reinstalled
+  // over the owner's own copy. Only the bundled runtime may be installed from nothing.
+  if (!tool.installed) return tool.id === "opencode";
   return tool.latest !== tool.installed;
 }
 
@@ -97,7 +99,13 @@ export function ProviderUpdates(props: {
             {(tool) => (
               <div class="provider-update-row">
                 <strong>{tool.label}</strong>
-                <span>{tool.installed ? `v${tool.installed}` : "not installed"}</span>
+                <span>
+                  {tool.installed
+                    ? `v${tool.installed}`
+                    : tool.id === "opencode"
+                      ? "not installed"
+                      : "not detected"}
+                </span>
                 <small>
                   {tool.latest
                     ? toolNeedsUpdate(tool)
@@ -130,8 +138,8 @@ export function ProviderUpdates(props: {
             )}
           </For>
           <Show when={runtime()?.message}>{(message) => <p role="status">{message()}</p>}</Show>
-          <Show when={runtime()?.phase === "updating"}>
-            <p role="status">Downloading… {runtime()?.progress ?? 0}%</p>
+          <Show when={runtime()?.phase === "updating" && typeof runtime()?.progress === "number"}>
+            <p role="status">Downloading… {runtime()?.progress}%</p>
           </Show>
         </Show>
         <p>

@@ -69,6 +69,7 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
             const current = status(provider.id)?.state;
             if (current === "checking" || current === "not-started") return t("connectNotYet");
             if (current === "not-installed") return t("connectNotInstalled");
+            if (current === "error") return t("connectError");
             return t("connectSignIn");
           };
           return (
@@ -172,6 +173,9 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
                     </Show>
                   </form>
                 </div>
+              </Show>
+              <Show when={!connected() && status(provider.id)?.message}>
+                <p class="settings-meta provider-connect-reason">{status(provider.id)?.message}</p>
               </Show>
               <Show when={state() && state()?.phase !== "idle" && state()?.phase !== "connected"}>
                 <div class="provider-connect-progress" role="status">

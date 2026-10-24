@@ -4,6 +4,16 @@ All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
 
+## [0.6.3] - 2026-10-24
+
+### Fixed
+
+- Settings → AI and models said "Sign-in needed" for a provider that had failed to start; it now
+  says "Could not start" and shows the reason under the row.
+- AI tool versions offered "Update now" (an `npm install -g`) for a tool Sahkarmi could not even
+  detect, and showed "Downloading… 0%" for npm installs that report no progress. A tool that is
+  not detected now says so, and only the bundled runtime can be installed from nothing.
+
 ## [0.6.2] - 2026-10-24
 
 ### Fixed
