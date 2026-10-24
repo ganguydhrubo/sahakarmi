@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths: ["website/**", "scripts/check-website.mjs", "scripts/inject-downloads.mjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release whose installer the download buttons must point at (release.yml passes its tag)"
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
       - name: Point download buttons at the latest installers
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_RELEASE_TAG: ${{ inputs.release_tag }}
         run: node scripts/inject-downloads.mjs
 
       - name: Check website files (SEO, structured data, links, translations)
