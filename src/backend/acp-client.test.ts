@@ -230,13 +230,24 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       (event) => event.type === "error" && /did not start answering/.test(event.message ?? ""),
     );
     expect(error?.message).toContain("free usage limit");
-    expect((await service.readConversation("meera-support")).activeTurnId).toBeNull();
+    expect(error?.message).toContain("opencode/nemotron-free");
     // The agent was asked to stop the dead turn.
     await waitFor(async () => (await readLog()).some((m) => m.method === "session/cancel"));
-    // The next message starts normally (the coworker is not stuck "working").
+    // The same message went out again by itself on the next free model and got an answer.
+    await waitFor(() => service?.listQueue("meera-support").deliveries[1]?.status === "completed");
+    expect(service.listQueue("meera-support").deliveries[1]?.text).toBe("stay silent");
+    const selected = (await readLog())
+      .filter((m) => m.method === "session/set_config_option")
+      .map((m) => (m.params as { value?: string }).value);
+    expect(selected).toEqual(["opencode/big-pickle", "opencode/nemotron-free"]);
+    expect(
+      events.find((event) => event.type === "error" && event.code === "fallback_model")?.message,
+    ).toContain("next free model");
+    expect((await service.readConversation("meera-support")).activeTurnId).toBeNull();
+    // The coworker is not stuck: a further message starts normally on the working free model.
     delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
     await service.sendMessage({ botId: "meera-support", text: "Namaste" });
-    await waitFor(() => service?.listQueue("meera-support").deliveries[1]?.status === "completed");
+    await waitFor(() => service?.listQueue("meera-support").deliveries[2]?.status === "completed");
   });
 
   it("moves a coworker to the free model and re-sends when its provider answers nothing", async () => {
@@ -475,7 +486,7 @@ async function handle(message) {
   if (method === "initialize") return write({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: false, mcpCapabilities: { http: true } } } });
   if (method === "session/new") {
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
-    return write({ id, result: { sessionId: "ses_" + Date.now(), configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "anthropic/x", name: "X" }] }] } });
+    return write({ id, result: { sessionId: "ses_" + Date.now(), configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "opencode/nemotron-free", name: "Nemotron" }, { value: "anthropic/x", name: "X" }] }] } });
   }
   if (method === "session/set_config_option") return write({ id, result: {} });
   if (method === "session/cancel") { const pending = cancellable.get(params.sessionId); cancellable.delete(params.sessionId); pending?.(); return; }
@@ -484,7 +495,8 @@ async function handle(message) {
     const sessionId = params.sessionId;
     // Empty once per test (the log is shared by every fake process): the re-send must get an answer.
     if (text.includes("say nothing") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("say-nothing-done")) { log({ method: "say-nothing-done" }); return write({ id, result: { stopReason: "end_turn" } }); }
-    if (text.includes("stay silent")) { cancellable.set(sessionId, () => write({ id, result: { stopReason: "cancelled" } })); return; }
+    // Silent once per test (the log is shared by every fake process): the retry on the next free model answers.
+    if (text.includes("stay silent") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("stay-silent-done")) { log({ method: "stay-silent-done" }); cancellable.set(sessionId, () => write({ id, result: { stopReason: "cancelled" } })); return; }
     if (text.includes("keep talking")) {
       let answered = false;
       const answer = (stopReason) => { if (answered) return; answered = true; write({ id, result: { stopReason } }); };

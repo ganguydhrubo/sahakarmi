@@ -41,6 +41,7 @@ import {
   providerForModel,
   type SearchMessagesInput,
 } from "../shared/ipc";
+import { NEXT_FREE_MODEL_HINT } from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
@@ -2482,7 +2483,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       }
     } else if (status === "failed" && delivery) {
       const reason = this.#lastTurnError.get(botId) ?? "";
-      if (/429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded/i.test(reason)) {
+      if (reason.includes(NEXT_FREE_MODEL_HINT)) {
+        await this.#resendOnNextFreeModel(botId, delivery);
+      } else if (/429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded/i.test(reason)) {
         await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
       }
     }
@@ -2888,6 +2891,26 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emitError(
       "fallback_model",
       `${from} ${reason}, so ${bot.name} switched to the free model and is answering your message again there. Switch back from the model picker whenever you like.`,
+      botId,
+    );
+    await this.sendMessage({ botId, text: delivery.delivery.text });
+    return true;
+  }
+
+  /**
+   * The free model went silent (its usage limit is used up) and the OpenCode client has moved
+   * on to the next free model: send the owner's message again there, once per delivery.
+   */
+  async #resendOnNextFreeModel(botId: string, delivery: DeliveryContext): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (bot?.model !== "opencode-free") return false;
+    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
+    if (delivery.managedAttachments.length) return false;
+    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    this.#fallbackRetried.add(delivery.delivery.id);
+    this.#emitError(
+      "fallback_model",
+      `${bot.name} is sending your message again on the next free model.`,
       botId,
     );
     await this.sendMessage({ botId, text: delivery.delivery.text });
