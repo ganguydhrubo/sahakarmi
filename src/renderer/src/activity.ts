@@ -16,6 +16,8 @@ export interface ActivityInput {
   /** Outcome of the most recent turn, with the time it arrived. */
   outcome: { status: "completed" | "interrupted" | "failed"; at: number } | null;
   now: number;
+  /** The composer is still handing the message over (before the queue knows about it). */
+  sending?: boolean;
 }
 
 export interface ActivityState {
@@ -51,6 +53,8 @@ export function deriveActivity(input: ActivityInput): ActivityState {
   const running = deliveries.some((delivery) => delivery.status === "running");
   const active = Boolean(input.activeTurnId) || starting || running;
 
+  // The instant the owner presses send, before any provider or queue event arrives.
+  if (!active && input.sending) return state("sending");
   if (!active) {
     if (input.waitingForApproval) return state("waiting_approval");
     if (deliveries.some((delivery) => delivery.status === "queued")) {

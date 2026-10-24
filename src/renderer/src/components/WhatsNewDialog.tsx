@@ -10,6 +10,32 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.7.3": [
+    {
+      icon: "✨",
+      badge: "Look",
+      title: "A proper opening",
+      desc: "A short 3D reveal of the Sahkarmi mark when the app starts, and the chat answers the instant you press send.",
+    },
+    {
+      icon: "🔓",
+      badge: "Browser",
+      title: "Google sign-in works in the coworker browser",
+      desc: "One plain Chromium identity on every site and real sign-in popups: Google, Microsoft, Canva and other logins go through.",
+    },
+    {
+      icon: "🖼️",
+      badge: "Chat",
+      title: "Coworker-made files show in the chat",
+      desc: "Images, PDFs and documents a coworker creates appear under its reply, pictures inline.",
+    },
+    {
+      icon: "📎",
+      badge: "Chat",
+      title: "Attached documents are read, not just named",
+      desc: "PDF, Word, Excel, PowerPoint and text attachments are read into the conversation for every model; pictures go in as images where the model can see them.",
+    },
+  ],
   "0.7.2": [
     {
       icon: "🆓",

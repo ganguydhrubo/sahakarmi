@@ -34,6 +34,7 @@ export function statusAura(status: () => CoworkerStatus): () => AuraState {
 /** Aura for the live activity line: tracks the real event phase. */
 export function phaseAura(phase: ActivityPhase): AuraState {
   switch (phase) {
+    case "sending":
     case "initializing":
     case "thinking":
     case "generating":

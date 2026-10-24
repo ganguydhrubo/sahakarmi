@@ -125,11 +125,12 @@ export function ActivityIndicator(props: {
 
   return (
     <div
-      class={`agent-activity-entry activity-phase-${props.activity.phase}`}
-      classList={{
-        "agent-activity-entry-visible": visible(),
-        "agent-activity-active": active(),
-      }}
+      // One computed class string: a dynamic `class` next to `classList` made Solid reset the
+      // element's className on every phase change, dropping the "visible" class, so the line
+      // faded out for the whole turn and the owner saw nothing happen after sending.
+      class={`agent-activity-entry activity-phase-${props.activity.phase}${
+        visible() ? " agent-activity-entry-visible" : ""
+      }${active() ? " agent-activity-active" : ""}`}
       role="status"
       aria-hidden={!visible()}
       aria-label={visible() ? `${name()}: ${primary()}` : undefined}

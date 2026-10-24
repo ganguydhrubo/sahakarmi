@@ -479,9 +479,33 @@ export class BrowserHost {
     contents.on("will-navigate", (event, url) => {
       if (!isAllowedMainUrl(url)) event.preventDefault();
     });
-    contents.setWindowOpenHandler(({ url }) => {
-      if (isAllowedMainUrl(url)) void this.open(url, tab.ownerThreadId, tab.ownerBotId);
-      return { action: "deny" };
+    // Sign-in popups ("Continue with Google", OAuth consent) must stay a real popup with a
+    // window.opener, in the same session, or the site never gets its result back. They open as
+    // a small hardened child window; plain links that ask for a new window become a tab.
+    contents.setWindowOpenHandler(({ url, disposition, features }) => {
+      if (!isAllowedMainUrl(url)) return { action: "deny" };
+      const popup = disposition === "new-window" || /popup|width=|height=/i.test(features);
+      if (!popup) {
+        void this.open(url, tab.ownerThreadId, tab.ownerBotId);
+        return { action: "deny" };
+      }
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          width: 540,
+          height: 720,
+          autoHideMenuBar: true,
+          title: "Sign in",
+          webPreferences: {
+            session: this.#session,
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+          },
+        },
+      };
     });
   }
 
@@ -717,25 +741,18 @@ function browserRequestHeaders(
   const headers = { ...requestHeaders };
   setRequestHeader(headers, "User-Agent", userAgent);
   setRequestHeader(headers, "Accept-Language", preferredBrowserLanguages());
-
-  // Google OAuth blocks Chromium WebViews if Sec-CH-UA or non-standard brand tokens are present.
-  // For accounts.google.com and related login services, remove client hints so standard web flow applies.
-  if (url?.includes("accounts.google.com") || url?.includes("google.com")) {
-    delete headers["sec-ch-ua"];
-    delete headers["sec-ch-ua-mobile"];
-    delete headers["sec-ch-ua-platform"];
-    delete headers["Sec-CH-UA"];
-    delete headers["Sec-CH-UA-Mobile"];
-    delete headers["Sec-CH-UA-Platform"];
-  }
-
   return headers;
 }
 
-function browserUserAgent(sessionUserAgent: string, url?: string): string {
-  if (url?.includes("accounts.google.com")) {
-    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0";
-  }
+/**
+ * One plain Chromium identity for every site: Electron's own User-Agent minus the Electron and
+ * app product tokens, which is exactly what Chrome of the same version sends. Pretending to be
+ * another browser on one host (a Firefox string on accounts.google.com, as before) contradicts
+ * the client hints and JavaScript fingerprint of the real engine, and Google answers that with
+ * "This browser or app may not be secure". Sign-ins must work everywhere, so nothing is special-
+ * cased per site.
+ */
+function browserUserAgent(sessionUserAgent: string, _url?: string): string {
   return removeUserAgentProducts(sessionUserAgent, [
     "Electron",
     app.getName(),

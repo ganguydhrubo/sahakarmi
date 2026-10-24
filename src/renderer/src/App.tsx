@@ -51,6 +51,7 @@ import type { ProviderRefresh } from "./components/ProviderUpdates";
 import { SchedulesView } from "./components/SchedulesView";
 import { SharedFilesView } from "./components/SharedFilesView";
 import { AppNavigation, type CenterView, Sidebar } from "./components/Sidebar";
+import { SplashScreen } from "./components/SplashScreen";
 import { UpdateControl } from "./components/UpdateControl";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
@@ -1032,302 +1033,305 @@ export function App() {
   }
 
   return (
-    <Show
-      when={setupLoaded() && appInfo() !== null}
-      fallback={<div class="initial-setup-screen" role="status" aria-label="Loading Sahkarmi" />}
-    >
+    <>
+      <SplashScreen />
       <Show
-        when={setupState()?.completed}
-        fallback={
-          <InitialSetup
-            state={setupState() ?? { completed: false, preferredProvider: null }}
-            agentStatus={agentStatus()}
-            platform={appInfo()?.platform ?? "darwin"}
-            onSave={saveSetup}
-          />
-        }
+        when={setupLoaded() && appInfo() !== null}
+        fallback={<div class="initial-setup-screen" role="status" aria-label="Loading Sahkarmi" />}
       >
-        <div
-          class="app-frame"
-          classList={{ "app-frame-sidebar-collapsed": leftPanelCollapsed() }}
-          style={`--left-panel-width: ${leftPanelCollapsed() ? 0 : leftPanelWidth()}px`}
+        <Show
+          when={setupState()?.completed}
+          fallback={
+            <InitialSetup
+              state={setupState() ?? { completed: false, preferredProvider: null }}
+              agentStatus={agentStatus()}
+              platform={appInfo()?.platform ?? "darwin"}
+              onSave={saveSetup}
+            />
+          }
         >
-          <Show
-            when={
-              view() !== "settings" &&
-              // With the sidebar open, its update bar shows progress; errors still float here.
-              (leftPanelCollapsed() || updateStatus().phase === "ready") &&
-              ["available", "downloading", "ready", "error", "installing"].includes(
-                updateStatus().phase,
-              )
-            }
+          <div
+            class="app-frame"
+            classList={{ "app-frame-sidebar-collapsed": leftPanelCollapsed() }}
+            style={`--left-panel-width: ${leftPanelCollapsed() ? 0 : leftPanelWidth()}px`}
           >
-            <aside class="update-notice" aria-label="Sahkarmi update">
-              <UpdateControl status={updateStatus()} onAction={runUpdateAction} />
-            </aside>
-          </Show>
-          <AppNavigation
-            view={view()}
-            pendingApprovals={pendingApprovals().length}
-            onSelectView={(next) => {
-              setAgentPickerOpen(false);
-              setView(next);
-            }}
-            onShowTeam={() => {
-              setSidebarCollapsed(false);
-              setAgentPickerOpen(false);
-              setView("coworker");
-            }}
-          />
-          <Show when={!leftPanelCollapsed()}>
-            <Sidebar
-              bots={workspaceBots()}
-              activeBotId={activeBot()?.id ?? ""}
+            <Show
+              when={
+                view() !== "settings" &&
+                // With the sidebar open, its update bar shows progress; errors still float here.
+                (leftPanelCollapsed() || updateStatus().phase === "ready") &&
+                ["available", "downloading", "ready", "error", "installing"].includes(
+                  updateStatus().phase,
+                )
+              }
+            >
+              <aside class="update-notice" aria-label="Sahkarmi update">
+                <UpdateControl status={updateStatus()} onAction={runUpdateAction} />
+              </aside>
+            </Show>
+            <AppNavigation
               view={view()}
-              appInfo={appInfo()}
-              workspaces={workspaces()}
-              statuses={coworkerStatuses()}
-              unread={unreadReplies()}
               pendingApprovals={pendingApprovals().length}
-              onSelectBot={selectBot}
-              onCreateBot={() => void createAgent()}
-              onEditBot={editBot}
-              onDeleteBot={deleteBot}
               onSelectView={(next) => {
                 setAgentPickerOpen(false);
                 setView(next);
               }}
-              onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
-              onCreateWorkspace={createWorkspace}
-              onRenameWorkspace={renameWorkspace}
-              onCollapse={() => setSidebarCollapsed(true)}
-              updateStatus={updateStatus()}
-              onUpdateAction={runUpdateAction}
-              agentStatus={agentStatus()}
-              modelOptions={modelOptions()}
-              providerRefreshes={providerRefreshes()}
-              onRefreshModels={async () => {
-                setModelOptions(await window.sahkarmi.agent.refreshModels());
-                setRuntimeStatus(await window.sahkarmi.aiRuntime.check());
-              }}
-              runtimeStatus={runtimeStatus() ?? undefined}
-              onUpdateTool={async (toolId) => {
-                const status = await window.sahkarmi.aiRuntime.update(toolId);
-                setRuntimeStatus(status);
-                setModelOptions(await window.sahkarmi.agent.refreshModels());
+              onShowTeam={() => {
+                setSidebarCollapsed(false);
+                setAgentPickerOpen(false);
+                setView("coworker");
               }}
             />
-            <PanelResizer
-              class="left-panel-resizer"
-              label="Resize left sidebar"
-              controls="bot-sidebar"
-              direction="left"
-              value={leftPanelWidth()}
-              defaultValue={LEFT_PANEL_DEFAULT}
-              min={LEFT_PANEL_MIN}
-              max={LEFT_PANEL_MAX}
-              onResize={setLeftPanelWidth}
-              onResizeEnd={(value) => savePanelWidth(LEFT_PANEL_STORAGE_KEY, value)}
+            <Show when={!leftPanelCollapsed()}>
+              <Sidebar
+                bots={workspaceBots()}
+                activeBotId={activeBot()?.id ?? ""}
+                view={view()}
+                appInfo={appInfo()}
+                workspaces={workspaces()}
+                statuses={coworkerStatuses()}
+                unread={unreadReplies()}
+                pendingApprovals={pendingApprovals().length}
+                onSelectBot={selectBot}
+                onCreateBot={() => void createAgent()}
+                onEditBot={editBot}
+                onDeleteBot={deleteBot}
+                onSelectView={(next) => {
+                  setAgentPickerOpen(false);
+                  setView(next);
+                }}
+                onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
+                onCreateWorkspace={createWorkspace}
+                onRenameWorkspace={renameWorkspace}
+                onCollapse={() => setSidebarCollapsed(true)}
+                updateStatus={updateStatus()}
+                onUpdateAction={runUpdateAction}
+                agentStatus={agentStatus()}
+                modelOptions={modelOptions()}
+                providerRefreshes={providerRefreshes()}
+                onRefreshModels={async () => {
+                  setModelOptions(await window.sahkarmi.agent.refreshModels());
+                  setRuntimeStatus(await window.sahkarmi.aiRuntime.check());
+                }}
+                runtimeStatus={runtimeStatus() ?? undefined}
+                onUpdateTool={async (toolId) => {
+                  const status = await window.sahkarmi.aiRuntime.update(toolId);
+                  setRuntimeStatus(status);
+                  setModelOptions(await window.sahkarmi.agent.refreshModels());
+                }}
+              />
+              <PanelResizer
+                class="left-panel-resizer"
+                label="Resize left sidebar"
+                controls="bot-sidebar"
+                direction="left"
+                value={leftPanelWidth()}
+                defaultValue={LEFT_PANEL_DEFAULT}
+                min={LEFT_PANEL_MIN}
+                max={LEFT_PANEL_MAX}
+                onResize={setLeftPanelWidth}
+                onResizeEnd={(value) => savePanelWidth(LEFT_PANEL_STORAGE_KEY, value)}
+              />
+            </Show>
+            <Suspense fallback={<section class="center-view" aria-busy="true" />}>
+              <Switch>
+                <Match when={view() === "tasks"}>
+                  <TasksView
+                    bots={workspaceBots()}
+                    queues={queues()}
+                    defaultBotId={activeBot()?.id ?? ""}
+                    onSend={(botId, text) => sendMessageToBot(botId, text, [])}
+                    onOpenCoworker={selectBot}
+                  />
+                </Match>
+                <Match when={view() === "orchestrator"}>
+                  <OrchestratorView bots={workspaceBots()} onOpenCoworker={selectBot} />
+                </Match>
+                <Match when={view() === "memory"}>
+                  <MemoryView />
+                </Match>
+                <Match when={view() === "approvals"}>
+                  <ApprovalsView
+                    approvals={approvals()}
+                    bots={botList()}
+                    onDecide={decideApproval}
+                    onOpenCoworker={selectBot}
+                  />
+                </Match>
+                <Match when={view() === "files"}>
+                  <SharedFilesView />
+                </Match>
+                <Match when={view() === "schedules"}>
+                  <SchedulesView
+                    schedules={schedules()}
+                    routines={routines().routines}
+                    runs={routines().runs}
+                    bots={botList()}
+                    onToggle={(task) =>
+                      scheduleAction(() =>
+                        window.sahkarmi.schedules.setEnabled(task.id, !task.enabled),
+                      )
+                    }
+                    onDelete={(task) =>
+                      scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
+                    }
+                    onRunNow={(task) =>
+                      scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
+                    }
+                    onOpenCoworker={selectBot}
+                  />
+                </Match>
+                <Match when={view() === "routines"}>
+                  <RoutinesView
+                    state={routines()}
+                    bots={botList()}
+                    onSave={(input) => routineAction(window.sahkarmi.routines.save(input))}
+                    onDelete={(routineId) =>
+                      routineAction(window.sahkarmi.routines.delete(routineId))
+                    }
+                    onSetEnabled={(routineId, enabled) =>
+                      routineAction(window.sahkarmi.routines.setEnabled(routineId, enabled))
+                    }
+                    onRunNow={(routineId) =>
+                      routineAction(window.sahkarmi.routines.runNow(routineId))
+                    }
+                  />
+                </Match>
+                <Match when={view() === "usage"}>
+                  <ModelUsageView bots={botList()} />
+                </Match>
+                <Match when={view() === "business"}>
+                  <BusinessView bots={botList()} />
+                </Match>
+                <Match when={view() === "marketplace"}>
+                  <MarketplaceView
+                    bots={workspaceBots()}
+                    onAddAgent={addMarketplaceAgent}
+                    onOpenCoworker={selectBot}
+                  />
+                </Match>
+                <Match when={view() === "activity"}>
+                  <ActivityView bots={botList()} />
+                </Match>
+                <Match when={view() === "settings"}>
+                  <SettingsView
+                    appInfo={appInfo()}
+                    agentStatus={agentStatus()}
+                    updateStatus={updateStatus()}
+                    bots={botList()}
+                    modelOptions={modelOptions()}
+                    onUpdateModel={(botId, model) => updateBot(botId, { model })}
+                    onOpenPermissions={() => setPermissionsOpen(true)}
+                    onUpdateAction={runUpdateAction}
+                  />
+                </Match>
+                <Match when={view() === "coworker"}>
+                  <Conversation
+                    agentStatus={agentStatus()}
+                    bot={activeBot()}
+                    bots={botList()}
+                    status={
+                      activeBot() ? (coworkerStatuses()[activeBot()?.id ?? ""] ?? "idle") : "idle"
+                    }
+                    modelOptions={modelOptions()}
+                    messages={activeMessages()}
+                    loaded={
+                      activeBot() ? conversationLoaded()[activeBot()?.id ?? ""] === true : false
+                    }
+                    queue={activeQueue()}
+                    schedules={schedules().filter((task) => task.botId === activeBot()?.id)}
+                    takeover={takeover()}
+                    browserTabs={browserTabs()}
+                    activeBrowserTabId={activeBrowserTabId()}
+                    browserControlState={browserControlState()}
+                    leftSidebarCollapsed={leftPanelCollapsed()}
+                    prompt={activeBot() ? pendingPrompts()[activeBot()?.id ?? ""] : undefined}
+                    activityRetry={retries()[activeBot()?.id ?? ""] ?? null}
+                    turnOutcome={turnOutcomes()[activeBot()?.id ?? ""] ?? null}
+                    waitingForApproval={pendingApprovals().some(
+                      (approval) =>
+                        approval.kind === "permission" && approval.botId === activeBot()?.id,
+                    )}
+                    pendingApprovals={pendingApprovals().filter(
+                      (approval) => approval.botId === activeBot()?.id,
+                    )}
+                    onDecideApproval={decideApproval}
+                    activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
+                    agentPickerOpen={agentPickerOpen()}
+                    creatingAgent={creatingAgent()}
+                    settingsRequest={settingsRequest()}
+                    onboardingRequest={onboardingRequest()}
+                    onCloseAgentPicker={() => setAgentPickerOpen(false)}
+                    onCreateAgent={() => void createAgent()}
+                    onSelectAgent={selectBot}
+                    onUpdateBot={updateBot}
+                    onSendMessage={sendMessage}
+                    onScheduleMessage={scheduleMessage}
+                    onToggleSchedule={(task) =>
+                      scheduleAction(() =>
+                        window.sahkarmi.schedules.setEnabled(task.id, !task.enabled),
+                      )
+                    }
+                    onDeleteSchedule={(task) =>
+                      scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
+                    }
+                    onRunSchedule={(task) =>
+                      scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
+                    }
+                    onCompleteOnboarding={completeOnboarding}
+                    onAnswerPrompt={answerPrompt}
+                    onCancelQueuedMessage={cancelQueuedMessage}
+                    onPauseQueue={() => setQueuePaused(true)}
+                    onResumeQueue={resumeQueue}
+                    onActivateBrowserTab={activateBrowserTab}
+                    onCloseBrowserTab={closeBrowserTab}
+                    onTakeOverBrowser={() =>
+                      void window.sahkarmi.browser.takeOver().then(setTakeover)
+                    }
+                    onHandBackBrowser={(note) =>
+                      void window.sahkarmi.browser.handBack(note).then(setTakeover)
+                    }
+                    onToggleLeftSidebar={() => setSidebarCollapsed(false)}
+                    onOpenAiSettings={openAiSettings}
+                    onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
+                    onStop={stopActiveTurn}
+                    onDeleteBot={(botId) => void deleteBot(botId)}
+                  />
+                </Match>
+              </Switch>
+            </Suspense>
+            <Show when={permissionsOpen()}>
+              <InitialSetup
+                reviewing
+                state={setupState() ?? { completed: true, preferredProvider: "opencode" }}
+                agentStatus={agentStatus()}
+                platform={appInfo()?.platform ?? "darwin"}
+                onSave={saveSetup}
+                onClose={() => setPermissionsOpen(false)}
+              />
+            </Show>
+            <WhatsNewDialog version={appInfo()?.version ?? "0.5.4"} />
+            <GlobalSearch
+              open={searchOpen()}
+              bots={workspaceBots()}
+              workspaceId={workspaces().activeWorkspaceId || null}
+              onClose={() => setSearchOpen(false)}
+              onOpenBot={openSearchResult}
             />
-          </Show>
-          <Suspense fallback={<section class="center-view" aria-busy="true" />}>
-            <Switch>
-              <Match when={view() === "tasks"}>
-                <TasksView
-                  bots={workspaceBots()}
-                  queues={queues()}
-                  defaultBotId={activeBot()?.id ?? ""}
-                  onSend={(botId, text) => sendMessageToBot(botId, text, [])}
-                  onOpenCoworker={selectBot}
-                />
-              </Match>
-              <Match when={view() === "orchestrator"}>
-                <OrchestratorView bots={workspaceBots()} onOpenCoworker={selectBot} />
-              </Match>
-              <Match when={view() === "memory"}>
-                <MemoryView />
-              </Match>
-              <Match when={view() === "approvals"}>
-                <ApprovalsView
-                  approvals={approvals()}
-                  bots={botList()}
-                  onDecide={decideApproval}
-                  onOpenCoworker={selectBot}
-                />
-              </Match>
-              <Match when={view() === "files"}>
-                <SharedFilesView />
-              </Match>
-              <Match when={view() === "schedules"}>
-                <SchedulesView
-                  schedules={schedules()}
-                  routines={routines().routines}
-                  runs={routines().runs}
-                  bots={botList()}
-                  onToggle={(task) =>
-                    scheduleAction(() =>
-                      window.sahkarmi.schedules.setEnabled(task.id, !task.enabled),
-                    )
-                  }
-                  onDelete={(task) =>
-                    scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
-                  }
-                  onRunNow={(task) =>
-                    scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
-                  }
-                  onOpenCoworker={selectBot}
-                />
-              </Match>
-              <Match when={view() === "routines"}>
-                <RoutinesView
-                  state={routines()}
-                  bots={botList()}
-                  onSave={(input) => routineAction(window.sahkarmi.routines.save(input))}
-                  onDelete={(routineId) =>
-                    routineAction(window.sahkarmi.routines.delete(routineId))
-                  }
-                  onSetEnabled={(routineId, enabled) =>
-                    routineAction(window.sahkarmi.routines.setEnabled(routineId, enabled))
-                  }
-                  onRunNow={(routineId) =>
-                    routineAction(window.sahkarmi.routines.runNow(routineId))
-                  }
-                />
-              </Match>
-              <Match when={view() === "usage"}>
-                <ModelUsageView bots={botList()} />
-              </Match>
-              <Match when={view() === "business"}>
-                <BusinessView bots={botList()} />
-              </Match>
-              <Match when={view() === "marketplace"}>
-                <MarketplaceView
-                  bots={workspaceBots()}
-                  onAddAgent={addMarketplaceAgent}
-                  onOpenCoworker={selectBot}
-                />
-              </Match>
-              <Match when={view() === "activity"}>
-                <ActivityView bots={botList()} />
-              </Match>
-              <Match when={view() === "settings"}>
-                <SettingsView
-                  appInfo={appInfo()}
-                  agentStatus={agentStatus()}
-                  updateStatus={updateStatus()}
-                  bots={botList()}
-                  modelOptions={modelOptions()}
-                  onUpdateModel={(botId, model) => updateBot(botId, { model })}
-                  onOpenPermissions={() => setPermissionsOpen(true)}
-                  onUpdateAction={runUpdateAction}
-                />
-              </Match>
-              <Match when={view() === "coworker"}>
-                <Conversation
-                  agentStatus={agentStatus()}
-                  bot={activeBot()}
-                  bots={botList()}
-                  status={
-                    activeBot() ? (coworkerStatuses()[activeBot()?.id ?? ""] ?? "idle") : "idle"
-                  }
-                  modelOptions={modelOptions()}
-                  messages={activeMessages()}
-                  loaded={
-                    activeBot() ? conversationLoaded()[activeBot()?.id ?? ""] === true : false
-                  }
-                  queue={activeQueue()}
-                  schedules={schedules().filter((task) => task.botId === activeBot()?.id)}
-                  takeover={takeover()}
-                  browserTabs={browserTabs()}
-                  activeBrowserTabId={activeBrowserTabId()}
-                  browserControlState={browserControlState()}
-                  leftSidebarCollapsed={leftPanelCollapsed()}
-                  prompt={activeBot() ? pendingPrompts()[activeBot()?.id ?? ""] : undefined}
-                  activityRetry={retries()[activeBot()?.id ?? ""] ?? null}
-                  turnOutcome={turnOutcomes()[activeBot()?.id ?? ""] ?? null}
-                  waitingForApproval={pendingApprovals().some(
-                    (approval) =>
-                      approval.kind === "permission" && approval.botId === activeBot()?.id,
-                  )}
-                  pendingApprovals={pendingApprovals().filter(
-                    (approval) => approval.botId === activeBot()?.id,
-                  )}
-                  onDecideApproval={decideApproval}
-                  activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
-                  agentPickerOpen={agentPickerOpen()}
-                  creatingAgent={creatingAgent()}
-                  settingsRequest={settingsRequest()}
-                  onboardingRequest={onboardingRequest()}
-                  onCloseAgentPicker={() => setAgentPickerOpen(false)}
-                  onCreateAgent={() => void createAgent()}
-                  onSelectAgent={selectBot}
-                  onUpdateBot={updateBot}
-                  onSendMessage={sendMessage}
-                  onScheduleMessage={scheduleMessage}
-                  onToggleSchedule={(task) =>
-                    scheduleAction(() =>
-                      window.sahkarmi.schedules.setEnabled(task.id, !task.enabled),
-                    )
-                  }
-                  onDeleteSchedule={(task) =>
-                    scheduleAction(() => window.sahkarmi.schedules.delete(task.id))
-                  }
-                  onRunSchedule={(task) =>
-                    scheduleAction(() => window.sahkarmi.schedules.runNow(task.id))
-                  }
-                  onCompleteOnboarding={completeOnboarding}
-                  onAnswerPrompt={answerPrompt}
-                  onCancelQueuedMessage={cancelQueuedMessage}
-                  onPauseQueue={() => setQueuePaused(true)}
-                  onResumeQueue={resumeQueue}
-                  onActivateBrowserTab={activateBrowserTab}
-                  onCloseBrowserTab={closeBrowserTab}
-                  onTakeOverBrowser={() =>
-                    void window.sahkarmi.browser.takeOver().then(setTakeover)
-                  }
-                  onHandBackBrowser={(note) =>
-                    void window.sahkarmi.browser.handBack(note).then(setTakeover)
-                  }
-                  onToggleLeftSidebar={() => setSidebarCollapsed(false)}
-                  onOpenAiSettings={openAiSettings}
-                  onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
-                  onStop={stopActiveTurn}
-                  onDeleteBot={(botId) => void deleteBot(botId)}
-                />
-              </Match>
-            </Switch>
-          </Suspense>
-          <Show when={permissionsOpen()}>
-            <InitialSetup
-              reviewing
-              state={setupState() ?? { completed: true, preferredProvider: "opencode" }}
-              agentStatus={agentStatus()}
-              platform={appInfo()?.platform ?? "darwin"}
-              onSave={saveSetup}
-              onClose={() => setPermissionsOpen(false)}
-            />
-          </Show>
-          <WhatsNewDialog version={appInfo()?.version ?? "0.5.4"} />
-          <GlobalSearch
-            open={searchOpen()}
-            bots={workspaceBots()}
-            workspaceId={workspaces().activeWorkspaceId || null}
-            onClose={() => setSearchOpen(false)}
-            onOpenBot={openSearchResult}
-          />
-          <Show when={pendingDelete()}>
-            {(pending) => (
-              <div class="undo-toast" role="status">
-                <span>{t("deletedCoworker", { name: pending().bot.name })}</span>
-                <button type="button" onClick={undoDeleteBot}>
-                  {t("undo")}
-                </button>
-              </div>
-            )}
-          </Show>
-        </div>
+            <Show when={pendingDelete()}>
+              {(pending) => (
+                <div class="undo-toast" role="status">
+                  <span>{t("deletedCoworker", { name: pending().bot.name })}</span>
+                  <button type="button" onClick={undoDeleteBot}>
+                    {t("undo")}
+                  </button>
+                </div>
+              )}
+            </Show>
+          </div>
+        </Show>
       </Show>
-    </Show>
+    </>
   );
 }
 

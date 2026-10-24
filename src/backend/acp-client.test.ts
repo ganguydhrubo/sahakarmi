@@ -316,6 +316,48 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     ]);
   });
 
+  it("shows a file the coworker made during the turn under its reply, also after a restart", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+    await service.initialize();
+    await service.sendMessage({ botId: "meera-support", text: "make a picture of the shop" });
+    await waitFor(async () =>
+      (await service?.readConversation("meera-support"))?.messages.some(
+        (message) => message.author === "assistant" && message.text.includes("Namaste"),
+      ),
+    );
+    await waitFor(() =>
+      service
+        ?.listQueue("meera-support")
+        .deliveries.every((delivery) => delivery.status === "completed"),
+    );
+    const reply = (await service.readConversation("meera-support")).messages.find(
+      (message) => message.author === "assistant" && message.text.includes("Namaste"),
+    );
+    expect(reply?.attachments?.map((item) => [item.name, item.kind, item.previewKind])).toEqual([
+      ["made.png", "image", "image"],
+    ]);
+    expect(reply?.attachments?.[0]?.previewUrl).toMatch(/^sahkarmi-attachment:\/\/local\//);
+    await service.stop();
+
+    const restoredStore = new BotStore(join(root, "user-data"), join(root, "home"));
+    const restoredMailbox = new MailboxStore(join(root, "user-data"), restoredStore.sharedRoot);
+    service = new AgentService(
+      restoredStore,
+      restoredMailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "opencode",
+    );
+    await service.initialize();
+    const again = (await service.readConversation("meera-support")).messages.find(
+      (message) => message.author === "assistant" && message.text.includes("Namaste"),
+    );
+    expect(again?.attachments?.map((item) => item.name)).toEqual(["made.png"]);
+  });
+
   it("finds messages across coworkers with an excerpt around the match", async () => {
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
@@ -507,6 +549,8 @@ let mcp = null;
 let nextId = 1000;
 const waiting = new Map();
 const cancellable = new Map();
+const cwdBySession = {};
+let lastCwd = null;
 const update = (sessionId, update) => write({ method: "session/update", params: { sessionId, update } });
 async function mcpCall(method, params) {
   const response = await fetch(mcp.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params }) });
@@ -519,6 +563,7 @@ async function handle(message) {
   if (method === "initialize") return write({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: false, mcpCapabilities: { http: true } } } });
   if (method === "session/new") {
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
+    cwdBySession["ses_" + Date.now()] = params.cwd; lastCwd = params.cwd;
     return write({ id, result: { sessionId: "ses_" + Date.now(), configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "opencode/nemotron-free", name: "Nemotron" }, { value: "anthropic/x", name: "X" }] }] } });
   }
   if (method === "session/set_config_option") return write({ id, result: {} });
@@ -528,6 +573,7 @@ async function handle(message) {
     const sessionId = params.sessionId;
     // Empty once per test (the log is shared by every fake process): the re-send must get an answer.
     if (text.includes("say nothing") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("say-nothing-done")) { log({ method: "say-nothing-done" }); return write({ id, result: { stopReason: "end_turn" } }); }
+    if (text.includes("make a picture") && lastCwd) { fs.writeFileSync(require("node:path").join(lastCwd, "made.png"), Buffer.from("iVBORw0KGgo=", "base64")); }
     // Silent once per test (the log is shared by every fake process): the retry on the next free model answers.
     if (text.includes("stay silent") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("stay-silent-done")) { log({ method: "stay-silent-done" }); cancellable.set(sessionId, () => write({ id, result: { stopReason: "cancelled" } })); return; }
     if (text.includes("keep talking")) {

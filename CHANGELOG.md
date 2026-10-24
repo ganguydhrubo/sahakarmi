@@ -5,6 +5,31 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-24
+
+### Fixed
+
+- The coworker browser can sign in to Google again. It used to pretend to be Firefox on
+  accounts.google.com while everything else about it was Chromium, and Google answered
+  "This browser or app may not be secure". It now presents one plain Chromium identity on every
+  site, and sign-in popups ("Continue with Google", OAuth consent) open as a real popup window
+  that shares the browser's session, so no login flow is blocked.
+- The browser panel can no longer cover the chat header and its Browser button on narrow windows.
+
+### Added
+
+- A short 3D reveal of the Sahkarmi mark when the app opens (about 1.7 seconds, once per launch,
+  plain fade when the system asks for reduced motion).
+- The chat reacts the instant you press send ("Message bheja ja raha hai…") instead of showing
+  nothing until the provider starts the turn.
+- Pictures a coworker makes show in the chat: files it writes during a turn (images, PDFs,
+  Word, Excel, PowerPoint, CSV, Markdown, HTML) appear under its reply as attachments, with
+  image previews, and markdown images in a reply render inline.
+- Attached documents are readable by every model: Sahkarmi extracts the text of PDF, Word,
+  Excel, PowerPoint and text attachments into the prompt (up to 60,000 characters each), and
+  sends attached pictures as image input to agents that accept images (Google Antigravity,
+  OpenCode vision models).
+
 ## [0.7.2] - 2026-10-24
 
 ### Fixed

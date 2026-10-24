@@ -155,6 +155,11 @@ export class BotStore {
     return this.#sharedRoot;
   }
 
+  /** Every coworker's own folder lives under this root. */
+  get botsRoot(): string {
+    return this.#botsRoot;
+  }
+
   get downloadsRoot(): string {
     return this.#downloadsRoot;
   }

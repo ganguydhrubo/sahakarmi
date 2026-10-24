@@ -24,6 +24,7 @@ import electronUpdater from "electron-updater";
 import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
 import { AgentService } from "../backend/agent-service";
 import { ApprovalStore } from "../backend/approval-store";
+import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
 import { BrowserHost } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
@@ -302,7 +303,12 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.agentOpenAttachment, async (input: unknown) => {
     const parsed = parseOpenAttachment(input);
-    const attachment = await mailbox.resolveAttachment(parsed.attachmentId);
+    const localPath = localAttachmentPath(parsed.attachmentId);
+    const attachment = localPath
+      ? isUnderRoots(localPath, [store.botsRoot, store.sharedRoot])
+        ? { path: localPath }
+        : null
+      : await mailbox.resolveAttachment(parsed.attachmentId);
     if (!attachment) throw new Error("Attachment was not found.");
     if (parsed.action === "reveal") {
       shell.showItemInFolder(attachment.path);
@@ -950,7 +956,7 @@ if (!hasSingleInstanceLock) {
       mailboxStore = new MailboxStore(app.getPath("userData"), store.sharedRoot);
       await mailboxStore.initialize();
       configureApplicationProtocol();
-      configureAttachmentProtocol(mailboxStore);
+      configureAttachmentProtocol(mailboxStore, store);
       browserHost = new BrowserHost(
         mainWindow,
         store.downloadsRoot,
@@ -1373,11 +1379,26 @@ function parseSetQueuePaused(value: unknown): SetQueuePausedInput {
   return { botId: requireString(value.botId, "botId"), paused: value.paused };
 }
 
-function configureAttachmentProtocol(mailbox: MailboxStore): void {
+function configureAttachmentProtocol(mailbox: MailboxStore, store: BotStore): void {
   session.defaultSession.protocol.handle("sahkarmi-attachment", async (request) => {
     try {
       const url = new URL(request.url);
       const id = url.pathname.split("/").filter(Boolean).at(-1);
+      // sahkarmi-attachment://local/<id>: a file a coworker wrote in its folder or Shared.
+      if (url.host === "local" && id) {
+        const path = localAttachmentPath(`local:${id}`);
+        if (!path || !isUnderRoots(path, [store.botsRoot, store.sharedRoot])) {
+          return new Response("Not found", { status: 404 });
+        }
+        return new Response(await readFile(path), {
+          headers: {
+            "Content-Type": mimeTypeFor(path),
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": "inline",
+          },
+        });
+      }
       const attachment = id ? await mailbox.resolveAttachment(id) : null;
       if (!attachment) return new Response("Not found", { status: 404 });
       return new Response(await readFile(attachment.path), {

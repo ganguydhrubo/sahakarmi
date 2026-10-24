@@ -1755,7 +1755,8 @@ textarea {
   right: 0;
   bottom: 0;
   display: flex;
-  width: var(--browser-panel-width, 380px);
+  /* Never wider than the panel minus room for the chat header's own controls. */
+  width: min(var(--browser-panel-width, 380px), calc(100% - 360px));
   flex-direction: column;
   border-left: 1px solid var(--sahkarmi-line);
   background: var(--bg-deep);
@@ -1772,9 +1773,22 @@ textarea {
     -10px 0 28px rgb(var(--primary-rgb) / 0.14);
 }
 
-.conversation-panel.browser-panel-active {
-  padding-right: var(--browser-panel-width, 380px);
+.conversation-panel.browser-panel-active,
+.conversation-panel:has(> .browser-panel) {
+  padding-right: min(var(--browser-panel-width, 380px), calc(100% - 360px));
 }
+
+/* With the browser open the header wraps onto two rows instead of sliding under the panel. */
+.conversation-panel.browser-panel-active .conversation-header,
+.conversation-panel:has(> .browser-panel) .conversation-header {
+  height: auto;
+  min-height: 38px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-bottom: 4px;
+  overflow: hidden;
+}
+
 
 .browser-panel-header {
   display: flex;
@@ -9510,4 +9524,129 @@ ol.md-list {
   background: rgb(200 40 40);
   color: #fff;
   border-color: transparent;
+}
+
+/* Pictures inside a reply (markdown images, coworker-made files) */
+.message-inline-image {
+  display: block;
+  max-width: min(100%, 520px);
+  max-height: 420px;
+  margin: 8px 0;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.12);
+  object-fit: contain;
+  background: rgb(var(--ink-rgb) / 0.04);
+}
+
+/* Launch splash: one 3D reveal of the mark, about 1.7 s, never loops */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  /* Always the night palette: the reveal reads the same in light and dark themes. */
+  background: radial-gradient(circle at 50% 42%, #1b2040 0%, #0f1220 55%, #090b16 100%);
+  color: #fff;
+  perspective: 900px;
+  transition: opacity 320ms ease;
+}
+.splash-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+.splash-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 18px;
+  transform-style: preserve-3d;
+}
+.splash-glow {
+  position: absolute;
+  top: -40px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgb(232 119 46 / 0.45),
+    rgb(63 81 181 / 0.25) 45%,
+    transparent 70%
+  );
+  filter: blur(18px);
+  animation: splash-glow 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.splash-mark {
+  transform-style: preserve-3d;
+  animation: splash-swing 1.15s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+  filter: drop-shadow(0 18px 40px rgb(0 0 0 / 0.45));
+}
+.splash-logo .logo-mark__indigo {
+  fill: #5b6cff;
+}
+.splash-word {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  animation: splash-rise 0.7s 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.splash-name {
+  color: #fff;
+  font-family: "Baloo 2", "Mukta", system-ui, sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.splash-native {
+  color: #f6d9c2;
+  font-family: "Mukta", "Hind Siliguri", system-ui, sans-serif;
+  font-size: 18px;
+  opacity: 0.9;
+}
+@keyframes splash-swing {
+  0% {
+    opacity: 0;
+    transform: translateZ(-240px) rotateY(-95deg) rotateX(18deg) scale(0.6);
+  }
+  55% {
+    opacity: 1;
+    transform: translateZ(40px) rotateY(14deg) rotateX(-6deg) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateZ(0) rotateY(0) rotateX(0) scale(1);
+  }
+}
+@keyframes splash-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes splash-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-mark,
+  .splash-glow,
+  .splash-word {
+    animation: none;
+  }
+}
+
+.conversation-panel:has(> .browser-panel) .conversation-header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
