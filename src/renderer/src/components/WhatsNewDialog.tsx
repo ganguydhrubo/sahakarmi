@@ -10,6 +10,38 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.7.0": [
+    {
+      icon: "🔍",
+      badge: "New",
+      title: "Search everything (Ctrl+K)",
+      desc: "Find a coworker or any message in the workspace and jump straight to it. Ctrl+1–9 opens a coworker, Ctrl+N makes one, Ctrl+, opens Settings.",
+    },
+    {
+      icon: "🛟",
+      badge: "New",
+      title: "Backup model",
+      desc: "If a paid AI answers nothing or hits its quota, the coworker moves to the free model, tells you why, and sends your message again there.",
+    },
+    {
+      icon: "↩️",
+      badge: "New",
+      title: "Undo delete, Send again",
+      desc: "Deleting a coworker can be undone for 8 seconds, and a failed or stopped message has a Send again button.",
+    },
+    {
+      icon: "🖥️",
+      badge: "New",
+      title: "Your size, your keys",
+      desc: "Settings → General: Compact, Normal or Large interface; Enter or Ctrl+Enter to send. The window also opens where you left it.",
+    },
+    {
+      icon: "⚡",
+      badge: "Faster",
+      title: "Ready before Google's agent",
+      desc: "You can start working as soon as the quick providers are up; Antigravity finishes starting in the background.",
+    },
+  ],
   "0.6.3": [
     {
       icon: "🧭",

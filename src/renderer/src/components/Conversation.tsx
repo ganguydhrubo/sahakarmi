@@ -99,6 +99,7 @@ interface ConversationProps {
   onCreateAgent: () => void;
   onSelectAgent: (botId: string) => void;
   onUpdateBot: (botId: string, updates: Omit<UpdateBotInput, "botId">) => Promise<void>;
+  onDeleteBot?: (botId: string) => void;
   onSendMessage: (
     body: string,
     attachmentDraftIds: string[],
@@ -535,7 +536,12 @@ function MessageBody(props: {
   onOpenLink: (url: string) => void;
   onPreview: (attachment: AttachmentSummary) => void;
   onAttachmentAction: (attachment: AttachmentSummary, action: "open" | "reveal") => void;
+  onResend?: (body: string) => void;
 }) {
+  const canResend = () =>
+    props.message.author === "you" &&
+    Boolean(props.message.body.trim()) &&
+    /^(Failed|Interrupted|Cancelled)$/.test(props.message.status ?? "");
   return (
     <>
       <Show when={props.referencedMessage}>
@@ -579,6 +585,15 @@ function MessageBody(props: {
         <div class="message-status">
           <span />
           {props.message.status}
+          <Show when={canResend() && props.onResend}>
+            <button
+              type="button"
+              class="message-resend"
+              onClick={() => props.onResend?.(props.message.body)}
+            >
+              {t("sendAgain")}
+            </button>
+          </Show>
         </div>
       </Show>
       <Show when={props.message.attachments?.length}>
@@ -1109,6 +1124,8 @@ export function Conversation(props: ConversationProps) {
   let lastHandledOnboardingRequestNonce: number | undefined;
   let lastSettingsSignature: string | undefined;
   const importTargetBots = new Map<string, string>();
+
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false);
 
   async function saveBotPatch(updates: Omit<UpdateBotInput, "botId">): Promise<boolean> {
     const botId = props.bot?.id;
@@ -2056,6 +2073,7 @@ export function Conversation(props: ConversationProps) {
                       fallback={
                         <article
                           class="message-entry"
+                          data-message-id={message.id}
                           classList={{
                             "message-entry-animated": animateEntrance,
                             "message-entry-user": message.author === "you",
@@ -2077,6 +2095,7 @@ export function Conversation(props: ConversationProps) {
                                 onOpenLink={(url) => void openMessageLink(url)}
                                 onPreview={(attachment) => void previewAttachment(attachment)}
                                 onAttachmentAction={attachmentAction}
+                                onResend={(body) => void props.onSendMessage(body, [], null)}
                               />
                             </div>
                             <MessageActions
@@ -2815,6 +2834,38 @@ export function Conversation(props: ConversationProps) {
                 <p class="agent-settings-save-error" role="alert">
                   {message()}
                 </p>
+              )}
+            </Show>
+            <Show when={props.onDeleteBot && props.bot}>
+              {(bot) => (
+                <section class="agent-settings-danger">
+                  <strong>{t("dangerZone")}</strong>
+                  <Show
+                    when={confirmingDelete()}
+                    fallback={
+                      <button type="button" onClick={() => setConfirmingDelete(true)}>
+                        {t("deleteCoworker")}
+                      </button>
+                    }
+                  >
+                    <p>{t("deleteCoworkerConfirm", { name: bot().name })}</p>
+                    <div class="agent-settings-danger-actions">
+                      <button
+                        type="button"
+                        class="agent-settings-danger-confirm"
+                        onClick={() => {
+                          setConfirmingDelete(false);
+                          props.onDeleteBot?.(bot().id);
+                        }}
+                      >
+                        {t("deleteCoworker")}
+                      </button>
+                      <button type="button" onClick={() => setConfirmingDelete(false)}>
+                        {t("cancel")}
+                      </button>
+                    </div>
+                  </Show>
+                </section>
               )}
             </Show>
             <div class="agent-settings-notifications">

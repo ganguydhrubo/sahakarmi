@@ -526,8 +526,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       );
     }
     const finalText = stripLeakedToolCalls(turn.text);
-    // A stopped or failed turn with nothing said leaves no empty bubble behind.
-    if (finalText.trim() || status === "completed") {
+    // A turn with nothing said leaves no empty bubble behind (the owner gets a note instead).
+    if (finalText.trim()) {
       this.#emitItem(
         threadId,
         turn.id,

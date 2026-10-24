@@ -83,6 +83,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     updateBot: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentUpdateBot, input),
     deleteBot: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentDeleteBot, botId),
     readConversation: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentReadConversation, botId),
+    searchMessages: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSearchMessages, input),
     chooseAttachments: () => ipcRenderer.invoke(IPC_CHANNELS.agentChooseAttachments),
     importData: (data) =>
       ipcRenderer.invoke(IPC_CHANNELS.agentImportAttachments, { paths: [], data }),

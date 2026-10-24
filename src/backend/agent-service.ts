@@ -35,9 +35,11 @@ import {
   DEFAULT_MODEL_FOR_PROVIDER,
   isAvatarColor,
   isAvatarShape,
+  type MessageSearchHit,
   modelWireId,
   PROVIDER_LABELS,
   providerForModel,
+  type SearchMessagesInput,
 } from "../shared/ipc";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
@@ -231,6 +233,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #snapshots = new Map<string, ConversationSnapshot>();
   /** Last time a quota notice went to each coworker's chat (one per turn is plenty). */
   readonly #quotaNoticeAt = new Map<string, number>();
+  /** Deliveries already re-sent on the free model: one fallback per message, never a loop. */
+  readonly #fallbackRetried = new Set<string>();
+  /** The last error text each coworker's turn reported, to recognise a quota failure. */
+  readonly #lastTurnError = new Map<string, string>();
   readonly #threadToBot = new Map<string, string>();
   readonly #loadedThreads = new Set<string>();
   readonly #pendingPrompts = new Map<RequestId, PendingPrompt>();
@@ -797,6 +803,52 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return receipt;
   }
 
+  /**
+   * Coworkers' conversations searched for a phrase, newest hit first. Conversations not in
+   * memory are read from their transcripts; a provider that cannot answer in 4 s is skipped.
+   */
+  async searchMessages(input: SearchMessagesInput): Promise<MessageSearchHit[]> {
+    const needle = input.query.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const bots = this.#store
+      .list()
+      .filter((bot) => !input.workspaceId || bot.workspaceId === input.workspaceId);
+    const hits: MessageSearchHit[] = [];
+    await Promise.all(
+      bots.map(async (bot) => {
+        const snapshot =
+          this.#snapshots.get(bot.id) ??
+          (await Promise.race([
+            this.readConversation(bot.id).catch(() => null),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_000)),
+          ]));
+        if (!snapshot) return;
+        for (const message of snapshot.messages) {
+          if (
+            !message.text ||
+            message.itemType === "toolCall" ||
+            message.itemType === "commentary"
+          ) {
+            continue;
+          }
+          const index = message.text.toLowerCase().indexOf(needle);
+          if (index < 0) continue;
+          hits.push({
+            botId: bot.id,
+            botName: bot.name,
+            messageId: message.id,
+            author: message.author,
+            excerpt: searchExcerpt(message.text, index, needle.length),
+            createdAt: message.createdAt,
+          });
+        }
+      }),
+    );
+    return hits
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, input.limit ?? 40);
+  }
+
   async setMessageReaction(input: SetMessageReactionInput): Promise<void> {
     const bot = await this.#store.getOrCreate(input.botId);
     const snapshot = this.#ensureSnapshot(bot.id, bot.threadId);
@@ -892,6 +944,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (this.#clients.has(provider)) continue;
       let client: AgentClient | null = null;
       let cli: CodexCliInfo | ClaudeCliInfo | AcpCliInfo | null = null;
+      const finishStart = this.#announceEarlyReady(provider, providerStatuses, requestedProviders);
       try {
         const transcripts = join(this.#store.userDataPath, "acp-transcripts");
         if (provider === "codex") {
@@ -953,6 +1006,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         failures.push(message);
         setProviderStatus(providerStatuses, provider, providerFailureStatus(error, cli?.version));
         if (!(error instanceof CodexCliError)) this.#emitError(`${provider}_start_failed`, error);
+      } finally {
+        finishStart();
       }
       // Show this provider's result right away instead of after every provider was tried.
       this.#setStatus({ providers: this.#mergeProviders(providerStatuses, requestedProviders) });
@@ -995,6 +1050,37 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         this.#scheduleDrain(bot.id);
       }
     }
+  }
+
+  /**
+   * Google's Antigravity agent takes up to a minute to start. Once the quick providers are up,
+   * the app is marked ready so the owner can work while it starts; its start is registered so
+   * a coworker that needs it meanwhile waits for this start instead of spawning a second one.
+   */
+  #announceEarlyReady(
+    provider: AgentProvider,
+    providerStatuses: AgentProviderStatus[],
+    requestedProviders: readonly AgentProvider[],
+  ): () => void {
+    if (provider !== "antigravity" || this.#clients.size === 0 || this.#status.phase === "ready") {
+      return () => undefined;
+    }
+    this.#setStatus({
+      phase: "ready",
+      providers: this.#mergeProviders(providerStatuses, requestedProviders),
+      capabilities: { ...this.#status.capabilities, chat: "ready" },
+      message: null,
+    });
+    if (this.#providerStarts.has(provider)) return () => undefined;
+    let finish: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.#providerStarts.set(provider, pending);
+    return () => {
+      finish();
+      if (this.#providerStarts.get(provider) === pending) this.#providerStarts.delete(provider);
+    };
   }
 
   /**
@@ -2294,6 +2380,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         }
         const message = getString(params, "message") ?? notification.method;
         if (notification.method === "warning" && isNonActionableCodexWarning(message)) return;
+        if (notification.method === "error" && botId) this.#lastTurnError.set(botId, message);
         this.#emitError(`agent_${notification.method}`, message, botId);
       }
     }
@@ -2346,18 +2433,32 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     } else if (
       status === "completed" &&
       !snapshot.messages.some(
-        (message) => message.author === "assistant" && message.turnId === turnId,
+        (message) =>
+          message.author === "assistant" &&
+          message.turnId === turnId &&
+          (message.text.trim() || message.itemType === "toolCall"),
       )
     ) {
       // Google's server answers a quota error with an "ok" and no text; a blank is not an answer.
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       const label = bot ? PROVIDER_LABELS[providerForBot(bot)] : "The AI";
-      this.#emitError(
-        "empty_reply",
-        `${label} sent back an empty reply. Try again, or switch this coworker to another model.`,
-        botId,
-      );
+      const fellBack = delivery
+        ? await this.#fallBackToFreeModel(botId, delivery, "sent back an empty reply")
+        : false;
+      if (!fellBack) {
+        this.#emitError(
+          "empty_reply",
+          `${label} sent back an empty reply. Try again, or switch this coworker to another model.`,
+          botId,
+        );
+      }
+    } else if (status === "failed" && delivery) {
+      const reason = this.#lastTurnError.get(botId) ?? "";
+      if (/429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded/i.test(reason)) {
+        await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
+      }
     }
+    this.#lastTurnError.delete(botId);
     this.#emit({ type: "turn-completed", botId, threadId, turnId, status });
     this.#emitConversation(snapshot);
     if (shouldCompact) await this.#requestContextCompaction(botId, threadId);
@@ -2728,6 +2829,41 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#lastConversationSignatures.set(snapshot.botId, signature);
     snapshot.revision += 1;
     this.#emit({ type: "conversation", snapshot: structuredClone(snapshot) });
+  }
+
+  /**
+   * A paid provider that cannot answer (quota, rate limit, blank reply) must not leave the
+   * owner staring at nothing: the coworker moves to the bundled free model, the owner is told
+   * why, and the same message is sent again there. Only once per message, and never when the
+   * coworker already runs on the free model or that model is unavailable.
+   */
+  async #fallBackToFreeModel(
+    botId: string,
+    delivery: DeliveryContext,
+    reason: string,
+  ): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot || providerForBot(bot) === "opencode") return false;
+    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
+    if (delivery.managedAttachments.length) return false;
+    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    const free = this.#status.providers?.find((provider) => provider.id === "opencode");
+    if (free?.state !== "available") return false;
+    this.#fallbackRetried.add(delivery.delivery.id);
+    const from = PROVIDER_LABELS[providerForBot(bot)];
+    try {
+      await this.updateBot({ botId, model: "opencode-free" });
+    } catch {
+      this.#fallbackRetried.delete(delivery.delivery.id);
+      return false;
+    }
+    this.#emitError(
+      "fallback_model",
+      `${from} ${reason}, so ${bot.name} switched to the free model and is answering your message again there. Switch back from the model picker whenever you like.`,
+      botId,
+    );
+    await this.sendMessage({ botId, text: delivery.delivery.text });
+    return true;
   }
 
   /** Coworkers with a turn running on this provider: who a provider-wide notice belongs to. */
@@ -3223,4 +3359,12 @@ export function isNoisyDiagnostic(provider: AgentProvider, message: string): boo
   return /logging before google\.Init|filesystem_provider\.go|mcp_servers\.py|encoder_embed\.go|harness stderr: I\d{4}|Failed to load\/parse MCP config/.test(
     message,
   );
+}
+
+/** One line around the match, so the owner can tell which message it is. */
+export function searchExcerpt(text: string, index: number, length: number): string {
+  const flat = text.replace(/\s+/g, " ");
+  const start = Math.max(0, index - 48);
+  const end = Math.min(flat.length, index + length + 72);
+  return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
 }

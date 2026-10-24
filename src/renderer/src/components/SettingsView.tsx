@@ -13,8 +13,14 @@ import {
   type ActivityStyle,
   activityStyle,
   language,
+  type SendKey,
+  sendKey,
   setActivityStyle,
   setLanguage,
+  setSendKey,
+  setUiSize,
+  type UiSize,
+  uiSize,
 } from "../preferences";
 import { SETTINGS_SECTION_KEY } from "../settings-section";
 import { FeaturesSettings } from "./FeaturesSettings";
@@ -69,6 +75,15 @@ interface SettingsViewProps {
   onUpdateAction: () => Promise<void>;
 }
 
+const UI_SIZES: Array<{ value: UiSize; label: MessageKey }> = [
+  { value: "compact", label: "uiSizeCompact" },
+  { value: "normal", label: "uiSizeNormal" },
+  { value: "large", label: "uiSizeLarge" },
+];
+const SEND_KEYS: Array<{ value: SendKey; label: MessageKey }> = [
+  { value: "enter", label: "sendKeyEnter" },
+  { value: "ctrl-enter", label: "sendKeyCtrlEnter" },
+];
 const ACTIVITY_STYLES: Array<{ value: ActivityStyle; label: MessageKey }> = [
   { value: "masti", label: "activityMasti" },
   { value: "seedha", label: "activitySeedha" },
@@ -179,6 +194,40 @@ export function SettingsView(props: SettingsViewProps) {
                   )}
                 </For>
               </fieldset>
+              <h2>{t("uiSizeLabel")}</h2>
+              <fieldset class="segmented">
+                <legend class="sr-only">{t("uiSizeLabel")}</legend>
+                <For each={UI_SIZES}>
+                  {(option) => (
+                    <button
+                      type="button"
+                      aria-pressed={uiSize() === option.value}
+                      classList={{ "segmented-active": uiSize() === option.value }}
+                      onClick={() => setUiSize(option.value)}
+                    >
+                      {t(option.label)}
+                    </button>
+                  )}
+                </For>
+              </fieldset>
+              <h2>{t("sendKeyLabel")}</h2>
+              <fieldset class="segmented">
+                <legend class="sr-only">{t("sendKeyLabel")}</legend>
+                <For each={SEND_KEYS}>
+                  {(option) => (
+                    <button
+                      type="button"
+                      aria-pressed={sendKey() === option.value}
+                      classList={{ "segmented-active": sendKey() === option.value }}
+                      onClick={() => setSendKey(option.value)}
+                    >
+                      {t(option.label)}
+                    </button>
+                  )}
+                </For>
+              </fieldset>
+              <h2>{t("shortcutsLabel")}</h2>
+              <p class="settings-meta">{t("shortcutsHint")}</p>
             </section>
           ))}
 

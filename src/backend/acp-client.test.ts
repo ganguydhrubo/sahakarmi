@@ -212,6 +212,65 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     ).toEqual(["interrupted", "completed"]);
   });
 
+  it("moves a coworker to the free model and re-sends when its provider answers nothing", async () => {
+    // Google Antigravity is the same fake ACP agent here; "say nothing" makes it end the turn empty.
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = process.env.SAHKARMI_OPENCODE_PATH;
+    process.env.GEMINI_API_KEY = "test-key";
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+    const events: Array<{ type: string; code?: string; message?: string }> = [];
+    service.on("event", (event) => events.push(event as { type: string; code?: string }));
+    await service.initialize();
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    await service.sendMessage({ botId: "meera-support", text: "say nothing, then Namaste" });
+    await waitFor(async () =>
+      (await service?.readConversation("meera-support"))?.messages.some(
+        (message) => message.author === "assistant" && message.text.includes("Namaste"),
+      ),
+    );
+    expect(service.listBots().find((bot) => bot.id === "meera-support")?.model).toBe(
+      "opencode-free",
+    );
+    const note = events.find((event) => event.type === "error" && event.code === "fallback_model");
+    expect(note?.message).toContain("Google Antigravity sent back an empty reply");
+    expect(note?.message).toContain("switched to the free model");
+    // The same text went out again on the free model; nothing else was invented.
+    const userMessages = (await service.readConversation("meera-support")).messages.filter(
+      (message) => message.author === "user",
+    );
+    expect(userMessages.map((message) => message.text)).toEqual([
+      "say nothing, then Namaste",
+      "say nothing, then Namaste",
+    ]);
+  });
+
+  it("finds messages across coworkers with an excerpt around the match", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+    await service.initialize();
+    await service.sendMessage({ botId: "meera-support", text: "Diwali gift box pitch" });
+    await waitFor(async () =>
+      (await service?.readConversation("meera-support"))?.messages.some((message) =>
+        message.text.includes("Namaste"),
+      ),
+    );
+    const hits = await service.searchMessages({ query: "diwali" });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      botId: "meera-support",
+      botName: "Meera",
+      author: "user",
+      excerpt: "Diwali gift box pitch",
+    });
+    expect(await service.searchMessages({ query: "namaste" })).toMatchObject([
+      { author: "assistant", excerpt: "Namaste! Done." },
+    ]);
+    expect(await service.searchMessages({ query: "x" })).toEqual([]);
+    expect(await service.searchMessages({ query: "nothing here" })).toEqual([]);
+  });
+
   it("keeps the conversation after a restart from Sahkarmi's own transcript", async () => {
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
@@ -396,6 +455,8 @@ async function handle(message) {
   if (method === "session/prompt") {
     const text = params.prompt.map((part) => part.text || "").join(" ");
     const sessionId = params.sessionId;
+    // Empty once per test (the log is shared by every fake process): the re-send must get an answer.
+    if (text.includes("say nothing") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("say-nothing-done")) { log({ method: "say-nothing-done" }); return write({ id, result: { stopReason: "end_turn" } }); }
     if (text.includes("keep talking")) {
       let answered = false;
       const answer = (stopReason) => { if (answered) return; answered = true; write({ id, result: { stopReason } }); };

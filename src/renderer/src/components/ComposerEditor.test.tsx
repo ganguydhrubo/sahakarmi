@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
+import { setSendKey } from "../preferences";
 import { ComposerEditor } from "./ComposerEditor";
 
 function renderComposer() {
@@ -69,6 +70,27 @@ describe("ComposerEditor", () => {
     expect(onValueChange).toHaveBeenLastCalledWith("First line\nSecond line");
     expect(onSubmit).toHaveBeenCalledOnce();
     expect(editor.textContent).toBe("First line\nSecond line");
+  });
+
+  it("adds a line on Ctrl+Enter, and sends on Ctrl+Enter when the owner chose that key", async () => {
+    const { editor, onSubmit, onValueChange } = renderComposer();
+    editor.textContent = "Namaste";
+    placeCaretAtEnd(editor);
+    await fireEvent.input(editor);
+
+    await fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onValueChange).toHaveBeenLastCalledWith("Namaste\n");
+
+    setSendKey("ctrl-enter");
+    try {
+      await fireEvent.keyDown(editor, { key: "Enter" });
+      expect(onSubmit).not.toHaveBeenCalled();
+      await fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+      expect(onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      setSendKey("enter");
+    }
   });
 
   it("does not submit when Enter confirms IME composition", async () => {
