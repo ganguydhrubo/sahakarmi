@@ -1,4 +1,21 @@
-# Upstream Radar & Clean-Room Architecture Tracking
+# Upstream Radar
+
+> **Radar v2 (24 Oct 2026):** `.github/workflows/upstream-watch.yml` runs every 6 hours, classifies
+> each new OpenBot desktop release's licence, writes `reports/<tag>.md`, opens a tracking issue and
+> mails the owner. No upstream code is ever merged (PolyForm Noncommercial since v0.1.12).
+> How it works: [docs/UPSTREAM-SYNC.md](../UPSTREAM-SYNC.md). State: `state.json`.
+> Lines below this note are appended by the radar, newest last.
+
+## Radar log (v2)
+
+<!-- radar-v2-log -->
+- 2026-10-24 · [v0.49.0](https://github.com/nightly-labs/openbot/releases/tag/v0.49.0) · PolyForm Noncommercial 1.0.0 · **CRITICAL** (provider) · 37 candidates · [report](reports/v0.49.0.md) · [issue](https://github.com/ganguydhrubo/sahakarmi/issues/29)
+
+---
+
+## Radar v1 history (kept for reference)
+
+### Upstream Radar & Clean-Room Architecture Tracking (v1)
 
 ## 1. Upstream Targets & License Boundaries
 
