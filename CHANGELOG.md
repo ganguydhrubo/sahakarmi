@@ -3,6 +3,27 @@
 All notable changes to Sahkarmi are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [0.7.2] - 2026-10-24
+
+### Fixed
+
+- First message on a fresh install came back "Interrupted · Send again" and the coworker stayed
+  "working" with its queue stuck: the CLI/model refresh (every window focus) restarts providers that
+  are not signed in, and that restart marked every other provider's running turn as "Sahkarmi
+  restarted". Only deliveries left over from a previous process are reconciled now, per provider.
+- A coworker on the free model could sit at "working" for ever when OpenCode's free usage limit
+  was reached, because OpenCode's agent never answers in that case. A turn with no sign of life
+  for 60 seconds now fails with a readable reason, and the coworker is free again.
+- "AI tool update failed: EPERM/ENOTEMPTY" after a successful bundled-runtime update on Windows.
+
+### Added
+
+- The free model rotates: "Free model (no login)" tries OpenCode's default model first and then
+  every other free model it offers. When one stops answering (its usage limit is used up), it is
+  skipped for an hour and your message is sent again on the next free model by itself, with a note
+  in the chat.
 
 ## [0.7.1] - 2026-10-24
 

@@ -1188,11 +1188,12 @@ describe.sequential("AgentService", () => {
     const snapshot = await service.readConversation("chief");
     expect(snapshot.activeTurnId).toBeNull();
 
-    // Service reconnects codex and resumes draining the queue
-    await waitFor(() => service?.getStatus().phase === "ready");
-    await waitFor(() => service?.listQueue("chief").deliveries[1]?.status === "completed");
+    // Service reconnects codex (exponential back-off, a fresh fake process, a new thread) and
+    // resumes draining the queue. Under a full parallel suite this takes well over ten seconds.
+    await waitFor(() => service?.getStatus().phase === "ready", 30_000);
+    await waitFor(() => service?.listQueue("chief").deliveries[1]?.status === "completed", 30_000);
     expect(service.listQueue("chief").deliveries[1]?.status).toBe("completed");
-  }, 15_000);
+  }, 70_000);
 });
 
 function stores(): { store: BotStore; mailbox: MailboxStore } {
@@ -1224,9 +1225,10 @@ async function protocolMessages(): Promise<Array<Record<string, unknown>>> {
 
 async function waitFor(
   check: () => boolean | undefined | Promise<boolean | undefined>,
+  timeoutMs = 10_000,
 ): Promise<void> {
   // Generous: the suite runs test files in parallel, so CI machines can be slow.
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));

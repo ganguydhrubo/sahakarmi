@@ -10,6 +10,26 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.7.2": [
+    {
+      icon: "🆓",
+      badge: "New",
+      title: "The free model rotates",
+      desc: "OpenCode's free models each have a usage limit. When one stops answering, Sahkarmi skips it for an hour and sends your message again on the next free model by itself.",
+    },
+    {
+      icon: "🩹",
+      badge: "Fix",
+      title: "First message no longer gets interrupted",
+      desc: "Re-checking a signed-out Claude or ChatGPT used to mark another coworker's running turn as interrupted and leave it stuck. Fixed.",
+    },
+    {
+      icon: "⏱️",
+      badge: "Fix",
+      title: "No more waiting for ever",
+      desc: 'A coworker whose AI says nothing for 60 seconds now stops with a readable reason instead of showing "working" indefinitely.',
+    },
+  ],
   "0.7.1": [
     {
       icon: "🔍",
