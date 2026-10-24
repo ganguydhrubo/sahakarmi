@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "upstream": "nightly-labs/openbot",
+  "lastProcessedTag": "v0.49.0",
+  "processed": {
+    "v0.49.0": {
+      "at": "2026-10-24T11:46:17.562Z",
+      "licence": "polyform-nc",
+      "critical": true,
+      "issueUrl": "https://github.com/ganguydhrubo/sahakarmi/issues/29"
+    }
+  },
+  "pendingMail": []
+}
