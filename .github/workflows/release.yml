@@ -380,7 +380,7 @@ jobs:
       # new installers are attached so its download buttons point at this release.
       - name: Refresh website download links
         continue-on-error: true
-        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f "release_tag=$RELEASE_TAG"
 
       # Submit release to Windows Package Manager (winget-pkgs)
       - name: Submit to Windows Package Manager (winget)

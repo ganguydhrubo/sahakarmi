@@ -54,9 +54,30 @@ function setHref(html, attribute, url) {
   return { html: html.replace(pattern, `$1${url}$2`), changed: found };
 }
 
+// release.yml dispatches this deploy right after publishing; the GitHub API can still list the
+// previous release for a minute or two, which left the site one version behind. When the tag is
+// known, wait (up to 4 minutes) until that release and its Windows installer are visible.
+const expectedTag = process.env.EXPECTED_RELEASE_TAG?.trim();
+async function releasesWithExpected() {
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const current = await releases();
+    if (!expectedTag) return current;
+    const expected = current.find((release) => release.tag_name === expectedTag);
+    if (expected?.assets.some((asset) => PATTERNS.win.test(asset.name))) return current;
+    console.log(
+      `${expectedTag} not listed with its installer yet (try ${attempt + 1}/24); waiting…`,
+    );
+    await new Promise((done) => setTimeout(done, 10_000));
+  }
+  console.warn(
+    `::warning::${expectedTag} never appeared with a Windows installer; using the newest listed.`,
+  );
+  return releases();
+}
+
 let list;
 try {
-  list = await releases();
+  list = await releasesWithExpected();
 } catch (error) {
   console.warn(
     `::warning::Download links not updated (${error.message}); keeping the Releases-page fallback.`,
