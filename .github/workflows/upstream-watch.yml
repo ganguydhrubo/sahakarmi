@@ -1,39 +1,74 @@
-name: Upstream Radar Watcher
+name: Upstream Radar
+
+# Watches nightly-labs/openbot for new desktop releases. It never merges upstream code (OpenBot is
+# PolyForm Noncommercial since v0.1.12): it classifies the licence, writes a report, opens a
+# tracking issue and mails the owner. See docs/UPSTREAM-SYNC.md.
 
 on:
   schedule:
-    - cron: '0 4 * * *' # Every day at 04:00 UTC
+    - cron: "17 */6 * * *" # every 6 hours (UTC)
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Analyse only: no issue, no mail, no commit"
+        type: boolean
+        default: false
+      max_releases:
+        description: "Releases to process in this run"
+        type: number
+        default: 5
 
 permissions:
   contents: write
   issues: write
 
-jobs:
-  check-upstream:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+concurrency:
+  group: upstream-radar
+  cancel-in-progress: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
-      - name: Run Upstream Radar Check
+      - name: Self-test the radar helpers
+        run: node scripts/check-upstream.mjs --self-test
+
+      - name: Check upstream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/check-upstream.mjs
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPSTREAM_MAIL_URL: ${{ secrets.UPSTREAM_MAIL_URL }}
+          UPSTREAM_MAIL_TOKEN: ${{ secrets.UPSTREAM_MAIL_TOKEN }}
+          UPSTREAM_MAX_RELEASES: ${{ inputs.max_releases || 5 }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node scripts/check-upstream.mjs --dry-run
+          else
+            node scripts/check-upstream.mjs
+          fi
 
-      - name: Commit Radar changes if any
+      - name: Commit radar state and reports
+        if: ${{ inputs.dry_run != true }}
         run: |
           git config user.name "Sahkarmi Radar Bot"
           git config user.email "radar@sahkarmi.site"
-          git add docs/upstream/RADAR.md
-          if ! git diff-index --quiet HEAD --; then
-            git commit -m "chore(upstream): update upstream radar with latest releases"
-            git push origin main
+          git add docs/upstream
+          if git diff --cached --quiet; then
+            echo "No radar changes."
           else
-            echo "No changes in upstream radar."
+            git commit -m "chore(upstream): radar report $(date -u +%Y-%m-%d)"
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi

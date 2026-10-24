@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "upstream": "nightly-labs/openbot",
+  "lastProcessedTag": "v0.49.0",
+  "processed": {
+    "v0.49.0": {
+      "at": "2026-10-24T09:56:24.232Z",
+      "licence": "init",
+      "critical": false,
+      "issueUrl": null
+    }
+  },
+  "pendingMail": []
+}
