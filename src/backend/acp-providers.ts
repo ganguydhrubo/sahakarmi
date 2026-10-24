@@ -7,8 +7,19 @@ import { AcpAgentClient, type AcpModelOption } from "./acp-client";
 import type { AcpCliInfo } from "./cli";
 import { isRecord } from "./protocol";
 
-/** Free model OpenCode uses by default; any "*-free" model is the fallback if it is renamed. */
+/** Free model OpenCode uses by default; the other "*-free" models are the fallbacks. */
 const OPENCODE_FREE_MODEL = "opencode/big-pickle";
+
+/**
+ * OpenCode's free models, in the order Sahkarmi tries them: OpenCode's own default first, then
+ * every other "-free" model it reports. Each has its own usage limit, so when one is used up
+ * (big-pickle's "Free usage limit reached" is the usual one) the next still answers.
+ */
+export function openCodeFreeModels(options: AcpModelOption[]): string[] {
+  const values = options.map((option) => option.value);
+  const free = values.filter((value) => value.startsWith("opencode/") && value.endsWith("-free"));
+  return values.includes(OPENCODE_FREE_MODEL) ? [OPENCODE_FREE_MODEL, ...free] : free;
+}
 
 export const OPENCODE_PERMISSION_CONFIG = JSON.stringify({
   edit: "ask",
@@ -35,21 +46,25 @@ export function createOpenCodeClient(cli: AcpCliInfo, transcriptRoot: string): A
       requiresOpenaiAuth: false,
     }),
     modelValue: openCodeModelValue,
+    freeModels: openCodeFreeModels,
     // Make OpenCode ask before edits, commands, web fetches and work outside its folder, so
     // every such call reaches Sahkarmi's permission policy (session/request_permission).
     env: { OPENCODE_PERMISSION: OPENCODE_PERMISSION_CONFIG },
   });
 }
 
-export function openCodeModelValue(model: AgentModelId, options: AcpModelOption[]): string | null {
+export function openCodeModelValue(
+  model: AgentModelId,
+  options: AcpModelOption[],
+  exhausted: ReadonlySet<string> = new Set(),
+): string | null {
   if (model !== "opencode-free" && model !== "opencode-default") {
     const wire = modelWireId(model);
     return options.some((option) => option.value === wire) ? wire : null;
   }
   if (model !== "opencode-free") return null; // "Your OpenCode model": keep the user's default.
-  const values = options.map((option) => option.value);
-  if (values.includes(OPENCODE_FREE_MODEL)) return OPENCODE_FREE_MODEL;
-  return values.find((value) => value.startsWith("opencode/") && value.endsWith("-free")) ?? null;
+  const free = openCodeFreeModels(options);
+  return free.find((value) => !exhausted.has(value)) ?? free[0] ?? null;
 }
 
 export function createAntigravityClient(cli: AcpCliInfo, transcriptRoot: string): AcpAgentClient {

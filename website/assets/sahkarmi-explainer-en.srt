@@ -1,0 +1,40 @@
+1
+00:00:00,000 --> 00:00:13,080
+Sahkarmi is a free, open-source desktop app that gives you a team of AI coworkers on your own computer. Here is what it actually does, recorded from the real app.
+
+2
+00:00:13,080 --> 00:00:31,560
+On first launch you choose a default AI. On a clean computer the free built-in model is ready without any account. Claude, ChatGPT and Google Antigravity are optional, and Sahkarmi reuses their existing sign-ins if you have them.
+
+3
+00:00:31,560 --> 00:00:49,750
+Nine coworkers come ready: accounts, sales, support, research, content, code, ops, security, and an orchestrator. Each has its own folder, memory and task queue. Rename them or add your own.
+
+4
+00:00:49,752 --> 00:01:04,652
+Give a task in plain language. Here Vikram, the sales coworker, drafts a WhatsApp follow-up on the free model. Every step shows in the thread, and you can pause or stop at any time.
+
+5
+00:01:04,656 --> 00:01:10,916
+Control K searches every coworker and every message, and jumps straight to it.
+
+6
+00:01:10,920 --> 00:01:22,340
+Each coworker has its own built-in browser. For logins and OTPs you press Take over and type them yourself; the coworker waits until you hand back.
+
+7
+00:01:22,344 --> 00:01:36,244
+Before a payment, a customer message, a post or a form, a coworker files a request in Approvals and waits for your decision. The Permissions page sets how much they may do on their own.
+
+8
+00:01:36,240 --> 00:01:50,810
+Settings, AI and models: connect the accounts you already pay for, or stay on the free models. Your password is only ever typed on the provider's own page, and nothing is sent to Sahkarmi.
+
+9
+00:01:50,808 --> 00:02:06,718
+Download it from sahkarmi dot site for Windows, macOS or Linux. The Windows installer is not code-signed yet, so choose More info, then Run anyway. Checksums are on the release page.
+
+10
+00:02:06,720 --> 00:02:20,500
+Sahkarmi is a young open-source project. Try it, tell us what broke or confused you on GitHub, and help shape it. Your AI team. Made in India.
+

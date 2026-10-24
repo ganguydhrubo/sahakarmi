@@ -1,25 +1,31 @@
 # Sahkarmi
 
-> Sahkarmi (सहकर्मी, "coworker") is a free, open-source desktop app, built in India, that gives a small business a team of AI coworkers. Each coworker has its own workspace, browser, memory and task queue, and asks the owner before payments, customer messages, publishing or form submissions. Tagline: "Your AI team. Made in India."
+> Sahkarmi (सहकर्मी, "coworker") is a free, open-source desktop app (Apache License 2.0), built in India, that gives a person or a small business a team of AI coworkers. Each coworker has its own workspace, browser, memory and task queue, and asks the owner before payments, customer messages, publishing or form submissions. Tagline: "Your AI team. Made in India."
 
-Key facts:
+Key facts (verified against release 0.7.1 on 24 October 2026):
 
-- Product category: AI coworker / AI productivity desktop app. Local-first: coworkers, chats, files and settings are stored on the user's computer; there is no Sahkarmi cloud account.
-- Platforms: Windows 10 and 11 (64-bit) is the main build; macOS (Apple silicon) and Linux (AppImage) builds are published on GitHub Releases.
-- Price: free. Free AI models are built in through bundled OpenCode (no login). Optional: reuse existing sign-ins of Codex CLI (ChatGPT) and Claude Code on the same computer, or connect Google Antigravity (Google's own agent, one Log in with Google); paid plans are billed by those providers.
-- Default team (editable): Asha (Accounts), Vikram (Sales), Meera (Support), Arjun (Research), Kavya (Content).
-- Features: built-in browser per coworker with a "Take over" button for logins and OTPs, Approvals inbox, task queue, scheduled tasks, shared files folder, English / Hindi / Bengali interface.
-- Status: development preview. In the current release, approvals before risky actions rely on coworkers following their instructions.
-- Licence: Apache License 2.0. Developed by the Sahkarmi Team.
+- Product category: AI coworker / AI agent desktop app. Local-first: coworkers, chats, files and settings are stored on the user's computer; there is no Sahkarmi cloud account and the app sends no analytics. Its only outbound traffic of its own is the update check against GitHub Releases.
+- Platforms: Windows 10 and 11 (64-bit) is the released and tested build. macOS and Linux builds are paused and not published for now; they will follow once tested on real hardware (the source builds on all three). Windows ARM and 32-bit systems are not supported.
+- Price: free. No pricing, no account, no subscription. Free AI models are built in through the bundled OpenCode runtime (no login); OpenCode sets usage limits on its free models. Optional: reuse existing sign-ins of Codex CLI (ChatGPT) and Claude Code on the same computer, or connect Google Antigravity with Log in with Google or an API key; paid plans are billed by those providers, not by Sahkarmi.
+- Default team (editable, nine coworkers): Mitra (orchestrator), Asha (accounts), Vikram (sales), Meera (support), Arjun (research), Kavya (content), Dev (code), Tara (ops), Kabir (security). Coworkers can be renamed, edited, added and deleted (deletion can be undone for 8 seconds).
+- Features: built-in Chromium browser tab per coworker with a "Take over" button for logins and OTPs; Approvals inbox; task queue with pause, cancel and stop; schedules (once, hourly, daily, weekdays, weekly) and routines; Shared files folder; memory page; search across coworkers and messages (Ctrl+K); keyboard shortcuts (Ctrl+1 to 9, Ctrl+N, Ctrl+,); backup model (a paid provider that answers nothing or hits its quota falls back to the free model); interface in English, Hindi and Bengali, plus nine more Indian languages partly translated (Marathi, Telugu, Tamil, Gujarati, Kannada, Malayalam, Punjabi, Odia, Assamese) with English fallback; light (Paper) and dark (Night) themes; three interface sizes; voice notes.
+- Status: development preview. Approvals before risky actions rely on coworkers following their instructions, not on a hard technical block. The Windows installer is not code-signed yet (SmartScreen warning); every release publishes SHA-256 checksums, an SBOM and a GitHub build provenance attestation.
+- Technology: Electron and SolidJS, TypeScript. Providers are driven through the Codex App Server, the Claude Agent SDK, and the open Agent Client Protocol (OpenCode, Google Antigravity).
+- Licence: Apache License 2.0. Developed by the Sahkarmi Team. Not affiliated with OpenAI, Anthropic or Google.
 
 ## Official links
 
-- [Website](https://sahkarmi.site/): product overview, explainer video, download and FAQ
-- [Download (GitHub Releases)](https://github.com/ganguydhrubo/sahakarmi/releases/latest): Windows installer and other builds
+- [Website](https://sahkarmi.site/): product overview, explainer video, real screenshots, download and FAQ
+- [Install guide](https://sahkarmi.site/install.html): Windows steps (macOS and Linux status), checksum verification, provider setup, updates, troubleshooting, uninstall
+- [Download (GitHub Releases)](https://github.com/ganguydhrubo/sahakarmi/releases/latest): Windows installer, checksums, SBOM and provenance attestation
+- [Source code](https://github.com/ganguydhrubo/sahakarmi): GitHub repository, issues, contributing guide, security policy, privacy notes
 - [LinkedIn](https://www.linkedin.com/company/sahkarmi/): official company page
 - [Facebook](https://www.facebook.com/sahakarmi): official page
+- [Instagram](https://www.instagram.com/sahkarmiai): official account (@sahkarmiai)
 
 ## Contact
 
 - Email: hi@goliv.online
 - WhatsApp: +91 82408 01921
+- Bug reports: https://github.com/ganguydhrubo/sahakarmi/issues
+- Security reports: private vulnerability reporting on the GitHub repository (see SECURITY.md)

@@ -13,7 +13,9 @@ import { fileURLToPath } from "node:url";
 
 const REPO = process.env.GITHUB_REPOSITORY || "ganguydhrubo/sahakarmi";
 const file = join(dirname(fileURLToPath(import.meta.url)), "..", "website", "index.html");
-const PATTERNS = { win: /-x64\.exe$/i, mac: /-arm64\.dmg$/i, linux: /\.AppImage$/i };
+// Windows only for now: the macOS and Linux builds are paused (release.yml, RELEASE_ALL_PLATFORMS).
+// When they return, add back  mac: /-arm64\.dmg$/i, linux: /\.AppImage$/i  and the site cards.
+const PATTERNS = { win: /-x64\.exe$/i };
 
 async function releases() {
   const headers = { accept: "application/vnd.github+json", "user-agent": "sahkarmi-site" };
@@ -67,18 +69,32 @@ if (!files.win) {
   process.exit(0);
 }
 
-let html = readFileSync(file, "utf8");
-const apply = (attribute, url) => {
-  const result = setHref(html, attribute, url);
-  html = result.html;
-  if (!result.changed) throw new Error(`No link with ${attribute} found in index.html`);
-};
-apply("data-download", files.win.url);
-for (const [platform, asset] of Object.entries(files)) {
-  apply(`data-platform="${platform}"`, asset.url);
-  apply(`data-platform-tile="${platform}"`, asset.url);
+/** Replaces the text of every element carrying the attribute (used for version and sizes). */
+function setText(html, attribute, text) {
+  const pattern = new RegExp(`(<[a-z]+\\b[^>]*\\s${attribute}(?=[\\s>=])[^>]*>)[^<]*(</)`, "g");
+  return html.replace(pattern, `$1${text}$2`);
 }
-writeFileSync(file, html);
+const megabytes = (size) => `${Math.round(size / 1_000_000)} MB`;
+const version = files.win.tag.replace(/^v/, "");
+
+for (const name of ["index.html", "install.html"]) {
+  const target = join(dirname(file), name);
+  let html = readFileSync(target, "utf8");
+  const apply = (attribute, url, required) => {
+    const result = setHref(html, attribute, url);
+    html = result.html;
+    if (required && !result.changed) throw new Error(`No link with ${attribute} found in ${name}`);
+  };
+  apply("data-download", files.win.url, name === "index.html");
+  for (const [platform, asset] of Object.entries(files)) {
+    apply(`data-platform="${platform}"`, asset.url, name === "index.html");
+    apply(`data-platform-tile="${platform}"`, asset.url, true);
+    html = setText(html, `data-release-size="${platform}"`, megabytes(asset.size));
+  }
+  html = setText(html, "data-release-version", version);
+  html = html.replace(/"softwareVersion": "[^"]*"/, `"softwareVersion": "${version}"`);
+  writeFileSync(target, html);
+}
 for (const [platform, asset] of Object.entries(files)) {
-  console.log(`${platform.padEnd(6)} ${asset.tag}  ${asset.url}`);
+  console.log(`${platform.padEnd(6)} ${asset.tag}  ${megabytes(asset.size)}  ${asset.url}`);
 }
