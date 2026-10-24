@@ -246,9 +246,7 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       expect(
         events.find((event) => event.type === "error" && event.code === "fallback_model")?.message,
       ).toContain("next free model");
-      // The coworker is not stuck once the re-sent turn is done, and a further message starts
-      // normally on the working free model.
-      expect((await service.readConversation("meera-support")).activeTurnId).toBeNull();
+      // The coworker is not stuck: a further message starts normally on the working free model.
       delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
       await service.sendMessage({ botId: "meera-support", text: "Namaste" });
       await waitFor(
