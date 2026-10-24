@@ -127,6 +127,8 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#updater.on("update-downloaded", (info: UpdateInfo) => {
       this.#clearStallTimer();
       this.#retryCount = 0;
+      // Downloaded and verified: if the owner never clicks Restart, it installs on the next quit.
+      this.#updater.autoInstallOnAppQuit = true;
       this.#setStatus({
         phase: "ready",
         availableVersion: info.version,

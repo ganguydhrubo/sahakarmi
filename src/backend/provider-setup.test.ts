@@ -147,7 +147,7 @@ describe("ProviderSetup", () => {
     await mkdir(packageDir, { recursive: true });
     await writeFile(join(packageDir, "codex"), "#!/bin/sh\necho codex-cli 0.163.0\n");
     const tarball = join(root, "codex.tgz");
-    execFileSync("tar", ["-czf", tarball, "-C", join(root, "pkg"), "package"]);
+    execFileSync("tar", ["-czf", "codex.tgz", "-C", "pkg", "package"], { cwd: root });
     const bytes = await readFile(tarball);
     const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
     const fetchImpl = vi.fn(async (url: string) =>
