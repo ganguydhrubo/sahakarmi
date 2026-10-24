@@ -1973,7 +1973,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // nothing queued for it (steering messages, teammates' requests) could ever start.
       if (!this.#finishedTurnIds.has(response.turn.id)) {
         await this.#mailbox.markRunning(delivery.id, response.turn.id);
-        snapshot.activeTurnId = response.turn.id;
+        // The turn can finish while that write is on disk (a quick answer on a slow machine):
+        // check again, or the finished turn is marked active and the queue stalls.
+        if (!this.#finishedTurnIds.has(response.turn.id)) {
+          snapshot.activeTurnId = response.turn.id;
+        }
       } else {
         const currentDelivery = this.#mailbox.getDelivery(delivery.id);
         if (currentDelivery?.delivery.status === "starting") {
