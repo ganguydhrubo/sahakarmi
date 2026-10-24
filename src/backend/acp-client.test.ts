@@ -215,6 +215,74 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     ).toEqual(["interrupted", "completed"]);
   });
 
+  it("fails a turn in which the agent never says anything, with a readable reason", async () => {
+    // OpenCode at its free usage limit never answers session/prompt and sends no update at all.
+    process.env.SAHKARMI_ACP_SILENT_TURN_MS = "400";
+    try {
+      const store = new BotStore(join(root, "user-data"), join(root, "home"));
+      const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+      service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+      const events: Array<{ type: string; code?: string; message?: string }> = [];
+      service.on("event", (event) => events.push(event as { type: string; code?: string }));
+      await service.initialize();
+      await service.sendMessage({ botId: "meera-support", text: "stay silent" });
+      // On a failure, say what the service saw (CI runners differ in timing).
+      const explain = async (step: string) => {
+        console.log(
+          `silent-turn test: ${step}`,
+          JSON.stringify({
+            deliveries: service
+              ?.listQueue("meera-support")
+              .deliveries.map((d) => [d.status, d.error]),
+            errors: events.filter((e) => e.type === "error").map((e) => `${e.code}: ${e.message}`),
+            protocol: (await readLog()).map((m) => m.method),
+          }),
+        );
+      };
+      const waitOrExplain = async (step: string, check: () => boolean | undefined) => {
+        try {
+          await waitFor(check);
+        } catch (error) {
+          await explain(step);
+          throw error;
+        }
+      };
+      await waitOrExplain(
+        "first delivery failed",
+        () => service?.listQueue("meera-support").deliveries[0]?.status === "failed",
+      );
+      const error = events.find(
+        (event) => event.type === "error" && /did not start answering/.test(event.message ?? ""),
+      );
+      expect(error?.message).toContain("free usage limit");
+      expect(error?.message).toContain("opencode/nemotron-free");
+      // The agent was asked to stop the dead turn.
+      await waitFor(async () => (await readLog()).some((m) => m.method === "session/cancel"));
+      // The same message went out again by itself on the next free model and got an answer.
+      await waitOrExplain(
+        "re-sent delivery completed",
+        () => service?.listQueue("meera-support").deliveries[1]?.status === "completed",
+      );
+      expect(service.listQueue("meera-support").deliveries[1]?.text).toBe("stay silent");
+      const selected = (await readLog())
+        .filter((m) => m.method === "session/set_config_option")
+        .map((m) => (m.params as { value?: string }).value);
+      expect(selected).toEqual(["opencode/big-pickle", "opencode/nemotron-free"]);
+      expect(
+        events.find((event) => event.type === "error" && event.code === "fallback_model")?.message,
+      ).toContain("next free model");
+      // The coworker is not stuck: a further message starts normally on the working free model.
+      delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
+      await service.sendMessage({ botId: "meera-support", text: "Namaste" });
+      await waitOrExplain(
+        "third delivery completed",
+        () => service?.listQueue("meera-support").deliveries[2]?.status === "completed",
+      );
+    } finally {
+      delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
+    }
+  });
+
   it("moves a coworker to the free model and re-sends when its provider answers nothing", async () => {
     // Google Antigravity is the same fake ACP agent here; "say nothing" makes it end the turn empty.
     process.env.SAHKARMI_ANTIGRAVITY_PATH = process.env.SAHKARMI_OPENCODE_PATH;
@@ -451,7 +519,7 @@ async function handle(message) {
   if (method === "initialize") return write({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: false, mcpCapabilities: { http: true } } } });
   if (method === "session/new") {
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
-    return write({ id, result: { sessionId: "ses_" + Date.now(), configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "anthropic/x", name: "X" }] }] } });
+    return write({ id, result: { sessionId: "ses_" + Date.now(), configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "opencode/nemotron-free", name: "Nemotron" }, { value: "anthropic/x", name: "X" }] }] } });
   }
   if (method === "session/set_config_option") return write({ id, result: {} });
   if (method === "session/cancel") { const pending = cancellable.get(params.sessionId); cancellable.delete(params.sessionId); pending?.(); return; }
@@ -460,6 +528,8 @@ async function handle(message) {
     const sessionId = params.sessionId;
     // Empty once per test (the log is shared by every fake process): the re-send must get an answer.
     if (text.includes("say nothing") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("say-nothing-done")) { log({ method: "say-nothing-done" }); return write({ id, result: { stopReason: "end_turn" } }); }
+    // Silent once per test (the log is shared by every fake process): the retry on the next free model answers.
+    if (text.includes("stay silent") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("stay-silent-done")) { log({ method: "stay-silent-done" }); cancellable.set(sessionId, () => write({ id, result: { stopReason: "cancelled" } })); return; }
     if (text.includes("keep talking")) {
       let answered = false;
       const answer = (stopReason) => { if (answered) return; answered = true; write({ id, result: { stopReason } }); };

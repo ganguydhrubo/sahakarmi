@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face { font-family: "Baloo 2"; font-weight: 800; src: url("file:///C:/Users/Dhrubo/projects/sahakarmi-release/website/assets/fonts/baloo-2-latin-800-normal.woff2") format("woff2"); unicode-range: U+0000-00FF; }
+  @font-face { font-family: "Baloo 2"; font-weight: 800; src: url("file:///C:/Users/Dhrubo/projects/sahakarmi-release/website/assets/fonts/baloo-2-devanagari-800-normal.woff2") format("woff2"); unicode-range: U+0900-097F; }
+  @font-face { font-family: "Mukta"; font-weight: 400; src: url("file:///C:/Users/Dhrubo/projects/sahakarmi-release/website/assets/fonts/mukta-latin-400-normal.woff2") format("woff2"); unicode-range: U+0000-00FF; }
+  @font-face { font-family: "Mukta"; font-weight: 400; src: url("file:///C:/Users/Dhrubo/projects/sahakarmi-release/website/assets/fonts/mukta-devanagari-400-normal.woff2") format("woff2"); unicode-range: U+0900-097F; }
+  @font-face { font-family: "Mukta"; font-weight: 700; src: url("file:///C:/Users/Dhrubo/projects/sahakarmi-release/website/assets/fonts/mukta-latin-700-normal.woff2") format("woff2"); unicode-range: U+0000-00FF; }
+  @font-face { font-family: "Mukta"; font-weight: 700; src: url("file:///C:/Users/Dhrubo/projects/sahakarmi-release/website/assets/fonts/mukta-devanagari-700-normal.woff2") format("woff2"); unicode-range: U+0900-097F; }
+  html, body { margin: 0; width: 1920px; height: 1080px; background: #0b0d17; color: #f3efe6; font-family: "Mukta", sans-serif; overflow: hidden; }
+  body::before { content: ""; position: absolute; inset: 0; background: radial-gradient(900px 600px at 15% 0%, rgba(232,119,46,0.28), transparent 60%), radial-gradient(800px 600px at 100% 20%, rgba(59,74,140,0.4), transparent 60%); }
+  .card { position: absolute; inset: 0; display: none; flex-direction: column; justify-content: center; padding: 0 160px; }
+  .card.show { display: flex; }
+  .brand { display: flex; align-items: center; gap: 22px; margin-bottom: 36px; }
+  .brand svg { width: 84px; height: 84px; }
+  .brand b { font: 800 56px/1 "Baloo 2", sans-serif; display: block; }
+  .brand small { display: block; font-size: 26px; color: #c9c4b8; margin-top: 8px; }
+  h1 { font: 800 96px/1.08 "Baloo 2", sans-serif; margin: 0 0 28px; max-width: 1400px; }
+  h1 .accent { color: #f0904f; }
+  p { font-size: 36px; line-height: 1.4; color: #c9c4b8; margin: 0; max-width: 1300px; }
+  .chips { display: flex; gap: 16px; margin-top: 44px; }
+  .chip { border: 2px solid rgba(255,255,255,0.18); border-radius: 999px; padding: 12px 26px; font-size: 28px; font-weight: 700; }
+  .url { font: 800 64px/1 "Baloo 2", sans-serif; color: #f0904f; margin-top: 30px; }
+</style>
+</head>
+<body>
+  <section class="card" id="intro-en">
+    <div class="brand"><svg viewBox="0 0 120 120" role="img" aria-label="Sahkarmi logo"><title>Sahkarmi logo</title><defs><clipPath id="l1"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l1)"/></svg><span><b>Sahkarmi</b><small>सहकर्मी</small></span></div>
+    <h1>A team of AI coworkers <span class="accent">on your own computer.</span></h1>
+    <p>Free · Open source (Apache 2.0) · Local-first · Windows, macOS, Linux</p>
+    <div class="chips"><span class="chip">Recorded from the real app</span><span class="chip">Free built-in model</span><span class="chip">No account</span></div>
+  </section>
+  <section class="card" id="intro-hi">
+    <div class="brand"><svg viewBox="0 0 120 120" role="img" aria-label="Sahkarmi logo"><title>Sahkarmi logo</title><defs><clipPath id="l2"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l2)"/></svg><span><b>Sahkarmi</b><small>सहकर्मी</small></span></div>
+    <h1>AI सहकर्मियों की एक टीम, <span class="accent">आपके अपने कंप्यूटर पर.</span></h1>
+    <p>मुफ़्त · ओपन सोर्स (Apache 2.0) · लोकल-फ़र्स्ट · Windows, macOS, Linux</p>
+    <div class="chips"><span class="chip">असली ऐप से रिकॉर्ड</span><span class="chip">मुफ़्त बिल्ट-इन मॉडल</span><span class="chip">कोई अकाउंट नहीं</span></div>
+  </section>
+  <section class="card" id="outro-en">
+    <div class="brand"><svg viewBox="0 0 120 120" role="img" aria-label="Sahkarmi logo"><title>Sahkarmi logo</title><defs><clipPath id="l3"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l3)"/></svg><span><b>Sahkarmi</b><small>सहकर्मी</small></span></div>
+    <h1>Try it. Break it. <span class="accent">Tell us.</span></h1>
+    <p>Download for Windows, macOS or Linux. Report bugs and ideas on GitHub. Your AI team. Made in India.</p>
+    <div class="url">sahkarmi.site</div>
+    <p style="margin-top:18px; font-size:30px">github.com/ganguydhrubo/sahakarmi</p>
+  </section>
+  <section class="card" id="outro-hi">
+    <div class="brand"><svg viewBox="0 0 120 120" role="img" aria-label="Sahkarmi logo"><title>Sahkarmi logo</title><defs><clipPath id="l4"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l4)"/></svg><span><b>Sahkarmi</b><small>सहकर्मी</small></span></div>
+    <h1>आज़माएँ. तोड़ें. <span class="accent">हमें बताएँ.</span></h1>
+    <p>Windows, macOS या Linux के लिए डाउनलोड करें. बग और सुझाव GitHub पर बताएँ. आपकी AI टीम. भारत में बनी.</p>
+    <div class="url">sahkarmi.site</div>
+    <p style="margin-top:18px; font-size:30px">github.com/ganguydhrubo/sahakarmi</p>
+  </section>
+  <script>
+    const id = new URLSearchParams(location.search).get("card") || "intro-en";
+    document.getElementById(id).classList.add("show");
+  </script>
+</body>
+</html>

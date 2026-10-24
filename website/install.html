@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Install Sahkarmi — Windows and from source</title>
+  <meta name="description" content="Step-by-step installation of the Sahkarmi desktop app on Windows (macOS and Linux builds come later), how to verify the download, connect an AI provider, update, troubleshoot and uninstall." />
+  <link rel="canonical" href="https://sahkarmi.site/install.html" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0F1220" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta property="og:site_name" content="Sahkarmi" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://sahkarmi.site/install.html" />
+  <meta property="og:title" content="Install Sahkarmi — Windows and from source" />
+  <meta property="og:description" content="Installation, verification, provider setup, updates, troubleshooting and uninstall for the Sahkarmi desktop app." />
+  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    @font-face { font-family: "Baloo 2"; font-weight: 800; font-display: swap; src: url(/assets/fonts/baloo-2-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 400; font-display: swap; src: url(/assets/fonts/mukta-latin-400-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 700; font-display: swap; src: url(/assets/fonts/mukta-latin-700-normal.woff2) format("woff2"); }
+    :root { --saffron: #e8772e; --saffron-ink: #f0904f; --bg: #0b0d17; --bg-2: #161a2e; --text: #f3efe6; --text-2: #c9c4b8; --muted: #9a9cb3; --line: rgba(255,255,255,0.1); --line-2: rgba(255,255,255,0.18); --leaf: #5ec48a; --turmeric: #f2b705; color-scheme: dark; }
+    @media (prefers-color-scheme: light) { :root { --bg: #fbf7f0; --bg-2: #ffffff; --text: #141829; --text-2: #3a3f55; --muted: #646a85; --line: rgba(20,24,41,0.1); --line-2: rgba(20,24,41,0.2); --saffron-ink: #a84e14; --leaf: #22703f; color-scheme: light; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.65 "Mukta", system-ui, sans-serif; }
+    a { color: var(--saffron-ink); text-underline-offset: 3px; }
+    :focus-visible { outline: 3px solid var(--turmeric); outline-offset: 3px; border-radius: 6px; }
+    .wrap { width: min(860px, 100% - 2 * clamp(16px, 4vw, 40px)); margin-inline: auto; }
+    header { border-bottom: 1px solid var(--line); }
+    header .wrap { display: flex; align-items: center; gap: 14px; min-height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font: 800 20px "Baloo 2", "Mukta", sans-serif; }
+    .brand svg { width: 30px; height: 30px; }
+    header nav { margin-left: auto; display: flex; gap: 14px; font-weight: 700; font-size: 15px; }
+    h1 { font: 800 clamp(32px, 5vw, 46px)/1.1 "Baloo 2", "Mukta", sans-serif; margin: 40px 0 10px; }
+    h2 { font: 800 clamp(24px, 3vw, 30px)/1.15 "Baloo 2", "Mukta", sans-serif; margin: 56px 0 12px; padding-top: 18px; border-top: 1px solid var(--line); scroll-margin-top: 80px; }
+    h3 { font: 700 19px/1.2 "Mukta", sans-serif; margin: 26px 0 8px; }
+    p, li { color: var(--text-2); }
+    .lead { font-size: 19px; }
+    .status { display: inline-block; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+    .tested { background: rgba(94,196,138,0.16); color: var(--leaf); }
+    .built { background: rgba(242,183,5,0.16); color: var(--turmeric); }
+    .none { background: rgba(192,57,43,0.16); color: #e46a5c; }
+    pre { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; color: var(--text); }
+    code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.93em; }
+    .toc { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .toc a { display: inline-block; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 15px; }
+    .box { background: var(--bg-2); border: 1px solid var(--line); border-left: 4px solid var(--saffron); border-radius: 12px; padding: 14px 18px; margin: 18px 0; }
+    .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 10px 22px; border-radius: 999px; background: var(--saffron); color: #0f1220; font-weight: 700; text-decoration: none; }
+    table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 12px 0; display: block; overflow-x: auto; }
+    pre, code { overflow-wrap: anywhere; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+    footer { border-top: 1px solid var(--line); margin-top: 64px; padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Sahkarmi home">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><defs><clipPath id="l"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l)"/></svg>
+        Sahkarmi
+      </a>
+      <nav aria-label="Site"><a href="/">Home</a><a href="/#download">Download</a><a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Install Sahkarmi</h1>
+    <p class="lead">Current version: <strong data-release-version>0.7.1</strong>. This page says exactly what is built, what is tested, and what to do when something goes wrong. Platform status was last checked by the project on 24 October 2026.</p>
+    <ul class="toc">
+      <li><a href="#requirements">Requirements</a></li>
+      <li><a href="#windows">Windows</a></li>
+      <li><a href="#other-platforms">macOS and Linux</a></li>
+      <li><a href="#verify">Verify the download</a></li>
+      <li><a href="#first-launch">First launch</a></li>
+      <li><a href="#providers">AI providers</a></li>
+      <li><a href="#terminal">Terminal and source</a></li>
+      <li><a href="#update">Update</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#uninstall">Uninstall</a></li>
+    </ul>
+
+    <h2 id="requirements">Requirements and platform status</h2>
+    <table>
+      <thead><tr><th>Platform</th><th>File</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Windows 10 or 11, 64-bit (x64)</td><td><code>Sahkarmi-<span data-release-version>0.7.1</span>-x64.exe</code>, <span data-release-size="win">212 MB</span></td><td><span class="status tested">Built and tested</span> on Windows 11 by the project</td></tr>
+        <tr><td>macOS and Linux</td><td>none yet</td><td><span class="status none">Coming later</span>: builds are paused until tested on real hardware</td></tr>
+        <tr><td>Windows ARM and 32-bit systems</td><td>none</td><td><span class="status none">Not supported</span></td></tr>
+      </tbody>
+    </table>
+    <p>Memory: on the project's test PC (Windows 11, 16 GB RAM) the app used about 1 GB of RAM in total with the bundled free-model runtime running. Disk: allow about 1 GB for the app plus the runtime it downloads. The free models and any provider you connect need an internet connection; nothing runs offline.</p>
+
+    <h2 id="windows">Windows</h2>
+    <ol>
+      <li>Download <a data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">the Windows installer</a> (the newest <code>-x64.exe</code> on <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Releases</a>).</li>
+      <li>Open the file. Windows SmartScreen will say "Windows protected your PC" because the installer is not code-signed yet. Click <strong>More info</strong>, then <strong>Run anyway</strong>. You can <a href="#verify">verify the file's checksum</a> first.</li>
+      <li>The installer runs without further questions and installs for your user only (no administrator rights) under <code>%LOCALAPPDATA%\Programs\sahkarmi</code>, with a Desktop and Start Menu shortcut named Sahkarmi.</li>
+      <li>Sahkarmi opens by itself after installing.</li>
+    </ol>
+    <div class="box"><strong>winget:</strong> a manifest for <code>Sahkarmi.Sahkarmi</code> has been submitted to the Windows Package Manager community repository and is waiting for Microsoft's moderation. Until it is accepted, <code>winget install Sahkarmi.Sahkarmi</code> does not work; use the installer above.</div>
+
+    <h2 id="other-platforms">macOS and Linux</h2>
+    <p>Sahkarmi launches on Windows first. The macOS (Apple silicon) and Linux (AppImage) builds are paused and are not published with this release; they return once the project has tested them on real hardware. Until then there is nothing to download for those systems. Developers can <a href="#terminal">build and run from source</a> on macOS and Linux, and the <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub repository</a> will carry the announcement.</p>
+
+    <h2 id="verify">Verify the download</h2>
+    <p>Every release attaches <code>SHA256SUMS.txt</code> and <code>SHA256SUMS-windows.txt</code>, plus a build provenance attestation created by GitHub Actions. Compare the hash of your file with the one on the <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer">release page</a>.</p>
+    <h3>Windows (PowerShell)</h3>
+<pre><code>Get-FileHash .\Sahkarmi-*-x64.exe -Algorithm SHA256</code></pre>
+    <p>To check the provenance attestation with the GitHub CLI: <code>gh attestation verify Sahkarmi-&lt;version&gt;-x64.exe --repo ganguydhrubo/sahakarmi</code>.</p>
+
+    <h2 id="first-launch">First launch</h2>
+    <ol>
+      <li><strong>Choose your provider.</strong> On a clean computer only <em>OpenCode (free, built in)</em> shows as Available; Claude and ChatGPT show "Sign in required" and Google Antigravity "Not installed". Keep OpenCode selected and click <strong>Continue with OpenCode (free)</strong>. You can change this per coworker later.</li>
+      <li>A short <strong>What's New</strong> dialog describes this release. Click <strong>Got it</strong>.</li>
+      <li>Pick a coworker in the left list (for example Asha, Accounts) and type a message. The first reply on the free model usually takes a few seconds; the first time on a new PC the bundled runtime may also download its newer version in the background.</li>
+    </ol>
+    <div class="box"><strong>Free model limits.</strong> OpenCode sets a usage limit on each of its free models. If a coworker on the free model stops answering, the limit for that model is probably used up for now: wait and try again, pick another free model from the model menu, or connect your own provider below. Version 0.7.1 can sit at "working" in this case; the next release fails the turn with an explanation after 60 seconds and moves to the next free model by itself.</div>
+
+    <h2 id="providers">Connecting an AI provider (optional)</h2>
+    <p>Open Settings, then <strong>AI and models</strong>. Each provider has a <strong>Connect</strong> button and an API key option. Your password is only ever typed on the provider's own page; Sahkarmi reuses the sign-in and never copies tokens.</p>
+    <table>
+      <thead><tr><th>Provider</th><th>What Sahkarmi needs</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr><td>OpenCode (built in)</td><td>Nothing. Bundled with the app.</td><td>Free, with OpenCode's usage limits</td></tr>
+        <tr><td>Claude</td><td>Claude Code CLI installed and signed in: <code>claude auth login</code>. Windows install: <code>irm https://claude.ai/install.ps1 | iex</code>.</td><td>Your Claude plan</td></tr>
+        <tr><td>ChatGPT (Codex)</td><td>Codex CLI installed and signed in: <code>npm install -g @openai/codex</code>, then <code>codex login</code>.</td><td>Your ChatGPT plan</td></tr>
+        <tr><td>Google Antigravity</td><td>Click Connect. Sahkarmi downloads Google's Antigravity agent (you accept Google's terms first) and opens Log in with Google. A Google AI Studio API key also works.</td><td>Your Google plan</td></tr>
+      </tbody>
+    </table>
+    <p>After signing in to a CLI in a terminal, click <strong>Check again</strong> or restart Sahkarmi.</p>
+
+    <h2 id="terminal">Terminal install and building from source</h2>
+    <p>There is no package in winget, Homebrew, AUR or Flathub yet, so there is no one-line installer. To build from source (any platform with <a href="https://bun.sh" target="_blank" rel="noopener noreferrer">Bun</a> 1.3.11 and Node.js 22.12 or newer):</p>
+<pre><code>git clone https://github.com/ganguydhrubo/sahakarmi.git
+cd sahakarmi
+bun install --frozen-lockfile
+bun run fetch:opencode   # downloads the bundled free-model runtime for your platform
+bun run dev              # starts the app from source</code></pre>
+    <p>Installer build: <code>bun run dist:win</code> on Windows (the macOS and Linux installer scripts exist in the repository but are not used for releases right now). See <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/README.md" target="_blank" rel="noopener noreferrer">the README</a> for the full command list.</p>
+
+    <h2 id="update">Updating</h2>
+    <p>The installed app checks GitHub Releases for updates shortly after launch and then periodically. Under Settings, <strong>Updates</strong>, you choose whether updates download automatically or ask each time, and you can check now. Updates install when you restart the app. On Windows the update is the same unsigned installer, so SmartScreen may ask again. Your coworkers, chats and settings are kept across updates.</p>
+
+    <h2 id="troubleshooting">Troubleshooting</h2>
+    <h3>A coworker stays at "working" and never answers</h3>
+    <p>On the free model this is almost always OpenCode's free usage limit for that model (see <a href="#first-launch">First launch</a>). Press Stop, then either try again later, switch the coworker's model, or connect another provider. If it happens on Claude, ChatGPT or Google Antigravity, check the provider's status page and that its CLI still works in a terminal.</p>
+    <h3>"Sign in required" for Claude or ChatGPT</h3>
+    <p>Run <code>claude auth login</code> or <code>codex login</code> in a terminal, sign in, then click Check again in Settings, AI and models, or restart Sahkarmi. Sahkarmi only uses the CLI's own login; it cannot sign in for you.</p>
+    <h3>"Could not start" next to a provider</h3>
+    <p>The CLI was found but did not start. Run <code>claude --version</code> or <code>codex --version</code> in a new terminal to see the real error. If the CLI is installed in an unusual place, start Sahkarmi with <code>SAHKARMI_CLAUDE_PATH</code> or <code>SAHKARMI_CODEX_PATH</code> set to the executable's full path.</p>
+    <h3>AI updates shows "Could not update" after a download</h3>
+    <p>In 0.7.1 a leftover temporary folder on Windows can show this message even though the runtime was installed. Restart Sahkarmi; if the version under Settings, Updates is the new one, ignore the message. Fixed in the next release.</p>
+    <h3>SmartScreen or Defender blocks the installer</h3>
+    <p>Choose More info, then Run anyway. The installer is unsigned, not malicious; verify its checksum against the release page if in doubt. Do not disable Defender.</p>
+    <h3>Where are the logs?</h3>
+    <p><code>%APPDATA%\Sahkarmi\logs\sahkarmi.log</code>. Settings, Data &amp; privacy, <strong>Export diagnostics</strong> produces a redacted bundle with versions and capability states and no conversation content. Before sharing a log publicly, remove anything personal: it can contain the email address of a connected provider account.</p>
+    <h3>Something else</h3>
+    <p>Open an issue at <a href="https://github.com/ganguydhrubo/sahakarmi/issues" target="_blank" rel="noopener noreferrer">github.com/ganguydhrubo/sahakarmi/issues</a> with the app version (Settings, About), your operating system, the provider in use and the steps to reproduce. Never paste tokens, <code>~/.codex</code>, <code>~/.claude</code> or conversation contents.</p>
+
+    <h2 id="uninstall">Uninstall and remove data</h2>
+    <h3>Windows</h3>
+    <p>Settings, Apps, Installed apps, Sahkarmi, Uninstall (or run <code>Uninstall Sahkarmi.exe</code> in the install folder). This removes the program only. To also remove your data, delete <code>%APPDATA%\Sahkarmi</code> (coworkers, chats, settings, browser profile), <code>%LOCALAPPDATA%\sahkarmi-updater</code> (downloaded updates) and the <code>Sahkarmi</code> folder in your user profile (coworker workspaces, Shared files, Downloads).</p>
+    <p>Sahkarmi never touches <code>~/.codex</code> or <code>~/.claude</code>; those belong to the Codex and Claude CLIs. There is no Sahkarmi cloud account to close because none exists.</p>
+
+    <p style="margin-top:40px"><a class="btn" href="/#download">Back to downloads</a></p>
+  </main>
+
+  <footer>
+    <div class="wrap">© 2026 Sahkarmi Team · Apache License 2.0 · <a href="/">sahkarmi.site</a> · <a href="mailto:hi@goliv.online">hi@goliv.online</a> · <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer">WhatsApp +91 82408 01921</a></div>
+  </footer>
+</body>
+</html>

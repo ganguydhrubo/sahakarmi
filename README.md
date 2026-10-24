@@ -4,74 +4,78 @@
 
 # Sahkarmi · सहकर्मी
 
-**AI coworkers for Indian businesses.**
+**A team of AI coworkers on your own computer.** Free, open source (Apache 2.0), local-first.
 Your AI team. Made in India. · आपकी AI टीम. भारत में बनी. · আপনার AI টিম. ভারতে তৈরি.
 
-Sahkarmi is a local-first desktop app where each AI coworker has its own workspace, browser,
-memory and task queue. You hire a small team (Accounts, Sales, Support, Research, Content), give
-them work in plain English, हिन्दी or বাংলা, and stay in control of anything that spends money or
-talks to customers.
+[![Latest release](https://img.shields.io/github/v/release/ganguydhrubo/sahakarmi?label=release)](https://github.com/ganguydhrubo/sahakarmi/releases/latest)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![CI](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml/badge.svg)](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml)
+[![Website](https://img.shields.io/badge/website-sahkarmi.site-E8772E)](https://sahkarmi.site/)
 
-![Asha (Accounts) reconciling payables, with the task queue, tool-call cards, schedule panel and the browser take-over request](docs/screenshots/light-schedule.jpg)
+Sahkarmi is a desktop app for Windows (macOS and Linux builds come later) where each AI coworker has its own workspace,
+browser, memory and task queue. You give them work in plain English, हिन्दी or বাংলা; they read
+files, browse in their own tab, hand work to each other, and stop to ask you before anything that
+spends money or talks to a customer. Free AI models are built in (no account); your existing
+Claude Code, Codex (ChatGPT) and Google Antigravity sign-ins are reused if you have them.
+
+![Vikram, the sales coworker, answering on the free built-in model in Sahkarmi 0.7.1 on Windows](website/assets/shots/conversation-1440.webp)
 
 > [!WARNING]
-> Development preview. Coworkers run through your local Codex or Claude CLI with full local access
-> (files, commands, network, embedded browser). Sahkarmi adds approvals for payments, customer
-> messages, publishing and form submissions, but the model is ultimately trusted. Run only tasks you
-> trust and keep backups.
+> Development preview. Coworkers run through local agent runtimes with full local access (files,
+> commands, network, embedded browser). Sahkarmi adds approvals for payments, customer messages,
+> publishing and form submissions, but today those rely on the model following its instructions.
+> Run only tasks you trust, keep backups, and never share card details or OTPs with a coworker.
+
+## Install
+
+| Platform | File | Status |
+| --- | --- | --- |
+| Windows 10 / 11, 64-bit | `Sahkarmi-<version>-x64.exe` | Built and tested by the project |
+| macOS, Linux | none yet | Paused until tested on real hardware; build from source meanwhile |
+
+1. Download from [GitHub Releases](https://github.com/ganguydhrubo/sahakarmi/releases/latest)
+   (checksums in `SHA256SUMS.txt`; every release carries a GitHub build provenance attestation).
+2. Windows: the installer is not code-signed yet, so SmartScreen warns. Choose **More info →
+   Run anyway**.
+3. First launch: keep **OpenCode (free, built in)** selected and click **Continue**. Pick a
+   coworker and type a message.
+
+Full steps, verification, troubleshooting and uninstall: **[sahkarmi.site/install.html](https://sahkarmi.site/install.html)**.
 
 ## What's inside
 
-**Three-pane coworker layout**
-
-- **Left rail (260 px):** workspace switcher, the Team list (abstract avatar, name, role and a live
-  status dot: idle · working · waiting for you · needs attention), *+ New coworker*,
-  **Shared files**, **Approvals** (with a pending badge) and **Settings**.
-- **Centre:** the selected coworker's thread: streamed replies, collapsible tool-call cards, a
-  task-queue strip on top (queued / running / done with pause, resume, cancel and stop) and a composer
-  with model picker, attach file, voice input (Web Speech API, en-IN / hi-IN / bn-IN) and a
-  **Run on schedule** toggle (once, hourly, daily, weekdays, weekly).
-- **Right pane (resizable, collapsible):** the coworker's live embedded Chromium browser with a
-  **Take over** button. While you're in control (login, OTP/2FA, CAPTCHA, payment pages), coworker
-  browser tools are paused. Coworkers can also *ask* you to take over, and are messaged when you
-  hand back.
-
-**Default team** (names and roles are editable): Asha (Accounts), Vikram (Sales), Meera (Support),
-Arjun (Research), Kavya (Content). Each coworker gets standing instructions for Indian business
-context: INR with lakh/crore, IST, GST, DD/MM/YYYY, and replies in the owner's language.
-
-**Approvals.** Coworkers must call `sahkarmi.request_approval` and stop before payments, messages to
-customers or vendors, publishing, government/bank/marketplace form submissions, deleting data or
-sharing personal data. Your decision and note are delivered back to the coworker as a message, so
-nothing blocks while you are away.
-
-| Dark theme | Approvals (हिन्दी) | Shared files (বাংলা) |
-| --- | --- | --- |
-| ![Dark theme](docs/screenshots/dark-asha.jpg) | ![Approvals in Hindi](docs/screenshots/light-approvals-hi.jpg) | ![Shared files in Bengali](docs/screenshots/dark-files-bn.jpg) |
-
-## Brand
-
-- Palette (CSS tokens, light *paper* and dark *night* themes, WCAG AA text contrast in both):
-  saffron `#E8772E` (primary fill), indigo `#1E2A5A`, leaf `#2E8B57`, turmeric `#F2B705`,
-  sindoor `#C0392B`, paper `#FBF7F0`, night `#0F1220`. Saffron is used as a fill; saffron-coloured
-  text uses a darker ink (`#A84E14` light / `#F0904F` dark) to stay above 4.5:1.
-- Type: Mukta (UI, Devanagari + Latin), Baloo 2 (headings), Hind Siliguri (Bengali), all bundled
-  locally from `@fontsource` (SIL OFL 1.1, see `resources/fonts/OFL.txt`); no runtime CDN.
-- Logo: `build/logo.svg`; app icons in `build/icon.icns`, `build/icon.ico` and `build/icons/*.png`
-  (16–1024 px).
+- **Nine coworkers to start** (names and roles are editable): Mitra (orchestrator), Asha
+  (accounts), Vikram (sales), Meera (support), Arjun (research), Kavya (content), Dev (code),
+  Tara (ops), Kabir (security). Each gets standing instructions for Indian business context: INR
+  with lakh/crore, IST, GST, DD/MM/YYYY, replies in the owner's language.
+- **A browser per coworker** with a **Take over** button. While you are in control (logins,
+  OTPs, CAPTCHAs, payment pages), the coworker's browser tools pause.
+- **Approvals inbox.** Coworkers call `sahkarmi.request_approval` and stop before payments,
+  messages to customers or vendors, publishing, form submissions, deleting data or sharing
+  personal data. Your decision and note go back to the coworker as a message.
+- **Task queue, schedules and routines**: queued / running / done with pause, resume, cancel
+  and stop; run once, hourly, daily, weekdays or weekly.
+- **Shared files** folder for the whole team, one working folder per coworker, a memory page.
+- **Search everything** with Ctrl/Cmd+K; Ctrl+1–9 open a coworker, Ctrl+N makes one, Ctrl+,
+  opens Settings.
+- **Backup model**: a paid provider that answers nothing or hits its quota hands the message
+  to the free model with a note in the chat.
+- **Interface in English, हिन्दी and বাংলা**, plus Marathi, Telugu, Tamil, Gujarati, Kannada,
+  Malayalam, Punjabi, Odia and Assamese (partly translated, English fallback). Light and dark
+  themes, three interface sizes, Enter or Ctrl+Enter to send.
 
 ## AI providers (free AI works out of the box)
 
 | Provider | How Sahkarmi uses it | Cost |
 | --- | --- | --- |
-| **OpenCode (built in)** | Bundled inside the installer, nothing to install. Free models, no login. | Free |
+| **OpenCode (built in)** | Bundled inside the installer. Free models, no login. OpenCode sets a usage limit per free model; Sahkarmi moves to the next free model when one is used up. | Free |
 | **Claude** | Your installed Claude Code CLI and its login | Your plan |
 | **ChatGPT (Codex)** | Your installed Codex CLI and its ChatGPT login | Your plan |
-| **Google Antigravity** | Google's own Antigravity agent (agy_acp_server), downloaded by Sahkarmi on Connect. One click opens Log in with Google; a Google AI Studio API key also works | Your Google plan |
+| **Google Antigravity** | Google's own Antigravity agent (`agy_acp_server`, SHA-256 pinned), downloaded by Sahkarmi on Connect after you accept Google's terms. One click opens Log in with Google; a Google AI Studio API key also works | Your Google plan |
 
-Sahkarmi detects every installed CLI and **reuses its existing login**. It never copies tokens. Any
-extra provider you sign in to inside OpenCode (`opencode auth login`: API keys, Copilot and more)
-shows up as "Your OpenCode model".
+Sahkarmi detects every installed CLI and **reuses its existing login**. It never copies tokens.
+Any extra provider you sign in to inside OpenCode (`opencode auth login`) shows up as "Your
+OpenCode model".
 
 Optional installs:
 
@@ -81,48 +85,52 @@ Optional installs:
 Google Antigravity and OpenCode are driven over the open [Agent Client Protocol](https://agentclientprotocol.com);
 Sahkarmi's browser, approval and team tools reach them through a loopback-only MCP bridge.
 
+## Privacy and network boundaries
+
+- No Sahkarmi account, no cloud service, no analytics. The app's only outbound traffic of its own
+  is the update check against GitHub Releases (and the bundled runtime's own update from npm).
+- What a coworker works on is sent to the provider you chose for it, under that provider's terms.
+- Local data: `~/Sahkarmi/Coworkers/<id>` (one folder per coworker), `~/Sahkarmi/Shared`,
+  `~/Sahkarmi/Downloads`, and Electron `userData` (coworkers, queues, approvals, schedules,
+  logs). `~/.codex` and `~/.claude` stay owned by their CLIs.
+- Sahkarmi opens no application HTTP port; providers are spoken to over stdio.
+
+See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) (private vulnerability reporting).
+
+## Brand
+
+- Palette (CSS tokens, light *paper* and dark *night* themes, WCAG AA text contrast in both):
+  saffron `#E8772E`, indigo `#1E2A5A`, leaf `#2E8B57`, turmeric `#F2B705`, sindoor `#C0392B`,
+  paper `#FBF7F0`, night `#0F1220`.
+- Type: Mukta (UI, Devanagari + Latin), Baloo 2 (headings), Hind Siliguri (Bengali), bundled
+  locally from `@fontsource` (SIL OFL 1.1, see `resources/fonts/OFL.txt`); no runtime CDN.
+- Logo: `build/logo.svg`; app icons in `build/icon.icns`, `build/icon.ico`, `build/icons/*.png`.
+
 ## Development
 
-Development requires [Bun](https://bun.sh/) 1.3.11, Node.js 22.12 or newer, and at least one
-supported agent CLI.
+Requires [Bun](https://bun.sh/) 1.3.11 and Node.js 22.12 or newer.
 
 ```bash
 git clone https://github.com/ganguydhrubo/sahakarmi.git
 cd sahakarmi
 bun install --frozen-lockfile
-bun run codex:doctor
+bun run fetch:opencode   # bundled free-model runtime for your platform
 bun run dev
 ```
 
-`codex:doctor` checks the CLI version, App Server handshake, ChatGPT login, and Computer Use plugin
-without starting a model turn.
-
-To reset only the local development state, quit the dev app and run `bun run dev:reset`. The command
-deletes the development state. It does not change agent workspaces or CLI sessions.
-
-## Commands
+To reset only the local development state, quit the dev app and run `bun run dev:reset`.
 
 | Command | Purpose |
 | --- | --- |
 | `bun run dev` | Start Electron with renderer HMR. |
-| `bun run dev:reset` | Delete the local development state. |
-| `bun run check` | Run Biome, both typechecks, offline tests, the browser smoke test, and the production build. |
-| `bun run test:backend` | Run backend tests only. |
-| `bun run test:browser` | Run the local embedded-browser smoke test. |
-| `bun run test:codex` | Probe the real CLI handshake and account without starting a paid turn. |
-| `bun run package` | Build an unpacked local ARM64 application. |
-| `bun run package:verify` | Build and verify the real ARM64 app bundle, icon, metadata, ASAR, and fuses. |
-| `bun run package:win` | Build an unpacked local Windows x64 application on Windows. |
-| `bun run package:win:verify` | Build and verify the Windows x64 application on Windows. |
-| `bun run release:preflight` | Verify version, Git state, Apple signing, and GitHub release secrets before tagging. |
-| `bun run dist:mac` | Build unsigned local ARM64 DMG and ZIP update artifacts. |
-| `bun run dist:win` | Build an unsigned Windows x64 NSIS installer on Windows. |
-| `bun run release:patch` | Create the next patch version commit and tag. |
-| `bun run test:filesystem` | **Online/manual:** run a real full-access Codex filesystem turn. |
-| `bun run test:imagegen` | **Online/manual:** run a real full-access image-generation turn. |
-
-The normal `check` command is offline and uses a fake App Server. Manual smoke scripts may use the
-signed-in subscription and must not run in CI.
+| `bun run check` | Biome, both typechecks, offline tests, the browser smoke test, and the production build. |
+| `bun run test` / `bun run test:backend` | Vitest suites (all offline, with fake agent servers). |
+| `bun run test:browser` | Embedded-browser smoke test. |
+| `bun run codex:doctor` | Probe the real Codex CLI handshake without starting a paid turn. |
+| `bun run package:win:verify` | Build and verify the Windows x64 app (fuses, ASAR, launch). |
+| `bun run package:verify` | Same for macOS ARM64. |
+| `bun run dist:win` / `dist:mac` / `dist:linux` | Local installers. |
+| `bun run release:patch` | Bump version and changelog, commit and tag the next patch release. |
 
 ## Architecture
 
@@ -130,6 +138,7 @@ signed-in subscription and must not run in CI.
 Electron main
 ├── local Codex App Server process over stdio JSONL
 ├── local Claude Agent SDK session over stream JSON
+├── ACP agents (bundled OpenCode, Google Antigravity) over stdio
 ├── persistent bot and mailbox stores
 ├── secure typed IPC handlers
 └── sandboxed WebContentsView browser host
@@ -137,53 +146,30 @@ Electron main
 SolidJS renderer
 ```
 
-- `src/main` owns the Electron lifecycle, window security, local protocol, and IPC registration.
-- `src/backend` owns provider adapters, persistence, message scheduling, transfers, and the browser host.
-- `src/preload` exposes only the typed `window.sahkarmi` API.
-- `src/renderer` contains the SolidJS interface.
-- `src/shared` contains process-boundary contracts.
-
-## Local data and network boundaries
-
-- `~/Sahkarmi/Coworkers/<coworker-id>` — one working directory (and memory) per coworker.
-- `~/Sahkarmi/Shared` — the Shared files folder every coworker and you can see.
-- `~/Sahkarmi/Downloads` — embedded-browser downloads.
-- Electron `userData` — coworkers, workspaces, queues, approvals, schedules, drafts, and attachment indexes.
-- `~/.codex` — login and thread history managed exclusively by Codex CLI.
-- `~/.claude` — login and session history managed exclusively by Claude CLI.
-
-Sahkarmi does not open an application HTTP port. Electron communicates with local CLI processes over
-stdio. The embedded browser uses a separate sandboxed Electron session and cannot access
-`window.sahkarmi` or managed local attachments.
-
-## Security
-
-Read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Do not put credentials, private
-files, conversation contents, or sensitive diagnostics in a public issue.
-
-Full local access is an explicit current product decision, not a security boundary. Reports are
-especially useful when remote content can reach Electron privileges, managed attachment paths can
-escape their roots, IPC sender validation can be bypassed, or an agent can act outside the access
-described above.
+- `src/main`: Electron lifecycle, window security, local protocol, IPC registration, updates.
+- `src/backend`: provider adapters, persistence, message scheduling, approvals, the browser host.
+- `src/preload`: the typed `window.sahkarmi` API only.
+- `src/renderer`: the SolidJS interface. `src/shared`: process-boundary contracts.
 
 ## Releases
 
-Releases are tag-driven. `bun run release:patch`, `release:minor`, or `release:major` prepares the
-version and changelog. After review, commit, preflight, and tag the release; pushing the tag builds a
-signed and notarized macOS ARM64 release and an unsigned Windows x64 release in GitHub Actions.
-Installed builds check GitHub Releases for updates and expose download/restart controls in the account
-popover. Release signing secrets and the complete procedure are documented in
-[docs/RELEASING.md](docs/RELEASING.md).
+Releases are tag-driven: `bun run release:patch` (or `minor` / `major`) prepares the version and
+changelog; pushing the tag builds the Windows installer in GitHub Actions and publishes it with
+checksums, SBOM and provenance attestation. The macOS and Linux jobs are paused; set the repository
+variable `RELEASE_ALL_PLATFORMS` to `true` to build them again. Installed
+builds check GitHub Releases and update themselves. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). By contributing, you agree that your contribution is licensed
-under Apache-2.0. Community behavior is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+Issues and pull requests are welcome: bugs with the app version and steps to reproduce, new
+languages, coworker templates, docs. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). By contributing you agree your contribution is licensed
+under Apache-2.0.
 
 ## License and attribution
 
 Sahkarmi is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE).
 
-Sahkarmi is an independent project developed by the Sahkarmi Team. It is not affiliated with, endorsed by, or sponsored by
-OpenAI, Anthropic, Google, or any other AI company. Codex, Claude, and Google Antigravity are named only to describe
-compatibility with their agent programs.
+Sahkarmi is an independent project developed by the Sahkarmi Team. It is not affiliated with,
+endorsed by, or sponsored by OpenAI, Anthropic, Google, or any other AI company. Codex, Claude, and
+Google Antigravity are named only to describe compatibility with their agent programs.
