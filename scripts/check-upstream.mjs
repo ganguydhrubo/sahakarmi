@@ -2,22 +2,22 @@
 /**
  * Upstream Radar v2 for Sahkarmi.
  *
- * Watches nightly-labs/openbot for new desktop releases, classifies each one's licence, writes a
- * report (docs/upstream/reports/<tag>.md), appends to docs/upstream/RADAR.md, opens one tracking
- * issue per release and mails the owner through the Apps Script relay. Nothing under src/ is ever
- * touched: OpenBot has been PolyForm Noncommercial since v0.1.12, so no source is synchronised.
+ * Watches the upstream project (repository secret UPSTREAM_REPO, display name UPSTREAM_NAME) for
+ * new desktop releases, classifies each one's licence and mails the owner a full report through
+ * the Apps Script relay. Nothing under src/ is ever touched and no upstream source is copied.
+ * Reports are not stored in this public repository; only docs/upstream/state.json (tags already
+ * processed) is committed. See docs/UPSTREAM-SYNC.md.
  *
- * State: docs/upstream/state.json — a release is processed once; state advances only after its
- * report and issue exist. A mail that could not be sent is retried on the next run.
- *
- *   node scripts/check-upstream.mjs                 # normal run (needs GITHUB_TOKEN for issues)
- *   node scripts/check-upstream.mjs --dry-run       # analyse and print, write nothing
+ *   node scripts/check-upstream.mjs                 # normal run
+ *   node scripts/check-upstream.mjs --dry-run       # analyse and print, change nothing
  *   node scripts/check-upstream.mjs --init          # record the current latest tag as processed
  *   node scripts/check-upstream.mjs --self-test     # exercise the pure helpers, no network
  *   node scripts/check-upstream.mjs --test-mail     # send one sample mail through the relay
  *
- * Env: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/repo of Sahkarmi), UPSTREAM_MAIL_URL,
- *      UPSTREAM_MAIL_TOKEN, UPSTREAM_MAX_RELEASES (default 5).
+ * Env: UPSTREAM_REPO (required except --self-test), UPSTREAM_NAME, GITHUB_TOKEN,
+ *      UPSTREAM_MAIL_URL, UPSTREAM_MAIL_TOKEN, UPSTREAM_MAX_RELEASES (default 5),
+ *      UPSTREAM_OPEN_ISSUES ("true" to also open a tracking issue; off by default because
+ *      issues in this repository are public).
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -35,6 +35,7 @@ import {
   releaseBullets,
   renderMail,
   renderReport,
+  UPSTREAM_NAME,
   UPSTREAM_REPO,
 } from "./upstream-radar-lib.mjs";
 
@@ -42,8 +43,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const UPSTREAM_DIR = resolve(ROOT, "docs/upstream");
 const STATE_PATH = resolve(UPSTREAM_DIR, "state.json");
-const RADAR_PATH = resolve(UPSTREAM_DIR, "RADAR.md");
-const REPORTS_DIR = resolve(UPSTREAM_DIR, "reports");
 const SAHKARMI_REPO = process.env.GITHUB_REPOSITORY || "ganguydhrubo/sahakarmi";
 const MAX_RELEASES = Number(process.env.UPSTREAM_MAX_RELEASES || 5);
 const args = new Set(process.argv.slice(2));
@@ -106,7 +105,6 @@ function readState() {
   if (!existsSync(STATE_PATH)) {
     return {
       version: 1,
-      upstream: UPSTREAM_REPO,
       lastProcessedTag: null,
       processed: {},
       pendingMail: [],
@@ -176,8 +174,7 @@ async function processRelease(release, state) {
   const analysis = analyzeRelease(release);
   const previousTag = state.lastProcessedTag;
   const licence = await licenceOf(analysis.tag);
-  const reportRelativePath = `docs/upstream/reports/${analysis.tag}.md`;
-  const reportUrl = `https://github.com/${SAHKARMI_REPO}/blob/main/${reportRelativePath}`;
+  const reportUrl = null;
 
   log(
     `${analysis.tag}: licence ${licence.code}, ${analysis.bullets.length} notes, ${analysis.candidates.length} candidates, ${
@@ -187,13 +184,13 @@ async function processRelease(release, state) {
 
   // 1. Tracking issue (once; a re-run finds the existing one by title).
   let issueUrl = null;
-  if (!dryRun && process.env.GITHUB_TOKEN) {
-    const title = `Upstream OpenBot ${analysis.tag}: ${isCritical(analysis) ? "CRITICAL" : "review"} — licence ${licence.label}`;
+  if (!dryRun && process.env.GITHUB_TOKEN && process.env.UPSTREAM_OPEN_ISSUES === "true") {
+    const title = `Upstream ${analysis.tag}: ${isCritical(analysis) ? "CRITICAL" : "review"} — licence ${licence.label}`;
     const existing = await githubJson(
-      `/search/issues?q=${encodeURIComponent(`repo:${SAHKARMI_REPO} in:title "Upstream OpenBot ${analysis.tag}:"`)}`,
+      `/search/issues?q=${encodeURIComponent(`repo:${SAHKARMI_REPO} in:title "Upstream ${analysis.tag}:"`)}`,
     ).catch(() => null);
     const found = existing?.items?.find((item) =>
-      item.title.startsWith(`Upstream OpenBot ${analysis.tag}:`),
+      item.title.startsWith(`Upstream ${analysis.tag}:`),
     );
     if (found) {
       issueUrl = found.html_url;
@@ -217,35 +214,20 @@ async function processRelease(release, state) {
     }
   }
 
-  // 2. Report file + RADAR line.
-  const report = renderReport({
-    analysis,
-    licence,
-    previousTag,
-    sahkarmiVersion: sahkarmiVersion(),
-    issueUrl,
-  });
-  if (!dryRun) {
-    mkdirSync(REPORTS_DIR, { recursive: true });
-    writeFileSync(resolve(REPORTS_DIR, `${analysis.tag}.md`), report);
-    const radar = existsSync(RADAR_PATH) ? readFileSync(RADAR_PATH, "utf8") : "# Upstream Radar\n";
-    const line = `- ${new Date().toISOString().slice(0, 10)} · [${analysis.tag}](${analysis.url}) · ${licence.label} · ${
-      isCritical(analysis) ? `**CRITICAL** (${analysis.flags.join(", ")})` : "info"
-    } · ${analysis.candidates.length} candidates · [report](reports/${analysis.tag}.md)${issueUrl ? ` · [issue](${issueUrl})` : ""}\n`;
-    if (!radar.includes(`[${analysis.tag}](`)) {
-      // New lines go under the v2 log heading, above the kept v1 history.
-      const marker = "\n---\n\n## Radar v1 history";
-      const cut = radar.indexOf(marker);
-      writeFileSync(
-        RADAR_PATH,
-        cut >= 0 ? `${radar.slice(0, cut)}${line}${radar.slice(cut)}` : `${radar}${line}`,
-      );
-    }
-  } else {
-    console.log(report);
+  // 2. The report itself travels only by mail (this repository is public).
+  if (dryRun) {
+    console.log(
+      renderReport({
+        analysis,
+        licence,
+        previousTag,
+        sahkarmiVersion: sahkarmiVersion(),
+        issueUrl,
+      }),
+    );
   }
 
-  // 3. State advances now: report and issue exist. Mail is best-effort with retry.
+  // 3. State advances now. Mail is best-effort with retry on the next run.
   state.processed[analysis.tag] = {
     at: new Date().toISOString(),
     licence: licence.code,
@@ -288,7 +270,7 @@ async function retryPendingMail(state, releasesByTag) {
       licence,
       previousTag: null,
       issueUrl: entry?.issueUrl ?? null,
-      reportUrl: `https://github.com/${SAHKARMI_REPO}/blob/main/docs/upstream/reports/${tag}.md`,
+      reportUrl: null,
     });
     try {
       await sendMail(mail);
@@ -321,6 +303,7 @@ async function listNewReleases(state) {
 
 async function main() {
   if (args.has("--self-test")) return selfTest();
+  if (!UPSTREAM_REPO) throw new Error("UPSTREAM_REPO is not set (repository secret).");
   if (args.has("--test-mail")) {
     const sample = {
       tag_name: "v0.0.0-test",
@@ -392,7 +375,7 @@ function selfTest() {
   );
   assert(classifyLicence("", "").code === "unknown", "unknown");
   const body =
-    "## What's Changed\n* Fail over to the next backup model on Codex errors by @x in https://github.com/a/b/pull/1\n* Update Electron to 44.7.0 for V8 fixes\n* Add a CLA check\n* Prepare OpenBot v0.48.2\n## New Contributors\n* @y made their first contribution";
+    "## What's Changed\n* Fail over to the next backup model on Codex errors by @x in https://github.com/a/b/pull/1\n* Update Electron to 44.7.0 for V8 fixes\n* Add a CLA check\n* Prepare v0.48.2\n## New Contributors\n* @y made their first contribution";
   const bullets = releaseBullets(body);
   assert(
     bullets.length === 3 && bullets[0] === "Fail over to the next backup model on Codex errors",
@@ -432,7 +415,10 @@ function selfTest() {
     issueUrl: "i",
     reportUrl: "r",
   });
-  assert(mail.subject.startsWith("[Sahkarmi upstream] OpenBot v9.9.9 — CRITICAL"), mail.subject);
+  assert(
+    mail.subject.startsWith(`[Sahkarmi upstream] ${UPSTREAM_NAME} v9.9.9 — CRITICAL`),
+    mail.subject,
+  );
   assert(mail.html.includes("<li>") && mail.text.includes("All release notes"), "mail body");
   assert(
     mail.text.includes("Windows-relevant changes") && report.includes("Windows-relevant"),

@@ -4,7 +4,9 @@
  * exercised with `node scripts/check-upstream.mjs --self-test`.
  */
 
-export const UPSTREAM_REPO = "nightly-labs/openbot";
+/** owner/repo of the watched project and its display name, both from repository secrets. */
+export const UPSTREAM_REPO = process.env.UPSTREAM_REPO?.trim() || "";
+export const UPSTREAM_NAME = process.env.UPSTREAM_NAME?.trim() || "Upstream";
 
 /** What we may do with an upstream revision, decided from its own licence text. */
 export const LICENCE_VERDICTS = {
@@ -97,7 +99,7 @@ export function releaseBullets(body) {
 /** Bullets that read like user-facing features (not refactors, CI, docs, mobile-only, hosted). */
 export function featureCandidates(bullets) {
   const skip =
-    /\b(ci|storybook|refactor|lint|typecheck|knip|biome|test[s]?\b|docs?\b|readme|workflow|release|mobile app|ios|android|iphone|hosted server|boat|signal|stripe|billing|checkout|nix|docker|website|openbot\.run|landing|hero|norbiai|cla\b|contributor)/i;
+    /\b(ci|storybook|refactor|lint|typecheck|knip|biome|test[s]?\b|docs?\b|readme|workflow|release|mobile app|ios|android|iphone|hosted server|boat|signal|stripe|billing|checkout|nix|docker|website|landing|hero|norbiai|cla\b|contributor)/i;
   return bullets.filter((line) => !skip.test(line)).slice(0, 40);
 }
 
@@ -134,7 +136,7 @@ function list(items, empty = "_none_") {
 /** Markdown report saved under docs/upstream/reports/<tag>.md and used as the issue body. */
 export function renderReport({ analysis, licence, previousTag, sahkarmiVersion, issueUrl }) {
   const critical = isCritical(analysis);
-  return `# Upstream ${UPSTREAM_REPO} ${analysis.tag}
+  return `# Upstream ${UPSTREAM_NAME} ${analysis.tag}
 
 | | |
 | --- | --- |
@@ -179,9 +181,9 @@ ${list(analysis.bullets, "_the release has no notes_")}
 /** Plain-text + HTML for the notification mail. */
 export function renderMail({ analysis, licence, previousTag, issueUrl, reportUrl }) {
   const critical = isCritical(analysis);
-  const subject = `[Sahkarmi upstream] OpenBot ${analysis.tag} — ${critical ? `CRITICAL: ${analysis.flags.join(", ")}` : "info"}`;
+  const subject = `[Sahkarmi upstream] ${UPSTREAM_NAME} ${analysis.tag} — ${critical ? `CRITICAL: ${analysis.flags.join(", ")}` : "info"}`;
   const lines = [
-    `OpenBot published ${analysis.tag} (${analysis.publishedAt?.slice(0, 10) ?? "?"}).`,
+    `${UPSTREAM_NAME} published ${analysis.tag} (${analysis.publishedAt?.slice(0, 10) ?? "?"}).`,
     `Previous processed: ${previousTag ?? "none"}.`,
     `Licence: ${licence.label} — ${licence.syncPermitted ? "port permitted with attribution" : "source sync BLOCKED; clean-room only"}.`,
     critical ? `Why critical: ${analysis.flags.join(", ")}.` : "No critical signals.",
@@ -212,7 +214,7 @@ export function renderMail({ analysis, licence, previousTag, issueUrl, reportUrl
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
     );
   const html = `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.5">
-<h2 style="margin:0 0 8px">OpenBot ${escapeHtml(analysis.tag)} ${critical ? '<span style="color:#b00020">CRITICAL</span>' : '<span style="color:#555">info</span>'}</h2>
+<h2 style="margin:0 0 8px">${escapeHtml(UPSTREAM_NAME)} ${escapeHtml(analysis.tag)} ${critical ? '<span style="color:#b00020">CRITICAL</span>' : '<span style="color:#555">info</span>'}</h2>
 <p>${escapeHtml(lines[0])}<br>${escapeHtml(lines[1])}<br><b>${escapeHtml(lines[2])}</b><br>${escapeHtml(lines[3])}</p>
 <p><b>Feature candidates</b></p>
 <ul>${analysis.candidates.length ? analysis.candidates.map((c) => `<li>${escapeHtml(c)}</li>`).join("") : "<li>(none)</li>"}</ul>
@@ -222,7 +224,7 @@ ${analysis.dependencyBumps.length ? `<p><b>Shared dependency signals</b></p><ul>
 <p><b>All release notes (${analysis.bullets.length} lines)</b></p>
 <ul>${analysis.bullets.length ? analysis.bullets.map((c) => `<li>${escapeHtml(c)}</li>`).join("") : "<li>(the release has no notes)</li>"}</ul>
 <p><a href="${escapeHtml(analysis.url)}">Release notes</a>${issueUrl ? ` · <a href="${escapeHtml(issueUrl)}">Tracking issue</a>` : ""}${reportUrl ? ` · <a href="${escapeHtml(reportUrl)}">Report</a>` : ""}</p>
-<p style="color:#777;font-size:12px">Sent by the Sahkarmi Upstream Radar. No upstream code is copied: OpenBot is ${escapeHtml(licence.label)}.</p>
+<p style="color:#777;font-size:12px">Sent by the Sahkarmi Upstream Radar. No upstream code is copied: the project is ${escapeHtml(licence.label)}.</p>
 </div>`;
   return { subject, text: lines.join("\n"), html };
 }

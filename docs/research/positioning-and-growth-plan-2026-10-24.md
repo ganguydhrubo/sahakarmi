@@ -1,6 +1,6 @@
 # Sahkarmi — positioning, messaging and 30-day open-source growth plan (24 October 2026)
 
-Built on `competitor-landscape-2026-10-24.md` and `icp-and-growth-channels-2026-10-24.md` in this folder and on the QA in `docs/qa/2026-10-24/`. Everything below is a recommendation unless marked verified.
+Built on an internal competitor review and on `icp-and-growth-channels-2026-10-24.md` in this folder and on the QA in `docs/qa/2026-10-24/`. Everything below is a recommendation unless marked verified.
 
 ## 1. Positioning statement
 
