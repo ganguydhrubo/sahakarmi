@@ -223,21 +223,38 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
             {t("appsKeyTitle")}
           </h2>
           <p>{t("appsKeyWhy")}</p>
+          <p class="apps-guide-time">{t("appsGuideTime")}</p>
           <ol class="apps-key-steps">
             <li>
-              <span class="apps-key-step-text">{t("appsKeyStep1")}</span>
+              <span class="apps-key-step-text">
+                {t("appsGuideStep1")}{" "}
+                <button
+                  type="button"
+                  class="marketplace-link"
+                  onClick={() => void window.sahkarmi.openUrl(COMPOSIO_URL)}
+                >
+                  {t("appsGuideOpenKeys")}
+                </button>
+              </span>
               <span class="apps-key-step-logos" aria-hidden="true">
                 <img src={`${LOGO}googlesuper`} alt="" width="18" height="18" />
                 <img src={`${LOGO}github`} alt="" width="18" height="18" />
               </span>
             </li>
             <li>
-              <span class="apps-key-step-text">{t("appsKeyStep2")}</span>
+              <span class="apps-key-step-text">{t("appsGuideStep2")}</span>
             </li>
             <li>
-              <span class="apps-key-step-text">{t("appsKeyStep3")}</span>
+              <span class="apps-key-step-text">{t("appsGuideStep3")}</span>
+            </li>
+            <li>
+              <span class="apps-key-step-text">{t("appsGuideStep4")}</span>
+            </li>
+            <li>
+              <span class="apps-key-step-text">{t("appsGuideStep5")}</span>
             </li>
           </ol>
+          <p class="apps-guide-success">{t("appsGuideSuccess")}</p>
           <div class="apps-key-form">
             <input
               ref={keyField}
@@ -266,6 +283,17 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
           <Show when={status()?.apiKeyMasked}>
             <small>{t("appsKeySaved", { key: status()?.apiKeyMasked ?? "" })}</small>
           </Show>
+          <details class="apps-guide-trouble">
+            <summary>{t("appsGuideTrouble")}</summary>
+            <ul>
+              <li>{t("appsGuideErrInvalid")}</li>
+              <li>{t("appsGuideErrReadOnly")}</li>
+              <li>{t("appsGuideErrUser")}</li>
+              <li>{t("appsGuideErrExtra")}</li>
+              <li>{t("appsGuideErrNetwork")}</li>
+            </ul>
+          </details>
+          <p class="apps-guide-safety">{t("appsGuideSafety")}</p>
         </form>
       </Show>
 
@@ -273,7 +301,12 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
 
       <Show when={error()}>
         <p class="center-view-error" role="alert">
-          {error()}
+          {error()}{" "}
+          <Show when={/Full access/.test(error() ?? "")}>
+            <button type="button" class="marketplace-link" onClick={openKeyCard}>
+              {t("appsReplaceKey")}
+            </button>
+          </Show>
         </p>
       </Show>
       <Show when={notice()}>

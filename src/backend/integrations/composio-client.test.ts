@@ -26,6 +26,8 @@ interface FakeOptions {
   connectionStatus?: string;
   execute?: (slug: string, body: Record<string, unknown> | null, attempt: number) => FakeResponse;
   authCheck?: number;
+  /** Status for creating an auth config (403 = a key with read-only auth config access). */
+  authConfigCreate?: number;
 }
 
 type FakeResponse = Response;
@@ -164,6 +166,14 @@ function fakeComposio(options: FakeOptions = {}) {
       return json(200, { items: options.authConfigs ?? [], next_cursor: null });
     }
     if (path === "/auth_configs" && method === "POST") {
+      if (options.authConfigCreate === 403) {
+        return json(403, {
+          error: {
+            message:
+              'This API key does not have the permissions required for POST /api/v3/auth_configs. This route requires "auth_configs" write access, but the key has read access for "auth_configs".',
+          },
+        });
+      }
       return json(201, {
         auth_config: { id: "ac_created", auth_scheme: "OAUTH2", is_composio_managed: true },
         toolkit: { slug: (body?.toolkit as { slug?: string } | undefined)?.slug ?? "" },
@@ -368,6 +378,21 @@ describe("ComposioClient", () => {
       (call) => call.method === "POST" && call.url.pathname.endsWith("/auth_configs"),
     );
     expect(creations).toHaveLength(1);
+  });
+
+  it("explains a read-only key when an app needs a new sign-in setup", async () => {
+    const composio = client(fakeComposio({ authConfigCreate: 403 }));
+    await composio.setApiKey("key_1234567890", { verify: false });
+    await expect(composio.initiateConnection("github")).rejects.toThrow(
+      /can only read, so it cannot set up GitHub\. Make a new key with Full access/,
+    );
+  });
+
+  it("names a Connect key (ck_) instead of sending it", async () => {
+    const fake = fakeComposio();
+    const composio = client(fake);
+    await expect(composio.setApiKey("ck_1234567890abcdef")).rejects.toThrow(/Connect key.*ak_/);
+    expect(fake.calls).toHaveLength(0);
   });
 
   it("reuses an auth config the owner already has, preferring the Composio-managed one", async () => {

@@ -187,6 +187,11 @@ export class ComposioClient {
   /** Saves the key after Composio has accepted it once; an empty key removes the saved one. */
   async setApiKey(key: string, options: { verify?: boolean } = {}): Promise<ComposioStatus> {
     const trimmed = normalizeComposioKey(key);
+    if (/^ck_/i.test(trimmed)) {
+      throw new Error(
+        "That is a Composio Connect key (it starts with ck_). Sahkarmi needs a Platform key, which starts with ak_: on dashboard.composio.dev choose Platform on the left, then Settings → API keys.",
+      );
+    }
     if (/^uak_/i.test(trimmed)) {
       throw new Error(
         "That is a Composio user key (it starts with uak_). Sahkarmi needs the Project API key, which starts with ak_: dashboard.composio.dev → Settings → API keys.",
@@ -624,6 +629,12 @@ export class ComposioClient {
       },
       { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
     );
+    if (created.status === 403) {
+      // A key made with "Read only" for auth configs can list sign-ins but not add one.
+      throw new Error(
+        `Your Composio key can only read, so it cannot set up ${toolkit.name}. Make a new key with Full access (step 3 in the key card) and paste it here, or set up ${toolkit.name} yourself at dashboard.composio.dev → Auth configs → Create.`,
+      );
+    }
     if (!created.ok) {
       throw new Error(await this.#failure(`prepare ${toolkit.name} for sign-in`, created));
     }
@@ -832,11 +843,13 @@ export class ComposioClient {
       }
     }
     const hint =
-      res.status === 401 || res.status === 403
-        ? " Check the Composio key in Marketplace → Apps."
-        : res.status === 402
-          ? " The Composio plan's monthly limit may be used up."
-          : "";
+      res.status === 403 && /permission|access/i.test(detail)
+        ? " The key is limited: make a new Composio key with Full access and paste it in Marketplace → Apps."
+        : res.status === 401 || res.status === 403
+          ? " Check the Composio key in Marketplace → Apps."
+          : res.status === 402
+            ? " The Composio plan's monthly limit may be used up."
+            : "";
     const shown = detail ? ` (${clip(detail, 200)})` : "";
     return `Could not ${action}: Composio answered ${res.status}${shown}.${hint}`;
   }

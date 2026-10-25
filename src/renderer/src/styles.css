@@ -10611,3 +10611,39 @@ fieldset.memory-filters {
   gap: 6px;
   margin-left: auto;
 }
+
+.apps-guide-time {
+  margin: -4px 0 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.apps-guide-success {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgb(46 157 91 / 0.1);
+  color: #1f7a45;
+}
+
+.apps-guide-trouble {
+  margin-top: 12px;
+}
+
+.apps-guide-trouble summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.apps-guide-trouble ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.apps-guide-safety {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
