@@ -5,6 +5,39 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-25
+
+### Added
+
+- An empty chat now suggests three first tasks for that coworker. One click puts the task in
+  the message box.
+- You can decline when a coworker asks you to take over the browser, for example to log in.
+- Approvals for money, outside messages, publishing or deleting have a red edge.
+
+### Changed
+
+- Approval requests are in plain English ("Asha wants to save a file"). They list the files and
+  the place, and fold the exact command under "Technical details".
+- Sahkarmi's own tools, such as saving a memory, no longer ask for permission as commands.
+- Memory screen rebuilt: matches the app, uses plain words, is translated, and has a proper
+  window that Esc closes.
+- An idle coworker's status reads "Available", so it no longer clashes with "Free model".
+
+### Fixed
+
+- Replies no longer disappear after you switch a coworker to a different AI provider.
+- Antigravity helper programs now close with the app. Before, dozens could stay running and
+  use a lot of memory.
+- Stop now ends a task that is waiting for your approval.
+- A failed message that is resent automatically no longer appears several times.
+- The model menu in the header closes with Esc or a click outside it.
+- The selected option is visible again in Settings, Routines and Schedules.
+- The unread count on pinned coworkers shows as a badge.
+- The message box shows a single focus outline.
+- The app window no longer shifts and leaves a blank strip.
+- A coworker's text after a tool step starts on a new line instead of joining the previous sentence.
+- The task counts stay on one line in narrow windows.
+
 ## [0.8.0] - 2026-10-25
 
 ### Added
