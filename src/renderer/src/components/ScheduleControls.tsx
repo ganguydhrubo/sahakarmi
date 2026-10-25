@@ -66,12 +66,21 @@ export function describeCadence(cadence: ScheduleCadence): string {
     case "hourly":
       return t("scheduleHourly");
     case "daily":
-      return `${t("scheduleDaily")} · ${cadence.time}`;
+      return `${t("scheduleDaily")} · ${clockTime(cadence.time)}`;
     case "weekdays":
-      return `${t("scheduleWeekdays")} · ${cadence.time}`;
+      return `${t("scheduleWeekdays")} · ${clockTime(cadence.time)}`;
     case "weekly":
-      return `${weekdayName(cadence.day)} · ${cadence.time}`;
+      return `${weekdayName(cadence.day)} · ${clockTime(cadence.time)}`;
   }
+}
+
+/** "18:00" in the owner's own clock style, e.g. "6:00 pm". */
+function clockTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time;
+  return new Intl.DateTimeFormat(localeTag(), { hour: "numeric", minute: "2-digit" }).format(
+    new Date(2000, 0, 1, hours, minutes),
+  );
 }
 
 /** Cadence picker shown above the composer when "Run on schedule" is on. */

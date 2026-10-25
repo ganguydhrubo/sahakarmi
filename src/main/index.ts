@@ -37,12 +37,13 @@ import {
   setToolsDirectory,
 } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
+import { ComposioClient } from "../backend/integrations/composio-client";
 import { MailboxStore } from "../backend/mailbox-store";
 import { OrchestratorStore } from "../backend/orchestrator-store";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
-
 import { createRoutineExecutor } from "../backend/routine-executor";
+import { importDesktopRoutinesOnce } from "../backend/routine-import";
 import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
@@ -101,7 +102,11 @@ import { isTrustedRendererUrl } from "./trusted-renderer";
 import { supportsInstalledUpdates, UpdateService } from "./update-service";
 
 if (!app.isPackaged) {
-  app.setPath("userData", join(app.getPath("appData"), "Sahkarmi Dev"));
+  // SAHKARMI_DEV_USER_DATA lets a test run use a throwaway profile instead of "Sahkarmi Dev".
+  app.setPath(
+    "userData",
+    process.env.SAHKARMI_DEV_USER_DATA?.trim() || join(app.getPath("appData"), "Sahkarmi Dev"),
+  );
 }
 app.enableSandbox();
 if (process.platform === "win32") app.setAppUserModelId("in.sahkarmi.desktop");
@@ -186,6 +191,7 @@ function registerIpcHandlers(
   aiRuntime: AiRuntimeService,
   orchestrator: AdaptiveOrchestrator,
   store: BotStore,
+  composio: ComposioClient,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -463,6 +469,29 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.businessDeleteTarget, (targetId: unknown) =>
     business.deleteTarget(requireString(targetId, "targetId")),
   );
+
+  handleTrusted(IPC_CHANNELS.composioGetStatus, () => composio.getStatus());
+  handleTrusted(IPC_CHANNELS.composioSetApiKey, (input: unknown) => {
+    const key = isObject(input) && typeof input.key === "string" ? input.key : "";
+    return composio.setApiKey(key);
+  });
+  handleTrusted(IPC_CHANNELS.composioListApps, (input: unknown) =>
+    composio.listApps(isObject(input) && input.refresh === true),
+  );
+  handleTrusted(IPC_CHANNELS.composioConnectApp, (input: unknown) => {
+    const appId = isObject(input) && typeof input.appId === "string" ? input.appId : "";
+    return composio.initiateConnection(appId);
+  });
+  handleTrusted(IPC_CHANNELS.composioConnectionStatus, (input: unknown) => {
+    const connectionId =
+      isObject(input) && typeof input.connectionId === "string" ? input.connectionId : "";
+    return composio.getConnectionStatus(connectionId);
+  });
+  handleTrusted(IPC_CHANNELS.composioDisconnectApp, (input: unknown) => {
+    const connectionId =
+      isObject(input) && typeof input.connectionId === "string" ? input.connectionId : "";
+    return composio.deleteConnection(connectionId);
+  });
 
   handleTrusted(IPC_CHANNELS.schedulesList, () => schedules.list());
   handleTrusted(IPC_CHANNELS.schedulesCreate, (input: unknown) => {
@@ -988,7 +1017,9 @@ if (!hasSingleInstanceLock) {
       await usage.initialize().catch((error) => {
         appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
       });
+      const composioClient = new ComposioClient({ userDataPath: app.getPath("userData") });
       service.setUsageService(usage);
+      service.setComposioClient(composioClient);
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       await features.initialize().catch((error) => {
@@ -1004,7 +1035,23 @@ if (!hasSingleInstanceLock) {
       );
       const routines = new RoutineStore(app.getPath("userData"));
       await routines.initialize();
+      // Bring the owner's routines from their previous desktop agent over once (paused), so a switch loses nothing.
+      await importDesktopRoutinesOnce({
+        userDataPath: app.getPath("userData"),
+        sourceDatabase: join(app.getPath("appData"), "OpenBot", "openbot.db"),
+        routineCount: routines.state().routines.length,
+        coworkers: store.list(),
+        save: (input) => routines.save(input),
+      })
+        .then((report) => {
+          if (report)
+            appLog.write("info", "Imported routines from the previous desktop agent", report);
+        })
+        .catch((error) =>
+          appLog.write("warn", "Could not import routines from the previous desktop agent", error),
+        );
       routineStore = routines;
+      service.setRoutineHost(routines);
       routines.on("changed", (state) => forwardAgentEvent({ type: "routines-changed", state }));
       const sharedFiles = new SharedFiles(store.sharedRoot);
       const { autoUpdater } = electronUpdater;
@@ -1119,6 +1166,7 @@ if (!hasSingleInstanceLock) {
         aiRuntimeService,
         orchestrator,
         store,
+        composioClient,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);

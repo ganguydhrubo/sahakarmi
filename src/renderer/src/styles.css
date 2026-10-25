@@ -267,7 +267,7 @@ textarea {
 .provider-picker-option {
   min-height: 44px;
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -7180,7 +7180,7 @@ fieldset.cadence-kinds {
 .center-view
 button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
   [role="tab"]
-):not(.marketplace-filter) {
+):not(.marketplace-filter):not(.link-button) {
   border: 1px solid var(--sahkarmi-line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
@@ -10212,4 +10212,353 @@ fieldset.memory-filters {
     transition: none;
     transform: none;
   }
+}
+
+/* Provider brand marks (Settings, model picker, usage rings). */
+.provider-logo {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--text-primary);
+}
+
+.provider-logo svg {
+  display: block;
+}
+
+.provider-logo-tile {
+  width: calc(var(--provider-logo-size) + 20px);
+  height: calc(var(--provider-logo-size) + 20px);
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.provider-logo-initial {
+  display: grid;
+  width: var(--provider-logo-size);
+  height: var(--provider-logo-size);
+  place-items: center;
+  border-radius: 6px;
+  background: var(--text-primary);
+  color: var(--surface-1);
+  font-size: calc(var(--provider-logo-size) * 0.62);
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Provider list (Settings → AI and models): grouped, brand marks, one clear action per row. */
+.provider-groups {
+  display: grid;
+  gap: 22px;
+  margin: 16px 0 8px;
+}
+
+.provider-group h3 {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.provider-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 14px;
+  background: var(--surface-1);
+  list-style: none;
+}
+
+.provider-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  transition: background 140ms ease;
+}
+
+.provider-row + .provider-row {
+  border-top: 1px solid var(--sahkarmi-line);
+}
+
+.provider-row:hover {
+  background: rgb(var(--primary-rgb) / 0.035);
+}
+
+.provider-row-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.provider-row-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.provider-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-row-name strong {
+  color: var(--text-primary);
+  font-size: 14.5px;
+}
+
+.provider-row-text small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-badge {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.provider-badge-free {
+  background: color-mix(in srgb, var(--success-fill) 14%, transparent);
+  color: var(--success-fill);
+}
+
+.provider-row-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-row-actions .link-button {
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.provider-row-actions .link-button:hover {
+  text-decoration: underline;
+}
+
+.provider-status-on {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success-fill);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.provider-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success-fill);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-fill) 20%, transparent);
+}
+
+.provider-connect-button {
+  display: inline-flex;
+  min-width: 96px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.provider-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: provider-spin 0.8s linear infinite;
+}
+
+@keyframes provider-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.provider-key-toggle {
+  margin-left: 54px;
+  font-size: 12.5px;
+}
+
+.provider-row .provider-connect-code,
+.provider-row .provider-connect-progress {
+  margin-left: 54px;
+}
+
+.provider-row .provider-connect-progress {
+  margin-top: 0;
+  border-radius: 10px;
+  background: rgb(var(--primary-rgb) / 0.06);
+  padding: 10px 12px;
+}
+
+.provider-row .provider-connect-progress progress {
+  height: 6px;
+  accent-color: rgb(var(--primary-rgb));
+}
+
+.provider-row .provider-connect-reason {
+  margin: 0 0 0 54px;
+}
+
+.provider-permissions-link {
+  margin: 4px 0 0;
+}
+
+/* Model picker rail: brand marks instead of letters. */
+.provider-model-brand {
+  display: inline-grid;
+  place-items: center;
+  background: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .provider-spinner {
+    animation-duration: 2.4s;
+  }
+
+  .provider-row {
+    transition: none;
+  }
+}
+
+.provider-picker-option .provider-logo-tile {
+  --provider-logo-size: 16px;
+  border-radius: 9px;
+}
+
+.provider-row button.link-button,
+.provider-permissions-link button.link-button {
+  color: rgb(var(--primary-rgb));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.provider-row button.link-button:hover,
+.provider-permissions-link button.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Settings cards box every button; text links stay plain links. */
+.settings-card button.link-button {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* Marketplace → Apps (Composio) */
+.apps-panel {
+  display: grid;
+  gap: 14px;
+}
+.apps-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.apps-plan-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.apps-key-card {
+  align-items: stretch;
+}
+.apps-key-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.apps-key-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.apps-key-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.apps-key-form input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.apps-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.apps-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 0.9rem;
+}
+.apps-logo {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+.apps-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+.apps-card p {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.apps-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+.apps-card-foot small {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.marketplace-badge-connected {
+  color: var(--success);
+  background: var(--success-soft);
 }

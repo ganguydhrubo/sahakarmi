@@ -1,7 +1,11 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import type { AgentProviderId, ProviderUsageSummary } from "../../../shared/ipc";
+import {
+  type AgentProviderId,
+  PROVIDER_LABELS,
+  type ProviderUsageSummary,
+} from "../../../shared/ipc";
 
-const NAMES: Record<AgentProviderId, string> = {
+const NAMES: Partial<Record<AgentProviderId, string>> = {
   codex: "ChatGPT",
   claude: "Claude",
   antigravity: "Antigravity",
@@ -49,7 +53,7 @@ export function UsageRings(props: { onOpenUsage: () => void }) {
                 <button
                   type="button"
                   class={`usage-ring usage-ring-${level()}`}
-                  aria-label={`${NAMES[provider.provider]} ${Math.round(highest())}%`}
+                  aria-label={`${NAMES[provider.provider] ?? PROVIDER_LABELS[provider.provider]} ${Math.round(highest())}%`}
                   onClick={props.onOpenUsage}
                   onMouseEnter={() => setOpen(provider.provider)}
                   onMouseLeave={() => setOpen(null)}
@@ -66,11 +70,15 @@ export function UsageRings(props: { onOpenUsage: () => void }) {
                       stroke-dasharray={`${(Math.min(100, highest()) / 100) * 94.25} 94.25`}
                     />
                   </svg>
-                  <span>{NAMES[provider.provider].slice(0, 1)}</span>
+                  <span>
+                    {(NAMES[provider.provider] ?? PROVIDER_LABELS[provider.provider]).slice(0, 1)}
+                  </span>
                 </button>
                 <Show when={open() === provider.provider}>
                   <div class="usage-ring-popover" role="tooltip">
-                    <strong>{NAMES[provider.provider]}</strong>
+                    <strong>
+                      {NAMES[provider.provider] ?? PROVIDER_LABELS[provider.provider]}
+                    </strong>
                     <For each={provider.limits.filter((limit) => limit.usedPercent !== null)}>
                       {(limit) => (
                         <div class="usage-ring-limit">

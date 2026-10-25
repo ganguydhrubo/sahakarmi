@@ -107,6 +107,12 @@ export const IPC_CHANNELS = {
   memoryList: "memory:list",
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
+  composioGetStatus: "composio:get-status",
+  composioSetApiKey: "composio:set-api-key",
+  composioListApps: "composio:list-apps",
+  composioConnectApp: "composio:connect-app",
+  composioConnectionStatus: "composio:connection-status",
+  composioDisconnectApp: "composio:disconnect-app",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -186,8 +192,37 @@ export type AgentPhase = "idle" | "starting" | "ready" | "restarting" | "blocked
 
 export type CapabilityState = "ready" | "setup-required" | "unavailable";
 
-export const AGENT_PROVIDERS = ["codex", "claude", "antigravity", "opencode"] as const;
+/**
+ * Other AI agents Sahkarmi drives over the Agent Client Protocol, the same way as OpenCode and
+ * Antigravity: each is the vendor's own command-line tool, signed in with the owner's account.
+ */
+export const ACP_AGENT_PROVIDERS = [
+  "cursor",
+  "copilot",
+  "kimi",
+  "cline",
+  "qwen",
+  "grok",
+  "droid",
+  "qoder",
+  "goose",
+  "vibe",
+  "kiro",
+] as const;
+export type AcpAgentProviderId = (typeof ACP_AGENT_PROVIDERS)[number];
+
+export const AGENT_PROVIDERS = [
+  "codex",
+  "claude",
+  "antigravity",
+  "opencode",
+  ...ACP_AGENT_PROVIDERS,
+] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
+
+export function isAcpAgentProvider(value: unknown): value is AcpAgentProviderId {
+  return typeof value === "string" && ACP_AGENT_PROVIDERS.includes(value as AcpAgentProviderId);
+}
 
 export function isAgentProvider(value: unknown): value is AgentProviderId {
   return typeof value === "string" && AGENT_PROVIDERS.includes(value as AgentProviderId);
@@ -199,6 +234,17 @@ export const PROVIDER_LABELS: Record<AgentProviderId, string> = {
   claude: "Claude",
   opencode: "OpenCode (free)",
   antigravity: "Google Antigravity",
+  cursor: "Cursor",
+  copilot: "GitHub Copilot",
+  kimi: "Kimi Code",
+  cline: "Cline",
+  qwen: "Qwen Code",
+  grok: "Grok Build",
+  droid: "Factory Droid",
+  qoder: "Qoder",
+  goose: "Goose",
+  vibe: "Mistral Vibe",
+  kiro: "Kiro",
 };
 export type AgentProviderState =
   | "not-started"
@@ -241,7 +287,8 @@ export type AgentAuthState =
   | { kind: "chatgpt"; email: string | null }
   | { kind: "claude"; email: string | null }
   | { kind: "opencode"; email: string | null }
-  | { kind: "antigravity"; email: string | null; tier?: string | null };
+  | { kind: "antigravity"; email: string | null; tier?: string | null }
+  | { kind: AcpAgentProviderId; email: string | null };
 
 export interface AccountUsageWindow {
   usedPercent: number;
@@ -524,7 +571,11 @@ export type BotAvatarColor = (typeof BOT_AVATAR_COLORS)[number];
 export function isAgentModel(value: unknown): value is AgentModelId {
   if (typeof value !== "string") return false;
   if (AGENT_MODELS.some((model) => model === value)) return true;
-  return /^(codex|claude|opencode|antigravity):[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,179}$/.test(value);
+  const prefix = value.slice(0, value.indexOf(":"));
+  return (
+    AGENT_PROVIDERS.some((provider) => provider === prefix) &&
+    /^[a-z]+:[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,179}$/.test(value)
+  );
 }
 
 /**
@@ -546,7 +597,8 @@ export function isClaudeModel(model: AgentModelId): boolean {
 }
 
 export function modelWireId(model: AgentModelId): string {
-  return /^(codex|claude|opencode|antigravity):/.test(model)
+  const prefix = model.slice(0, Math.max(model.indexOf(":"), 0));
+  return AGENT_PROVIDERS.some((provider) => provider === prefix)
     ? model.slice(model.indexOf(":") + 1)
     : model;
 }
@@ -573,7 +625,16 @@ export const DEFAULT_MODEL_FOR_PROVIDER: Record<AgentProviderId, AgentModelId> =
   claude: "claude-opus-5",
   opencode: "opencode-free",
   antigravity: "antigravity-default",
+  ...(Object.fromEntries(
+    ACP_AGENT_PROVIDERS.map((provider): [AcpAgentProviderId, AgentModelId] => [
+      provider,
+      `${provider}:default`,
+    ]),
+  ) as Record<AcpAgentProviderId, AgentModelId>),
 };
+
+/** "<agent>:default" keeps whatever model the agent itself is set to use. */
+export const ACP_AGENT_DEFAULT_MODEL = "default";
 
 export function isReasoningEffort(value: unknown): value is AgentReasoningEffort {
   return (
@@ -1490,6 +1551,57 @@ export interface SahkarmiDesktopApi {
   maintenance: MaintenanceDesktopApi;
   orchestrator: OrchestratorDesktopApi;
   memory: MemoryDesktopApi;
+  composio: ComposioDesktopApi;
+}
+
+/** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */
+export interface ComposioAppMeta {
+  /** The toolkit slug, e.g. "github". */
+  id: string;
+  name: string;
+  description: string;
+  logo: string | null;
+  categories: string[];
+  toolsCount: number | null;
+  auth: "oauth" | "api-key" | "none" | "other";
+  /** Connect works without the owner's own developer app keys. */
+  oneClick: boolean;
+  isConnected: boolean;
+  connectedAccountId: string | null;
+  connectionStatus: string | null;
+}
+
+export interface ComposioStatus {
+  configured: boolean;
+  apiKeyMasked: string | null;
+  connectedCount: number;
+  freeTierActive: boolean;
+  monthlyQuota: number;
+  planName: string;
+  catalogueSize: number;
+  catalogueError: string | null;
+}
+
+export interface ComposioConnectionInitiateResult {
+  connectionId: string;
+  redirectUrl: string;
+}
+
+export type ComposioConnectionState = "connecting" | "connected" | "failed" | "unknown";
+
+export interface ComposioConnectionStatus {
+  connectionId: string;
+  status: string;
+  state: ComposioConnectionState;
+}
+
+export interface ComposioDesktopApi {
+  getStatus: () => Promise<ComposioStatus>;
+  setKey: (key: string) => Promise<ComposioStatus>;
+  listApps: (refresh?: boolean) => Promise<ComposioAppMeta[]>;
+  connect: (appId: string) => Promise<ComposioConnectionInitiateResult>;
+  connectionStatus: (connectionId: string) => Promise<ComposioConnectionStatus>;
+  disconnect: (connectionId: string) => Promise<boolean>;
 }
 
 export interface AgentMemory {

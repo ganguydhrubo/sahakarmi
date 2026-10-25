@@ -9,7 +9,7 @@ What is automated is awareness:
 
 | Step | Where |
 | --- | --- |
-| Every 6 hours, look for new desktop releases of the watched project | `.github/workflows/upstream-watch.yml` |
+| Every hour, look for new desktop releases of the watched project | `.github/workflows/upstream-watch.yml` |
 | Read that release's own licence and classify it (`apache-2.0` / `polyform-nc` / `unknown`) | `scripts/check-upstream.mjs` |
 | Summarise the release notes: all lines, feature candidates, Windows-relevant lines, shared-dependency signals, critical flags | `scripts/upstream-radar-lib.mjs` |
 | Mail the owner the full report | Apps Script relay (`deploy/apps-script/upstream-mail/Code.gs`) |

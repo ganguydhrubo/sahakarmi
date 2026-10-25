@@ -6,7 +6,7 @@ name: Upstream Radar
 
 on:
   schedule:
-    - cron: "17 */6 * * *" # every 6 hours (UTC)
+    - cron: "17 * * * *" # every hour (UTC): a new release reaches the owner within the hour
   workflow_dispatch:
     inputs:
       dry_run:

@@ -550,7 +550,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
     const antigravity = (
-      await screen.findByText("Google Antigravity", { selector: "strong" })
+      await screen.findByText("Gemini (Antigravity)", { selector: "strong" })
     ).closest("li");
     await fireEvent.click(
       within(antigravity as HTMLElement).getByRole("button", { name: "Connect" }),
@@ -584,7 +584,9 @@ describe("Sahkarmi connected desktop shell", () => {
 
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
-    await fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    await fireEvent.click(
+      await screen.findByRole("button", { name: "Choose the default provider for new coworkers" }),
+    );
 
     expect(screen.getByRole("dialog", { name: "Providers & permissions" })).toBeInTheDocument();
     const providers = screen.getByRole("radiogroup", { name: "Default provider" });

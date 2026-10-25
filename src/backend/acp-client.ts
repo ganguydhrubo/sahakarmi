@@ -44,14 +44,20 @@ export interface AcpModelOption {
 }
 
 export interface AcpAgentConfig {
-  provider: Extract<AgentProvider, "opencode" | "antigravity">;
+  provider: Exclude<AgentProvider, "codex" | "claude">;
   label: string;
   executable: string;
   args: string[];
   /** Folder for Sahkarmi's own per-session transcripts (ACP has no history read API). */
   transcriptDir: string;
   models: Array<{ model: AgentModelId; displayName: string }>;
-  readAccount: () => Promise<AccountReadResult>;
+  /** How the agent says who is signed in; see accountFromSession for agents with no such call. */
+  readAccount?: () => Promise<AccountReadResult>;
+  /**
+   * The agent has no account call: it counts as signed in when it agrees to open a session
+   * (agents answer "authentication required" otherwise).
+   */
+  accountFromSession?: boolean;
   /** Optional authentication hook (e.g. for Antigravity ACP server when session/new requires auth). */
   authenticate?: () => Promise<void>;
   /**
@@ -65,6 +71,12 @@ export interface AcpAgentConfig {
   ) => string | null;
   /** The agent's free models in preference order; a used-up one is skipped for an hour. */
   freeModels?: (options: AcpModelOption[]) => string[];
+  /**
+   * Asks the provider's server directly whether its free allowance is used up. Run when a free
+   * model has been quiet for FREE_LIMIT_PROBE_MS, so the owner hears why in seconds instead of
+   * waiting out the silence watch once per free model.
+   */
+  probeFreeLimit?: (modelValue: string) => Promise<boolean>;
   /** Extra environment for the agent process (merged over the app's environment). */
   env?: Record<string, string>;
   /** How long model discovery (a throwaway session/new) may take; Google's server needs longer. */
@@ -78,6 +90,8 @@ interface ActiveTurn {
   textBreakPending?: boolean;
   /** Fires when the agent has sent nothing at all for SILENT_TURN_MS (see #armSilenceWatch). */
   silenceTimer?: ReturnType<typeof setTimeout>;
+  /** Fires FREE_LIMIT_PROBE_MS into a quiet free-model turn (see probeFreeLimit). */
+  probeTimer?: ReturnType<typeof setTimeout>;
   /** Sahkarmi cancelled this turn itself; the agent may still stream a late answer. */
   cancelledBySahkarmi?: boolean;
   id: string;
@@ -126,6 +140,12 @@ const SILENT_TURN_MS = 60_000;
 const EXHAUSTED_FREE_MODEL_MS = 60 * 60 * 1_000;
 /** Marker in a silent-turn error that tells AgentService another free model is ready to try. */
 export const NEXT_FREE_MODEL_HINT = "Sahkarmi will try the next free model";
+/** Marker in the error when the provider says its free allowance is used up for every model. */
+export const FREE_LIMIT_REACHED_HINT = "free limit is used up on this internet connection";
+/** How long a free-model turn may stay quiet before Sahkarmi asks the server about its limit. */
+const FREE_LIMIT_PROBE_MS = 8_000;
+const freeLimitProbeMs = (): number =>
+  Number(process.env.SAHKARMI_FREE_LIMIT_PROBE_MS) || FREE_LIMIT_PROBE_MS;
 const silentTurnMs = (): number =>
   Number(process.env.SAHKARMI_ACP_SILENT_TURN_MS) || SILENT_TURN_MS;
 
@@ -154,6 +174,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly #sessions = new Map<string, AcpSession>();
   /** Free model value -> time until which it is skipped (its usage limit was hit). */
   readonly #exhaustedUntil = new Map<string, number>();
+  /** Until when the provider's whole free allowance is known to be used up (0 = not known). */
+  #freeLimitUntil = 0;
   readonly #mcpRoutes = new Map<string, McpRoute>();
   #child: ChildProcessWithoutNullStreams | null = null;
   #buffer = "";
@@ -265,7 +287,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         return {} as T;
       }
       case "account/read":
-        return (await this.#config.readAccount()) as T;
+        if (this.#config.readAccount) return (await this.#config.readAccount()) as T;
+        return (await this.#accountFromSession()) as T;
       case "account/rateLimits/read":
         return { rateLimits: null, rateLimitsByLimitId: null } as T;
       case "model/list": {
@@ -488,6 +511,29 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     session.modelValue = value;
   }
 
+  /** Opens a throwaway session: no prompt is sent. Also fills the model list on success. */
+  async #accountFromSession(): Promise<AccountReadResult> {
+    try {
+      await mkdir(this.#config.transcriptDir, { recursive: true });
+      const result = await this.#call<Record<string, unknown>>(
+        "session/new",
+        { cwd: this.#config.transcriptDir, mcpServers: [] },
+        this.#config.modelListTimeoutMs ?? 20_000,
+      );
+      const options = readModelOptions(result);
+      if (options.length) this.#catalogOptions = options;
+      return {
+        account: { type: this.#config.provider, email: null, planType: null },
+        requiresOpenaiAuth: false,
+      };
+    } catch (error) {
+      if (/auth|log ?in|sign ?in|credential|api key|token/i.test(String(error))) {
+        return { account: null, requiresOpenaiAuth: false };
+      }
+      throw error;
+    }
+  }
+
   /** Free model values that hit their limit less than an hour ago. */
   #exhaustedFreeModels(): ReadonlySet<string> {
     const now = Date.now();
@@ -502,6 +548,13 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       throw new Error(`The ${this.#config.label} session already has an active turn.`);
     await this.#awaitStaleStream(session);
     await this.#applyModel(session, getString(params, "model"));
+    if (
+      this.#freeLimitUntil > Date.now() &&
+      session.modelValue &&
+      this.#isFreeModel(session, session.modelValue)
+    ) {
+      throw new Error(freeLimitMessage(this.#config));
+    }
 
     const clientId = getString(params, "clientUserMessageId");
     const turnId = clientId && isUuid(clientId) ? clientId : randomUUID();
@@ -552,11 +605,56 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     this.#clearSilenceWatch(turn);
     turn.silenceTimer = setTimeout(() => this.#failSilentTurn(session, turn), silentTurnMs());
     turn.silenceTimer.unref?.();
+    const probe = this.#config.probeFreeLimit;
+    const modelValue = session.modelValue;
+    if (!probe || !modelValue || !this.#isFreeModel(session, modelValue)) return;
+    // Only worth asking when the answer arrives before the silence watch fires anyway.
+    if (freeLimitProbeMs() >= silentTurnMs()) return;
+    turn.probeTimer = setTimeout(() => {
+      void probe(modelValue).then(
+        (limited) => {
+          if (limited && session.activeTurn === turn && turn.silenceTimer) {
+            this.#failFreeLimitTurn(session, turn);
+          }
+        },
+        () => undefined,
+      );
+    }, freeLimitProbeMs());
+    turn.probeTimer.unref?.();
+  }
+
+  #isFreeModel(session: AcpSession, value: string): boolean {
+    return (this.#config.freeModels?.(session.modelOptions) ?? []).includes(value);
+  }
+
+  /** The provider's free allowance covers every free model, so all of them are skipped at once. */
+  #markAllFreeModelsUsedUp(session: AcpSession): void {
+    const until = Date.now() + EXHAUSTED_FREE_MODEL_MS;
+    for (const value of this.#config.freeModels?.(session.modelOptions) ?? []) {
+      this.#exhaustedUntil.set(value, until);
+    }
+    this.#freeLimitUntil = until;
+  }
+
+  #failFreeLimitTurn(session: AcpSession, turn: ActiveTurn): void {
+    if (session.activeTurn !== turn) return;
+    turn.cancelledBySahkarmi = true;
+    this.#markAllFreeModelsUsedUp(session);
+    if (this.#child?.stdin.writable) {
+      this.#write({
+        jsonrpc: "2.0",
+        method: "session/cancel",
+        params: { sessionId: session.acpSessionId },
+      });
+    }
+    this.#finishTurn(session, turn, "failed", new Error(freeLimitMessage(this.#config)));
   }
 
   #clearSilenceWatch(turn: ActiveTurn): void {
     if (turn.silenceTimer) clearTimeout(turn.silenceTimer);
+    if (turn.probeTimer) clearTimeout(turn.probeTimer);
     turn.silenceTimer = undefined;
+    turn.probeTimer = undefined;
   }
 
   #failSilentTurn(session: AcpSession, turn: ActiveTurn): void {
@@ -1183,6 +1281,15 @@ function toolOutput(update: Record<string, unknown>): string | null {
   if (text) return text;
   if (update.rawOutput === undefined || update.rawOutput === null) return null;
   return typeof update.rawOutput === "string" ? update.rawOutput : JSON.stringify(update.rawOutput);
+}
+
+function freeLimitMessage(config: AcpAgentConfig): string {
+  return (
+    `${config.label}'s ${FREE_LIMIT_REACHED_HINT}: its server answered "Free usage limit ` +
+    'reached" for every free model. It resets on its own later. To keep working now, sign in ' +
+    "with Google under Settings → AI and models (Gemini is free with a Google account), or " +
+    "connect ChatGPT or Claude."
+  );
 }
 
 function silentTurnMessage(
