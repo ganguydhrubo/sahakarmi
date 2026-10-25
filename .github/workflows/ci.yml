@@ -18,6 +18,9 @@ jobs:
   check:
     name: Check
     runs-on: macos-14
+    # Windows only for now. Set the repository variable RELEASE_ALL_PLATFORMS=true to check
+    # macOS again (same switch as the release workflow).
+    if: ${{ vars.RELEASE_ALL_PLATFORMS == 'true' }}
     timeout-minutes: 20
     steps:
       - name: Check out repository
@@ -54,13 +57,16 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run Windows checks
-        run: bun run lint && bun run typecheck && bun run test
+        run: bun run check
 
       - name: Build and verify unsigned Windows application
         run: bun run package:win:verify
 
   compatibility:
     name: Compatibility (${{ matrix.os }})
+    # Windows only for now. Set the repository variable RELEASE_ALL_PLATFORMS=true to check
+    # macOS again (same switch as the release workflow).
+    if: ${{ vars.RELEASE_ALL_PLATFORMS == 'true' }}
     strategy:
       fail-fast: false
       matrix:
