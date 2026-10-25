@@ -116,7 +116,7 @@ export const SECONDARY: Record<ActivityPhase, string[]> = {
     "Intermediate results check ho rahe hain…",
   ],
   waiting_approval: [
-    "Approvals mein request dekh kar manzoor ya reject karein.",
+    "Neeche di gayi request ko manzoor ya reject karein.",
     "Aapke faisle tak yeh kaam ruka hua hai.",
   ],
   waiting_user: ["Upar diye sawaal ka jawab dein, phir kaam aage badhega."],

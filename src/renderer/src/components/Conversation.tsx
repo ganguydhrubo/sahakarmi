@@ -114,6 +114,7 @@ interface ConversationProps {
   onPauseQueue: () => void;
   onTakeOverBrowser: () => void;
   onHandBackBrowser: (note: string | null) => void;
+  onDeclineTakeover?: () => void;
   onCompleteOnboarding: (
     answer: string,
     model: AgentModelId,
@@ -642,6 +643,14 @@ function MessageBody(props: {
       </Show>
     </>
   );
+}
+
+/** Notes the app sends a coworker for the owner (approval results, browser hand-back). */
+const SYSTEM_NOTE =
+  /^\[(Approval (APPROVED|REJECTED)|Browser handed back|Browser takeover declined)\]/;
+
+function isSystemNote(message: BotMessage): boolean {
+  return message.author === "you" && SYSTEM_NOTE.test(message.body);
 }
 
 function MessageActions(props: {
@@ -1307,18 +1316,38 @@ export function Conversation(props: ConversationProps) {
         }
       }
     });
+    // Escape closes only the top-most layer, and never the browser while the owner is typing.
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (headerModelOpen()) {
+        setHeaderModelOpen(false);
+        return;
+      }
+      if (mediaPreview()) {
+        setMediaPreview(null);
+        return;
+      }
+      const menuOpen = Boolean(
+        openReactionMessageId() || openMoreMessageId() || avatarPickerOpen(),
+      );
       setOpenReactionMessageId(null);
       setOpenMoreMessageId(null);
       setExpandedEmojiMessageId(null);
-      hideBrowserPanel();
-      setMediaPreview(null);
       setAvatarPickerOpen(false);
       props.onCloseAgentPicker();
+      if (menuOpen) return;
+      const target = event.target as Element | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='textbox']")) {
+        return;
+      }
+      hideBrowserPanel();
     };
     const closeMessageMenus = (event: MouseEvent) => {
-      if ((event.target as Element | null)?.closest(".message-actions")) return;
+      const target = event.target as Element | null;
+      if (!target?.closest(".header-model-root, .provider-model-popover")) {
+        setHeaderModelOpen(false);
+      }
+      if (target?.closest(".message-actions")) return;
       setOpenReactionMessageId(null);
       setOpenMoreMessageId(null);
       setExpandedEmojiMessageId(null);
@@ -2153,6 +2182,7 @@ export function Conversation(props: ConversationProps) {
                             "message-entry-animated": animateEntrance,
                             "message-entry-user": message.author === "you",
                             "message-entry-bot": message.author === "bot",
+                            "message-entry-system": isSystemNote(message),
                           }}
                         >
                           <div class="message-shell">
@@ -2730,6 +2760,16 @@ export function Conversation(props: ConversationProps) {
                   </p>
                 )}
               </For>
+              <Show when={!props.takeover.humanInControl && takeoverRequests().length > 0}>
+                <div class="takeover-banner-actions">
+                  <button type="button" class="button-primary" onClick={props.onTakeOverBrowser}>
+                    {t("takeOver")}
+                  </button>
+                  <button type="button" onClick={() => props.onDeclineTakeover?.()}>
+                    {t("takeoverDecline")}
+                  </button>
+                </div>
+              </Show>
               <Show when={props.takeover.humanInControl}>
                 <p>{t("youAreInControl")}</p>
                 <input

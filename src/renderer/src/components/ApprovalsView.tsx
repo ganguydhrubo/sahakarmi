@@ -112,9 +112,11 @@ export function ApprovalCard(props: {
             <small>{props.bot?.role}</small>
           </span>
         </button>
-        <span class={`approval-category approval-category-${props.approval.category}`}>
-          {t(CATEGORY_LABELS[props.approval.category])}
-        </span>
+        <Show when={!(props.approval.kind === "permission" && props.approval.category === "other")}>
+          <span class={`approval-category approval-category-${props.approval.category}`}>
+            {t(CATEGORY_LABELS[props.approval.category])}
+          </span>
+        </Show>
         <Show when={props.approval.kind === "permission"}>
           <span class="approval-kind" title={t("approvalPausedHint")}>
             {t("approvalPaused")}
@@ -130,6 +132,14 @@ export function ApprovalCard(props: {
       </h3>
       <Show when={props.approval.details}>
         <p class="approval-details">{props.approval.details}</p>
+      </Show>
+      <Show when={props.approval.technical}>
+        {(technical) => (
+          <details class="approval-technical">
+            <summary>{t("approvalTechnical")}</summary>
+            <pre>{technical()}</pre>
+          </details>
+        )}
       </Show>
       <Show
         when={pending()}

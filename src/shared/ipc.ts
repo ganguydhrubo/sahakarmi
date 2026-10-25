@@ -49,6 +49,7 @@ export const IPC_CHANNELS = {
   browserGetTakeover: "browser:get-takeover",
   browserTakeOver: "browser:take-over",
   browserHandBack: "browser:hand-back",
+  browserDeclineTakeover: "browser:decline-takeover",
   teamListWorkspaces: "team:list-workspaces",
   teamCreateWorkspace: "team:create-workspace",
   teamRenameWorkspace: "team:rename-workspace",
@@ -636,6 +637,8 @@ export interface ApprovalRequest {
    */
   kind?: "action" | "permission";
   permissionCategory?: PermissionCategory;
+  /** The exact command or tool call, shown folded under "Technical details". */
+  technical?: string;
 }
 
 /** Operations the permission engine distinguishes. Order is the Settings display order. */
@@ -1351,6 +1354,8 @@ export interface BrowserDesktopApi {
   getTakeover: () => Promise<BrowserTakeoverState>;
   takeOver: () => Promise<BrowserTakeoverState>;
   handBack: (note?: string | null) => Promise<BrowserTakeoverState>;
+  /** Says no to every pending "please take over" request; coworkers are told not to continue. */
+  declineTakeover: (note?: string | null) => Promise<BrowserTakeoverState>;
 }
 
 export interface TeamDesktopApi {

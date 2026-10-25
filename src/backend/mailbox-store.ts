@@ -47,6 +47,8 @@ interface StoredDelivery {
   turnId: string | null;
   error: string | null;
   createdAt: string;
+  /** Sent again automatically on another model; the failed copy is hidden from the chat. */
+  retried?: boolean;
 }
 
 interface StoredState {
@@ -390,7 +392,7 @@ export class MailboxStore {
       }
 
       for (const storedDelivery of deliveries) {
-        if (storedDelivery.recipientBotId !== botId) continue;
+        if (storedDelivery.recipientBotId !== botId || storedDelivery.retried) continue;
         const delivery = this.#publicDelivery(storedDelivery, positions);
         messages.push({
           id: delivery.id,
@@ -619,6 +621,14 @@ export class MailboxStore {
     error: string | null = null,
   ): Promise<void> {
     await this.#updateDelivery(deliveryId, ["starting", "running"], { status, error });
+  }
+
+  /** Hides a failed delivery once the app has re-sent the same message on another model. */
+  async markRetried(deliveryId: string): Promise<void> {
+    const delivery = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
+    if (!delivery) return;
+    delivery.retried = true;
+    await this.#persist();
   }
 
   async cancel(botId: string, deliveryId: string): Promise<void> {

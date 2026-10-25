@@ -1,11 +1,11 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AgentModelId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
@@ -176,6 +176,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
 
   start(): void {
     if (this.#child) return;
+    sweepOrphanedRuntimeProcesses(this.#config.executable);
     const isWindowsBatch =
       process.platform === "win32" &&
       [".cmd", ".bat"].includes(extname(this.#config.executable).toLowerCase());
@@ -234,7 +235,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         clearTimeout(forceKill);
         resolve();
       });
-      child.kill("SIGTERM");
+      // Windows: SIGTERM ends only the helper; its own workers (localharness) would live on.
+      if (process.platform === "win32" && child.pid) killProcessTree(child.pid);
+      else child.kill("SIGTERM");
     });
   }
 
@@ -1287,4 +1290,31 @@ export function stripLeakedToolCalls(text: string): string {
     .replace(/<\|[a-z_]+\|>/g, "")
     .replace(/[ \t]+\n/g, "\n")
     .trim();
+}
+
+function killProcessTree(pid: number): void {
+  execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () => undefined);
+}
+
+/**
+ * A force-closed app leaves the Antigravity helper and its workers running from the app's own
+ * runtime folder. Before starting a new helper, end those whose parent process is gone. Only
+ * processes launched from that folder are touched, never another install's copy.
+ */
+function sweepOrphanedRuntimeProcesses(executable: string): void {
+  if (process.platform !== "win32" || !/[\\/]runtime[\\/]/i.test(executable)) return;
+  const folder = dirname(executable).replaceAll("'", "''");
+  const script = [
+    `$dir = '${folder}\\'`,
+    "Get-CimInstance Win32_Process | Where-Object {",
+    "  $_.ExecutablePath -and $_.ExecutablePath.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase) -and",
+    "  -not (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)",
+    "} | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }",
+  ].join("\n");
+  execFile(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", script],
+    { windowsHide: true, timeout: 15_000 },
+    () => undefined,
+  );
 }

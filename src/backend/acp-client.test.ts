@@ -306,14 +306,11 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     const note = events.find((event) => event.type === "error" && event.code === "fallback_model");
     expect(note?.message).toContain("Google Antigravity sent back an empty reply");
     expect(note?.message).toContain("switched to the free model");
-    // The same text went out again on the free model; nothing else was invented.
+    // The same text went out again on the free model; the failed copy is not shown twice.
     const userMessages = (await service.readConversation("meera-support")).messages.filter(
       (message) => message.author === "user",
     );
-    expect(userMessages.map((message) => message.text)).toEqual([
-      "say nothing, then Namaste",
-      "say nothing, then Namaste",
-    ]);
+    expect(userMessages.map((message) => message.text)).toEqual(["say nothing, then Namaste"]);
   });
 
   it("shows a file the coworker made during the turn under its reply, also after a restart", async () => {

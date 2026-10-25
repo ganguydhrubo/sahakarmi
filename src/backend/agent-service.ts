@@ -51,6 +51,7 @@ import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
+import { describePermissionRequest } from "./approval-wording";
 import {
   attachmentPromptBlocks,
   deliverableFiles,
@@ -526,6 +527,26 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return this.getTakeover();
   }
 
+  /** The owner says no to the coworkers' takeover requests; they must not carry on with that step. */
+  async declineBrowserTakeover(note: string | null = null): Promise<BrowserTakeoverState> {
+    const requests = this.#takeover.requests;
+    this.#takeover = { humanInControl: false, requests: [] };
+    this.#emitTakeover();
+    for (const botId of new Set(requests.map((request) => request.botId))) {
+      await this.#notifyBot(
+        botId,
+        [
+          "[Browser takeover declined] The owner chose not to take over the browser.",
+          note ? `Owner's note: ${note.slice(0, 2_000)}` : null,
+          "Do not continue the step that needed it. Tell the owner what you will do instead.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+    return this.getTakeover();
+  }
+
   #emitTakeover(): void {
     void this.#browser.setHumanControl?.(this.#takeover.humanInControl).catch((error) => {
       console.error("Unable to switch the browser for the takeover:", error);
@@ -616,7 +637,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (previous?.threadId && !bot.threadId) {
       this.#threadToBot.delete(previous.threadId);
       this.#loadedThreads.delete(previous.threadId);
-      this.#snapshots.delete(bot.id);
+      // Keep the revision rising: the window drops snapshots older than the last one it saw,
+      // so restarting at 0 would hide every reply on the new thread.
+      const stale = this.#snapshots.get(bot.id);
+      this.#snapshots.set(bot.id, {
+        botId: bot.id,
+        threadId: null,
+        activeTurnId: null,
+        revision: (stale?.revision ?? 0) + 1,
+        messages: [],
+      });
     }
     if (profileChanged && bot.threadId) {
       // Re-resume before the next turn so App Server receives the updated standing instructions.
@@ -902,7 +932,26 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!bot.threadId) return;
     await this.#mailbox.setPaused(botId, true);
     this.#emitQueue(botId);
+    await this.#cancelPausedToolCalls(botId);
     await client.request("turn/interrupt", { threadId: bot.threadId, turnId });
+  }
+
+  /** Stop must also release a tool call parked on an approval, or the turn never ends. */
+  async #cancelPausedToolCalls(botId: string): Promise<void> {
+    const pending = (this.#approvals?.list() ?? []).filter(
+      (approval) =>
+        approval.botId === botId &&
+        approval.status === "pending" &&
+        approval.kind === "permission" &&
+        this.#permissionWaiters.has(approval.id),
+    );
+    for (const approval of pending) {
+      await this.decideApproval({
+        approvalId: approval.id,
+        decision: "rejected",
+        note: "Stopped by the owner, so the action did not run.",
+      }).catch(() => undefined);
+    }
   }
 
   async interruptAll(): Promise<void> {
@@ -914,6 +963,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const client = bot ? this.#clientForBot(bot) : null;
       if (!client) continue;
       requests.push(this.#mailbox.setPaused(botId, true).then(() => this.#emitQueue(botId)));
+      requests.push(this.#cancelPausedToolCalls(botId));
       requests.push(
         client
           .request("turn/interrupt", {
@@ -1348,17 +1398,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Files an inbox request for a paused tool call and waits for the owner (or the timeout). */
   async #askOwner(request: PermissionRequest): Promise<"approved" | "rejected" | "timed-out"> {
     if (!this.#approvals || !request.botId) return "rejected";
+    const bot = this.#store.list().find((candidate) => candidate.id === request.botId);
+    const wording = describePermissionRequest(request, bot?.name ?? "Your coworker", {
+      shared: this.#store.sharedRoot,
+      own: bot?.workspacePath ?? null,
+    });
     const approval = await this.#approvals.create({
       botId: request.botId,
-      title: `Allow: ${request.action || request.category}`.slice(0, 200),
-      details: [
-        `Category: ${request.category.replaceAll("_", " ")}`,
-        `Provider: ${request.provider}`,
-        request.paths.length ? `Paths: ${request.paths.join(", ")}` : null,
-        "The coworker is paused until you decide.",
-      ]
-        .filter(Boolean)
-        .join("\n"),
+      title: wording.title,
+      details: wording.details,
+      technical: `${wording.technical}\nProvider: ${request.provider}`,
       category: approvalCategoryFor(request.category),
       kind: "permission",
       permissionCategory: request.category,
@@ -3047,6 +3096,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       botId,
     );
     await this.sendMessage({ botId, text: delivery.delivery.text });
+    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
     return true;
   }
 
@@ -3067,6 +3117,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       botId,
     );
     await this.sendMessage({ botId, text: delivery.delivery.text });
+    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
     return true;
   }
 
@@ -3383,7 +3434,7 @@ const SIGN_IN_HINTS: Record<AgentProvider, string> = {
   codex: "Run `codex login` to use ChatGPT (Codex).",
   claude: "Run `claude auth login` to use Claude.",
   opencode: "Run `opencode auth login` to use OpenCode.",
-  antigravity: "Click Connect next to Google Antigravity in Settings to sign in with Google.",
+  antigravity: "Click Connect to sign in with Google.",
 };
 
 function authFor(provider: AgentProvider, email: string | null): AgentStatus["auth"] {
