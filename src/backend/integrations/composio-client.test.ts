@@ -7,6 +7,7 @@ import {
   connectionState,
   DEFAULT_COMPOSIO_BASE_URL,
   HOBBY_PLAN_TOOL_CALLS,
+  normalizeComposioKey,
   OWNER_USER_ID,
 } from "./composio-client";
 
@@ -25,6 +26,8 @@ interface FakeOptions {
   connectionStatus?: string;
   execute?: (slug: string, body: Record<string, unknown> | null, attempt: number) => FakeResponse;
   authCheck?: number;
+  /** Status for creating an auth config (403 = a key with read-only auth config access). */
+  authConfigCreate?: number;
 }
 
 type FakeResponse = Response;
@@ -133,7 +136,10 @@ function fakeComposio(options: FakeOptions = {}) {
     calls.push({ method, url, body, headers });
     const path = url.pathname.replace("/api/v3.1", "");
     if (path === "/auth_configs" && method === "GET" && url.searchParams.get("limit") === "1") {
-      return json(options.authCheck ?? 200, { items: [] });
+      const status = options.authCheck ?? 200;
+      return status === 401
+        ? json(401, { error: { message: "Invalid API key", slug: "APIKey_InvalidAPIKey" } })
+        : json(status, { items: [] });
     }
     if (path === "/toolkits")
       return json(200, { items: options.toolkits ?? TOOLKITS, next_cursor: null });
@@ -160,6 +166,14 @@ function fakeComposio(options: FakeOptions = {}) {
       return json(200, { items: options.authConfigs ?? [], next_cursor: null });
     }
     if (path === "/auth_configs" && method === "POST") {
+      if (options.authConfigCreate === 403) {
+        return json(403, {
+          error: {
+            message:
+              'This API key does not have the permissions required for POST /api/v3/auth_configs. This route requires "auth_configs" write access, but the key has read access for "auth_configs".',
+          },
+        });
+      }
       return json(201, {
         auth_config: { id: "ac_created", auth_scheme: "OAUTH2", is_composio_managed: true },
         toolkit: { slug: (body?.toolkit as { slug?: string } | undefined)?.slug ?? "" },
@@ -231,8 +245,19 @@ describe("ComposioClient", () => {
     expect(status.monthlyQuota).toBe(HOBBY_PLAN_TOOL_CALLS);
     expect(status.planName).toBe("Hobby");
     const apps = await composio.listApps();
-    expect(apps.length).toBeGreaterThanOrEqual(6);
-    expect(apps.find((app) => app.id === "github")?.isConnected).toBe(false);
+    expect(apps.length).toBeGreaterThan(1000);
+    expect(apps.slice(0, 5).map((app) => app.id)).toContain("gmail");
+    const github = apps.find((app) => app.id === "github");
+    expect(github).toMatchObject({
+      name: "GitHub",
+      isConnected: false,
+      logo: "https://logos.composio.dev/api/github",
+      categories: ["Developer tools & DevOps"],
+      auth: "oauth",
+      oneClick: true,
+    });
+    expect(github?.description).toMatch(/code hosting/);
+    expect(status.catalogueSize).toBe(apps.length);
     expect(fake.calls).toHaveLength(0);
   });
 
@@ -257,9 +282,36 @@ describe("ComposioClient", () => {
   it("refuses a key Composio rejects and saves nothing", async () => {
     const fake = fakeComposio({ authCheck: 401 });
     const composio = client(fake);
-    await expect(composio.setApiKey("bad_key_0000000000")).rejects.toThrow(/did not accept/);
+    await expect(composio.setApiKey("bad_key_0000000000")).rejects.toThrow(
+      /not valid \(invalid API key\).*starts with ak_/,
+    );
     expect(await composio.getApiKey()).toBeNull();
     await expect(readFile(composio.keyFilePath, "utf8")).rejects.toThrow();
+  });
+
+  it("cleans a pasted key: quotes, labels, spaces and invisible characters", async () => {
+    expect(normalizeComposioKey('  "ak_abc123"  ')).toBe("ak_abc123");
+    expect(normalizeComposioKey("COMPOSIO_API_KEY=ak_abc123")).toBe("ak_abc123");
+    expect(normalizeComposioKey("x-api-key: ak_abc 123")).toBe("ak_abc123");
+    expect(normalizeComposioKey(`ak_abc${String.fromCharCode(0x200b)}123\n`)).toBe("ak_abc123");
+    const fake = fakeComposio();
+    const composio = client(fake);
+    await composio.setApiKey(" 'ak_live_1234567890' ");
+    expect(fake.calls[0]?.headers["x-api-key"]).toBe("ak_live_1234567890");
+  });
+
+  it("explains a user key (uak_) instead of sending it", async () => {
+    const fake = fakeComposio();
+    const composio = client(fake);
+    await expect(composio.setApiKey("uak_1234567890abcdef")).rejects.toThrow(
+      /user key.*Project API key.*ak_/,
+    );
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it("explains a limited key that Composio refuses with 403", async () => {
+    const composio = client(fakeComposio({ authCheck: 403 }));
+    await expect(composio.setApiKey("ak_scoped_1234567890")).rejects.toThrow(/limited/);
   });
 
   it("lists every toolkit with the owner's active connections, and caches the catalogue on disk", async () => {
@@ -285,7 +337,11 @@ describe("ComposioClient", () => {
       oneClick: true,
     });
     expect(apps[1]).toMatchObject({ isConnected: false, connectedAccountId: null });
-    expect(apps[2]).toMatchObject({ auth: "api-key", oneClick: false, logo: null });
+    expect(apps[2]).toMatchObject({
+      auth: "api-key",
+      oneClick: false,
+      logo: "https://logos.composio.dev/api/custom_crm",
+    });
     const toolkitCalls = () => fake.calls.filter((call) => call.url.pathname.endsWith("/toolkits"));
     expect(toolkitCalls()).toHaveLength(1);
     expect(toolkitCalls()[0].url.searchParams.get("sort_by")).toBe("usage");
@@ -322,6 +378,21 @@ describe("ComposioClient", () => {
       (call) => call.method === "POST" && call.url.pathname.endsWith("/auth_configs"),
     );
     expect(creations).toHaveLength(1);
+  });
+
+  it("explains a read-only key when an app needs a new sign-in setup", async () => {
+    const composio = client(fakeComposio({ authConfigCreate: 403 }));
+    await composio.setApiKey("key_1234567890", { verify: false });
+    await expect(composio.initiateConnection("github")).rejects.toThrow(
+      /can only read, so it cannot set up GitHub\. Make a new key with Full access/,
+    );
+  });
+
+  it("names a Connect key (ck_) instead of sending it", async () => {
+    const fake = fakeComposio();
+    const composio = client(fake);
+    await expect(composio.setApiKey("ck_1234567890abcdef")).rejects.toThrow(/Connect key.*ak_/);
+    expect(fake.calls).toHaveLength(0);
   });
 
   it("reuses an auth config the owner already has, preferring the Composio-managed one", async () => {
@@ -363,7 +434,9 @@ describe("ComposioClient", () => {
     const fake = fakeComposio();
     const composio = client(fake);
     await composio.setApiKey("key_1234567890", { verify: false });
-    await expect(composio.initiateConnection("custom_crm")).rejects.toThrow(/app\.composio\.dev/);
+    await expect(composio.initiateConnection("custom_crm")).rejects.toThrow(
+      /dashboard\.composio\.dev/,
+    );
   });
 
   it("maps connection statuses to states the UI can show", async () => {

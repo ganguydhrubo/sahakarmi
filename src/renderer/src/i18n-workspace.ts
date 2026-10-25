@@ -343,8 +343,31 @@ export const workspaceEn = {
   appsDisconnectConfirm:
     "Disconnect {name}? Coworkers lose access to it until you connect it again.",
   appsKeyTitle: "Add your free Composio key",
-  appsKeyIntro:
-    "Create a free account at app.composio.dev, copy the API key from Settings and paste it here. The key stays on this computer.",
+  appsGuideTime: "About 3 minutes. Free, no card needed.",
+  appsGuideStep1:
+    "Open the API Keys page and sign in with Google, GitHub or email. New here? Press Sign up at the bottom.",
+  appsGuideOpenKeys: "Open the API Keys page",
+  appsGuideStep2:
+    "On the left, choose Platform, not Connect or For You. Platform keys start with ak_. Connect keys start with ck_ and do not work here.",
+  appsGuideStep3:
+    "Press + Create API Key, name it Sahkarmi, give Full access everywhere (never No access or Read only), then press Create.",
+  appsGuideStep4:
+    "The key is shown only once. Press the small Copy button next to it. Do not select the text with the mouse.",
+  appsGuideStep5:
+    "Click the box below, clear it, press Ctrl+V and then Save key. The box must hold only the key, like ak_xxxxxxxx.",
+  appsGuideSuccess: "Done when you see “Saved key: ak_…”. Then press Connect on Gmail or GitHub.",
+  appsGuideTrouble: "Something went wrong?",
+  appsGuideErrInvalid:
+    "“Not valid” or “did not accept”: you pasted a ck_ key or an old key. Make an ak_ key on the Platform side (step 2).",
+  appsGuideErrReadOnly:
+    "“Read access” or “Full access” when you press Connect: the key is limited. Make a new key with Full access (step 3) and paste it here.",
+  appsGuideErrUser: "“User key (uak_)”: wrong kind of key. Make a Project API key as in step 3.",
+  appsGuideErrExtra:
+    "“ByteString” or extra words in the box: other text came with the key. Copy again with the Copy button only.",
+  appsGuideErrNetwork: "“Could not reach Composio”: check the internet and try again in a minute.",
+  appsGuideSafety:
+    "Keep the key private: never send it in chat, email or WhatsApp. If it leaks, delete it on the same page and make a new one.",
+  appsReplaceKey: "Replace key",
   appsKeyPlaceholder: "Paste your Composio API key",
   appsKeySave: "Save key",
   appsKeySaving: "Checking…",
@@ -356,6 +379,11 @@ export const workspaceEn = {
     "Reading is instant. Anything that sends, creates, changes or deletes waits for your approval first.",
   appsLoading: "Loading apps…",
   appsNoResults: "No apps match “{query}”.",
+  appsKeyWhy:
+    "Composio holds the sign-ins to your apps and runs each action. The key only links this computer to your free Composio account. One key covers every app and every coworker, and it never leaves this computer.",
+  appsAddKey: "Add key",
+  appsKeyNotice: "Browse all {count} apps now. To connect one, you need a free Composio key.",
+  appsKeyNeededForConnect: "To connect {name}, add your free Composio key first.",
   appsNoDescription: "Tools for {name}.",
   appsNeedsOwnKeys: "Needs your own app keys",
   appsSignInOpened:
@@ -797,8 +825,30 @@ export const workspaceHi: WorkspaceDictionary = {
   appsDisconnect: "डिसकनेक्ट करें",
   appsDisconnectConfirm: "{name} को डिसकनेक्ट करें? दोबारा कनेक्ट करने तक सहकर्मी इसका इस्तेमाल नहीं कर पाएँगे.",
   appsKeyTitle: "अपनी मुफ़्त Composio key जोड़ें",
-  appsKeyIntro:
-    "app.composio.dev पर मुफ़्त खाता बनाएँ, Settings से API key कॉपी करें और यहाँ पेस्ट करें. Key इसी कंप्यूटर पर रहती है.",
+  appsGuideTime: "करीब 3 मिनट. मुफ़्त, कार्ड नहीं चाहिए.",
+  appsGuideStep1:
+    "API Keys पेज खोलें और Google, GitHub या email से साइन इन करें. नए हैं? नीचे Sign up दबाएँ.",
+  appsGuideOpenKeys: "API Keys पेज खोलें",
+  appsGuideStep2:
+    "बाईं ओर Platform चुनें, Connect या For You नहीं. Platform key ak_ से शुरू होती है. Connect key ck_ से शुरू होती है और यहाँ नहीं चलती.",
+  appsGuideStep3:
+    "+ Create API Key दबाएँ, नाम Sahkarmi रखें, हर जगह Full access दें (No access या Read only नहीं), फिर Create दबाएँ.",
+  appsGuideStep4: "Key सिर्फ़ एक बार दिखती है. उसके पास छोटा Copy बटन दबाएँ. माउस से टेक्स्ट न चुनें.",
+  appsGuideStep5:
+    "नीचे वाले बॉक्स में क्लिक करें, उसे खाली करें, Ctrl+V दबाएँ और फिर Key सेव करें. बॉक्स में सिर्फ़ key हो, जैसे ak_xxxxxxxx.",
+  appsGuideSuccess: "“Saved key: ak_…” दिखे तो हो गया. फिर Gmail या GitHub पर Connect दबाएँ.",
+  appsGuideTrouble: "कुछ गड़बड़ हुई?",
+  appsGuideErrInvalid:
+    "“Not valid” या “did not accept”: आपने ck_ key या पुरानी key डाली है. Platform की तरफ़ ak_ key बनाएँ (चरण 2).",
+  appsGuideErrReadOnly:
+    "Connect दबाने पर “Read access” या “Full access”: key सीमित है. Full access वाली नई key बनाएँ (चरण 3) और यहाँ डालें.",
+  appsGuideErrUser: "“User key (uak_)”: गलत तरह की key. चरण 3 की तरह Project API key बनाएँ.",
+  appsGuideErrExtra:
+    "“ByteString” या बॉक्स में और शब्द: key के साथ और टेक्स्ट आ गया. सिर्फ़ Copy बटन से दोबारा कॉपी करें.",
+  appsGuideErrNetwork: "“Could not reach Composio”: इंटरनेट देखें और एक मिनट बाद फिर कोशिश करें.",
+  appsGuideSafety:
+    "Key किसी को न भेजें: chat, email या WhatsApp में नहीं. लीक हो जाए तो उसी पेज पर डिलीट करके नई बनाएँ.",
+  appsReplaceKey: "Key बदलें",
   appsKeyPlaceholder: "अपनी Composio API key पेस्ट करें",
   appsKeySave: "Key सेव करें",
   appsKeySaving: "जाँच हो रही है…",
@@ -810,6 +860,11 @@ export const workspaceHi: WorkspaceDictionary = {
     "पढ़ना तुरंत होता है. जो भी भेजता, बनाता, बदलता या हटाता है, वह पहले आपकी मंज़ूरी का इंतज़ार करता है.",
   appsLoading: "ऐप्स लोड हो रहे हैं…",
   appsNoResults: "“{query}” से कोई ऐप नहीं मिला.",
+  appsKeyWhy:
+    "Composio आपके ऐप्स के साइन-इन संभालता है और हर काम चलाता है. Key सिर्फ़ इस कंप्यूटर को आपके मुफ़्त Composio खाते से जोड़ती है. एक key हर ऐप और हर सहकर्मी के लिए काफ़ी है, और यह इसी कंप्यूटर पर रहती है.",
+  appsAddKey: "Key जोड़ें",
+  appsKeyNotice: "सभी {count} ऐप्स अभी देखें. किसी को कनेक्ट करने के लिए मुफ़्त Composio key चाहिए.",
+  appsKeyNeededForConnect: "{name} कनेक्ट करने के लिए पहले अपनी मुफ़्त Composio key जोड़ें.",
   appsNoDescription: "{name} के टूल.",
   appsNeedsOwnKeys: "आपकी अपनी ऐप keys चाहिए",
   appsSignInOpened: "{name} का साइन-इन पेज आपके ब्राउज़र में खुला है. वहाँ पूरा करें; यह सूची अपने आप अपडेट होगी.",
@@ -1242,8 +1297,29 @@ export const workspaceBn: WorkspaceDictionary = {
   appsDisconnect: "বিচ্ছিন্ন করুন",
   appsDisconnectConfirm: "{name} বিচ্ছিন্ন করবেন? আবার যুক্ত না করা পর্যন্ত সহকর্মীরা এটি ব্যবহার করতে পারবে না।",
   appsKeyTitle: "আপনার বিনামূল্যের Composio key যোগ করুন",
-  appsKeyIntro:
-    "app.composio.dev-এ বিনামূল্যে অ্যাকাউন্ট খুলুন, Settings থেকে API key কপি করে এখানে পেস্ট করুন। Key এই কম্পিউটারেই থাকে।",
+  appsGuideTime: "প্রায় 3 মিনিট। বিনামূল্যে, কার্ড লাগবে না।",
+  appsGuideStep1:
+    "API Keys পেজ খুলুন এবং Google, GitHub বা email দিয়ে সাইন ইন করুন। নতুন? নিচে Sign up চাপুন।",
+  appsGuideOpenKeys: "API Keys পেজ খুলুন",
+  appsGuideStep2:
+    "বাঁদিকে Platform বেছে নিন, Connect বা For You নয়। Platform key ak_ দিয়ে শুরু হয়। Connect key ck_ দিয়ে শুরু হয় এবং এখানে চলে না।",
+  appsGuideStep3:
+    "+ Create API Key চাপুন, নাম দিন Sahkarmi, সব জায়গায় Full access দিন (No access বা Read only নয়), তারপর Create চাপুন।",
+  appsGuideStep4: "Key শুধু একবার দেখানো হয়। পাশের ছোট Copy বোতাম চাপুন। মাউস দিয়ে লেখা বাছবেন না।",
+  appsGuideStep5:
+    "নিচের বাক্সে ক্লিক করুন, খালি করুন, Ctrl+V চাপুন, তারপর Key সেভ করুন। বাক্সে শুধু key থাকবে, যেমন ak_xxxxxxxx।",
+  appsGuideSuccess: "“Saved key: ak_…” দেখলে কাজ শেষ। তারপর Gmail বা GitHub-এ Connect চাপুন।",
+  appsGuideTrouble: "কিছু ভুল হয়েছে?",
+  appsGuideErrInvalid:
+    "“Not valid” বা “did not accept”: আপনি ck_ key বা পুরোনো key দিয়েছেন। Platform দিকে ak_ key বানান (ধাপ 2)।",
+  appsGuideErrReadOnly:
+    "Connect চাপলে “Read access” বা “Full access”: key সীমিত। Full access দিয়ে নতুন key বানান (ধাপ 3) এবং এখানে দিন।",
+  appsGuideErrUser: "“User key (uak_)”: ভুল ধরনের key। ধাপ 3-এর মতো Project API key বানান।",
+  appsGuideErrExtra:
+    "“ByteString” বা বাক্সে বাড়তি লেখা: key-এর সঙ্গে অন্য লেখা এসেছে। শুধু Copy বোতাম দিয়ে আবার কপি করুন।",
+  appsGuideErrNetwork: "“Could not reach Composio”: ইন্টারনেট দেখুন এবং এক মিনিট পরে আবার চেষ্টা করুন।",
+  appsGuideSafety: "Key গোপন রাখুন: chat, email বা WhatsApp-এ পাঠাবেন না। ফাঁস হলে একই পেজে মুছে নতুন বানান।",
+  appsReplaceKey: "Key বদলান",
   appsKeyPlaceholder: "আপনার Composio API key পেস্ট করুন",
   appsKeySave: "Key সেভ করুন",
   appsKeySaving: "পরীক্ষা হচ্ছে…",
@@ -1255,6 +1331,11 @@ export const workspaceBn: WorkspaceDictionary = {
     "পড়া সঙ্গে সঙ্গে হয়। যা কিছু পাঠায়, তৈরি করে, বদলায় বা মোছে, তা আগে আপনার অনুমোদনের জন্য অপেক্ষা করে।",
   appsLoading: "অ্যাপ লোড হচ্ছে…",
   appsNoResults: "“{query}”-এর সঙ্গে মেলে এমন কোনো অ্যাপ নেই।",
+  appsKeyWhy:
+    "Composio আপনার অ্যাপগুলির সাইন-ইন রাখে এবং প্রতিটি কাজ চালায়। Key শুধু এই কম্পিউটারকে আপনার বিনামূল্যের Composio অ্যাকাউন্টের সঙ্গে যুক্ত করে। একটি key-ই সব অ্যাপ ও সব সহকর্মীর জন্য যথেষ্ট, আর তা এই কম্পিউটারেই থাকে।",
+  appsAddKey: "Key যোগ করুন",
+  appsKeyNotice: "সব {count} অ্যাপ এখনই দেখুন। কোনোটি যুক্ত করতে বিনামূল্যের Composio key লাগবে।",
+  appsKeyNeededForConnect: "{name} যুক্ত করতে আগে আপনার বিনামূল্যের Composio key যোগ করুন।",
   appsNoDescription: "{name}-এর টুল।",
   appsNeedsOwnKeys: "আপনার নিজের অ্যাপ key লাগবে",
   appsSignInOpened:

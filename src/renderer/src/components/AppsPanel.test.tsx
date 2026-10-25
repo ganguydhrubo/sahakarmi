@@ -107,17 +107,26 @@ describe("appMatches", () => {
 });
 
 describe("AppsPanel", () => {
-  it("asks for the free Composio key first and still lists the starter apps", async () => {
+  it("shows every app before a key exists and asks for the key only on Connect", async () => {
     install({}, NO_KEY, [SLACK, CRM]);
     render(() => <AppsPanel query="" />);
+    await screen.findByRole("heading", { name: "Slack" });
+    expect(screen.getByText(/Composio Hobby plan/)).toHaveTextContent(/tool calls a month/);
+    expect(screen.getByText(/Browse all 2 apps now/)).toBeVisible();
+    expect(screen.getByText(/waits for your approval first/)).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Add your free Composio key" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Your apps" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Connect" })).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[0]);
     expect(
       await screen.findByRole("heading", { name: "Add your free Composio key" }),
     ).toBeVisible();
-    expect(screen.getByText(/Composio Hobby plan/)).toHaveTextContent(/tool calls a month/);
-    expect(screen.getByText(/waits for your approval first/)).toBeVisible();
-    await screen.findByRole("heading", { name: "Slack" });
-    expect(screen.queryByRole("heading", { name: "Your apps" })).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Connect" })).toHaveLength(2);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "To connect Slack, add your free Composio key first.",
+    );
+    expect(screen.getByText(/One key covers every app and every coworker/)).toBeVisible();
+    expect(window.sahkarmi.composio.connect).not.toHaveBeenCalled();
   });
 
   it("shows connected apps first and the rest with a Connect button", async () => {
@@ -140,7 +149,6 @@ describe("AppsPanel", () => {
     if (!more) return;
     expect(within(more).getByText("2 apps")).toBeVisible();
     expect(within(more).getAllByRole("button", { name: "Connect" })).toHaveLength(2);
-    expect(within(more).getByText("Needs your own app keys")).toBeVisible();
     expect(within(more).getByText("Communication")).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Add your free Composio key" })).toBeNull();
   });
@@ -172,6 +180,7 @@ describe("AppsPanel", () => {
       }),
     });
     render(() => <AppsPanel query="" />);
+    fireEvent.click((await screen.findAllByRole("button", { name: "Add key" }))[0]);
     const input = await screen.findByLabelText("Paste your Composio API key");
     const save = screen.getByRole("button", { name: "Save key" });
     expect(save).toBeDisabled();

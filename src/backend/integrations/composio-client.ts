@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isRecord } from "../protocol";
+import { COMPOSIO_CATALOG, COMPOSIO_LOGO_BASE } from "./composio-catalog";
 import { describeTool, isActionSensitive } from "./composio-policy";
 import type {
   ComposioAppMeta,
@@ -25,7 +26,7 @@ export const OWNER_USER_ID = "sahkarmi-owner";
 /** Composio's Hobby plan: $0, no card, hard-capped at this many tool calls a month. */
 export const HOBBY_PLAN_TOOL_CALLS = 100_000;
 export const HOBBY_PLAN_NAME = "Hobby";
-export const COMPOSIO_DASHBOARD_URL = "https://app.composio.dev";
+export const COMPOSIO_DASHBOARD_URL = "https://dashboard.composio.dev";
 
 const KEY_FILE = "composio_api_key.txt";
 const CATALOGUE_FILE = "composio_toolkits.json";
@@ -45,86 +46,28 @@ const BREAKER_TRIP_AFTER = 5;
 const BREAKER_OPEN_MS = 60_000;
 const DESCRIPTION_CHARS = 500;
 
-/** Shown before the owner has added a key; the live catalogue replaces it afterwards. */
-export const FALLBACK_TOOLKITS: ComposioToolkitRecord[] = [
-  {
-    slug: "github",
-    name: "GitHub",
-    description: "Repositories, issues, pull requests, commits and releases.",
-    logo: null,
-    categories: ["Developer tools"],
+/** Composio's own logo for a toolkit; works without a key. */
+export function composioLogoUrl(slug: string): string {
+  return `${COMPOSIO_LOGO_BASE}${encodeURIComponent(slug)}`;
+}
+
+/**
+ * Every app Composio lists publicly, bundled so the Apps tab is complete before the owner has
+ * added a key. The live catalogue from Composio's API replaces it once a key is saved.
+ */
+export const FALLBACK_TOOLKITS: ComposioToolkitRecord[] = COMPOSIO_CATALOG.map(
+  ([slug, name, description, category, auth]) => ({
+    slug,
+    name,
+    description,
+    logo: composioLogoUrl(slug),
+    categories: category ? [category] : [],
     toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "gmail",
-    name: "Gmail",
-    description: "Read, search, draft and send business email.",
-    logo: null,
-    categories: ["Communication"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "googlecalendar",
-    name: "Google Calendar",
-    description: "Meetings, upcoming events and free slots for you and your team.",
-    logo: null,
-    categories: ["Productivity"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "slack",
-    name: "Slack",
-    description: "Channels, messages and team notifications.",
-    logo: null,
-    categories: ["Communication"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "notion",
-    name: "Notion",
-    description: "Pages, databases and notes in your workspace.",
-    logo: null,
-    categories: ["Productivity"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "jira",
-    name: "Jira",
-    description: "Tickets, sprints and project workflows.",
-    logo: null,
-    categories: ["Project management"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "linear",
-    name: "Linear",
-    description: "Issues, cycles and project triage.",
-    logo: null,
-    categories: ["Developer tools"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-];
+    authSchemes: auth === "oauth" ? ["OAUTH2"] : auth === "api-key" ? ["API_KEY"] : [],
+    managedAuthSchemes: auth === "oauth" ? ["OAUTH2"] : [],
+    noAuth: auth === "none",
+  }),
+);
 
 export const CURATED_APPS: ComposioAppMeta[] = FALLBACK_TOOLKITS.map((toolkit) =>
   appFromToolkit(toolkit),
@@ -243,7 +186,17 @@ export class ComposioClient {
 
   /** Saves the key after Composio has accepted it once; an empty key removes the saved one. */
   async setApiKey(key: string, options: { verify?: boolean } = {}): Promise<ComposioStatus> {
-    const trimmed = key.trim();
+    const trimmed = normalizeComposioKey(key);
+    if (/^ck_/i.test(trimmed)) {
+      throw new Error(
+        "That is a Composio Connect key (it starts with ck_). Sahkarmi needs a Platform key, which starts with ak_: on dashboard.composio.dev choose Platform on the left, then Settings → API keys.",
+      );
+    }
+    if (/^uak_/i.test(trimmed)) {
+      throw new Error(
+        "That is a Composio user key (it starts with uak_). Sahkarmi needs the Project API key, which starts with ak_: dashboard.composio.dev → Settings → API keys.",
+      );
+    }
     if (!trimmed) {
       this.#cachedKey = null;
       this.#keyLoaded = true;
@@ -261,9 +214,15 @@ export class ComposioClient {
         { method: "GET" },
         { key: trimmed, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
       );
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
+        const reason = await composioReason(res);
         throw new Error(
-          "Composio did not accept that key. Copy it again from app.composio.dev → Settings → API keys.",
+          `Composio says this key is not valid${reason ? ` (${reason})` : ""}. Copy the Project API key again from dashboard.composio.dev → Settings → API keys; it starts with ak_.`,
+        );
+      }
+      if (res.status === 403) {
+        throw new Error(
+          "This Composio key is limited and cannot manage app sign-ins. Create a full Project API key under dashboard.composio.dev → Settings → API keys and paste that one.",
         );
       }
       if (!res.ok) throw new Error(await this.#failure("check the key", res));
@@ -656,7 +615,7 @@ export class ComposioClient {
     }
     if (toolkit.managedAuthSchemes.length === 0 && !toolkit.noAuth) {
       throw new Error(
-        `${toolkit.name} needs your own developer app keys. Create an auth config for it at app.composio.dev (Auth Configs → Create), then press Connect again.`,
+        `${toolkit.name} needs a one-time setup in Composio: open dashboard.composio.dev → Auth configs → Create, pick ${toolkit.name}, then press Connect here again.`,
       );
     }
     const created = await this.#request(
@@ -670,6 +629,12 @@ export class ComposioClient {
       },
       { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
     );
+    if (created.status === 403) {
+      // A key made with "Read only" for auth configs can list sign-ins but not add one.
+      throw new Error(
+        `Your Composio key can only read, so it cannot set up ${toolkit.name}. Make a new key with Full access (step 3 in the key card) and paste it here, or set up ${toolkit.name} yourself at dashboard.composio.dev → Auth configs → Create.`,
+      );
+    }
     if (!created.ok) {
       throw new Error(await this.#failure(`prepare ${toolkit.name} for sign-in`, created));
     }
@@ -878,11 +843,13 @@ export class ComposioClient {
       }
     }
     const hint =
-      res.status === 401 || res.status === 403
-        ? " Check the Composio key in Marketplace → Apps."
-        : res.status === 402
-          ? " The Composio plan's monthly limit may be used up."
-          : "";
+      res.status === 403 && /permission|access/i.test(detail)
+        ? " The key is limited: make a new Composio key with Full access and paste it in Marketplace → Apps."
+        : res.status === 401 || res.status === 403
+          ? " Check the Composio key in Marketplace → Apps."
+          : res.status === 402
+            ? " The Composio plan's monthly limit may be used up."
+            : "";
     const shown = detail ? ` (${clip(detail, 200)})` : "";
     return `Could not ${action}: Composio answered ${res.status}${shown}.${hint}`;
   }
@@ -989,7 +956,10 @@ function toolkitFromApi(item: Record<string, unknown>): ComposioToolkitRecord | 
     slug: item.slug.toLowerCase(),
     name: typeof item.name === "string" && item.name ? item.name : item.slug,
     description: typeof meta.description === "string" ? meta.description : "",
-    logo: typeof meta.logo === "string" && meta.logo ? meta.logo : null,
+    logo:
+      typeof meta.logo === "string" && meta.logo
+        ? meta.logo
+        : composioLogoUrl(item.slug.toLowerCase()),
     categories,
     toolsCount: typeof meta.tools_count === "number" ? meta.tools_count : null,
     authSchemes: stringArray(item.auth_schemes),
@@ -1092,4 +1062,30 @@ function describeNetworkError(error: unknown, timeoutMs: number): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The key as Composio expects it. People paste it with quotes, a label such as
+ * "COMPOSIO_API_KEY=" or "x-api-key:", line breaks or invisible characters from a web page.
+ */
+export function normalizeComposioKey(raw: string): string {
+  let key = raw.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, " ").trim();
+  key = key.replace(/^(?:export\s+)?(?:COMPOSIO_API_KEY|x-api-key)\s*[:=]\s*/i, "");
+  key = key.replace(/^["'`]+|["'`]+$/g, "");
+  return key.replace(/\s+/g, "");
+}
+
+/** Composio's own words for a refused key, e.g. "Invalid API key". Never includes the key. */
+async function composioReason(res: Response): Promise<string> {
+  try {
+    const body: unknown = await res.clone().json();
+    const error =
+      typeof body === "object" && body !== null ? (body as { error?: unknown }).error : null;
+    const slug =
+      typeof error === "object" && error !== null ? (error as { slug?: unknown }).slug : null;
+    if (slug === "APIKey_InvalidAPIKey") return "invalid API key";
+    return typeof slug === "string" ? slug.replace(/_/g, " ") : "";
+  } catch {
+    return "";
+  }
 }
