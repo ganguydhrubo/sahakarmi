@@ -232,8 +232,42 @@ export function RoutinesView(props: {
                           <div class="routine-canvas-title">{routine().name}</div>
                           <ol class="routine-diagram">
                             <li class="routine-node routine-node-trigger">
-                              <small>{t("routineStarts")}</small>
-                              <strong>{describeRoutineCadence(routine().cadence)}</strong>
+                              <div class="routine-node-head">
+                                <span class="routine-trigger-icon" aria-hidden="true">
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    width="18"
+                                    height="18"
+                                    aria-hidden="true"
+                                  >
+                                    <circle
+                                      cx="12"
+                                      cy="12"
+                                      r="9"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      stroke-width="2"
+                                    />
+                                    <path
+                                      d="M12 7v5l3 2"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      stroke-width="2"
+                                      stroke-linecap="round"
+                                    />
+                                  </svg>
+                                </span>
+                                <span>
+                                  <small>{t("routineStarts")}</small>
+                                  <strong>{describeRoutineCadence(routine().cadence)}</strong>
+                                </span>
+                                <span
+                                  class="routine-state-pill"
+                                  classList={{ "routine-state-paused": !routine().enabled }}
+                                >
+                                  {routine().enabled ? t("routineActive") : t("paused")}
+                                </span>
+                              </div>
                               <Show when={routine().enabled && routine().nextRunAt}>
                                 {(next) => (
                                   <small>
@@ -257,6 +291,9 @@ export function RoutinesView(props: {
                                           {t("routineStepN", { n: String(index() + 1) })}
                                         </small>
                                         <strong>{botFor(step.botId)?.name ?? step.botId}</strong>
+                                        <Show when={botFor(step.botId)?.role}>
+                                          {(role) => <small>{role()}</small>}
+                                        </Show>
                                       </span>
                                       <Show when={status()}>
                                         {(value) => (
@@ -276,7 +313,7 @@ export function RoutinesView(props: {
                                 );
                               }}
                             </For>
-                          </ol>{" "}
+                          </ol>
                         </div>
                         <aside class="routine-inspector">
                           <header class="routine-details-head">

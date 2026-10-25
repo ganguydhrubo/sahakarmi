@@ -22,7 +22,12 @@ All notable changes to Sahkarmi are documented here. The project follows
 - 11 more agents over ACP: Cursor, GitHub Copilot, Kimi Code, Cline, Qwen Code, Grok, Factory
   Droid, Qoder, Goose, Mistral Vibe and Kiro. Connect installs the tool when needed and starts
   its sign-in; tools already installed are found.
-- Coworkers can create and change routines when you ask them to in chat.
+- Coworkers can create and change routines when you ask them to in chat. Agreeing to "post every
+  day at 6 PM" now creates a real routine instead of only a note.
+- Routines from your previous desktop agent are brought over once, paused, on first start, each
+  matched to the coworker with the same name. Its own data is only read, never changed.
+- When OpenCode's free limit is used up, a coworker moves by itself to another free provider you
+  have connected (Gemini, GitHub Copilot or Kiro) and answers your message there.
 
 ### Changed
 
@@ -33,6 +38,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 - When OpenCode's free limit is used up, you are told at once instead of waiting about a minute
   per model.
 - Logos in the model picker and the first-run screen; missing agents read "Not installed".
+- The Routines canvas shows times in your own clock style ("6:00 pm"), an On / Paused badge,
+  arrows between steps and each coworker's role.
 
 ### Fixed
 

@@ -144,6 +144,8 @@ export const NEXT_FREE_MODEL_HINT = "Sahkarmi will try the next free model";
 export const FREE_LIMIT_REACHED_HINT = "free limit is used up on this internet connection";
 /** How long a free-model turn may stay quiet before Sahkarmi asks the server about its limit. */
 const FREE_LIMIT_PROBE_MS = 8_000;
+const freeLimitProbeMs = (): number =>
+  Number(process.env.SAHKARMI_FREE_LIMIT_PROBE_MS) || FREE_LIMIT_PROBE_MS;
 const silentTurnMs = (): number =>
   Number(process.env.SAHKARMI_ACP_SILENT_TURN_MS) || SILENT_TURN_MS;
 
@@ -607,7 +609,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const modelValue = session.modelValue;
     if (!probe || !modelValue || !this.#isFreeModel(session, modelValue)) return;
     // Only worth asking when the answer arrives before the silence watch fires anyway.
-    if (FREE_LIMIT_PROBE_MS >= silentTurnMs()) return;
+    if (freeLimitProbeMs() >= silentTurnMs()) return;
     turn.probeTimer = setTimeout(() => {
       void probe(modelValue).then(
         (limited) => {
@@ -617,7 +619,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         },
         () => undefined,
       );
-    }, FREE_LIMIT_PROBE_MS);
+    }, freeLimitProbeMs());
     turn.probeTimer.unref?.();
   }
 

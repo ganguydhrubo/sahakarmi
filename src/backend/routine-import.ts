@@ -3,27 +3,27 @@ import { join } from "node:path";
 import type { RoutineCadence, SaveRoutineInput } from "../shared/ipc";
 import { isRecord } from "./protocol";
 
-/** One active OpenBot routine, as read from its local database. */
-export interface OpenBotRoutine {
+/** One active imported routine, as read from its local database. */
+export interface ImportedRoutine {
   name: string;
   agentName: string;
   instruction: string;
   schedule: unknown;
 }
 
-export interface OpenBotImportReport {
+export interface RoutineImportReport {
   importedAt: string;
   imported: Array<{ name: string; coworker: string }>;
   skipped: Array<{ name: string; reason: string }>;
 }
 
-const MARKER_FILE = "openbot-import.json";
+const MARKER_FILE = "routine-import.json";
 
 /**
- * Reads OpenBot's active routines (read-only; OpenBot's own data is never changed). Uses
- * Node's built-in SQLite, loaded only when an OpenBot database is actually present.
+ * Reads the source app's active routines (read-only; the source app's own data is never changed). Uses
+ * Node's built-in SQLite, loaded only when the source database is actually present.
  */
-export async function readOpenBotRoutines(databasePath: string): Promise<OpenBotRoutine[]> {
+export async function readDesktopRoutines(databasePath: string): Promise<ImportedRoutine[]> {
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(databasePath, { readOnly: true });
   try {
@@ -65,8 +65,8 @@ export async function readOpenBotRoutines(databasePath: string): Promise<OpenBot
   }
 }
 
-/** OpenBot's schedule JSON in Sahkarmi's terms; null when it cannot be expressed. */
-export function cadenceFromOpenBot(schedule: unknown): RoutineCadence | null {
+/** the source app's schedule JSON in Sahkarmi's terms; null when it cannot be expressed. */
+export function cadenceFromImport(schedule: unknown): RoutineCadence | null {
   if (!isRecord(schedule)) return null;
   const time = typeof schedule.time === "string" && /^\d{2}:\d{2}$/.test(schedule.time);
   switch (schedule.kind) {
@@ -97,7 +97,7 @@ const words = (text: string) =>
   );
 
 /**
- * The Sahkarmi coworker an OpenBot agent became: the same name, otherwise the one sharing the
+ * The Sahkarmi coworker an source agent became: the same name, otherwise the one sharing the
  * most distinctive words ("Dhrubo Linkdin Content" → "my linkdin"). No match → null, never a guess
  * between two equally good coworkers.
  */
@@ -129,13 +129,13 @@ export function matchCoworker<T extends { id: string; name: string }>(
   return bestScore > 0 && !tie ? best : null;
 }
 
-/** Routine inputs for the matched routines, always paused: OpenBot may still be running them. */
-export function planOpenBotImport<T extends { id: string; name: string }>(
-  routines: OpenBotRoutine[],
+/** Routine inputs for the matched routines, always paused: the old app may still be running them. */
+export function planRoutineImport<T extends { id: string; name: string }>(
+  routines: ImportedRoutine[],
   coworkers: T[],
   now: Date,
-): { inputs: SaveRoutineInput[]; report: OpenBotImportReport } {
-  const report: OpenBotImportReport = { importedAt: now.toISOString(), imported: [], skipped: [] };
+): { inputs: SaveRoutineInput[]; report: RoutineImportReport } {
+  const report: RoutineImportReport = { importedAt: now.toISOString(), imported: [], skipped: [] };
   const inputs: SaveRoutineInput[] = [];
   for (const routine of routines) {
     const name = routine.name.trim().slice(0, 80);
@@ -147,11 +147,11 @@ export function planOpenBotImport<T extends { id: string; name: string }>(
     if (!coworker) {
       report.skipped.push({
         name,
-        reason: `no Sahkarmi coworker matches OpenBot's "${routine.agentName || "unknown"}"`,
+        reason: `no Sahkarmi coworker matches the source app's "${routine.agentName || "unknown"}"`,
       });
       continue;
     }
-    const cadence = cadenceFromOpenBot(routine.schedule);
+    const cadence = cadenceFromImport(routine.schedule);
     inputs.push({
       name,
       steps: [{ botId: coworker.id, instruction: routine.instruction.trim() }],
@@ -165,23 +165,23 @@ export function planOpenBotImport<T extends { id: string; name: string }>(
 }
 
 /**
- * First start with no routines: bring the owner's active OpenBot routines over, paused, once.
+ * First start with no routines: bring the owner's active imported routines over, paused, once.
  * A marker file keeps it from running again after the owner deletes what was imported.
  */
-export async function importOpenBotRoutinesOnce(options: {
+export async function importDesktopRoutinesOnce(options: {
   userDataPath: string;
-  openBotDatabase: string;
+  sourceDatabase: string;
   routineCount: number;
   coworkers: Array<{ id: string; name: string }>;
   save: (input: SaveRoutineInput) => Promise<unknown>;
   now?: Date;
-}): Promise<OpenBotImportReport | null> {
+}): Promise<RoutineImportReport | null> {
   const marker = join(options.userDataPath, MARKER_FILE);
   if (options.routineCount > 0) return null;
   if (await exists(marker)) return null;
-  if (!(await exists(options.openBotDatabase))) return null;
-  const routines = await readOpenBotRoutines(options.openBotDatabase);
-  const { inputs, report } = planOpenBotImport(
+  if (!(await exists(options.sourceDatabase))) return null;
+  const routines = await readDesktopRoutines(options.sourceDatabase);
+  const { inputs, report } = planRoutineImport(
     routines,
     options.coworkers,
     options.now ?? new Date(),
@@ -203,13 +203,13 @@ export async function importOpenBotRoutinesOnce(options: {
   return report;
 }
 
-export async function readOpenBotImportReport(
+export async function readRoutineImportReport(
   userDataPath: string,
-): Promise<OpenBotImportReport | null> {
+): Promise<RoutineImportReport | null> {
   try {
     const parsed: unknown = JSON.parse(await readFile(join(userDataPath, MARKER_FILE), "utf8"));
     return isRecord(parsed) && Array.isArray(parsed.imported)
-      ? (parsed as unknown as OpenBotImportReport)
+      ? (parsed as unknown as RoutineImportReport)
       : null;
   } catch {
     return null;

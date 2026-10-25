@@ -53,7 +53,7 @@ import {
   type SearchMessagesInput,
 } from "../shared/ipc";
 import { createAcpAgentClient, resolveAcpAgentCli } from "./acp-agents";
-import { NEXT_FREE_MODEL_HINT } from "./acp-client";
+import { FREE_LIMIT_REACHED_HINT, NEXT_FREE_MODEL_HINT } from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
@@ -143,6 +143,9 @@ interface ThreadContextBudget {
   compactionTurnId: string | null;
   lastCompactedTokens: number | null;
 }
+
+/** Free providers a coworker may move to when OpenCode's free limit is used up, best first. */
+const FREE_FALLBACK_PROVIDERS = ["antigravity", "copilot", "kiro"] as const;
 
 /** Day names for the routine tool, indexed like Date.getDay(). */
 const DAY_NAMES = [
@@ -2851,6 +2854,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const reason = this.#lastTurnError.get(botId) ?? "";
       if (reason.includes(NEXT_FREE_MODEL_HINT)) {
         await this.#resendOnNextFreeModel(botId, delivery);
+      } else if (reason.includes(FREE_LIMIT_REACHED_HINT)) {
+        await this.#fallBackToOtherFreeProvider(botId, delivery);
       } else if (/429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded/i.test(reason)) {
         await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
       }
@@ -3302,6 +3307,38 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       botId,
     );
     // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
+    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
+    await this.sendMessage({ botId, text: delivery.delivery.text });
+    return true;
+  }
+
+  /**
+   * OpenCode's free limit is used up for every free model: move the coworker to another free
+   * provider the owner has already connected (Gemini, GitHub Copilot, Kiro) and send the message
+   * again there, once per message. Nothing connected → the owner keeps the clear limit message.
+   */
+  async #fallBackToOtherFreeProvider(botId: string, delivery: DeliveryContext): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot || providerForBot(bot) !== "opencode") return false;
+    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
+    if (delivery.managedAttachments.length) return false;
+    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    const target = FREE_FALLBACK_PROVIDERS.find(
+      (id) => this.#status.providers?.find((provider) => provider.id === id)?.state === "available",
+    );
+    if (!target) return false;
+    this.#fallbackRetried.add(delivery.delivery.id);
+    try {
+      await this.updateBot({ botId, model: DEFAULT_MODEL_FOR_PROVIDER[target] });
+    } catch {
+      this.#fallbackRetried.delete(delivery.delivery.id);
+      return false;
+    }
+    this.#emitError(
+      "fallback_model",
+      `OpenCode's free limit is used up, so ${bot.name} switched to ${PROVIDER_LABELS[target]} (also free) and is answering your message again there. Switch back from the model picker whenever you like.`,
+      botId,
+    );
     await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
     await this.sendMessage({ botId, text: delivery.delivery.text });
     return true;
