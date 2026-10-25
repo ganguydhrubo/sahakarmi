@@ -10465,6 +10465,8 @@ fieldset.memory-filters {
   background: none;
   box-shadow: none;
   padding: 0;
+}
+
 /* Marketplace → Apps (Composio) */
 .apps-panel {
   display: grid;
