@@ -56,11 +56,8 @@ export const ACP_AGENT_SPECS: Record<AcpAgentProviderId, AcpAgentSpec> = {
     commands: ["copilot"],
     args: ["--acp", "--stdio"],
     install: { kind: "npm", pkg: "@github/copilot" },
-    signIn: {
-      kind: "window",
-      args: [],
-      tip: "Type /login in the Copilot window, finish in the browser, then close the window.",
-    },
+    // Uses the GitHub CLI's sign-in when there is one; otherwise GitHub's browser sign-in.
+    signIn: { kind: "command", args: ["login"] },
     apiKeyEnv: ["COPILOT_GITHUB_TOKEN"],
   },
   // https://moonshotai.github.io/kimi-code/en/reference/kimi-command

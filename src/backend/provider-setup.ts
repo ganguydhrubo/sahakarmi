@@ -47,6 +47,8 @@ const ANTIGRAVITY_SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
 export interface ProviderSetupOptions {
   toolsDirectory: string;
+  /** Opens a sign-in page in the owner's browser (device sign-in shows a code to enter there). */
+  openUrl?: (url: string) => void;
   /** Where downloaded agent runtimes live (Google's Antigravity server goes under it). */
   runtimeDirectory?: string;
   /** Re-checks a provider after sign-in so the app switches it to Connected. */
@@ -86,6 +88,9 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   }
 
   async connect(provider: AgentProviderId): Promise<ProviderSetupState> {
+    // A second click while the tool is still installing must not start a second install
+    // (two npm runs on the same folder fail with EBUSY and leave nothing usable).
+    if (this.#get(provider).phase === "installing") return this.#get(provider);
     this.cancel(provider);
     try {
       switch (provider) {
@@ -212,7 +217,13 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
           `${label} is not installed. Install it from its website, then click Connect again.`,
         );
       }
-      await this.#installAcpAgent(id, spec.install);
+      try {
+        await this.#installAcpAgent(id, spec.install);
+      } catch (error) {
+        // npm can report an error (a busy file, a warning) after the tool itself landed.
+        await refreshWindowsPath();
+        if (!(await findAcpAgentExecutable(spec))) throw error;
+      }
       executable = await findAcpAgentExecutable(spec);
       if (!executable) {
         throw new Error(
@@ -241,7 +252,7 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     const source = install.kind === "npm" ? `npm (${install.pkg})` : install.site;
     this.#set(id, {
       phase: "installing",
-      message: `Installing ${label} from ${source}…`,
+      message: `Installing ${label} from ${source}. This takes 2–3 minutes; keep Sahkarmi open.`,
       progress: null,
       url: null,
     });
@@ -442,11 +453,26 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       }, LOGIN_TIMEOUT_MS);
       timer.unref?.();
       let output = "";
+      let pressed = false;
       const onOutput = (chunk: Buffer) => {
         output = `${output}${chunk.toString("utf8")}`.slice(-8_000);
         const url = URL_PATTERN.exec(output)?.[0];
         const current = this.#get(provider);
-        if (url && current.url !== url) this.#set(provider, { url });
+        if (url && current.url !== url) {
+          this.#set(provider, { url });
+          // Device sign-in (GitHub Copilot): the page needs the code shown here, so open it.
+          if (/login\/device/.test(url)) this.#options.openUrl?.(url);
+        }
+        const code = /enter (?:the )?code:?\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i.exec(output)?.[1];
+        if (code && !current.message?.includes(code)) {
+          this.#set(provider, {
+            message: `On the GitHub page that opened, enter the code ${code} and allow access.`,
+          });
+        }
+        if (/press any key/i.test(output) && !pressed) {
+          pressed = true;
+          child.stdin?.write(String.fromCharCode(10));
+        }
         if (/paste (the )?code/i.test(output) && current.phase !== "needs-code") {
           this.#set(provider, {
             phase: "needs-code",

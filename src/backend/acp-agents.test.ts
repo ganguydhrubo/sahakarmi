@@ -102,6 +102,24 @@ describe("other ACP agents", () => {
     await expect(findAcpAgentExecutable(ACP_AGENT_SPECS.kimi)).resolves.toBeNull();
   });
 
+  it("opens a session on the agent's own default model", async () => {
+    const root = await tempRoot();
+    const client = createAcpAgentClient(
+      "kimi",
+      { executable: await fakeAgent(root, true), version: "1.0.0", bundled: false },
+      root,
+    );
+    try {
+      client.start();
+      await client.request("initialize", {});
+      await expect(
+        client.request("thread/start", { cwd: root, model: modelWireId("kimi:default") }),
+      ).resolves.toBeTruthy();
+    } finally {
+      await client.stop();
+    }
+  });
+
   it.each([
     [true, "kimi"],
     [false, null],
