@@ -127,7 +127,7 @@ export function agentBrowserArguments(profileDir: string): string[] {
 
 /** Chrome flags while the owner uses it: an ordinary browser, nothing attached. */
 export function humanBrowserArguments(profileDir: string, urls: string[]): string[] {
-  return [...commonBrowserArguments(profileDir), ...urls];
+  return [...commonBrowserArguments(profileDir), "--start-maximized", ...urls];
 }
 
 function commonBrowserArguments(profileDir: string): string[] {
@@ -137,6 +137,12 @@ function commonBrowserArguments(profileDir: string): string[] {
     "--no-default-browser-check",
     "--hide-crash-restore-bubble",
   ];
+}
+
+interface WindowBounds {
+  width?: number;
+  height?: number;
+  windowState?: string;
 }
 
 interface ChromeTab {
@@ -282,6 +288,7 @@ export class ChromeBrowserHost implements CoworkerBrowser {
   #bounds: BrowserBounds | null = null;
   #screencastSession: string | null = null;
   #framePending = false;
+  #fitTimer: NodeJS.Timeout | null = null;
 
   constructor(
     window: BrowserWindow,
@@ -421,8 +428,10 @@ export class ChromeBrowserHost implements CoworkerBrowser {
     this.#visible = input.visible;
     if (input.bounds) this.#bounds = validateBounds(input.bounds);
     this.#syncPreview();
-    if (this.#visible) void this.#showActiveTab();
-    else void this.#stopScreencast();
+    if (this.#visible) {
+      void this.#showActiveTab();
+      this.#scheduleFitWindow();
+    } else void this.#stopScreencast();
   }
 
   async snapshot(tabId: string): Promise<BrowserSnapshot> {
@@ -485,6 +494,7 @@ export class ChromeBrowserHost implements CoworkerBrowser {
 
   async destroy(): Promise<void> {
     this.#destroyed = true;
+    if (this.#fitTimer) clearTimeout(this.#fitTimer);
     try {
       await this.#persistState();
     } finally {
@@ -1051,6 +1061,7 @@ export class ChromeBrowserHost implements CoworkerBrowser {
         .catch(() => null);
       if (still && typeof still.data === "string")
         this.#pushFrame(`data:image/jpeg;base64,${still.data}`);
+      this.#scheduleFitWindow();
     } catch (error) {
       this.#runInPreview(`window.sahkarmiMessage(${JSON.stringify(String(error))})`);
     }
@@ -1062,6 +1073,52 @@ export class ChromeBrowserHost implements CoworkerBrowser {
     if (sessionId && this.#pipe && !this.#pipe.isClosed) {
       await this.#pipe.send("Page.stopScreencast", {}, sessionId, 3_000).catch(() => undefined);
     }
+  }
+
+  #scheduleFitWindow(): void {
+    if (this.#fitTimer) clearTimeout(this.#fitTimer);
+    this.#fitTimer = setTimeout(() => {
+      this.#fitTimer = null;
+      void this.#fitWindowToPanel().catch(() => undefined);
+    }, 300);
+    this.#fitTimer.unref();
+  }
+
+  /**
+   * Gives the browser's page area the panel's size and shape, so the live view fills the panel
+   * at full size instead of a wide window shrunk into a tall strip.
+   */
+  async #fitWindowToPanel(): Promise<void> {
+    const pipe = this.#pipe;
+    const tab = this.#activeTabId ? this.#tabs.get(this.#activeTabId) : null;
+    const bounds = this.#bounds;
+    if (!this.#visible || this.#humanInControl || !bounds) return;
+    if (!pipe || pipe.isClosed || !tab?.targetId || !tab.sessionId) return;
+    const found = await pipe.send<{ windowId?: number; bounds?: WindowBounds }>(
+      "Browser.getWindowForTarget",
+      { targetId: tab.targetId },
+    );
+    if (typeof found.windowId !== "number" || !found.bounds) return;
+    if (found.bounds.windowState && found.bounds.windowState !== "normal") {
+      await pipe.send("Browser.setWindowBounds", {
+        windowId: found.windowId,
+        bounds: { windowState: "normal" },
+      });
+      return this.#scheduleFitWindow();
+    }
+    const metrics = await pipe.send<{
+      cssVisualViewport?: { clientWidth?: number; clientHeight?: number };
+    }>("Page.getLayoutMetrics", {}, tab.sessionId);
+    const viewport = metrics.cssVisualViewport;
+    const { width = 0, height = 0 } = found.bounds;
+    if (!viewport?.clientWidth || !viewport.clientHeight || !width || !height) return;
+    const targetWidth = Math.round(bounds.width + (width - viewport.clientWidth));
+    const targetHeight = Math.round(bounds.height + (height - viewport.clientHeight));
+    if (Math.abs(targetWidth - width) <= 4 && Math.abs(targetHeight - height) <= 4) return;
+    await pipe.send("Browser.setWindowBounds", {
+      windowId: found.windowId,
+      bounds: { width: targetWidth, height: targetHeight },
+    });
   }
 
   async #focusBrowserWindow(): Promise<void> {

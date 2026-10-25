@@ -806,25 +806,68 @@ function browserRequestHeaders(
   const userAgent = browserUserAgent(sessionUserAgent, url);
   const headers = { ...requestHeaders };
   setRequestHeader(headers, "User-Agent", userAgent);
+  if (url && isClientHintUrl(url)) {
+    for (const [name, value] of Object.entries(
+      browserClientHints(process.versions.chrome, process.platform),
+    )) {
+      const present = Object.keys(headers).some(
+        (candidate) => candidate.toLowerCase() === name.toLowerCase(),
+      );
+      if (!present) headers[name] = value;
+    }
+  }
   setRequestHeader(headers, "Accept-Language", preferredBrowserLanguages());
   return headers;
 }
 
 /**
- * One plain Chromium identity for every site: Electron's own User-Agent minus the Electron and
- * app product tokens, which is exactly what Chrome of the same version sends. Pretending to be
- * another browser on one host (a Firefox string on accounts.google.com, as before) contradicts
- * the client hints and JavaScript fingerprint of the real engine, and Google answers that with
- * "This browser or app may not be secure". Sign-ins must work everywhere, so nothing is special-
- * cased per site.
+ * The browser's identity: Electron's own User-Agent minus the Electron and app product tokens on
+ * ordinary sites. Google's sign-in pages get the honest Electron token back, as an embedded app
+ * browser should send; a Chrome-looking string that does not behave like Chrome is what Google
+ * answers with "This browser or app may not be secure".
  */
-function browserUserAgent(sessionUserAgent: string, _url?: string): string {
-  return removeUserAgentProducts(sessionUserAgent, [
+export function browserUserAgent(sessionUserAgent: string, url?: string): string {
+  const clean = removeUserAgentProducts(sessionUserAgent, [
     "Electron",
     app.getName(),
     "Sahkarmi",
     "sahkarmi",
   ]);
+  if (!url || !isGoogleSignInHost(url)) return clean;
+  return clean.replace(/(Chrome\/\S+)/u, `$1 Electron/${process.versions.electron}`);
+}
+
+function isGoogleSignInHost(url: string): boolean {
+  try {
+    return new URL(url).hostname.replace(/\.+$/u, "") === "accounts.google.com";
+  } catch {
+    return false;
+  }
+}
+
+/** The engine's own client hints: Chromium of this version, never a Chrome brand it is not. */
+export function browserClientHints(
+  chromeVersion: string,
+  platform: NodeJS.Platform,
+): Record<string, string> {
+  const platformName = platform === "darwin" ? "macOS" : platform === "win32" ? "Windows" : "Linux";
+  return {
+    "Sec-CH-UA": `"Chromium";v="${chromeVersion.split(".")[0]}"`,
+    "Sec-CH-UA-Mobile": "?0",
+    "Sec-CH-UA-Platform": `"${platformName}"`,
+  };
+}
+
+function isClientHintUrl(url: string): boolean {
+  try {
+    const target = new URL(url);
+    return (
+      target.protocol === "https:" ||
+      (target.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function removeUserAgentProducts(userAgent: string, products: string[]): string {

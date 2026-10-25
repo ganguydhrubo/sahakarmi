@@ -5,6 +5,22 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-10-25
+
+### Changed
+
+- The coworker browser is Sahkarmi's own built-in browser again, inside the side panel. Nothing
+  opens on the desktop and no Chrome window fills up with tabs. The Chrome engine from 0.7.4
+  stays available with SAHKARMI_BROWSER=chrome; when used, its window takes the panel's shape so
+  the live view fills the panel.
+
+### Fixed
+
+- Google sign-in (Gmail, YouTube and every Google service) in the built-in browser. On Google's
+  sign-in pages the browser now names its Electron engine honestly and sends Chromium client
+  hints, so Google shows its normal password step instead of "This browser or app may not be
+  secure". Click Take over, sign in in the panel, then Hand back.
+
 ## [0.7.4] - 2026-10-25
 
 ### Changed
