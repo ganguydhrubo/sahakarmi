@@ -22,7 +22,7 @@ import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
 
-interface BrowserHostEvents {
+export interface BrowserHostEvents {
   changed: [tabs: BrowserTab[], activeTabId: string | null];
   controlChanged: [state: BrowserControlState];
 }
@@ -39,7 +39,7 @@ interface InternalTab {
   queue: Promise<unknown>;
 }
 
-interface StoredBrowserState {
+export interface StoredBrowserState {
   version: 1;
   activeTabId: string | null;
   tabs: Array<{
@@ -50,7 +50,7 @@ interface StoredBrowserState {
   }>;
 }
 
-interface BrowserSnapshot {
+export interface BrowserSnapshot {
   tabId: string;
   revision: number;
   title: string;
@@ -65,7 +65,7 @@ interface BrowserSnapshot {
   }>;
 }
 
-type BrowserAction =
+export type BrowserAction =
   | { type: "click"; ref: string }
   | { type: "type"; ref: string; text: string; submit?: boolean }
   | { type: "key"; key: string }
@@ -136,7 +136,7 @@ export const BROWSER_DYNAMIC_TOOLS = [
   },
 ] as const;
 
-export class BrowserHost {
+export class BrowserHost implements CoworkerBrowser {
   static readonly CONTROL_IDLE_GRACE_MS = 1_200;
   readonly #window: BrowserWindow;
   readonly #session: Session;
@@ -144,9 +144,7 @@ export class BrowserHost {
   readonly #statePath: string;
   readonly #tabs = new Map<string, InternalTab>();
   readonly #listeners = new Set<(...args: BrowserHostEvents["changed"]) => void>();
-  readonly #controlListeners = new Set<(...args: BrowserHostEvents["controlChanged"]) => void>();
-  readonly #controlSessions = new Map<string, BrowserControlSession>();
-  readonly #controlTimers = new Map<string, NodeJS.Timeout>();
+  readonly #control = new BrowserControlTracker();
   readonly #reservedDownloadPaths = new Set<string>();
   #activeTabId: string | null = null;
   #visible = false;
@@ -192,33 +190,19 @@ export class BrowserHost {
   }
 
   onControlChanged(listener: (...args: BrowserHostEvents["controlChanged"]) => void): () => void {
-    this.#controlListeners.add(listener);
-    return () => this.#controlListeners.delete(listener);
+    return this.#control.onChanged(listener);
   }
 
   getControlState(): BrowserControlState {
-    return {
-      sessions: [...this.#controlSessions.values()]
-        .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
-        .map((session) => ({ ...session })),
-    };
+    return this.#control.getState();
   }
 
   endControl(threadId: string, turnId: string): void {
-    const id = controlSessionId(threadId, turnId);
-    const timer = this.#controlTimers.get(id);
-    if (timer) clearTimeout(timer);
-    this.#controlTimers.delete(id);
-    if (!this.#controlSessions.delete(id)) return;
-    this.#emitControlChanged();
+    this.#control.end(threadId, turnId);
   }
 
   clearControls(): void {
-    for (const timer of this.#controlTimers.values()) clearTimeout(timer);
-    this.#controlTimers.clear();
-    if (this.#controlSessions.size === 0) return;
-    this.#controlSessions.clear();
-    this.#emitControlChanged();
+    this.#control.clear();
   }
 
   listTabs(): BrowserTab[] {
@@ -339,48 +323,8 @@ export class BrowserHost {
     });
   }
 
-  async handleDynamicTool(params: DynamicToolCallParams): Promise<DynamicToolResult> {
-    const args = isRecord(params.arguments) ? params.arguments : {};
-    this.#beginControl(params, args);
-    try {
-      switch (params.tool) {
-        case "open": {
-          const url = requiredString(args, "url");
-          const tab = await this.open(url, params.threadId);
-          this.#updateControlTab(params, tab.id);
-          return textResult({ tab });
-        }
-        case "list_tabs":
-          return textResult({ tabs: this.listTabs(), activeTabId: this.#activeTabId });
-        case "snapshot": {
-          const snapshot = await this.snapshot(requiredString(args, "tabId"));
-          return textResult(snapshot);
-        }
-        case "act": {
-          const tabId = requiredString(args, "tabId");
-          const revision = requiredNumber(args, "revision");
-          const action = parseAction(args.action);
-          return textResult(await this.act(tabId, revision, action));
-        }
-        case "screenshot": {
-          const imageUrl = await this.screenshot(requiredString(args, "tabId"));
-          return { success: true, contentItems: [{ type: "inputImage", imageUrl }] };
-        }
-        case "close_tab": {
-          await this.close(requiredString(args, "tabId"));
-          return textResult({ closed: true });
-        }
-        default:
-          throw new Error(`Unknown browser tool: ${params.tool}`);
-      }
-    } catch (error) {
-      return {
-        success: false,
-        contentItems: [{ type: "inputText", text: String(error) }],
-      };
-    } finally {
-      this.#finishControl(params);
-    }
+  handleDynamicTool(params: DynamicToolCallParams): Promise<DynamicToolResult> {
+    return runBrowserTool(this, this.#control, params);
   }
 
   async destroy(): Promise<void> {
@@ -393,8 +337,7 @@ export class BrowserHost {
       }
       this.#tabs.clear();
       this.#listeners.clear();
-      this.clearControls();
-      this.#controlListeners.clear();
+      this.#control.dispose();
     }
   }
 
@@ -595,55 +538,6 @@ export class BrowserHost {
     for (const listener of this.#listeners) listener(tabs, this.#activeTabId);
   }
 
-  #beginControl(params: DynamicToolCallParams, args: Record<string, unknown>): void {
-    const id = controlSessionId(params.threadId, params.turnId);
-    const timer = this.#controlTimers.get(id);
-    if (timer) clearTimeout(timer);
-    this.#controlTimers.delete(id);
-    const previous = this.#controlSessions.get(id);
-    this.#controlSessions.set(id, {
-      id,
-      threadId: params.threadId,
-      turnId: params.turnId,
-      callId: params.callId,
-      tabId: typeof args.tabId === "string" ? args.tabId : null,
-      action: browserControlAction(params.tool, args),
-      phase: "acting",
-      startedAt: previous?.startedAt ?? new Date().toISOString(),
-    });
-    this.#emitControlChanged();
-  }
-
-  #finishControl(params: DynamicToolCallParams): void {
-    const id = controlSessionId(params.threadId, params.turnId);
-    const current = this.#controlSessions.get(id);
-    if (!current || current.callId !== params.callId) return;
-    this.#controlSessions.set(id, { ...current, phase: "waiting" });
-    this.#emitControlChanged();
-    const timer = setTimeout(() => {
-      this.#controlTimers.delete(id);
-      const latest = this.#controlSessions.get(id);
-      if (!latest || latest.callId !== params.callId || latest.phase !== "waiting") return;
-      this.#controlSessions.delete(id);
-      this.#emitControlChanged();
-    }, BrowserHost.CONTROL_IDLE_GRACE_MS);
-    timer.unref();
-    this.#controlTimers.set(id, timer);
-  }
-
-  #updateControlTab(params: DynamicToolCallParams, tabId: string): void {
-    const id = controlSessionId(params.threadId, params.turnId);
-    const current = this.#controlSessions.get(id);
-    if (!current || current.callId !== params.callId) return;
-    this.#controlSessions.set(id, { ...current, tabId });
-    this.#emitControlChanged();
-  }
-
-  #emitControlChanged(): void {
-    const state = this.getControlState();
-    for (const listener of this.#controlListeners) listener(state);
-  }
-
   #schedulePersist(): void {
     void this.#persistState().catch((error) => {
       console.error("Unable to persist browser tabs:", error);
@@ -670,6 +564,178 @@ export class BrowserHost {
         }),
       );
     return this.#persistQueue;
+  }
+}
+
+/** What every browser engine needs for the tools: open, read, act, capture and close tabs. */
+export interface BrowserToolTarget {
+  readonly activeTabId: string | null;
+  listTabs(): BrowserTab[];
+  open(url: string, ownerThreadId?: string | null, ownerBotId?: string | null): Promise<BrowserTab>;
+  snapshot(tabId: string): Promise<BrowserSnapshot>;
+  act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot>;
+  screenshot(tabId: string): Promise<string>;
+  close(tabId: string): Promise<void>;
+}
+
+/** The coworker browser as the rest of the app sees it, whichever engine runs it. */
+export interface CoworkerBrowser extends BrowserToolTarget {
+  restore(): Promise<void>;
+  onChanged(listener: (...args: BrowserHostEvents["changed"]) => void): () => void;
+  onControlChanged(listener: (...args: BrowserHostEvents["controlChanged"]) => void): () => void;
+  getControlState(): BrowserControlState;
+  endControl(threadId: string, turnId: string): void;
+  clearControls(): void;
+  activate(tabId: string): Promise<void>;
+  setVisible(input: BrowserVisibilityInput): Promise<void>;
+  handleDynamicTool(params: DynamicToolCallParams): Promise<DynamicToolResult>;
+  describeTarget(tabId: string, ref: string | null): { label: string; url: string };
+  destroy(): Promise<void>;
+  /** The owner takes over (true) or hands back (false); engines that need it switch modes. */
+  setHumanControl?(humanInControl: boolean): Promise<void>;
+  /** A site refused to sign in inside the controlled browser; the owner should take over. */
+  onSignInBlocked?(listener: (url: string) => void): () => void;
+  /** The owner closed the browser window they were using during a takeover. */
+  onHumanBrowserClosed?(listener: () => void): () => void;
+}
+
+/** Which coworker turn is driving the browser right now, shown on the tabs and in the chat. */
+export class BrowserControlTracker {
+  readonly #sessions = new Map<string, BrowserControlSession>();
+  readonly #timers = new Map<string, NodeJS.Timeout>();
+  readonly #listeners = new Set<(...args: BrowserHostEvents["controlChanged"]) => void>();
+
+  onChanged(listener: (...args: BrowserHostEvents["controlChanged"]) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  getState(): BrowserControlState {
+    return {
+      sessions: [...this.#sessions.values()]
+        .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
+        .map((session) => ({ ...session })),
+    };
+  }
+
+  end(threadId: string, turnId: string): void {
+    const id = controlSessionId(threadId, turnId);
+    const timer = this.#timers.get(id);
+    if (timer) clearTimeout(timer);
+    this.#timers.delete(id);
+    if (!this.#sessions.delete(id)) return;
+    this.#emit();
+  }
+
+  clear(): void {
+    for (const timer of this.#timers.values()) clearTimeout(timer);
+    this.#timers.clear();
+    if (this.#sessions.size === 0) return;
+    this.#sessions.clear();
+    this.#emit();
+  }
+
+  dispose(): void {
+    this.clear();
+    this.#listeners.clear();
+  }
+
+  begin(params: DynamicToolCallParams, args: Record<string, unknown>): void {
+    const id = controlSessionId(params.threadId, params.turnId);
+    const timer = this.#timers.get(id);
+    if (timer) clearTimeout(timer);
+    this.#timers.delete(id);
+    const previous = this.#sessions.get(id);
+    this.#sessions.set(id, {
+      id,
+      threadId: params.threadId,
+      turnId: params.turnId,
+      callId: params.callId,
+      tabId: typeof args.tabId === "string" ? args.tabId : null,
+      action: browserControlAction(params.tool, args),
+      phase: "acting",
+      startedAt: previous?.startedAt ?? new Date().toISOString(),
+    });
+    this.#emit();
+  }
+
+  finish(params: DynamicToolCallParams): void {
+    const id = controlSessionId(params.threadId, params.turnId);
+    const current = this.#sessions.get(id);
+    if (!current || current.callId !== params.callId) return;
+    this.#sessions.set(id, { ...current, phase: "waiting" });
+    this.#emit();
+    const timer = setTimeout(() => {
+      this.#timers.delete(id);
+      const latest = this.#sessions.get(id);
+      if (!latest || latest.callId !== params.callId || latest.phase !== "waiting") return;
+      this.#sessions.delete(id);
+      this.#emit();
+    }, BrowserHost.CONTROL_IDLE_GRACE_MS);
+    timer.unref();
+    this.#timers.set(id, timer);
+  }
+
+  updateTab(params: DynamicToolCallParams, tabId: string): void {
+    const id = controlSessionId(params.threadId, params.turnId);
+    const current = this.#sessions.get(id);
+    if (!current || current.callId !== params.callId) return;
+    this.#sessions.set(id, { ...current, tabId });
+    this.#emit();
+  }
+
+  #emit(): void {
+    const state = this.getState();
+    for (const listener of this.#listeners) listener(state);
+  }
+}
+
+/** Runs one sahkarmi_browser tool call against a browser engine. */
+export async function runBrowserTool(
+  browser: BrowserToolTarget,
+  control: BrowserControlTracker,
+  params: DynamicToolCallParams,
+): Promise<DynamicToolResult> {
+  const args = isRecord(params.arguments) ? params.arguments : {};
+  control.begin(params, args);
+  try {
+    switch (params.tool) {
+      case "open": {
+        const url = requiredString(args, "url");
+        const tab = await browser.open(url, params.threadId);
+        control.updateTab(params, tab.id);
+        return textResult({ tab });
+      }
+      case "list_tabs":
+        return textResult({ tabs: browser.listTabs(), activeTabId: browser.activeTabId });
+      case "snapshot": {
+        const snapshot = await browser.snapshot(requiredString(args, "tabId"));
+        return textResult(snapshot);
+      }
+      case "act": {
+        const tabId = requiredString(args, "tabId");
+        const revision = requiredNumber(args, "revision");
+        const action = parseAction(args.action);
+        return textResult(await browser.act(tabId, revision, action));
+      }
+      case "screenshot": {
+        const imageUrl = await browser.screenshot(requiredString(args, "tabId"));
+        return { success: true, contentItems: [{ type: "inputImage", imageUrl }] };
+      }
+      case "close_tab": {
+        await browser.close(requiredString(args, "tabId"));
+        return textResult({ closed: true });
+      }
+      default:
+        throw new Error(`Unknown browser tool: ${params.tool}`);
+    }
+  } catch (error) {
+    return {
+      success: false,
+      contentItems: [{ type: "inputText", text: String(error) }],
+    };
+  } finally {
+    control.finish(params);
   }
 }
 
@@ -717,7 +783,7 @@ function emptySchema() {
   return { type: "object", properties: {}, additionalProperties: false };
 }
 
-function normalizeBrowserUrl(input: string): string {
+export function normalizeBrowserUrl(input: string): string {
   const value = input.trim();
   if (!value) throw new Error("A browser URL is required.");
   const withProtocol = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
@@ -797,7 +863,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function readBrowserState(path: string): Promise<StoredBrowserState> {
+export async function readBrowserState(path: string): Promise<StoredBrowserState> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<StoredBrowserState>;
     if (parsed.version !== 1) return { version: 1, activeTabId: null, tabs: [] };
@@ -839,11 +905,11 @@ function isMissingFile(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-function isAllowedMainUrl(value: string): boolean {
+export function isAllowedMainUrl(value: string): boolean {
   return value === "about:blank" || isPersistableBrowserUrl(value);
 }
 
-function isPersistableBrowserUrl(value: string): boolean {
+export function isPersistableBrowserUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:";
@@ -852,7 +918,7 @@ function isPersistableBrowserUrl(value: string): boolean {
   }
 }
 
-function validateBounds(bounds: BrowserBounds): BrowserBounds {
+export function validateBounds(bounds: BrowserBounds): BrowserBounds {
   if (!Object.values(bounds).every(Number.isFinite)) throw new Error("Invalid browser bounds.");
   const x = Math.max(0, Math.floor(bounds.x));
   const y = Math.max(0, Math.floor(bounds.y));
@@ -877,7 +943,7 @@ function currentTabUrl(tab: InternalTab): string {
   return isPersistableBrowserUrl(currentUrl) ? currentUrl : tab.requestedUrl;
 }
 
-function snapshotScript(revision: number): string {
+export function snapshotScript(revision: number): string {
   return `(() => {
     const revision = ${revision};
     const nodes = [...document.querySelectorAll('a,button,input,textarea,select,[role],[contenteditable="true"],[tabindex]')]
@@ -1006,7 +1072,7 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
   }
 }
 
-function isInputPoint(value: unknown): value is { x: number; y: number; direct?: boolean } {
+export function isInputPoint(value: unknown): value is { x: number; y: number; direct?: boolean } {
   return (
     isRecord(value) &&
     typeof value.x === "number" &&
@@ -1073,7 +1139,7 @@ function requiredNumber(value: Record<string, unknown>, key: string): number {
   return value[key];
 }
 
-function isSnapshotElement(value: unknown): value is BrowserSnapshot["elements"][number] {
+export function isSnapshotElement(value: unknown): value is BrowserSnapshot["elements"][number] {
   return (
     isRecord(value) &&
     typeof value.ref === "string" &&
@@ -1091,11 +1157,11 @@ function textResult(value: unknown): DynamicToolResult {
   };
 }
 
-function delay(milliseconds: number): Promise<void> {
+export function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function uniqueDownloadPath(root: string, name: string, reserved: Set<string>): string {
+export function uniqueDownloadPath(root: string, name: string, reserved: Set<string>): string {
   const extension = extname(name);
   const stem = extension ? name.slice(0, -extension.length) : name;
   for (let suffix = 1; ; suffix += 1) {
@@ -1104,7 +1170,7 @@ function uniqueDownloadPath(root: string, name: string, reserved: Set<string>): 
   }
 }
 
-async function withTimeout<T>(
+export async function withTimeout<T>(
   promise: Promise<T>,
   milliseconds: number,
   message: string,

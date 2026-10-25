@@ -5,6 +5,25 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-10-25
+
+### Changed
+
+- Coworkers now browse in the real Google Chrome installed on the computer (Microsoft Edge when
+  Chrome is not installed; the built-in browser only when neither is), in its own "Sahkarmi"
+  profile that never touches your personal Chrome. Sites treat it as the ordinary browser it is,
+  so pages, logins, pop-ups, downloads and file uploads behave exactly as in Chrome. The browser
+  panel shows a live view of the coworker's tab; click it to bring the Chrome window forward.
+
+### Fixed
+
+- Google sign-in ("Couldn't sign you in · This browser or app may not be secure"). Google refuses
+  every sign-in in a remote-controlled browser, so signing in now happens in a plain Chrome:
+  when you click Take over, or the moment Google rejects a sign-in, the same Sahkarmi profile
+  reopens as a completely normal Chrome window with nothing attached. Sign in to Google or any
+  other site there (2FA, OTPs and payments too), then click Hand back or just close the window;
+  the coworkers continue with every login you made.
+
 ## [0.7.3] - 2026-10-24
 
 ### Fixed

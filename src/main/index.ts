@@ -26,7 +26,8 @@ import { AgentService } from "../backend/agent-service";
 import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
-import { BrowserHost } from "../backend/browser-host";
+import { createCoworkerBrowser } from "../backend/browser-factory";
+import type { CoworkerBrowser } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
 import {
   resolveClaudeCli,
@@ -122,7 +123,7 @@ let mainWindow: BrowserWindow | null = null;
 nativeTheme.on("updated", () => {
   mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0");
 });
-let browserHost: BrowserHost | null = null;
+let browserHost: CoworkerBrowser | null = null;
 let agentService: AgentService | null = null;
 let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
@@ -135,6 +136,7 @@ let shutdownStarted = false;
 
 const SETUP_FILE = "sahkarmi-setup-v2.json";
 const BROWSER_STATE_FILE = "sahkarmi-browser-state-v1.json";
+const BROWSER_PROFILE_DIR = "coworker-browser-profile";
 
 const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string> = {
   "agent-setup": "https://github.com/ganguydhrubo/sahakarmi/blob/main/docs/TROUBLESHOOTING.md",
@@ -169,7 +171,7 @@ function configureContentSecurityPolicy(): void {
 function registerIpcHandlers(
   service: AgentService,
   mailbox: MailboxStore,
-  browser: BrowserHost,
+  browser: CoworkerBrowser,
   updater: UpdateService,
   setupFile: string,
   initializeAgent: () => Promise<void>,
@@ -957,10 +959,11 @@ if (!hasSingleInstanceLock) {
       await mailboxStore.initialize();
       configureApplicationProtocol();
       configureAttachmentProtocol(mailboxStore, store);
-      browserHost = new BrowserHost(
+      browserHost = createCoworkerBrowser(
         mainWindow,
         store.downloadsRoot,
         join(app.getPath("userData"), BROWSER_STATE_FILE),
+        join(app.getPath("userData"), BROWSER_PROFILE_DIR),
       );
       await browserHost.restore();
       const setupFile = join(app.getPath("userData"), SETUP_FILE);

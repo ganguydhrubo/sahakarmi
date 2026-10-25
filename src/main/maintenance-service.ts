@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { app, type BrowserWindow, dialog } from "electron";
 import type { AgentService } from "../backend/agent-service";
-import type { BrowserHost } from "../backend/browser-host";
+import type { CoworkerBrowser } from "../backend/browser-host";
 import type { MailboxStore } from "../backend/mailbox-store";
 import type { BotSummary, ExportResult } from "../shared/ipc";
 import type { UpdateService } from "./update-service";
@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 
 interface MaintenanceContext {
   service: AgentService;
-  browser: BrowserHost;
+  browser: CoworkerBrowser;
   mailbox: MailboxStore;
   updater: UpdateService;
   parentWindow: BrowserWindow | null;
