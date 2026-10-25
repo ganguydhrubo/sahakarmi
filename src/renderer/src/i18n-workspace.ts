@@ -340,7 +340,7 @@ export const workspaceEn = {
     "Disconnect {name}? Coworkers lose access to it until you connect it again.",
   appsKeyTitle: "Add your free Composio key",
   appsKeyIntro:
-    "1. Open Composio and create a free account (no card). 2. Copy the API key from Settings → API keys. 3. Paste it here and press Save key.",
+    "1. Press Open Composio and sign in with Google, GitHub or email (free, no card). 2. On the page that opens (Project settings → API keys), copy the key. 3. Paste it here and press Save key.",
   appsKeyPlaceholder: "Paste your Composio API key",
   appsKeySave: "Save key",
   appsKeySaving: "Checking…",
@@ -762,7 +762,7 @@ export const workspaceHi: WorkspaceDictionary = {
   appsDisconnectConfirm: "{name} को डिसकनेक्ट करें? दोबारा कनेक्ट करने तक सहकर्मी इसका इस्तेमाल नहीं कर पाएँगे.",
   appsKeyTitle: "अपनी मुफ़्त Composio key जोड़ें",
   appsKeyIntro:
-    "1. Composio खोलें और मुफ़्त खाता बनाएँ (कार्ड नहीं चाहिए). 2. Settings → API keys से API key कॉपी करें. 3. यहाँ पेस्ट करके Key सेव करें दबाएँ.",
+    "1. Composio खोलें दबाएँ और Google, GitHub या email से साइन इन करें (मुफ़्त, कार्ड नहीं चाहिए). 2. जो पेज खुले (Project settings → API keys), वहाँ से key कॉपी करें. 3. यहाँ पेस्ट करके Key सेव करें दबाएँ.",
   appsKeyPlaceholder: "अपनी Composio API key पेस्ट करें",
   appsKeySave: "Key सेव करें",
   appsKeySaving: "जाँच हो रही है…",
@@ -1176,7 +1176,7 @@ export const workspaceBn: WorkspaceDictionary = {
   appsDisconnectConfirm: "{name} বিচ্ছিন্ন করবেন? আবার যুক্ত না করা পর্যন্ত সহকর্মীরা এটি ব্যবহার করতে পারবে না।",
   appsKeyTitle: "আপনার বিনামূল্যের Composio key যোগ করুন",
   appsKeyIntro:
-    "1. Composio খুলে বিনামূল্যে অ্যাকাউন্ট খুলুন (কার্ড লাগবে না)। 2. Settings → API keys থেকে API key কপি করুন। 3. এখানে পেস্ট করে Key সেভ করুন চাপুন।",
+    "1. Composio খুলুন চাপুন এবং Google, GitHub বা email দিয়ে সাইন ইন করুন (বিনামূল্যে, কার্ড লাগবে না)। 2. যে পেজ খুলবে (Project settings → API keys), সেখান থেকে key কপি করুন। 3. এখানে পেস্ট করে Key সেভ করুন চাপুন।",
   appsKeyPlaceholder: "আপনার Composio API key পেস্ট করুন",
   appsKeySave: "Key সেভ করুন",
   appsKeySaving: "পরীক্ষা হচ্ছে…",

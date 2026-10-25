@@ -16,7 +16,8 @@ const PAGE_SIZE = 24;
 const PAGE_STEP = 48;
 const POLL_EVERY_MS = 3_000;
 const POLL_FOR_MS = 3 * 60_000;
-const COMPOSIO_URL = "https://app.composio.dev";
+/** Composio's API keys page; the sign-in page (Google, GitHub or email) comes first, then it lands here. */
+const COMPOSIO_URL = "https://dashboard.composio.dev/~/project/settings/api-keys";
 
 type Busy = { id: string; kind: "connect" | "disconnect" } | null;
 

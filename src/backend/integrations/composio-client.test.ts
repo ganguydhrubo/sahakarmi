@@ -378,7 +378,9 @@ describe("ComposioClient", () => {
     const fake = fakeComposio();
     const composio = client(fake);
     await composio.setApiKey("key_1234567890", { verify: false });
-    await expect(composio.initiateConnection("custom_crm")).rejects.toThrow(/app\.composio\.dev/);
+    await expect(composio.initiateConnection("custom_crm")).rejects.toThrow(
+      /dashboard\.composio\.dev/,
+    );
   });
 
   it("maps connection statuses to states the UI can show", async () => {

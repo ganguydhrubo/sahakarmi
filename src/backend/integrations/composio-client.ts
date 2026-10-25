@@ -26,7 +26,7 @@ export const OWNER_USER_ID = "sahkarmi-owner";
 /** Composio's Hobby plan: $0, no card, hard-capped at this many tool calls a month. */
 export const HOBBY_PLAN_TOOL_CALLS = 100_000;
 export const HOBBY_PLAN_NAME = "Hobby";
-export const COMPOSIO_DASHBOARD_URL = "https://app.composio.dev";
+export const COMPOSIO_DASHBOARD_URL = "https://dashboard.composio.dev";
 
 const KEY_FILE = "composio_api_key.txt";
 const CATALOGUE_FILE = "composio_toolkits.json";
@@ -206,7 +206,7 @@ export class ComposioClient {
       );
       if (res.status === 401 || res.status === 403) {
         throw new Error(
-          "Composio did not accept that key. Copy it again from app.composio.dev → Settings → API keys.",
+          "Composio did not accept that key. Copy it again from dashboard.composio.dev → Project settings → API keys.",
         );
       }
       if (!res.ok) throw new Error(await this.#failure("check the key", res));
@@ -599,7 +599,7 @@ export class ComposioClient {
     }
     if (toolkit.managedAuthSchemes.length === 0 && !toolkit.noAuth) {
       throw new Error(
-        `${toolkit.name} needs a one-time setup in Composio: open app.composio.dev → Auth configs → Create, pick ${toolkit.name}, then press Connect here again.`,
+        `${toolkit.name} needs a one-time setup in Composio: open dashboard.composio.dev → Auth configs → Create, pick ${toolkit.name}, then press Connect here again.`,
       );
     }
     const created = await this.#request(
