@@ -9,6 +9,7 @@ import type {
   UsageOverview,
 } from "../../shared/ipc";
 import { App } from "./App";
+import { setActivityStyle } from "./preferences";
 
 let emitAgentEvent: ((event: AgentEvent) => void) | undefined;
 let emitProviderSetup: ((state: unknown) => void) | undefined;
@@ -142,6 +143,8 @@ async function confirmOnboardingModel(): Promise<void> {
 
 describe("Sahkarmi connected desktop shell", () => {
   beforeEach(() => {
+    // Activity assertions below are written for the Hinglish vocabulary.
+    setActivityStyle("seedha");
     emitAgentEvent = undefined;
     emitAttachmentImport = undefined;
     window.localStorage.clear();
@@ -809,7 +812,9 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(await screen.findByRole("button", { name: /Marketplace/ }));
     const card = (await screen.findByRole("heading", { name: "GST Accountant" })).closest("li");
     if (!card) throw new Error("GST Accountant card not found");
-    await fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "+ Add" }));
+    await fireEvent.click(
+      within(card as HTMLElement).getByRole("button", { name: "Add GST Accountant" }),
+    );
     await waitFor(() => expect(window.sahkarmi.agent.createBot).toHaveBeenCalled());
     await waitFor(() =>
       expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith(
@@ -817,12 +822,29 @@ describe("Sahkarmi connected desktop shell", () => {
           botId: "bot-new",
           name: "GST Accountant",
           role: "GST and bookkeeping",
+          description: expect.stringContaining("UNDERSTAND"),
+          template: expect.objectContaining({ id: "gst-accountant", version: 2 }),
         }),
       ),
     );
     expect(
-      await within(card as HTMLElement).findByRole("button", { name: "Open" }),
+      await within(card as HTMLElement).findByRole("button", { name: "Open GST Accountant" }),
     ).toBeInTheDocument();
+
+    await fireEvent.input(screen.getByRole("searchbox", { name: "Search" }), {
+      target: { value: "reconcile 2B" },
+    });
+    expect(await screen.findByText("1 found")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Details: GST Accountant" }));
+    const dialog = await screen.findByRole("dialog", { name: "GST Accountant" });
+    expect(within(dialog).getByText(/filing or submitting any return/)).toBeInTheDocument();
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await fireEvent.input(screen.getByRole("searchbox", { name: "Search" }), {
+      target: { value: "" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "On my team" }));
+    expect(await screen.findByRole("heading", { name: "GST Accountant" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Sales Follow-up" })).toBeNull();
 
     await fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
     await fireEvent.click(await screen.findByRole("button", { name: "Install Project Plan" }));

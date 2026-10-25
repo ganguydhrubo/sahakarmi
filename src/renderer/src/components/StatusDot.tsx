@@ -1,16 +1,16 @@
 import type { CoworkerStatus } from "../../../shared/ipc";
-import { LABELS } from "../activity-hinglish";
+import { vocab } from "../activity-vocab";
 
-/** Coworker activity is always shown in Roman-script Hinglish. */
-const STATUS_LABELS: Record<CoworkerStatus, string> = {
-  idle: LABELS.statusIdle,
-  working: LABELS.statusWorking,
-  waiting: LABELS.statusWaiting,
-  error: LABELS.statusError,
-};
-
+/** Coworker status in the owner's chosen activity style (English or Hinglish). */
 export function statusLabel(status: CoworkerStatus): string {
-  return STATUS_LABELS[status];
+  const labels = vocab().LABELS;
+  const byStatus: Record<CoworkerStatus, string> = {
+    idle: labels.statusIdle,
+    working: labels.statusWorking,
+    waiting: labels.statusWaiting,
+    error: labels.statusError,
+  };
+  return byStatus[status];
 }
 
 export function StatusDot(props: { status: CoworkerStatus; class?: string }) {

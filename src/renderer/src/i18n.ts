@@ -1,4 +1,5 @@
 import { as, gu, kn, ml, mr, or, pa, ta, te } from "./i18n-indic";
+import { marketplaceBn, marketplaceEn, marketplaceHi } from "./i18n-marketplace";
 import { workspaceBn, workspaceEn, workspaceHi } from "./i18n-workspace";
 import { type LanguageCode, language } from "./preferences";
 
@@ -146,6 +147,7 @@ const en = {
   schedulePlaceholder: "What should {name} do on schedule?",
   close: "Close",
   ...workspaceEn,
+  ...marketplaceEn,
 };
 
 type Dictionary = typeof en;
@@ -293,6 +295,7 @@ const hi: Dictionary = {
   schedulePlaceholder: "{name} तय समय पर क्या करे?",
   close: "बंद करें",
   ...workspaceHi,
+  ...marketplaceHi,
 };
 
 const bn: Dictionary = {
@@ -437,6 +440,7 @@ const bn: Dictionary = {
   schedulePlaceholder: "{name} নির্ধারিত সময়ে কী করবে?",
   close: "বন্ধ",
   ...workspaceBn,
+  ...marketplaceBn,
 };
 
 const DICTIONARIES: Record<LanguageCode, Partial<Dictionary>> = {

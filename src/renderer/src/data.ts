@@ -7,6 +7,7 @@ import {
   BOT_AVATAR_SHAPES,
   type BotAvatarColor,
   type BotAvatarShape,
+  type BotTemplateRef,
   type MessageReaction,
   type ToolCallSummary,
 } from "../../shared/ipc";
@@ -55,6 +56,7 @@ export interface BotProfile {
   time: string;
   preview: string;
   updatedAt?: string | null;
+  template?: BotTemplateRef;
 }
 
 export function accentForAvatarColor(color: BotAvatarColor): BotAccent {

@@ -1,19 +1,7 @@
 import { createEffect, createMemo, createSignal, on, Show, untrack } from "solid-js";
 import { type ActivityState, isActivePhase } from "../activity";
-import {
-  format,
-  formatElapsed,
-  LABELS,
-  LONG_RUNNING,
-  MASTI_LONG,
-  MASTI_THINKING,
-  PRIMARY,
-  SECONDARY,
-  TOOL_FAILED_PRIMARY,
-  TOOL_FAILED_SECONDARY,
-  TOOL_PRIMARY,
-  TOOL_SECONDARY,
-} from "../activity-hinglish";
+import { format, formatElapsed } from "../activity-hinglish";
+import { vocab } from "../activity-vocab";
 import type { BotProfile } from "../data";
 import { type ActivityStyle, activityStyle } from "../preferences";
 import { AgentAvatar } from "./AgentAvatar";
@@ -35,35 +23,37 @@ export function mastiLine(
   seed: number,
 ): string | null {
   if (style !== "masti" || activity.phase !== "thinking") return null;
-  const pool = msInState >= LONG_WAIT_MS ? MASTI_LONG : MASTI_THINKING;
+  const pool = msInState >= LONG_WAIT_MS ? vocab().MASTI_LONG : vocab().MASTI_THINKING;
   return secondaryLine(pool, Math.floor(msInState / ROTATE_MS), seed);
 }
 
 export function primaryLine(activity: ActivityState): string {
-  if (activity.phase === "processing_result" && activity.toolFailed) return TOOL_FAILED_PRIMARY;
+  if (activity.phase === "processing_result" && activity.toolFailed)
+    return vocab().TOOL_FAILED_PRIMARY;
   if (
     (activity.phase === "executing_tool" || activity.phase === "researching") &&
     activity.category
   ) {
-    return TOOL_PRIMARY[activity.category];
+    return vocab().TOOL_PRIMARY[activity.category];
   }
-  return PRIMARY[activity.phase];
+  return vocab().PRIMARY[activity.phase];
 }
 
 export function secondaryPool(activity: ActivityState, msInState: number): string[] {
   if (!isActivePhase(activity.phase)) return [];
   if (["waiting_approval", "waiting_user", "paused"].includes(activity.phase)) {
-    return SECONDARY[activity.phase];
+    return vocab().SECONDARY[activity.phase];
   }
-  if (msInState >= LONG_WAIT_MS) return LONG_RUNNING;
-  if (activity.phase === "processing_result" && activity.toolFailed) return TOOL_FAILED_SECONDARY;
+  if (msInState >= LONG_WAIT_MS) return vocab().LONG_RUNNING;
+  if (activity.phase === "processing_result" && activity.toolFailed)
+    return vocab().TOOL_FAILED_SECONDARY;
   if (
     (activity.phase === "executing_tool" || activity.phase === "researching") &&
     activity.category
   ) {
-    return TOOL_SECONDARY[activity.category];
+    return vocab().TOOL_SECONDARY[activity.category];
   }
-  return SECONDARY[activity.phase];
+  return vocab().SECONDARY[activity.phase];
 }
 
 /** Deterministic rotation: consecutive slots never repeat while the pool has two or more lines. */
@@ -110,11 +100,13 @@ export function ActivityIndicator(props: {
   });
   const detail = () => {
     if (props.activity.retry?.attempt && props.activity.retry.maxRetries) {
-      return format(LABELS.retryAttempt, {
+      return format(vocab().LABELS.retryAttempt, {
         attempt: props.activity.retry.attempt,
         max: props.activity.retry.maxRetries,
       });
     }
+    // Raw shell commands mean nothing to most owners: they stay in the tooltip, not the line.
+    if (props.activity.category === "command") return null;
     return props.activity.detail;
   };
   const elapsed = () =>
@@ -174,7 +166,7 @@ export function ActivityIndicator(props: {
           </Show>
         </div>
         <Show when={active() && (secondary() || detail())}>
-          <div class="activity-secondary-row">
+          <div class="activity-secondary-row" title={props.activity.detail ?? undefined}>
             <Show when={secondary()} keyed>
               {(text) => <span class="activity-secondary">{text}</span>}
             </Show>

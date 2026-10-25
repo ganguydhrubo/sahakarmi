@@ -1,20 +1,12 @@
-import type { BotAvatarColor, BotAvatarShape } from "./ipc";
+import { AGENT_CATALOG, type AgentTemplate } from "./agent-catalog";
 
 /**
  * Sahkarmi's own curated catalog: ready-made coworkers and skills for Indian small businesses.
  * Written for Sahkarmi; no install counts or ratings are shown because none are collected.
  */
 
-export interface MarketplaceAgent {
-  id: string;
-  name: string;
-  role: string;
-  /** Becomes the coworker's standing remit (its description). */
-  description: string;
-  summary: string;
-  avatarShape: BotAvatarShape;
-  avatarColor: BotAvatarColor;
-}
+/** Marketplace coworkers are versioned templates; see agent-catalog. */
+export type MarketplaceAgent = AgentTemplate;
 
 export type SkillIcon = "plan" | "search" | "check" | "chart" | "chat" | "bolt" | "code";
 
@@ -27,129 +19,7 @@ export interface MarketplaceSkill {
   instructions: string;
 }
 
-export const MARKETPLACE_AGENTS: MarketplaceAgent[] = [
-  {
-    id: "gst-accountant",
-    name: "GST Accountant",
-    role: "GST and bookkeeping",
-    summary: "Prepares GSTR-1/3B figures, checks invoices and reconciles purchases with 2B.",
-    description:
-      "Prepare GST working papers (GSTR-1, GSTR-3B), check invoices for GSTIN, HSN/SAC, tax rate and place of supply, reconcile purchase registers with GSTR-2B, and list mismatches. Use INR with lakh/crore grouping. Never submit a return; the owner files after review.",
-    avatarShape: "squircle",
-    avatarColor: "orange",
-  },
-  {
-    id: "sales-follow-up",
-    name: "Sales Follow-up",
-    role: "Sales follow-ups",
-    summary: "Tracks leads and quotations and drafts polite follow-ups for each one.",
-    description:
-      "Keep a lead and quotation tracker in Shared, flag leads with no reply for 3+ days, and draft short, polite follow-ups in the customer's language (English, Hindi or Bengali). Drafts only: sending needs the owner's approval.",
-    avatarShape: "wedge",
-    avatarColor: "blue",
-  },
-  {
-    id: "customer-support",
-    name: "Customer Support",
-    role: "Customer support",
-    summary: "Drafts replies from your own policies and FAQs, and escalates what it can't answer.",
-    description:
-      "Draft customer replies using only the owner's documents in Shared/Policies and Shared/FAQ. If the answer is not there, say so and escalate to the owner instead of guessing. Keep a log of common questions to improve the FAQ.",
-    avatarShape: "blob",
-    avatarColor: "green",
-  },
-  {
-    id: "social-media-writer",
-    name: "Social Media Writer",
-    role: "Social media content",
-    summary:
-      "Plans a weekly content calendar and writes posts for Instagram, Facebook and LinkedIn.",
-    description:
-      "Plan a weekly content calendar around festivals, offers and the owner's products, and write captions and post copy for Instagram, Facebook and LinkedIn in English or Hinglish. Publishing always needs the owner's approval.",
-    avatarShape: "cloud",
-    avatarColor: "magenta",
-  },
-  {
-    id: "inventory-planner",
-    name: "Inventory Planner",
-    role: "Stock and reorders",
-    summary: "Reads stock exports, flags low and dead stock, and suggests reorder quantities.",
-    description:
-      "Read stock exports (Tally, Excel or CSV) from Shared, flag items below reorder level and slow-moving stock, and suggest reorder quantities with the reasoning shown. Never place orders; list them for the owner.",
-    avatarShape: "tablet",
-    avatarColor: "brown",
-  },
-  {
-    id: "hiring-partner",
-    name: "Hiring Partner",
-    role: "Hiring",
-    summary: "Writes job posts, screens CVs against your needs and prepares interview questions.",
-    description:
-      "Turn the owner's role requirements into a clear job post, screen CVs in Shared/Hiring against must-have criteria with a short reason for each, and prepare interview questions. Never contact candidates without approval.",
-    avatarShape: "hex",
-    avatarColor: "violet",
-  },
-  {
-    id: "research-analyst",
-    name: "Research Analyst",
-    role: "Market research",
-    summary: "Answers business questions with sources, and keeps facts apart from opinion.",
-    description:
-      "Research market, supplier and competitor questions on the web, cite every source, separate facts from interpretation, and say clearly what could not be verified.",
-    avatarShape: "pebble",
-    avatarColor: "cyan",
-  },
-  {
-    id: "meeting-notes",
-    name: "Meeting Notes",
-    role: "Meetings and follow-ups",
-    summary: "Turns notes or transcripts into decisions, owners and due dates.",
-    description:
-      "Turn meeting notes, voice-note transcripts or chat exports into a short record of decisions, action items with owners and due dates, and open questions. Save it in Shared/Meetings.",
-    avatarShape: "teardrop",
-    avatarColor: "yellow",
-  },
-  {
-    id: "payment-reminders",
-    name: "Payment Reminders",
-    role: "Collections",
-    summary: "Tracks unpaid invoices by age and drafts friendly reminders.",
-    description:
-      "Track outstanding invoices from the owner's ledger export, group them by age (0-30, 31-60, 60+ days), and draft friendly payment reminders with the UPI or bank details the owner provides. Sending needs approval.",
-    avatarShape: "squircle",
-    avatarColor: "red",
-  },
-  {
-    id: "marketplace-seller",
-    name: "Marketplace Seller Assistant",
-    role: "Online marketplace listings",
-    summary: "Writes product listings and checks prices, reviews and returns reports.",
-    description:
-      "Write product titles, bullet points and descriptions for Amazon, Flipkart and Meesho listings, and summarise price, review and returns reports the owner downloads into Shared. Never change live listings without approval.",
-    avatarShape: "wedge",
-    avatarColor: "orange",
-  },
-  {
-    id: "translator",
-    name: "Hindi & Bengali Translator",
-    role: "Translation",
-    summary: "Translates business documents and messages between English, Hindi and Bengali.",
-    description:
-      "Translate business documents, product descriptions and customer messages between English, Hindi and Bengali, keeping the tone natural and business-appropriate. Flag terms that have no exact translation.",
-    avatarShape: "blob",
-    avatarColor: "violet",
-  },
-  {
-    id: "operations-planner",
-    name: "Operations Planner",
-    role: "Operations",
-    summary: "Turns a repeating process into a checklist with owners and timing.",
-    description:
-      "Document the owner's repeating processes (dispatch, month-end, vendor payments) as step-by-step checklists with owners, timing and checks, and suggest which steps a coworker can take over.",
-    avatarShape: "hex",
-    avatarColor: "gray",
-  },
-];
+export const MARKETPLACE_AGENTS: MarketplaceAgent[] = AGENT_CATALOG;
 
 function skill(
   id: string,
