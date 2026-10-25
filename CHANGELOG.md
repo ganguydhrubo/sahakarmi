@@ -5,6 +5,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-25
+
 ### Added
 
 - Settings > Voice: speak instead of typing, on this PC. Download a model once and dictation
