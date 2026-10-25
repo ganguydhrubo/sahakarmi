@@ -170,7 +170,8 @@ body,
   height: 100%;
   min-width: 0;
   margin: 0;
-  overflow: hidden;
+  /* clip, not hidden: focus or scrollIntoView can never shift the whole app shell. */
+  overflow: clip;
 }
 
 body {
@@ -611,7 +612,7 @@ textarea:focus-visible {
   height: 100%;
   margin: 0;
   grid-template-columns: var(--left-panel-width, 275px) 0 minmax(0, 1fr);
-  overflow: hidden;
+  overflow: clip;
   border: 0;
   border-radius: 0;
   background: var(--sahkarmi-main);
@@ -6755,6 +6756,12 @@ body {
   border-left-color: var(--success-fill);
 }
 
+.approval-card-pending.approval-risk-high {
+  border-left-color: var(--danger);
+  background:
+    linear-gradient(90deg, rgb(var(--danger-rgb) / 0.05), transparent 40%), var(--surface-1);
+}
+
 .approval-card-rejected {
   border-left-color: var(--brand-sindoor);
 }
@@ -10132,4 +10139,55 @@ fieldset.memory-filters {
   min-width: 0;
   border: 0;
   padding: 0;
+}
+
+/* Empty chat: three ready-made first tasks, one click to fill the composer. */
+.starter-prompts {
+  display: grid;
+  gap: 10px;
+  max-width: 640px;
+  margin: 8px 0 0;
+}
+
+.starter-prompts-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.starter-prompts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conversation-panel .starter-prompt {
+  border: 1px solid rgb(var(--primary-rgb) / 0.35);
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb) / 0.06);
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.conversation-panel .starter-prompt:hover {
+  border-color: rgb(var(--primary-rgb) / 0.7);
+  background: rgb(var(--primary-rgb) / 0.12);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-panel .starter-prompt,
+  .conversation-panel .starter-prompt:hover {
+    transition: none;
+    transform: none;
+  }
 }

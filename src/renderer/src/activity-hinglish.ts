@@ -223,7 +223,7 @@ export const TOOL_FAILED_SECONDARY = [
 
 /** Short labels used across the app (status dots, tool cards, task queue, thinking). */
 export const LABELS = {
-  statusIdle: "Free hai",
+  statusIdle: "Available hai",
   statusWorking: "Kaam chal raha hai",
   statusWaiting: "Aapka intezaar hai",
   statusError: "Dhyan dijiye",

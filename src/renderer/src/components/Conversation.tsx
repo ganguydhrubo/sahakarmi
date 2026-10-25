@@ -41,6 +41,7 @@ import { featureOn } from "../features";
 import { t } from "../i18n";
 import { markdownToPlainText } from "../markdown";
 import { activityStyle } from "../preferences";
+import { starterPrompts } from "../starter-prompts";
 import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
 import { ApprovalCard } from "./ApprovalsView";
@@ -2090,6 +2091,37 @@ export function Conversation(props: ConversationProps) {
             <div class="time-marker">
               <span>{props.messages[0]?.time ?? "now"}</span>
             </div>
+          </Show>
+          <Show
+            when={
+              agentReady() &&
+              props.loaded &&
+              props.messages.length === 0 &&
+              !onboardingActive() &&
+              !props.activeTurnId
+            }
+          >
+            <section class="starter-prompts message-entry-animated" aria-label={t("starterTitle")}>
+              <p class="starter-prompts-title">{t("starterTitle")}</p>
+              <div class="starter-prompts-list">
+                <For each={starterPrompts(props.bot)}>
+                  {(prompt) => (
+                    <button
+                      type="button"
+                      class="starter-prompt"
+                      onClick={() => {
+                        updateCurrentDraft({ text: prompt });
+                        requestAnimationFrame(() =>
+                          document.querySelector<HTMLElement>(".composer-editor-surface")?.focus(),
+                        );
+                      }}
+                    >
+                      {prompt}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </section>
           </Show>
           <Show when={agentReady() && onboardingActive() && !props.activeTurnId}>
             <article class="message-entry message-entry-animated message-entry-bot onboarding-message">

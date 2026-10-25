@@ -98,7 +98,10 @@ export function ApprovalCard(props: {
   }
 
   return (
-    <li class={`approval-card approval-card-${props.approval.status}`}>
+    <li
+      class={`approval-card approval-card-${props.approval.status}`}
+      classList={{ "approval-risk-high": isHighRisk(props.approval) }}
+    >
       <div class="approval-card-head">
         <button
           type="button"
@@ -194,4 +197,22 @@ function formatWhen(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
     date,
   );
+}
+
+const HIGH_RISK_PERMISSIONS = new Set([
+  "file_delete",
+  "external_messages",
+  "publication",
+  "business_actions",
+  "payments",
+  "account_settings",
+  "official_forms",
+]);
+
+/** Money, outside messages, publishing and deleting get a red edge so they never look routine. */
+function isHighRisk(approval: ApprovalRequest): boolean {
+  if (approval.kind === "permission") {
+    return HIGH_RISK_PERMISSIONS.has(approval.permissionCategory ?? "");
+  }
+  return ["payment", "message", "submission"].includes(approval.category);
 }

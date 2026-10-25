@@ -89,7 +89,7 @@ export const TOOL_FAILED_PRIMARY = "A step returned an error; looking into it…
 export const TOOL_FAILED_SECONDARY = ["Working out what went wrong…", "Deciding the next step…"];
 
 export const LABELS = {
-  statusIdle: "Free",
+  statusIdle: "Available",
   statusWorking: "Working",
   statusWaiting: "Needs you",
   statusError: "Needs attention",
