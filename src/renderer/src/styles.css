@@ -170,7 +170,8 @@ body,
   height: 100%;
   min-width: 0;
   margin: 0;
-  overflow: hidden;
+  /* clip, not hidden: focus or scrollIntoView can never shift the whole app shell. */
+  overflow: clip;
 }
 
 body {
@@ -611,7 +612,7 @@ textarea:focus-visible {
   height: 100%;
   margin: 0;
   grid-template-columns: var(--left-panel-width, 275px) 0 minmax(0, 1fr);
-  overflow: hidden;
+  overflow: clip;
   border: 0;
   border-radius: 0;
   background: var(--sahkarmi-main);
@@ -4198,6 +4199,7 @@ textarea {
 /* The whole composer already shows the focus ring; no second box around the text. */
 .composer-editor-surface:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .composer-editor-surface[aria-disabled="true"] {
@@ -5468,11 +5470,30 @@ body {
   box-shadow: 0 0 0 2px var(--warning);
 }
 
+/* Unread count pinned to the avatar's top-right corner. */
+.team-row-unread-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 2px solid var(--sidebar-bg, var(--surface));
+  border-radius: 999px;
+  background: var(--danger, #c62828);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .pinned-coworker-name {
   max-width: 52px;
   overflow: hidden;
-  color: rgb(var(--ink-rgb) / 0.75);
-  font-size: 10.5px;
+  color: rgb(var(--ink-rgb) / 0.8);
+  font-size: 11.5px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5673,10 +5694,23 @@ body {
 
 .task-strip-counts {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 14px;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* Narrow windows: counts and buttons stay on one line instead of stacking word by word. */
+.task-count,
+.task-strip-button {
+  white-space: nowrap;
+}
+
+@container (max-width: 1100px) {
+  .task-strip-counts {
+    gap: 10px;
+  }
 }
 
 .task-count b {
@@ -6605,6 +6639,20 @@ body {
   padding: 8px 12px;
 }
 
+.takeover-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.takeover-banner-actions button:not(.button-primary) {
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 6px 14px;
+}
+
 .takeover-banner p {
   margin: 0;
 }
@@ -6730,6 +6778,12 @@ body {
   border-left-color: var(--success-fill);
 }
 
+.approval-card-pending.approval-risk-high {
+  border-left-color: var(--danger);
+  background:
+    linear-gradient(90deg, rgb(var(--danger-rgb) / 0.05), transparent 40%), var(--surface-1);
+}
+
 .approval-card-rejected {
   border-left-color: var(--brand-sindoor);
 }
@@ -6801,6 +6855,29 @@ body {
   margin: 0 0 10px;
   color: var(--text-secondary);
   white-space: pre-wrap;
+}
+
+.approval-technical {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.approval-technical summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.approval-technical pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--sahkarmi-wash, rgba(0, 0, 0, 0.04));
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
 }
 
 .approval-note input {
@@ -7111,6 +7188,20 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
   padding: 6px 12px;
   font: 600 13px var(--font-ui);
   cursor: pointer;
+}
+
+/* The rule above flattens every centre-view button; selected options must still look selected. */
+.center-view
+:is(
+  .segmented button.segmented-active,
+  button.cadence-kind[aria-pressed="true"],
+  .calendar-modes button[aria-pressed="true"]
+):not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not([role="tab"]):not(
+  .marketplace-filter
+) {
+  border-color: var(--brand-indigo);
+  background: var(--brand-indigo);
+  color: #fbf7f0;
 }
 
 .center-view button:disabled {
@@ -9929,4 +10020,196 @@ ol.md-list {
 .conversation-panel:has(> .browser-panel) .conversation-header-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+/* Team memory: same light surfaces as the other centre views. */
+.memory-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.memory-search {
+  width: 220px;
+  max-width: 40vw;
+}
+
+.memory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 14px;
+}
+
+.memory-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.memory-card-head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.memory-kind {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgb(var(--ink-rgb) / 0.06);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.memory-content {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.memory-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.memory-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.memory-dialog {
+  width: min(480px, 100%);
+}
+
+.memory-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.memory-field input,
+.memory-field select,
+.memory-field textarea {
+  width: 100%;
+  font-weight: 400;
+}
+
+.memory-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Automatic notes to a coworker (approval results, browser hand-back): quiet, centred, not a chat bubble. */
+.message-entry-system {
+  align-items: center;
+}
+
+.message-entry-system .message-shell {
+  justify-content: center;
+}
+
+.message-entry-system .user-bubble {
+  max-width: min(560px, 92%);
+  border: 1px dashed rgb(var(--ink-rgb) / 0.18);
+  border-radius: 10px;
+  background: rgb(var(--ink-rgb) / 0.03);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  padding: 6px 12px;
+}
+
+.message-entry-system .user-bubble .message-copy {
+  color: inherit;
+}
+
+fieldset.memory-filters {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+
+/* Empty chat: three ready-made first tasks, one click to fill the composer. */
+.starter-prompts {
+  display: grid;
+  gap: 10px;
+  max-width: 640px;
+  margin: 8px 0 0;
+}
+
+.starter-prompts-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.starter-prompts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conversation-panel .starter-prompt {
+  border: 1px solid rgb(var(--primary-rgb) / 0.35);
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb) / 0.06);
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.conversation-panel .starter-prompt:hover {
+  border-color: rgb(var(--primary-rgb) / 0.7);
+  background: rgb(var(--primary-rgb) / 0.12);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-panel .starter-prompt,
+  .conversation-panel .starter-prompt:hover {
+    transition: none;
+    transform: none;
+  }
 }

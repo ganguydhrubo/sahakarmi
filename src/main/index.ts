@@ -360,6 +360,9 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.browserHandBack, (note: unknown) =>
     service.handBackBrowser(typeof note === "string" && note.trim() ? note : null),
   );
+  handleTrusted(IPC_CHANNELS.browserDeclineTakeover, (note: unknown) =>
+    service.declineBrowserTakeover(typeof note === "string" && note.trim() ? note : null),
+  );
 
   handleTrusted(IPC_CHANNELS.teamListWorkspaces, () => service.listWorkspaces());
   handleTrusted(IPC_CHANNELS.teamCreateWorkspace, (name: unknown) =>

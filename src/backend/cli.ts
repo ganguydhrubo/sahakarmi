@@ -219,7 +219,7 @@ export async function resolveAntigravityCli(): Promise<AcpCliInfo> {
     };
   }
   throw new CodexCliError(
-    "Google Antigravity is not set up yet. Click Connect next to Google Antigravity in Settings.",
+    "Google Antigravity is not set up yet. Use Connect to set it up.",
     "missing",
   );
 }

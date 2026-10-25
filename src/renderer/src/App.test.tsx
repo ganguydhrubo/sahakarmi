@@ -948,7 +948,7 @@ describe("Sahkarmi connected desktop shell", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Chief, New coworker, Free hai" }),
+      screen.getByRole("button", { name: "Chief, New coworker, Available hai" }),
     ).toBeInTheDocument();
   });
 

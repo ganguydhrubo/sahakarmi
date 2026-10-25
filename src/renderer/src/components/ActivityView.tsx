@@ -155,7 +155,12 @@ export function ActivityView(props: { bots: BotProfile[] }) {
           </table>
         </Show>
         <div class="settings-buttons">
-          <button type="button" class="button-danger-quiet" onClick={() => void clear()}>
+          <button
+            type="button"
+            class="button-danger-quiet"
+            disabled={entries().length === 0}
+            onClick={() => void clear()}
+          >
             {t("activityClear")}
           </button>
         </div>
