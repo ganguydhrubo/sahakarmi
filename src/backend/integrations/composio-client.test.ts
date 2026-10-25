@@ -7,6 +7,7 @@ import {
   connectionState,
   DEFAULT_COMPOSIO_BASE_URL,
   HOBBY_PLAN_TOOL_CALLS,
+  normalizeComposioKey,
   OWNER_USER_ID,
 } from "./composio-client";
 
@@ -133,7 +134,10 @@ function fakeComposio(options: FakeOptions = {}) {
     calls.push({ method, url, body, headers });
     const path = url.pathname.replace("/api/v3.1", "");
     if (path === "/auth_configs" && method === "GET" && url.searchParams.get("limit") === "1") {
-      return json(options.authCheck ?? 200, { items: [] });
+      const status = options.authCheck ?? 200;
+      return status === 401
+        ? json(401, { error: { message: "Invalid API key", slug: "APIKey_InvalidAPIKey" } })
+        : json(status, { items: [] });
     }
     if (path === "/toolkits")
       return json(200, { items: options.toolkits ?? TOOLKITS, next_cursor: null });
@@ -268,9 +272,36 @@ describe("ComposioClient", () => {
   it("refuses a key Composio rejects and saves nothing", async () => {
     const fake = fakeComposio({ authCheck: 401 });
     const composio = client(fake);
-    await expect(composio.setApiKey("bad_key_0000000000")).rejects.toThrow(/did not accept/);
+    await expect(composio.setApiKey("bad_key_0000000000")).rejects.toThrow(
+      /not valid \(invalid API key\).*starts with ak_/,
+    );
     expect(await composio.getApiKey()).toBeNull();
     await expect(readFile(composio.keyFilePath, "utf8")).rejects.toThrow();
+  });
+
+  it("cleans a pasted key: quotes, labels, spaces and invisible characters", async () => {
+    expect(normalizeComposioKey('  "ak_abc123"  ')).toBe("ak_abc123");
+    expect(normalizeComposioKey("COMPOSIO_API_KEY=ak_abc123")).toBe("ak_abc123");
+    expect(normalizeComposioKey("x-api-key: ak_abc 123")).toBe("ak_abc123");
+    expect(normalizeComposioKey(`ak_abc${String.fromCharCode(0x200b)}123\n`)).toBe("ak_abc123");
+    const fake = fakeComposio();
+    const composio = client(fake);
+    await composio.setApiKey(" 'ak_live_1234567890' ");
+    expect(fake.calls[0]?.headers["x-api-key"]).toBe("ak_live_1234567890");
+  });
+
+  it("explains a user key (uak_) instead of sending it", async () => {
+    const fake = fakeComposio();
+    const composio = client(fake);
+    await expect(composio.setApiKey("uak_1234567890abcdef")).rejects.toThrow(
+      /user key.*Project API key.*ak_/,
+    );
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it("explains a limited key that Composio refuses with 403", async () => {
+    const composio = client(fakeComposio({ authCheck: 403 }));
+    await expect(composio.setApiKey("ak_scoped_1234567890")).rejects.toThrow(/limited/);
   });
 
   it("lists every toolkit with the owner's active connections, and caches the catalogue on disk", async () => {

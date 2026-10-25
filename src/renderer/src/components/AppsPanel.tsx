@@ -18,6 +18,13 @@ const POLL_EVERY_MS = 3_000;
 const POLL_FOR_MS = 3 * 60_000;
 /** Composio's API keys page; the sign-in page (Google, GitHub or email) comes first, then it lands here. */
 const COMPOSIO_URL = "https://dashboard.composio.dev/~/project/settings/api-keys";
+const LOGO = "https://logos.composio.dev/api/";
+
+/** Electron wraps errors from the main process; the owner only needs the message itself. */
+function plainError(cause: unknown): string {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "");
+}
 
 type Busy = { id: string; kind: "connect" | "disconnect" } | null;
 
@@ -58,7 +65,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
       setApps(list);
       setError(null);
     } catch (cause) {
-      if (!disposed) setError(cause instanceof Error ? cause.message : String(cause));
+      if (!disposed) setError(plainError(cause));
     } finally {
       if (!disposed) setLoading(false);
     }
@@ -101,7 +108,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
       setLoading(true);
       await refresh(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(plainError(cause));
     } finally {
       setSavingKey(false);
     }
@@ -122,7 +129,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
       setNotice(t("appsSignInOpened", { name: app.name }));
       await waitForConnection(app.id, connectionId);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(plainError(cause));
     } finally {
       setBusy(null);
     }
@@ -168,7 +175,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
       await window.sahkarmi.composio.disconnect(app.connectedAccountId);
       await refresh(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(plainError(cause));
     } finally {
       setBusy(null);
     }
@@ -211,9 +218,26 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
 
       <Show when={keyOpen()}>
         <form class="settings-card apps-key-card" onSubmit={(event) => void saveKey(event)}>
-          <h2>{t("appsKeyTitle")}</h2>
+          <h2 class="apps-key-title">
+            <img src={`${LOGO}composio`} alt="" width="22" height="22" />
+            {t("appsKeyTitle")}
+          </h2>
           <p>{t("appsKeyWhy")}</p>
-          <p>{t("appsKeyIntro")}</p>
+          <ol class="apps-key-steps">
+            <li>
+              <span class="apps-key-step-text">{t("appsKeyStep1")}</span>
+              <span class="apps-key-step-logos" aria-hidden="true">
+                <img src={`${LOGO}googlesuper`} alt="" width="18" height="18" />
+                <img src={`${LOGO}github`} alt="" width="18" height="18" />
+              </span>
+            </li>
+            <li>
+              <span class="apps-key-step-text">{t("appsKeyStep2")}</span>
+            </li>
+            <li>
+              <span class="apps-key-step-text">{t("appsKeyStep3")}</span>
+            </li>
+          </ol>
           <div class="apps-key-form">
             <input
               ref={keyField}

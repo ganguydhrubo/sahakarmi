@@ -343,8 +343,9 @@ export const workspaceEn = {
   appsDisconnectConfirm:
     "Disconnect {name}? Coworkers lose access to it until you connect it again.",
   appsKeyTitle: "Add your free Composio key",
-  appsKeyIntro:
-    "1. Press Open Composio and sign in with Google, GitHub or email (free, no card). 2. On the page that opens (Project settings → API keys), copy the key. 3. Paste it here and press Save key.",
+  appsKeyStep1: "Open Composio and sign up free with Google, GitHub or email. No card needed.",
+  appsKeyStep2: "Go to Settings → API keys and copy the Project API key. It starts with ak_.",
+  appsKeyStep3: "Paste it below and press Save key.",
   appsKeyPlaceholder: "Paste your Composio API key",
   appsKeySave: "Save key",
   appsKeySaving: "Checking…",
@@ -802,8 +803,9 @@ export const workspaceHi: WorkspaceDictionary = {
   appsDisconnect: "डिसकनेक्ट करें",
   appsDisconnectConfirm: "{name} को डिसकनेक्ट करें? दोबारा कनेक्ट करने तक सहकर्मी इसका इस्तेमाल नहीं कर पाएँगे.",
   appsKeyTitle: "अपनी मुफ़्त Composio key जोड़ें",
-  appsKeyIntro:
-    "1. Composio खोलें दबाएँ और Google, GitHub या email से साइन इन करें (मुफ़्त, कार्ड नहीं चाहिए). 2. जो पेज खुले (Project settings → API keys), वहाँ से key कॉपी करें. 3. यहाँ पेस्ट करके Key सेव करें दबाएँ.",
+  appsKeyStep1: "Composio खोलें और Google, GitHub या email से मुफ़्त साइन अप करें. कार्ड नहीं चाहिए.",
+  appsKeyStep2: "Settings → API keys में जाकर Project API key कॉपी करें. यह ak_ से शुरू होती है.",
+  appsKeyStep3: "नीचे पेस्ट करें और Key सेव करें दबाएँ.",
   appsKeyPlaceholder: "अपनी Composio API key पेस्ट करें",
   appsKeySave: "Key सेव करें",
   appsKeySaving: "जाँच हो रही है…",
@@ -1252,8 +1254,9 @@ export const workspaceBn: WorkspaceDictionary = {
   appsDisconnect: "বিচ্ছিন্ন করুন",
   appsDisconnectConfirm: "{name} বিচ্ছিন্ন করবেন? আবার যুক্ত না করা পর্যন্ত সহকর্মীরা এটি ব্যবহার করতে পারবে না।",
   appsKeyTitle: "আপনার বিনামূল্যের Composio key যোগ করুন",
-  appsKeyIntro:
-    "1. Composio খুলুন চাপুন এবং Google, GitHub বা email দিয়ে সাইন ইন করুন (বিনামূল্যে, কার্ড লাগবে না)। 2. যে পেজ খুলবে (Project settings → API keys), সেখান থেকে key কপি করুন। 3. এখানে পেস্ট করে Key সেভ করুন চাপুন।",
+  appsKeyStep1: "Composio খুলুন এবং Google, GitHub বা email দিয়ে বিনামূল্যে সাইন আপ করুন। কার্ড লাগবে না।",
+  appsKeyStep2: "Settings → API keys-এ গিয়ে Project API key কপি করুন। এটি ak_ দিয়ে শুরু হয়।",
+  appsKeyStep3: "নিচে পেস্ট করে Key সেভ করুন চাপুন।",
   appsKeyPlaceholder: "আপনার Composio API key পেস্ট করুন",
   appsKeySave: "Key সেভ করুন",
   appsKeySaving: "পরীক্ষা হচ্ছে…",

@@ -10562,3 +10562,52 @@ fieldset.memory-filters {
   color: var(--success);
   background: var(--success-soft);
 }
+
+/* Key card: Composio mark in the title and three numbered steps with sign-in logos. */
+.apps-key-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.apps-key-title img,
+.apps-key-step-logos img {
+  flex: none;
+  object-fit: contain;
+}
+
+.apps-key-steps {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 12px;
+  padding: 0;
+  list-style: none;
+  counter-reset: apps-key-step;
+}
+
+.apps-key-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  counter-increment: apps-key-step;
+}
+
+.apps-key-steps li::before {
+  content: counter(apps-key-step);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgb(var(--primary-rgb) / 0.14);
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.apps-key-step-logos {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}

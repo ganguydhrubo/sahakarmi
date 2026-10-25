@@ -186,7 +186,12 @@ export class ComposioClient {
 
   /** Saves the key after Composio has accepted it once; an empty key removes the saved one. */
   async setApiKey(key: string, options: { verify?: boolean } = {}): Promise<ComposioStatus> {
-    const trimmed = key.trim();
+    const trimmed = normalizeComposioKey(key);
+    if (/^uak_/i.test(trimmed)) {
+      throw new Error(
+        "That is a Composio user key (it starts with uak_). Sahkarmi needs the Project API key, which starts with ak_: dashboard.composio.dev → Settings → API keys.",
+      );
+    }
     if (!trimmed) {
       this.#cachedKey = null;
       this.#keyLoaded = true;
@@ -204,9 +209,15 @@ export class ComposioClient {
         { method: "GET" },
         { key: trimmed, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
       );
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
+        const reason = await composioReason(res);
         throw new Error(
-          "Composio did not accept that key. Copy it again from dashboard.composio.dev → Project settings → API keys.",
+          `Composio says this key is not valid${reason ? ` (${reason})` : ""}. Copy the Project API key again from dashboard.composio.dev → Settings → API keys; it starts with ak_.`,
+        );
+      }
+      if (res.status === 403) {
+        throw new Error(
+          "This Composio key is limited and cannot manage app sign-ins. Create a full Project API key under dashboard.composio.dev → Settings → API keys and paste that one.",
         );
       }
       if (!res.ok) throw new Error(await this.#failure("check the key", res));
@@ -1038,4 +1049,30 @@ function describeNetworkError(error: unknown, timeoutMs: number): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The key as Composio expects it. People paste it with quotes, a label such as
+ * "COMPOSIO_API_KEY=" or "x-api-key:", line breaks or invisible characters from a web page.
+ */
+export function normalizeComposioKey(raw: string): string {
+  let key = raw.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, " ").trim();
+  key = key.replace(/^(?:export\s+)?(?:COMPOSIO_API_KEY|x-api-key)\s*[:=]\s*/i, "");
+  key = key.replace(/^["'`]+|["'`]+$/g, "");
+  return key.replace(/\s+/g, "");
+}
+
+/** Composio's own words for a refused key, e.g. "Invalid API key". Never includes the key. */
+async function composioReason(res: Response): Promise<string> {
+  try {
+    const body: unknown = await res.clone().json();
+    const error =
+      typeof body === "object" && body !== null ? (body as { error?: unknown }).error : null;
+    const slug =
+      typeof error === "object" && error !== null ? (error as { slug?: unknown }).slug : null;
+    if (slug === "APIKey_InvalidAPIKey") return "invalid API key";
+    return typeof slug === "string" ? slug.replace(/_/g, " ") : "";
+  } catch {
+    return "";
+  }
 }

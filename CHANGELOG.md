@@ -5,6 +5,23 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-25
+
+### Added
+
+- Marketplace > Apps lists all 1,660 Composio apps with their real logos before you add a key.
+  The key card opens only when you press Connect or Add key.
+- The key card shows three simple steps with the Composio, Google and GitHub logos, and Open
+  Composio goes straight to the API keys page at dashboard.composio.dev.
+
+### Fixed
+
+- A good Composio key could be refused when it was pasted with quotes, a label such as
+  COMPOSIO_API_KEY=, spaces or hidden characters. Sahkarmi now cleans the paste first.
+- A refused key now says why in plain words: a user key (uak_) instead of the Project API key
+  (ak_), a key Composio calls invalid, or a limited key. The technical "Error invoking remote
+  method" prefix is gone.
+
 ## [0.9.1] - 2026-10-25
 
 ### Fixed
