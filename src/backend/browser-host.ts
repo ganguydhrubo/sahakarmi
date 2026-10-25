@@ -811,20 +811,28 @@ function browserRequestHeaders(
 }
 
 /**
- * One plain Chromium identity for every site: Electron's own User-Agent minus the Electron and
- * app product tokens, which is exactly what Chrome of the same version sends. Pretending to be
- * another browser on one host (a Firefox string on accounts.google.com, as before) contradicts
- * the client hints and JavaScript fingerprint of the real engine, and Google answers that with
- * "This browser or app may not be secure". Sign-ins must work everywhere, so nothing is special-
- * cased per site.
+ * The browser's identity: Electron's own User-Agent minus the Electron and app product tokens on
+ * ordinary sites. Google's sign-in pages get the honest Electron token back, as an embedded app
+ * browser should send; a Chrome-looking string that does not behave like Chrome is what Google
+ * answers with "This browser or app may not be secure".
  */
-function browserUserAgent(sessionUserAgent: string, _url?: string): string {
-  return removeUserAgentProducts(sessionUserAgent, [
+export function browserUserAgent(sessionUserAgent: string, url?: string): string {
+  const clean = removeUserAgentProducts(sessionUserAgent, [
     "Electron",
     app.getName(),
     "Sahkarmi",
     "sahkarmi",
   ]);
+  if (!url || !isGoogleSignInHost(url)) return clean;
+  return clean.replace(/(Chrome\/\S+)/u, `$1 Electron/${process.versions.electron}`);
+}
+
+function isGoogleSignInHost(url: string): boolean {
+  try {
+    return new URL(url).hostname.replace(/\.+$/u, "") === "accounts.google.com";
+  } catch {
+    return false;
+  }
 }
 
 function removeUserAgentProducts(userAgent: string, products: string[]): string {
