@@ -5,6 +5,19 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-25
+
+### Fixed
+
+- GitHub Copilot, Cursor, Kimi Code and the other new agents connected but never answered
+  ("The selected model default is no longer reported"). They answer now.
+- Clicking Connect again while GitHub Copilot was still installing started a second install that
+  failed and left Copilot looking "not installed". A second click now shows the install in
+  progress, and Sahkarmi carries on when the tool did land.
+- GitHub Copilot signs in on its own: with your GitHub CLI sign-in when you have one, otherwise
+  GitHub's page opens and Sahkarmi shows the code to enter there. No console to type in.
+- A failed connect is now written to the app log, so it can be traced.
+
 ## [0.9.0] - 2026-10-25
 
 ### Added

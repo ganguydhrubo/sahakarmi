@@ -315,6 +315,10 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
           service?.listBots().find((bot) => bot.id === "meera-support")?.model ===
           DEFAULT_MODEL_FOR_PROVIDER.antigravity,
       );
+      // The notice follows the model switch; on a busy machine it can arrive a moment later.
+      await waitFor(() =>
+        events.some((event) => event.type === "error" && event.code === "fallback_model"),
+      );
       const note = events.find(
         (event) => event.type === "error" && event.code === "fallback_model",
       );
