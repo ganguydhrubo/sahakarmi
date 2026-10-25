@@ -38,10 +38,10 @@ import {
 } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { MailboxStore } from "../backend/mailbox-store";
+import { importOpenBotRoutinesOnce } from "../backend/openbot-routine-migrator";
 import { OrchestratorStore } from "../backend/orchestrator-store";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
-
 import { createRoutineExecutor } from "../backend/routine-executor";
 import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
@@ -1008,7 +1008,20 @@ if (!hasSingleInstanceLock) {
       );
       const routines = new RoutineStore(app.getPath("userData"));
       await routines.initialize();
+      // Bring the owner's OpenBot routines over once (paused), so a switch loses nothing.
+      await importOpenBotRoutinesOnce({
+        userDataPath: app.getPath("userData"),
+        openBotDatabase: join(app.getPath("appData"), "OpenBot", "openbot.db"),
+        routineCount: routines.state().routines.length,
+        coworkers: store.list(),
+        save: (input) => routines.save(input),
+      })
+        .then((report) => {
+          if (report) appLog.write("info", "Imported OpenBot routines", report);
+        })
+        .catch((error) => appLog.write("warn", "Could not import OpenBot routines", error));
       routineStore = routines;
+      service.setRoutineHost(routines);
       routines.on("changed", (state) => forwardAgentEvent({ type: "routines-changed", state }));
       const sharedFiles = new SharedFiles(store.sharedRoot);
       const { autoUpdater } = electronUpdater;

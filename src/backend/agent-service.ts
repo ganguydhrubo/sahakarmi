@@ -24,11 +24,15 @@ import type {
   QueuedMessageReceipt,
   QueueSnapshot,
   RespondToPromptInput,
+  RoutineCadence,
+  RoutinesState,
+  SaveRoutineInput,
   SendMessageInput,
   SetMessageReactionInput,
   UpdateBotInput,
   UsageLimitWindow,
   UsageOverview,
+  Weekday,
   WorkspaceState,
 } from "../shared/ipc";
 import {
@@ -136,6 +140,22 @@ interface ThreadContextBudget {
   phase: "idle" | "requested" | "running";
   compactionTurnId: string | null;
   lastCompactedTokens: number | null;
+}
+
+/** Day names for the routine tool, indexed like Date.getDay(). */
+const DAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+export interface RoutineHost {
+  state(): RoutinesState;
+  save(input: SaveRoutineInput): Promise<RoutinesState>;
 }
 
 const CONTEXT_COMPACTION_THRESHOLD = 0.8;
@@ -300,6 +320,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
+  #routineHost: RoutineHost | null = null;
 
   constructor(
     store: BotStore,
@@ -348,6 +369,90 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Local usage ledger fed by provider notifications (see UsageService). */
   setUsageService(usage: UsageService): void {
     this.#usage = usage;
+  }
+
+  async #createOrUpdateRoutine(senderBotId: string, raw: unknown): Promise<string> {
+    const host = this.#routineHost;
+    if (!host) throw new Error("Routines are not ready yet. Try again in a moment.");
+    const args = isRecord(raw) ? raw : {};
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    const instruction = typeof args.instruction === "string" ? args.instruction.trim() : "";
+    const botId =
+      typeof args.coworkerId === "string" && args.coworkerId ? args.coworkerId : senderBotId;
+    if (!this.#store.list().some((bot) => bot.id === botId)) {
+      throw new Error(`No coworker has the id ${botId}.`);
+    }
+    const time = typeof args.time === "string" ? args.time : "";
+    const needTime = () => {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error("Give the time as HH:MM.");
+      return time;
+    };
+    let cadence: RoutineCadence | null;
+    switch (args.schedule) {
+      case "daily":
+        cadence = { kind: "daily", time: needTime() };
+        break;
+      case "weekdays":
+        cadence = { kind: "weekdays", time: needTime() };
+        break;
+      case "weekly":
+        {
+          const day = DAY_NAMES.indexOf(String(args.day) as (typeof DAY_NAMES)[number]);
+          if (day < 0) throw new Error("Say which day of the week.");
+          cadence = { kind: "weekly", day: day as Weekday, time: needTime() };
+        }
+        break;
+      case "hourly":
+        cadence = { kind: "hourly" };
+        break;
+      case "interval": {
+        const minutes = Number(args.everyMinutes);
+        if (!Number.isInteger(minutes) || minutes < 5) {
+          throw new Error("Repeat at most every 5 minutes.");
+        }
+        cadence = { kind: "interval", minutes };
+        break;
+      }
+      case "manual":
+        cadence = null;
+        break;
+      default:
+        throw new Error("Unknown schedule.");
+    }
+    const existing = host
+      .state()
+      .routines.find(
+        (routine) =>
+          routine.name.toLowerCase() === name.toLowerCase() &&
+          routine.steps.some((step) => step.botId === botId),
+      );
+    const state = await host.save({
+      id: existing?.id,
+      name,
+      steps: [{ id: existing?.steps[0]?.id, botId, instruction }],
+      cadence,
+      enabled: args.enabled !== false,
+    });
+    const saved = state.routines.find((routine) =>
+      existing ? routine.id === existing.id : routine.name === name.slice(0, 80),
+    );
+    return JSON.stringify({
+      success: true,
+      message: `${existing ? "Updated" : "Created"} routine "${name}". It shows in Routines.`,
+      routine: saved
+        ? {
+            id: saved.id,
+            enabled: saved.enabled,
+            cadence: saved.cadence,
+            nextRunAt: saved.nextRunAt,
+          }
+        : null,
+    });
+  }
+
+  /** Lets coworkers create and change routines when the owner asks them to in chat. */
+  setRoutineHost(host: RoutineHost): void {
+    this.#routineHost = host;
   }
 
   usageOverview(): UsageOverview {
@@ -1738,6 +1843,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             }),
           },
         ],
+      };
+    }
+
+    if (params.tool === "create_or_update_routine") {
+      const text = await this.#createOrUpdateRoutine(senderBotId, params.arguments).catch(
+        (error: unknown) =>
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      );
+      return {
+        success: !text.includes('"success":false'),
+        contentItems: [{ type: "inputText", text }],
       };
     }
 
@@ -3307,6 +3426,39 @@ const SAHKARMI_DYNAMIC_TOOLS = {
           },
         },
         required: ["name", "role"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "create_or_update_routine",
+      description:
+        "Create or change a routine: a task Sahkarmi runs for a coworker on a schedule (e.g. 'every day at 18:00'). Use this whenever the owner agrees to a recurring task; writing a file does not schedule anything. A routine with the same name for the same coworker is updated instead of duplicated. Times are the owner's local time.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 80 },
+          instruction: {
+            type: "string",
+            minLength: 1,
+            maxLength: 20000,
+            description: "What the coworker does on every run, written as a complete task.",
+          },
+          schedule: {
+            type: "string",
+            enum: ["daily", "weekdays", "weekly", "hourly", "interval", "manual"],
+            description: "'manual' = only when the owner presses Run now.",
+          },
+          time: { type: "string", pattern: "^[0-9]{2}:[0-9]{2}$", description: "24-hour HH:MM" },
+          day: { type: "string", enum: [...DAY_NAMES] },
+          everyMinutes: { type: "integer", minimum: 5, maximum: 10080 },
+          coworkerId: {
+            type: "string",
+            description: "Coworker who runs it; defaults to you. Ids come from list_agents.",
+          },
+          enabled: { type: "boolean", description: "Defaults to true." },
+        },
+        required: ["name", "instruction", "schedule"],
         additionalProperties: false,
       },
     },

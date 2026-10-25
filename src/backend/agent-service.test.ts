@@ -17,6 +17,7 @@ import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
 import { MailboxStore } from "./mailbox-store";
 import { PermissionService } from "./permission-service";
+import { RoutineStore } from "./routine-store";
 
 let root: string;
 let logPath: string;
@@ -186,6 +187,35 @@ describe.sequential("AgentService", () => {
     expect(persisted.bots.find((bot: { id: string }) => bot.id === "chief").preview).toBe(
       "SAVED_REPLY",
     );
+  });
+
+  it("lets a coworker schedule the routine the owner agreed to in chat", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "create_or_update_routine",
+      arguments: {
+        name: "LinkedIn daily post",
+        instruction: "Write and publish one LinkedIn post.",
+        schedule: "daily",
+        time: "18:00",
+      },
+    });
+    const { store, mailbox } = stores();
+    const routines = new RoutineStore(join(root, "user-data"));
+    await routines.initialize();
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex");
+    service.setRoutineHost(routines);
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Post on LinkedIn every day at 6" });
+
+    await waitFor(() => routines.state().routines.length === 1);
+    expect(routines.state().routines[0]).toMatchObject({
+      name: "LinkedIn daily post",
+      enabled: true,
+      cadence: { kind: "daily", time: "18:00" },
+      steps: [{ botId: "asha-accounts", instruction: "Write and publish one LinkedIn post." }],
+    });
+    expect(routines.state().routines[0]?.nextRunAt).not.toBeNull();
   });
 
   it("files approvals from coworkers and queues the owner's decision back to them", async () => {
