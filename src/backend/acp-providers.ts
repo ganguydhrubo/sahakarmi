@@ -21,6 +21,36 @@ export function openCodeFreeModels(options: AcpModelOption[]): string[] {
   return values.includes(OPENCODE_FREE_MODEL) ? [OPENCODE_FREE_MODEL, ...free] : free;
 }
 
+/** OpenCode's own server for its free models; it accepts the public key OpenCode itself sends. */
+const OPENCODE_ZEN_CHAT_URL = "https://opencode.ai/zen/v1/chat/completions";
+
+/**
+ * True when OpenCode's server says the free allowance is used up. OpenCode retries that error
+ * silently, so without this check the owner only learns it after a long wait per free model.
+ * The server rejects a used-up allowance at once, so this costs nothing in that case.
+ */
+export async function probeOpenCodeFreeLimit(
+  modelValue: string,
+  fetcher: typeof fetch = fetch,
+): Promise<boolean> {
+  try {
+    const response = await fetcher(OPENCODE_ZEN_CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer public" },
+      body: JSON.stringify({
+        model: modelValue.replace(/^opencode\//, ""),
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 1,
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (response.status !== 429) return false;
+    return /FreeUsageLimit|free usage limit/i.test(await response.text());
+  } catch {
+    return false;
+  }
+}
+
 export const OPENCODE_PERMISSION_CONFIG = JSON.stringify({
   edit: "ask",
   bash: "ask",
@@ -47,6 +77,7 @@ export function createOpenCodeClient(cli: AcpCliInfo, transcriptRoot: string): A
     }),
     modelValue: openCodeModelValue,
     freeModels: openCodeFreeModels,
+    probeFreeLimit: (modelValue) => probeOpenCodeFreeLimit(modelValue),
     // Make OpenCode ask before edits, commands, web fetches and work outside its folder, so
     // every such call reaches Sahkarmi's permission policy (session/request_permission).
     env: { OPENCODE_PERMISSION: OPENCODE_PERMISSION_CONFIG },

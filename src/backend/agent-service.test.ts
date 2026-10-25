@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentEvent } from "../shared/ipc";
+import { ACP_AGENT_PROVIDERS, type AgentEvent } from "../shared/ipc";
 import {
   AgentService,
   isNoisyDiagnostic,
@@ -528,6 +528,7 @@ describe.sequential("AgentService", () => {
         { id: "claude", state: "not-installed", version: null },
         { id: "antigravity", state: "not-installed", version: null },
         { id: "opencode", state: "not-installed", version: null },
+        ...ACP_AGENT_PROVIDERS.map((id) => ({ id, state: "not-installed", version: null })),
       ],
       capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
     });
@@ -599,6 +600,7 @@ describe.sequential("AgentService", () => {
         },
         { id: "antigravity", state: "not-installed" },
         { id: "opencode", state: "not-installed" },
+        ...ACP_AGENT_PROVIDERS.map((id) => ({ id, state: "not-installed" })),
       ],
     });
     await service.setPreferredProvider("codex");

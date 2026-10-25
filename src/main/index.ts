@@ -101,7 +101,11 @@ import { isTrustedRendererUrl } from "./trusted-renderer";
 import { supportsInstalledUpdates, UpdateService } from "./update-service";
 
 if (!app.isPackaged) {
-  app.setPath("userData", join(app.getPath("appData"), "Sahkarmi Dev"));
+  // SAHKARMI_DEV_USER_DATA lets a test run use a throwaway profile instead of "Sahkarmi Dev".
+  app.setPath(
+    "userData",
+    process.env.SAHKARMI_DEV_USER_DATA?.trim() || join(app.getPath("appData"), "Sahkarmi Dev"),
+  );
 }
 app.enableSandbox();
 if (process.platform === "win32") app.setAppUserModelId("in.sahkarmi.desktop");

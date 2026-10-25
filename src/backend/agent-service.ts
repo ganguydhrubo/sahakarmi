@@ -32,11 +32,14 @@ import type {
   WorkspaceState,
 } from "../shared/ipc";
 import {
+  ACP_AGENT_PROVIDERS,
+  type AcpAgentProviderId,
   AGENT_PROVIDERS,
   APPROVAL_CATEGORIES,
   type AttachmentSummary,
   type ConversationMessage,
   DEFAULT_MODEL_FOR_PROVIDER,
+  isAcpAgentProvider,
   isAvatarColor,
   isAvatarShape,
   type MessageSearchHit,
@@ -45,6 +48,7 @@ import {
   providerForModel,
   type SearchMessagesInput,
 } from "../shared/ipc";
+import { createAcpAgentClient, resolveAcpAgentCli } from "./acp-agents";
 import { NEXT_FREE_MODEL_HINT } from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
@@ -390,6 +394,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       claude: resolveClaudeCli,
       antigravity: resolveAntigravityCli,
       opencode: resolveOpenCodeCli,
+      ...(Object.fromEntries(
+        ACP_AGENT_PROVIDERS.map((provider) => [provider, () => resolveAcpAgentCli(provider)]),
+      ) as Record<AcpAgentProviderId, () => Promise<AcpCliInfo>>),
     };
     for (const provider of AGENT_PROVIDERS) {
       if (this.#stopping) return;
@@ -1046,6 +1053,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           const antigravity = await resolveAntigravityCli();
           cli = antigravity;
           client = createAntigravityClient(antigravity, transcripts);
+        } else if (isAcpAgentProvider(provider)) {
+          const agent = await resolveAcpAgentCli(provider);
+          cli = agent;
+          client = createAcpAgentClient(provider, agent, transcripts);
         } else {
           const opencode = await resolveOpenCodeCli();
           cli = opencode;
@@ -3437,6 +3448,12 @@ const SIGN_IN_HINTS: Record<AgentProvider, string> = {
   claude: "Run `claude auth login` to use Claude.",
   opencode: "Run `opencode auth login` to use OpenCode.",
   antigravity: "Click Connect to sign in with Google.",
+  ...(Object.fromEntries(
+    ACP_AGENT_PROVIDERS.map((provider) => [
+      provider,
+      `Click Connect to sign in to ${PROVIDER_LABELS[provider]}.`,
+    ]),
+  ) as Record<AcpAgentProviderId, string>),
 };
 
 function authFor(provider: AgentProvider, email: string | null): AgentStatus["auth"] {

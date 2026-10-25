@@ -123,11 +123,6 @@ export function SettingsView(props: SettingsViewProps) {
     );
   }
 
-  const account = () => {
-    const auth = props.agentStatus.auth;
-    return "email" in auth ? (auth.email ?? auth.kind) : null;
-  };
-
   return (
     <section class="center-view settings-view" aria-labelledby="settings-heading">
       <header class="center-view-header window-drag">
@@ -238,12 +233,11 @@ export function SettingsView(props: SettingsViewProps) {
                 <h2>{t("providers")}</h2>
                 <p>{t("connectIntro")}</p>
                 <ProviderConnect agentStatus={props.agentStatus} />
-                <Show when={account()}>
-                  <p class="settings-meta">{account()}</p>
-                </Show>
-                <button type="button" onClick={props.onOpenPermissions}>
-                  {t("manage")}
-                </button>
+                <p class="settings-meta provider-permissions-link">
+                  <button type="button" class="link-button" onClick={props.onOpenPermissions}>
+                    {t("connectPermissionsLink")}
+                  </button>
+                </p>
               </section>
               <section class="settings-card">
                 <h2>{t("suggestTitle")}</h2>
