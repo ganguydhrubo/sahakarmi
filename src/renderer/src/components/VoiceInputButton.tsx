@@ -1,6 +1,8 @@
 import { createSignal, onCleanup, Show } from "solid-js";
 import { t } from "../i18n";
+import { LocalDictation } from "../local-dictation";
 import { speechLocale } from "../preferences";
+import { cleanVoiceError, localDictationReady } from "../voice-store";
 
 interface SpeechRecognitionResultLike {
   isFinal: boolean;
@@ -30,7 +32,10 @@ export function recognitionConstructor(): SpeechRecognitionConstructor | null {
   return scope.SpeechRecognition ?? scope.webkitSpeechRecognition ?? null;
 }
 
-/** Dictation through the Web Speech API in the UI language (en-IN, hi-IN or bn-IN). */
+/**
+ * Dictation: on this PC with the downloaded model when there is one (Settings → Voice), otherwise
+ * through the Web Speech API in the UI language (en-IN, hi-IN or bn-IN).
+ */
 export function VoiceInputButton(props: {
   disabled?: boolean;
   onTranscript: (text: string) => void;
@@ -38,17 +43,53 @@ export function VoiceInputButton(props: {
 }) {
   const [listening, setListening] = createSignal(false);
   let recognition: SpeechRecognitionLike | null = null;
+  let local: LocalDictation | null = null;
 
-  onCleanup(() => recognition?.stop());
+  onCleanup(() => {
+    recognition?.stop();
+    local?.cancel();
+  });
+
+  async function toggleLocal() {
+    if (local) {
+      const finishing = local;
+      local = null;
+      setListening(false);
+      await finishing.stop();
+      return;
+    }
+    const dictation = new LocalDictation({
+      onText: (text) => props.onTranscript(text),
+      onError: (message) => props.onError(cleanVoiceError(message)),
+    });
+    local = dictation;
+    setListening(true);
+    try {
+      await dictation.start();
+    } catch (error) {
+      local = null;
+      setListening(false);
+      const name = error instanceof Error ? error.name : "";
+      props.onError(
+        name === "NotAllowedError" || name === "NotFoundError"
+          ? t("voiceUnsupported")
+          : cleanVoiceError(error),
+      );
+    }
+  }
 
   function toggle() {
+    if (local || (!listening() && localDictationReady())) {
+      void toggleLocal();
+      return;
+    }
     if (listening()) {
       recognition?.stop();
       return;
     }
     const Recognition = recognitionConstructor();
     if (!Recognition) {
-      props.onError(t("voiceUnsupported"));
+      props.onError(t("voiceNeedsModel"));
       return;
     }
     recognition = new Recognition();
@@ -66,7 +107,9 @@ export function VoiceInputButton(props: {
         props.onError(
           event.error === "not-allowed"
             ? t("voiceUnsupported")
-            : `${t("voiceInput")}: ${event.error}`,
+            : event.error === "network" || event.error === "service-not-allowed"
+              ? t("voiceNeedsModel")
+              : `${t("voiceInput")}: ${event.error}`,
         );
       }
     };

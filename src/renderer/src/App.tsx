@@ -59,6 +59,7 @@ import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } 
 import { loadFeatures } from "./features";
 import { t } from "./i18n";
 import { rememberSettingsSection } from "./settings-section";
+import { loadVoiceState, speakText, voiceState } from "./voice-store";
 
 // Views opened from the rail load on demand, keeping start-up lean.
 const RoutinesView = lazy(() =>
@@ -238,6 +239,7 @@ export function App() {
 
   onMount(() => {
     const unsubscribe = window.sahkarmi.agent.onEvent(handleAgentEvent);
+    loadVoiceState();
     void window.sahkarmi.team
       .listWorkspaces()
       .then(setWorkspaces)
@@ -444,7 +446,10 @@ export function App() {
           [event.botId]: { status: outcomeStatus(event.status), at: Date.now() },
         }));
         setActiveTurns((current) => ({ ...current, [event.botId]: null }));
-        if (event.status === "completed") markReplyCompleted(event.botId);
+        if (event.status === "completed") {
+          markReplyCompleted(event.botId);
+          readReplyAloud(event.botId);
+        }
         return;
       case "prompt":
         setPendingPrompts((current) => ({ ...current, [event.botId]: event }));
@@ -653,6 +658,27 @@ export function App() {
     setAgentPickerOpen(false);
     clearReplyIndicators(botId);
     setActiveBotId(botId);
+  }
+
+  /** Settings → Voice → Read replies aloud: only for the chat that is open. */
+  function readReplyAloud(botId: string) {
+    if (!voiceState()?.settings.readAloud || activeBotId() !== botId) return;
+    // The final text can arrive just after the turn ends.
+    setTimeout(() => {
+      const newestFirst = [...(liveMessages()[botId] ?? [])].reverse();
+      const sinceUser = newestFirst.slice(
+        0,
+        Math.max(
+          0,
+          newestFirst.findIndex((message) => message.author === "you"),
+        ),
+      );
+      const reply = sinceUser.find(
+        (message) =>
+          message.author === "bot" && (message.kind ?? "text") === "text" && message.body.trim(),
+      );
+      if (reply) void speakText(reply.id, reply.body).catch(() => undefined);
+    }, 600);
   }
 
   function markReplyCompleted(botId: string) {

@@ -49,6 +49,7 @@ import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
 import { SkillLibrary } from "../backend/skill-library";
 import { UsageService } from "../backend/usage-service";
+import { VoiceService } from "../backend/voice/voice-service";
 import {
   type AgentEvent,
   type AgentProviderId,
@@ -878,6 +879,37 @@ function cannotSelfUpdate(): Promise<boolean> {
 }
 
 let providerSetup: ProviderSetup | null = null;
+let voiceService: VoiceService | null = null;
+
+/** Two minutes of 16 kHz audio is the longest clip one dictation request may carry. */
+const MAX_DICTATION_SAMPLES = 16_000 * 120;
+
+function registerVoiceHandlers(voice: VoiceService): void {
+  const modelId = (value: unknown) => {
+    if (typeof value !== "string" || !/^[a-z0-9-]{2,40}$/.test(value)) {
+      throw new Error("Unknown voice model.");
+    }
+    return value;
+  };
+  handleTrusted(IPC_CHANNELS.voiceGetState, () => voice.getState());
+  handleTrusted(IPC_CHANNELS.voiceInstall, (value: unknown) => voice.install(modelId(value)));
+  handleTrusted(IPC_CHANNELS.voiceCancel, (value: unknown) => voice.cancel(modelId(value)));
+  handleTrusted(IPC_CHANNELS.voiceRemove, (value: unknown) => voice.remove(modelId(value)));
+  handleTrusted(IPC_CHANNELS.voiceSetSettings, (value: unknown) => {
+    if (!isObject(value)) throw new Error("Invalid voice settings.");
+    return voice.setSettings(value);
+  });
+  handleTrusted(IPC_CHANNELS.voiceTranscribe, (value: unknown) => {
+    if (!(value instanceof Float32Array) || value.length > MAX_DICTATION_SAMPLES) {
+      throw new Error("That recording is too long. Keep it under two minutes.");
+    }
+    return voice.transcribe(value);
+  });
+  handleTrusted(IPC_CHANNELS.voiceSpeak, (value: unknown) => {
+    if (typeof value !== "string") throw new Error("Nothing to read aloud.");
+    return voice.speak(value);
+  });
+}
 
 function registerProviderSetupHandlers(setup: ProviderSetup): void {
   const provider = (value: unknown) => {
@@ -1148,6 +1180,16 @@ if (!hasSingleInstanceLock) {
         }
       });
       registerProviderSetupHandlers(providerSetup);
+      voiceService = new VoiceService({ userDataPath: app.getPath("userData") });
+      await voiceService.initialize().catch((error) => {
+        appLog.write("error", "voice settings unreadable; using defaults", String(error));
+      });
+      voiceService.on("state", (state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.voiceEvent, state);
+        }
+      });
+      registerVoiceHandlers(voiceService);
       const orchestratorStore = new OrchestratorStore(app.getPath("userData"));
       await orchestratorStore.initialize();
       const orchestrator = new AdaptiveOrchestrator(orchestratorStore);
@@ -1291,6 +1333,7 @@ async function prepareForShutdown(): Promise<void> {
     browserHost?.destroy().catch(() => {}),
     agentService?.stop().catch(() => {}),
     usageService?.flush().catch(() => {}),
+    voiceService?.dispose().catch(() => {}),
   ]);
   const timeout = new Promise((resolve) => setTimeout(resolve, 2500));
   await Promise.race([cleanupTasks, timeout]);

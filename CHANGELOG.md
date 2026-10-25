@@ -5,6 +5,22 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-25
+
+### Added
+
+- Settings > Voice: speak instead of typing, on this PC. Download a model once and dictation
+  works offline; your voice never leaves the computer. Models: all 22 scheduled Indian languages
+  (AI4Bharat IndicConformer), Hinglish fast and best (Roman script with punctuation), English
+  fast, and Whisper large-v3 turbo for about 100 languages with a language picker.
+- Spoken replies: Indian voices (AI4Bharat Rasa: Hindi, Bengali, Marathi, Tamil, Telugu and 8
+  more) and English voices (Kokoro), with four voice choices, Listen, speaking speed, Read aloud
+  in each reply's menu, and an optional "Read replies aloud" for the open chat.
+- The microphone in the message box and on Tasks now writes text live after each pause when a
+  dictation model is installed. A voice note can now be turned into text only.
+- Every download is pinned to a fixed version and checked by SHA-256 before use. Strings in
+  English, Hindi and Bengali.
+
 ## [0.9.2] - 2026-10-25
 
 ### Added

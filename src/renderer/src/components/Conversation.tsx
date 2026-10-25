@@ -42,6 +42,7 @@ import { t } from "../i18n";
 import { markdownToPlainText } from "../markdown";
 import { activityStyle } from "../preferences";
 import { starterPrompts } from "../starter-prompts";
+import { speakingId, speakText, stopSpeaking } from "../voice-store";
 import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
 import { ApprovalCard } from "./ApprovalsView";
@@ -297,6 +298,15 @@ function MoreIcon() {
       <circle cx="5" cy="10" r="1" />
       <circle cx="10" cy="10" r="1" />
       <circle cx="15" cy="10" r="1" />
+    </svg>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M3.5 8h2.5l3.5-3v10L6 12H3.5z" />
+      <path d="M12.5 7.5a3.5 3.5 0 0 1 0 5M14.5 5.5a6.4 6.4 0 0 1 0 9" />
     </svg>
   );
 }
@@ -667,6 +677,8 @@ function MessageActions(props: {
   onReply: () => void;
   onCopy: () => void;
   onCopyPlain: () => void;
+  speaking: boolean;
+  onReadAloud: () => void;
 }) {
   return (
     <div
@@ -759,6 +771,12 @@ function MessageActions(props: {
               <CopyIcon />
               <span>{t("copyPlain")}</span>
             </button>
+            <Show when={props.message.author === "bot"}>
+              <button type="button" role="menuitem" onClick={props.onReadAloud}>
+                <SpeakerIcon />
+                <span>{props.speaking ? t("voiceStopReading") : t("voiceReadAloud")}</span>
+              </button>
+            </Show>
           </div>
         </Show>
       </div>
@@ -1689,6 +1707,19 @@ export function Conversation(props: ConversationProps) {
     }
   }
 
+  async function readAloud(message: BotMessage) {
+    setOpenMoreMessageId(null);
+    if (speakingId() === message.id) {
+      stopSpeaking();
+      return;
+    }
+    try {
+      if (!(await speakText(message.id, message.body))) setComposerError(t("voiceNoVoice"));
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function removeAttachment(id: string) {
     updateCurrentDraft({
       attachments: currentDraft().attachments.filter((attachment) => attachment.id !== id),
@@ -2264,6 +2295,8 @@ export function Conversation(props: ConversationProps) {
                               onReply={() => replyToMessage(message)}
                               onCopy={() => void copyMessage(message)}
                               onCopyPlain={() => void copyMessage(message, true)}
+                              speaking={speakingId() === message.id}
+                              onReadAloud={() => void readAloud(message)}
                             />
                           </div>
                           <Show when={message.reaction}>

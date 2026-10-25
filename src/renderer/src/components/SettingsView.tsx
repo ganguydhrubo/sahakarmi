@@ -30,6 +30,7 @@ import { PermissionsSettings } from "./PermissionsSettings";
 import { ProviderConnect } from "./ProviderConnect";
 import { ThemeSelector } from "./ThemeSelector";
 import { UpdateControl } from "./UpdateControl";
+import { VoiceSettings } from "./VoiceSettings";
 
 type SettingsSection =
   | "general"
@@ -266,9 +267,10 @@ export function SettingsView(props: SettingsViewProps) {
           {panel("voice", () => (
             <section class="settings-card">
               <h2>{t("setVoice")}</h2>
+              <VoiceSettings />
+              <h3>{t("voiceNotesTitle")}</h3>
               <p>{t("voiceSettingsNotes")}</p>
               <p class="settings-meta">{t("voiceSettingsPrivacy")}</p>
-              <h3>{t("voiceTranscriptTitle")}</h3>
               <p class="settings-meta">{t("voiceTranscriptHonest")}</p>
               <p class="settings-meta">
                 {featureOn("live-dictation") ? t("voiceDictationOn") : t("voiceDictationOff")}
