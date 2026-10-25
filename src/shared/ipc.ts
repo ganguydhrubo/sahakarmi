@@ -113,6 +113,14 @@ export const IPC_CHANNELS = {
   composioConnectApp: "composio:connect-app",
   composioConnectionStatus: "composio:connection-status",
   composioDisconnectApp: "composio:disconnect-app",
+  voiceGetState: "voice:get-state",
+  voiceInstall: "voice:install",
+  voiceCancel: "voice:cancel",
+  voiceRemove: "voice:remove",
+  voiceSetSettings: "voice:set-settings",
+  voiceTranscribe: "voice:transcribe",
+  voiceSpeak: "voice:speak",
+  voiceEvent: "voice:event",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -1552,6 +1560,7 @@ export interface SahkarmiDesktopApi {
   orchestrator: OrchestratorDesktopApi;
   memory: MemoryDesktopApi;
   composio: ComposioDesktopApi;
+  voice: VoiceDesktopApi;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */
@@ -1602,6 +1611,55 @@ export interface ComposioDesktopApi {
   connect: (appId: string) => Promise<ComposioConnectionInitiateResult>;
   connectionStatus: (connectionId: string) => Promise<ComposioConnectionStatus>;
   disconnect: (connectionId: string) => Promise<boolean>;
+}
+
+/** One downloadable voice model as Settings → Voice shows it. */
+export interface VoiceModelInfo {
+  id: string;
+  type: "dictation" | "speech";
+  group: "indic" | "hinglish" | "world" | "speech";
+  name: string;
+  summary: string;
+  licence: string;
+  languages: string[];
+  sizeBytes: number;
+  punctuates: boolean;
+  speakers: { id: number; name: string; languages: string[] }[];
+  installed: boolean;
+  phase: "idle" | "downloading" | "installing" | "failed";
+  receivedBytes: number;
+  message: string | null;
+}
+
+export interface VoiceSettings {
+  /** Dictation model in use, or null for none. */
+  dictationModel: string | null;
+  /** Language for Whisper turbo; "" lets it detect the language. */
+  dictationLanguage: string;
+  /** Speaker per spoken-reply language, e.g. { hi: 2, en: 3 }. */
+  speakers: Record<string, number>;
+  readAloud: boolean;
+  speed: number;
+}
+
+export interface VoiceState {
+  engineInstalled: boolean;
+  engineSizeBytes: number;
+  settings: VoiceSettings;
+  models: VoiceModelInfo[];
+}
+
+export interface VoiceDesktopApi {
+  getState: () => Promise<VoiceState>;
+  install: (modelId: string) => Promise<VoiceState>;
+  cancel: (modelId: string) => Promise<VoiceState>;
+  remove: (modelId: string) => Promise<VoiceState>;
+  setSettings: (settings: Partial<VoiceSettings>) => Promise<VoiceState>;
+  /** 16 kHz mono float samples in; text out. */
+  transcribe: (samples: Float32Array) => Promise<{ text: string; modelId: string }>;
+  /** Returns a WAV file, or null when no voice for the text is installed. */
+  speak: (text: string) => Promise<Uint8Array | null>;
+  onEvent: (listener: (state: VoiceState) => void) => () => void;
 }
 
 export interface AgentMemory {

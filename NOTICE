@@ -30,3 +30,16 @@ Bundled fonts (SIL Open Font License 1.1, see resources/fonts/OFL.txt):
   Mukta — Ek Type
   Baloo 2 — Ek Type
   Hind Siliguri — Indian Type Foundry
+
+Downloaded on request (Settings > Voice; not shipped in the installer, fixed versions checked by
+SHA-256):
+  sherpa-onnx 2.0.0 — Apache License 2.0, the k2-fsa project
+  (https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime — MIT License, Microsoft.
+  IndicConformer speech-to-text — MIT License, AI4Bharat (https://github.com/AI4Bharat/IndicConformerASR),
+  as packaged for sherpa-onnx by parismitaglobalsolutions (Apache License 2.0).
+  English fast speech-to-text — NVIDIA NeMo FastConformer, CC BY 4.0.
+  Whisper large-v3-turbo — MIT License, OpenAI. Whisper Hindi2Hinglish Swift and Apex —
+  Apache License 2.0, Oriserve.
+  Rasa text-to-speech voices — CC BY 4.0, AI4Bharat (https://github.com/AI4Bharat/Rasa), as
+  converted for sherpa-onnx by MatiasLin.
+  Kokoro-82M English voices — Apache License 2.0, hexgrad.

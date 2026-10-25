@@ -159,6 +159,11 @@ export class VoiceRecorderController {
     this.#callbacks = callbacks;
   }
 
+  /** The live microphone stream, so dictation can listen to the same recording. */
+  get stream(): MediaStream | null {
+    return this.#stream;
+  }
+
   async start(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       throw new Error("unsupported");

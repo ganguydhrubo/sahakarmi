@@ -2,6 +2,7 @@ import { createSignal, onCleanup, Show } from "solid-js";
 import type { DraftAttachment } from "../../../shared/ipc";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
+import { LocalDictation } from "../local-dictation";
 import { speechLocale } from "../preferences";
 import {
   formatDuration,
@@ -12,6 +13,7 @@ import {
   VoiceRecorderController,
   voiceReducer,
 } from "../voice-recorder";
+import { cleanVoiceError, localDictationReady } from "../voice-store";
 import { recognitionConstructor, type SpeechRecognitionLike } from "./VoiceInputButton";
 
 const PHASE_KEYS: Record<VoicePhase, MessageKey> = {
@@ -40,6 +42,9 @@ export function VoiceRecorder(props: {
   const [audioUrl, setAudioUrl] = createSignal<string | null>(null);
   let blob: Blob | null = null;
   let recognition: SpeechRecognitionLike | null = null;
+  let local: LocalDictation | null = null;
+  const [writing, setWriting] = createSignal(false);
+  const [dictationMode, setDictationMode] = createSignal<"local" | "online" | null>(null);
   const dispatch = (event: VoiceEvent) => setState((current) => voiceReducer(current, event));
 
   const controller = new VoiceRecorderController({
@@ -56,18 +61,21 @@ export function VoiceRecorder(props: {
 
   onCleanup(() => {
     controller.dispose();
+    local?.cancel();
     recognition?.stop();
     releaseAudio();
   });
 
   async function start() {
     releaseAudio();
+    setDictationMode(null);
     setOpen(true);
     dispatch({ type: "start" });
     try {
       await controller.start();
       dispatch({ type: "permission-granted" });
-      if (featureOn("live-dictation")) startDictation();
+      if (localDictationReady()) void startLocalDictation();
+      else if (featureOn("live-dictation")) startDictation();
     } catch (error) {
       const name = error instanceof Error ? error.name : "";
       dispatch({
@@ -82,9 +90,27 @@ export function VoiceRecorder(props: {
     }
   }
 
+  /** Text made on this PC by the downloaded model; the recording continues if it fails. */
+  async function startLocalDictation() {
+    local = new LocalDictation({
+      onText: (text) => dispatch({ type: "dictated", text }),
+      onError: (message) => props.onError(cleanVoiceError(message)),
+      onBusy: setWriting,
+    });
+    setDictationMode("local");
+    try {
+      await local.start(controller.stream);
+    } catch (error) {
+      local = null;
+      setDictationMode(null);
+      props.onError(cleanVoiceError(error));
+    }
+  }
+
   function startDictation() {
     const Recognition = recognitionConstructor();
     if (!Recognition) return;
+    setDictationMode("online");
     recognition = new Recognition();
     recognition.lang = speechLocale();
     recognition.continuous = true;
@@ -107,6 +133,8 @@ export function VoiceRecorder(props: {
 
   async function stop() {
     dispatch({ type: "stop" });
+    void local?.stop();
+    local = null;
     recognition?.stop();
     recognition = null;
     try {
@@ -121,11 +149,26 @@ export function VoiceRecorder(props: {
 
   function cancel() {
     controller.dispose();
+    local?.cancel();
+    local = null;
+    setWriting(false);
+    setDictationMode(null);
     recognition?.stop();
     recognition = null;
     releaseAudio();
     dispatch({ type: "cancel" });
     setOpen(false);
+  }
+
+  /** Dictation done: put only the words in the message box and drop the audio. */
+  function useTextOnly() {
+    const transcript = state().transcript.trim();
+    if (!transcript) return;
+    props.onAttach([], transcript);
+    releaseAudio();
+    setOpen(false);
+    setDictationMode(null);
+    dispatch({ type: "reset" });
   }
 
   async function attach() {
@@ -149,6 +192,7 @@ export function VoiceRecorder(props: {
       props.onAttach(attachments, state().transcript.trim());
       releaseAudio();
       setOpen(false);
+      setDictationMode(null);
       dispatch({ type: "reset" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -228,8 +272,18 @@ export function VoiceRecorder(props: {
             </label>
             <p class="voice-honest">{t("voiceHonest")}</p>
           </Show>
-          <Show when={active() && featureOn("live-dictation")}>
+          <Show when={active() && dictationMode() === "online"}>
             <p class="voice-honest">{t("voiceDictationDisclosure")}</p>
+          </Show>
+          <Show when={dictationMode() === "local" && (active() || writing())}>
+            <p class="voice-honest">
+              {writing() ? t("voiceLocalWriting") : t("voiceLocalDisclosure")}
+            </p>
+          </Show>
+          <Show when={active() && dictationMode() === "local" && state().transcript}>
+            <p class="voice-live-text" aria-live="polite">
+              {state().transcript}
+            </p>
           </Show>
           <div class="voice-actions">
             <button type="button" class="button-danger-quiet" onClick={cancel}>
@@ -240,6 +294,7 @@ export function VoiceRecorder(props: {
                 type="button"
                 onClick={() => {
                   controller.pause();
+                  local?.pause();
                   dispatch({ type: "pause" });
                 }}
               >
@@ -251,6 +306,7 @@ export function VoiceRecorder(props: {
                 type="button"
                 onClick={() => {
                   controller.resume();
+                  local?.resume();
                   dispatch({ type: "resume" });
                 }}
               >
@@ -260,6 +316,11 @@ export function VoiceRecorder(props: {
             <Show when={active()}>
               <button type="button" class="button-primary" onClick={() => void stop()}>
                 {t("voiceStop")}
+              </button>
+            </Show>
+            <Show when={phase() === "preview" && state().transcript.trim()}>
+              <button type="button" onClick={useTextOnly}>
+                {t("voiceUseTextOnly")}
               </button>
             </Show>
             <Show when={phase() === "preview"}>

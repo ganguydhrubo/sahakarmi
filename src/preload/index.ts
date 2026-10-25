@@ -8,6 +8,7 @@ import {
   type ProviderSetupState,
   type SahkarmiDesktopApi,
   type UpdateStatus,
+  type VoiceState,
 } from "../shared/ipc";
 
 const attachmentImportListeners = new Set<(event: AttachmentImportEvent) => void>();
@@ -253,6 +254,20 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.composioConnectionStatus, { connectionId }),
     disconnect: (connectionId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.composioDisconnectApp, { connectionId }),
+  },
+  voice: {
+    getState: () => ipcRenderer.invoke(IPC_CHANNELS.voiceGetState),
+    install: (modelId) => ipcRenderer.invoke(IPC_CHANNELS.voiceInstall, modelId),
+    cancel: (modelId) => ipcRenderer.invoke(IPC_CHANNELS.voiceCancel, modelId),
+    remove: (modelId) => ipcRenderer.invoke(IPC_CHANNELS.voiceRemove, modelId),
+    setSettings: (settings) => ipcRenderer.invoke(IPC_CHANNELS.voiceSetSettings, settings),
+    transcribe: (samples) => ipcRenderer.invoke(IPC_CHANNELS.voiceTranscribe, samples),
+    speak: (text) => ipcRenderer.invoke(IPC_CHANNELS.voiceSpeak, text),
+    onEvent: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: VoiceState) => listener(state);
+      ipcRenderer.on(IPC_CHANNELS.voiceEvent, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.voiceEvent, handler);
+    },
   },
 };
 
