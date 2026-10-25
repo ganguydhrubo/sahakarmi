@@ -5694,10 +5694,23 @@ body {
 
 .task-strip-counts {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 14px;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* Narrow windows: counts and buttons stay on one line instead of stacking word by word. */
+.task-count,
+.task-strip-button {
+  white-space: nowrap;
+}
+
+@container (max-width: 1100px) {
+  .task-strip-counts {
+    gap: 10px;
+  }
 }
 
 .task-count b {
@@ -6629,6 +6642,15 @@ body {
 .takeover-banner-actions {
   display: flex;
   gap: 8px;
+}
+
+.takeover-banner-actions button:not(.button-primary) {
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 6px 14px;
 }
 
 .takeover-banner p {

@@ -74,6 +74,8 @@ export interface AcpAgentConfig {
 interface ActiveTurn {
   /** The model echoed its tool call as text; deltas are held back and the final text cleaned. */
   leakedToolCall?: boolean;
+  /** A tool ran since the last text; the next text starts a new paragraph, not mid-sentence. */
+  textBreakPending?: boolean;
   /** Fires when the agent has sent nothing at all for SILENT_TURN_MS (see #armSilenceWatch). */
   silenceTimer?: ReturnType<typeof setTimeout>;
   /** Sahkarmi cancelled this turn itself; the agent may still stream a late answer. */
@@ -677,8 +679,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
 
     switch (update.sessionUpdate) {
       case "agent_message_chunk": {
-        const delta = contentText(update.content);
+        let delta = contentText(update.content);
         if (!delta) return;
+        if (turn.textBreakPending && turn.text && !/\s$/.test(turn.text) && !/^\s/.test(delta)) {
+          delta = `\n\n${delta}`;
+        }
+        turn.textBreakPending = false;
         turn.text += delta;
         const checkWindow =
           turn.text.length <= 160 ? turn.text : turn.text.slice(-Math.max(delta.length + 80, 160));
@@ -699,6 +705,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       case "tool_call_update": {
         const toolCallId = getString(update, "toolCallId");
         if (!toolCallId) return;
+        if (update.sessionUpdate === "tool_call") turn.textBreakPending = true;
         const previous = turn.tools.get(toolCallId);
         const status = toolStatus(getString(update, "status")) ?? previous?.status ?? "inProgress";
         const item: ThreadItem = {
