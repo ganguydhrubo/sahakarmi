@@ -241,6 +241,14 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     save: (entry) => ipcRenderer.invoke(IPC_CHANNELS.memorySave, entry),
     delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, id),
   },
+  composio: {
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.composioGetStatus),
+    setKey: (key: string) => ipcRenderer.invoke(IPC_CHANNELS.composioSetApiKey, { key }),
+    listApps: () => ipcRenderer.invoke(IPC_CHANNELS.composioListApps),
+    connect: (appId: string) => ipcRenderer.invoke(IPC_CHANNELS.composioConnectApp, { appId }),
+    disconnect: (connectionId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.composioDisconnectApp, { connectionId }),
+  },
 };
 
 contextBridge.exposeInMainWorld("sahkarmi", sahkarmiApi);

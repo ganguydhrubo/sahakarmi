@@ -106,6 +106,11 @@ export const IPC_CHANNELS = {
   memoryList: "memory:list",
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
+  composioGetStatus: "composio:get-status",
+  composioSetApiKey: "composio:set-api-key",
+  composioListApps: "composio:list-apps",
+  composioConnectApp: "composio:connect-app",
+  composioDisconnectApp: "composio:disconnect-app",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -1485,6 +1490,56 @@ export interface SahkarmiDesktopApi {
   maintenance: MaintenanceDesktopApi;
   orchestrator: OrchestratorDesktopApi;
   memory: MemoryDesktopApi;
+  composio: ComposioDesktopApi;
+}
+
+export type ComposioAppCategory =
+  | "developer"
+  | "productivity"
+  | "communication"
+  | "project-management"
+  | "crm"
+  | "other";
+
+export interface ComposioActionSummary {
+  name: string;
+  displayName: string;
+  description: string;
+  isSensitive: boolean;
+  requiredParams: string[];
+}
+
+export interface ComposioAppMeta {
+  id: string;
+  name: string;
+  description: string;
+  category: ComposioAppCategory;
+  icon: string;
+  authScheme: "OAUTH2" | "API_KEY";
+  isConnected: boolean;
+  connectedAccountId?: string;
+  popularActions: ComposioActionSummary[];
+}
+
+export interface ComposioStatus {
+  configured: boolean;
+  apiKeyMasked: string | null;
+  connectedCount: number;
+  freeTierActive: boolean;
+  monthlyQuota: number;
+}
+
+export interface ComposioConnectionInitiateResult {
+  connectionId: string;
+  redirectUrl: string;
+}
+
+export interface ComposioDesktopApi {
+  getStatus: () => Promise<ComposioStatus>;
+  setKey: (key: string) => Promise<ComposioStatus>;
+  listApps: () => Promise<ComposioAppMeta[]>;
+  connect: (appId: string) => Promise<ComposioConnectionInitiateResult>;
+  disconnect: (connectionId: string) => Promise<boolean>;
 }
 
 export interface AgentMemory {

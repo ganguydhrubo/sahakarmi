@@ -29,6 +29,7 @@ import { BotStore } from "../backend/bot-store";
 import { createCoworkerBrowser } from "../backend/browser-factory";
 import type { CoworkerBrowser } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
+import { ComposioClient } from "../backend/integrations/composio-client";
 import {
   resolveClaudeCli,
   resolveCodexCli,
@@ -186,6 +187,7 @@ function registerIpcHandlers(
   aiRuntime: AiRuntimeService,
   orchestrator: AdaptiveOrchestrator,
   store: BotStore,
+  composio: ComposioClient,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -460,6 +462,22 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.businessDeleteTarget, (targetId: unknown) =>
     business.deleteTarget(requireString(targetId, "targetId")),
   );
+
+  handleTrusted(IPC_CHANNELS.composioGetStatus, () => composio.getStatus());
+  handleTrusted(IPC_CHANNELS.composioSetApiKey, (input: unknown) => {
+    const key = isObject(input) && typeof input.key === "string" ? input.key : "";
+    return composio.setApiKey(key);
+  });
+  handleTrusted(IPC_CHANNELS.composioListApps, () => composio.listApps());
+  handleTrusted(IPC_CHANNELS.composioConnectApp, (input: unknown) => {
+    const appId = isObject(input) && typeof input.appId === "string" ? input.appId : "";
+    return composio.initiateConnection(appId);
+  });
+  handleTrusted(IPC_CHANNELS.composioDisconnectApp, (input: unknown) => {
+    const connectionId =
+      isObject(input) && typeof input.connectionId === "string" ? input.connectionId : "";
+    return composio.deleteConnection(connectionId);
+  });
 
   handleTrusted(IPC_CHANNELS.schedulesList, () => schedules.list());
   handleTrusted(IPC_CHANNELS.schedulesCreate, (input: unknown) => {
@@ -985,7 +1003,9 @@ if (!hasSingleInstanceLock) {
       await usage.initialize().catch((error) => {
         appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
       });
+      const composioClient = new ComposioClient({ userDataPath: app.getPath("userData") });
       service.setUsageService(usage);
+      service.setComposioClient(composioClient);
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       await features.initialize().catch((error) => {
@@ -1116,6 +1136,7 @@ if (!hasSingleInstanceLock) {
         aiRuntimeService,
         orchestrator,
         store,
+        composioClient,
       );
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);
