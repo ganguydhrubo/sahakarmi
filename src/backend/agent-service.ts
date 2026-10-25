@@ -3095,8 +3095,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       `${from} ${reason}, so ${bot.name} switched to the free model and is answering your message again there. Switch back from the model picker whenever you like.`,
       botId,
     );
-    await this.sendMessage({ botId, text: delivery.delivery.text });
+    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
     await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
+    await this.sendMessage({ botId, text: delivery.delivery.text });
     return true;
   }
 
@@ -3116,8 +3117,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       `${bot.name} is sending your message again on the next free model.`,
       botId,
     );
-    await this.sendMessage({ botId, text: delivery.delivery.text });
+    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
     await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
+    await this.sendMessage({ botId, text: delivery.delivery.text });
     return true;
   }
 
