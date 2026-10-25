@@ -107,6 +107,12 @@ export const IPC_CHANNELS = {
   memoryList: "memory:list",
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
+  composioGetStatus: "composio:get-status",
+  composioSetApiKey: "composio:set-api-key",
+  composioListApps: "composio:list-apps",
+  composioConnectApp: "composio:connect-app",
+  composioConnectionStatus: "composio:connection-status",
+  composioDisconnectApp: "composio:disconnect-app",
 } as const;
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -1545,6 +1551,57 @@ export interface SahkarmiDesktopApi {
   maintenance: MaintenanceDesktopApi;
   orchestrator: OrchestratorDesktopApi;
   memory: MemoryDesktopApi;
+  composio: ComposioDesktopApi;
+}
+
+/** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */
+export interface ComposioAppMeta {
+  /** The toolkit slug, e.g. "github". */
+  id: string;
+  name: string;
+  description: string;
+  logo: string | null;
+  categories: string[];
+  toolsCount: number | null;
+  auth: "oauth" | "api-key" | "none" | "other";
+  /** Connect works without the owner's own developer app keys. */
+  oneClick: boolean;
+  isConnected: boolean;
+  connectedAccountId: string | null;
+  connectionStatus: string | null;
+}
+
+export interface ComposioStatus {
+  configured: boolean;
+  apiKeyMasked: string | null;
+  connectedCount: number;
+  freeTierActive: boolean;
+  monthlyQuota: number;
+  planName: string;
+  catalogueSize: number;
+  catalogueError: string | null;
+}
+
+export interface ComposioConnectionInitiateResult {
+  connectionId: string;
+  redirectUrl: string;
+}
+
+export type ComposioConnectionState = "connecting" | "connected" | "failed" | "unknown";
+
+export interface ComposioConnectionStatus {
+  connectionId: string;
+  status: string;
+  state: ComposioConnectionState;
+}
+
+export interface ComposioDesktopApi {
+  getStatus: () => Promise<ComposioStatus>;
+  setKey: (key: string) => Promise<ComposioStatus>;
+  listApps: (refresh?: boolean) => Promise<ComposioAppMeta[]>;
+  connect: (appId: string) => Promise<ComposioConnectionInitiateResult>;
+  connectionStatus: (connectionId: string) => Promise<ComposioConnectionStatus>;
+  disconnect: (connectionId: string) => Promise<boolean>;
 }
 
 export interface AgentMemory {

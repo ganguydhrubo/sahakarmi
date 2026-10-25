@@ -10465,4 +10465,98 @@ fieldset.memory-filters {
   background: none;
   box-shadow: none;
   padding: 0;
+/* Marketplace → Apps (Composio) */
+.apps-panel {
+  display: grid;
+  gap: 14px;
+}
+.apps-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.apps-plan-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.apps-key-card {
+  align-items: stretch;
+}
+.apps-key-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.apps-key-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.apps-key-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.apps-key-form input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.apps-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.apps-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 0.9rem;
+}
+.apps-logo {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+.apps-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+.apps-card p {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.apps-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+.apps-card-foot small {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.marketplace-badge-connected {
+  color: var(--success);
+  background: var(--success-soft);
 }

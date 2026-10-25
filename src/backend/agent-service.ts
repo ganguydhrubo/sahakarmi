@@ -89,6 +89,8 @@ import {
   snapshotFromThread,
   sortConversationMessages,
 } from "./conversation-snapshots";
+import type { ComposioClient } from "./integrations/composio-client";
+import { ComposioSecurityGuard } from "./integrations/composio-security";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
@@ -321,6 +323,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
   #routineHost: RoutineHost | null = null;
+  #composioClient: ComposioClient | null = null;
+  #composioSecurity: ComposioSecurityGuard | null = null;
 
   constructor(
     store: BotStore,
@@ -453,6 +457,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Lets coworkers create and change routines when the owner asks them to in chat. */
   setRoutineHost(host: RoutineHost): void {
     this.#routineHost = host;
+  }
+
+  setComposioClient(client: ComposioClient): void {
+    this.#composioClient = client;
+    this.#composioSecurity = new ComposioSecurityGuard(client, this.#approvals, {
+      nameFor: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name,
+      onApprovalCreated: () => {
+        if (this.#approvals) {
+          this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+        }
+      },
+    });
   }
 
   usageOverview(): UsageOverview {
@@ -1416,6 +1432,27 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }, delayMs);
   }
 
+  async #buildDynamicTools(botId: string): Promise<unknown[]> {
+    const tools: unknown[] = [...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS];
+    if (!this.#composioClient) return tools;
+    try {
+      const composioTools = await this.#composioClient.getDynamicTools();
+      if (composioTools.length > 0) {
+        tools.push({
+          type: "namespace",
+          name: "composio",
+          description:
+            "The owner's connected apps (for example GitHub, Gmail, Google Calendar, Slack, Notion), used through the owner's own accounts. Reading is immediate. Anything that sends, creates, changes or deletes pauses and gives you an approval id; when the owner approves you receive a message, then call the same tool again with approval_id.",
+          tools: composioTools,
+        });
+      }
+    } catch {
+      // Continue with base tools if Composio discovery fails
+    }
+    void botId;
+    return tools;
+  }
+
   async #ensureThread(bot: BotSummary, client: AgentClient): Promise<string> {
     if (bot.threadId) {
       this.#threadToBot.set(bot.threadId, bot.id);
@@ -1435,7 +1472,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       developerInstructions: developerInstructions(bot, this.#store.sharedRoot),
       ephemeral: false,
       serviceName: "sahkarmi",
-      dynamicTools: [...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS],
+      dynamicTools: await this.#buildDynamicTools(bot.id),
     });
     const threadId = response.thread.id;
     await this.#store.setThreadId(bot.id, threadId);
@@ -1456,7 +1493,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       approvalPolicy: this.#codexApprovalPolicy,
       sandbox: "danger-full-access",
       developerInstructions: developerInstructions(bot, this.#store.sharedRoot),
-      dynamicTools: [...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS],
+      dynamicTools: await this.#buildDynamicTools(bot.id),
     };
 
     try {
@@ -1676,6 +1713,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             client.respond(request.id, await this.#handleSahkarmiTool(request.params));
             return;
           }
+          if (request.params.namespace === "composio") {
+            client.respond(request.id, await this.#handleComposioTool(request.params));
+            return;
+          }
           throw new Error(`Unsupported dynamic tool namespace: ${request.params.namespace}`);
         }
         case "item/tool/requestUserInput":
@@ -1747,6 +1788,41 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return verdict.allowed
       ? null
       : `Not performed: ${verdict.reason} Tell the owner what you wanted to do, or use request_approval.`;
+  }
+
+  async #handleComposioTool(params: DynamicToolCallParams): Promise<{
+    success: boolean;
+    contentItems: Array<{ type: "inputText"; text: string }>;
+  }> {
+    const senderBotId = this.#threadToBot.get(params.threadId);
+    if (!senderBotId) throw new Error("The sending Sahkarmi agent is unknown.");
+    if (!this.#composioSecurity) {
+      return {
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Composio is not set up yet. Ask the owner to add their free Composio key in Marketplace → Apps.",
+          },
+        ],
+      };
+    }
+
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    const result = await this.#composioSecurity.executeWithSafetyCheck(
+      params.tool,
+      args,
+      senderBotId,
+    );
+
+    const text = result.success
+      ? JSON.stringify(result.data ?? { success: true })
+      : (result.error ?? "Composio action failed.");
+
+    return {
+      success: result.success,
+      contentItems: [{ type: "inputText", text }],
+    };
   }
 
   async #handleSahkarmiTool(params: DynamicToolCallParams): Promise<{
