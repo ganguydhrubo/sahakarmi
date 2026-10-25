@@ -1,43 +1,11 @@
-export type ComposioAppCategory =
-  | "developer"
-  | "productivity"
-  | "communication"
-  | "project-management"
-  | "crm"
-  | "other";
-
-export interface ComposioActionSummary {
-  name: string;
-  displayName: string;
-  description: string;
-  isSensitive: boolean;
-  requiredParams: string[];
-}
-
-export interface ComposioAppMeta {
-  id: string;
-  name: string;
-  description: string;
-  category: ComposioAppCategory;
-  icon: string;
-  authScheme: "OAUTH2" | "API_KEY";
-  isConnected: boolean;
-  connectedAccountId?: string;
-  popularActions: ComposioActionSummary[];
-}
-
-export interface ComposioStatus {
-  configured: boolean;
-  apiKeyMasked: string | null;
-  connectedCount: number;
-  freeTierActive: boolean;
-  monthlyQuota: number;
-}
-
-export interface ComposioConnectionInitiateResult {
-  connectionId: string;
-  redirectUrl: string;
-}
+/** The shapes the renderer sees live in shared/ipc.ts; the backend re-exports them here. */
+export type {
+  ComposioAppMeta,
+  ComposioConnectionInitiateResult,
+  ComposioConnectionState,
+  ComposioConnectionStatus,
+  ComposioStatus,
+} from "../../shared/ipc";
 
 export interface ComposioExecuteResult {
   success: boolean;
@@ -45,4 +13,47 @@ export interface ComposioExecuteResult {
   error?: string;
   requiresApproval?: boolean;
   approvalId?: string;
+}
+
+/** A tool as handed to the agent runtimes (same shape as the browser and Sahkarmi tools). */
+export interface ComposioDynamicTool {
+  type: "function";
+  name: string;
+  description: string;
+  inputSchema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required?: string[];
+    additionalProperties?: boolean;
+  };
+}
+
+/** One toolkit from Composio's catalogue, trimmed to what the app needs. */
+export interface ComposioToolkitRecord {
+  slug: string;
+  name: string;
+  description: string;
+  logo: string | null;
+  categories: string[];
+  toolsCount: number | null;
+  authSchemes: string[];
+  managedAuthSchemes: string[];
+  noAuth: boolean;
+}
+
+/** One tool of a toolkit, with the real input schema Composio publishes for it. */
+export interface ComposioToolRecord {
+  slug: string;
+  name: string;
+  description: string;
+  toolkitSlug: string;
+  toolkitName: string;
+  inputParameters: Record<string, unknown>;
+}
+
+export interface ComposioConnection {
+  id: string;
+  toolkitSlug: string;
+  status: string;
+  userId: string | null;
 }

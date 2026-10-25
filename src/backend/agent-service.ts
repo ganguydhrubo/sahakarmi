@@ -63,8 +63,6 @@ import {
   SAHKARMI_BROWSER_NAMESPACE,
 } from "./browser-host";
 import { ClaudeAgentClient } from "./claude-client";
-import type { ComposioClient } from "./integrations/composio-client";
-import { ComposioSecurityGuard } from "./integrations/composio-security";
 import {
   type AcpCliInfo,
   type ClaudeCliInfo,
@@ -82,6 +80,8 @@ import {
   snapshotFromThread,
   sortConversationMessages,
 } from "./conversation-snapshots";
+import type { ComposioClient } from "./integrations/composio-client";
+import { ComposioSecurityGuard } from "./integrations/composio-security";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
@@ -351,7 +351,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   setComposioClient(client: ComposioClient): void {
     this.#composioClient = client;
-    this.#composioSecurity = new ComposioSecurityGuard(client, this.#approvals);
+    this.#composioSecurity = new ComposioSecurityGuard(client, this.#approvals, {
+      nameFor: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name,
+      onApprovalCreated: () => {
+        if (this.#approvals) {
+          this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+        }
+      },
+    });
   }
 
   usageOverview(): UsageOverview {
@@ -1263,18 +1270,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const tools: unknown[] = [...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS];
     if (!this.#composioClient) return tools;
     try {
-      const composioTools = await this.#composioClient.getDynamicTools(`sahkarmi_${botId}`);
+      const composioTools = await this.#composioClient.getDynamicTools();
       if (composioTools.length > 0) {
         tools.push({
           type: "namespace",
           name: "composio",
-          description: "Execute authenticated SaaS actions across connected services like GitHub, Slack, Google Calendar, Notion, and Gmail.",
+          description:
+            "The owner's connected apps (for example GitHub, Gmail, Google Calendar, Slack, Notion), used through the owner's own accounts. Reading is immediate. Anything that sends, creates, changes or deletes pauses and gives you an approval id; when the owner approves you receive a message, then call the same tool again with approval_id.",
           tools: composioTools,
         });
       }
     } catch {
       // Continue with base tools if Composio discovery fails
     }
+    void botId;
     return tools;
   }
 
@@ -1628,7 +1637,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         contentItems: [
           {
             type: "inputText",
-            text: "Composio is not configured with an API key. Ask the owner to add their free Composio key in Business > Integrations.",
+            text: "Composio is not set up yet. Ask the owner to add their free Composio key in Marketplace → Apps.",
           },
         ],
       };

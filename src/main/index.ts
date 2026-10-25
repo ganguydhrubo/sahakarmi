@@ -29,7 +29,6 @@ import { BotStore } from "../backend/bot-store";
 import { createCoworkerBrowser } from "../backend/browser-factory";
 import type { CoworkerBrowser } from "../backend/browser-host";
 import { BusinessStore } from "../backend/business-store";
-import { ComposioClient } from "../backend/integrations/composio-client";
 import {
   resolveClaudeCli,
   resolveCodexCli,
@@ -38,6 +37,7 @@ import {
   setToolsDirectory,
 } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
+import { ComposioClient } from "../backend/integrations/composio-client";
 import { MailboxStore } from "../backend/mailbox-store";
 import { OrchestratorStore } from "../backend/orchestrator-store";
 import { PermissionService } from "../backend/permission-service";
@@ -468,10 +468,17 @@ function registerIpcHandlers(
     const key = isObject(input) && typeof input.key === "string" ? input.key : "";
     return composio.setApiKey(key);
   });
-  handleTrusted(IPC_CHANNELS.composioListApps, () => composio.listApps());
+  handleTrusted(IPC_CHANNELS.composioListApps, (input: unknown) =>
+    composio.listApps(isObject(input) && input.refresh === true),
+  );
   handleTrusted(IPC_CHANNELS.composioConnectApp, (input: unknown) => {
     const appId = isObject(input) && typeof input.appId === "string" ? input.appId : "";
     return composio.initiateConnection(appId);
+  });
+  handleTrusted(IPC_CHANNELS.composioConnectionStatus, (input: unknown) => {
+    const connectionId =
+      isObject(input) && typeof input.connectionId === "string" ? input.connectionId : "";
+    return composio.getConnectionStatus(connectionId);
   });
   handleTrusted(IPC_CHANNELS.composioDisconnectApp, (input: unknown) => {
     const connectionId =

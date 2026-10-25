@@ -110,6 +110,7 @@ export const IPC_CHANNELS = {
   composioSetApiKey: "composio:set-api-key",
   composioListApps: "composio:list-apps",
   composioConnectApp: "composio:connect-app",
+  composioConnectionStatus: "composio:connection-status",
   composioDisconnectApp: "composio:disconnect-app",
 } as const;
 
@@ -1493,32 +1494,21 @@ export interface SahkarmiDesktopApi {
   composio: ComposioDesktopApi;
 }
 
-export type ComposioAppCategory =
-  | "developer"
-  | "productivity"
-  | "communication"
-  | "project-management"
-  | "crm"
-  | "other";
-
-export interface ComposioActionSummary {
-  name: string;
-  displayName: string;
-  description: string;
-  isSensitive: boolean;
-  requiredParams: string[];
-}
-
+/** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */
 export interface ComposioAppMeta {
+  /** The toolkit slug, e.g. "github". */
   id: string;
   name: string;
   description: string;
-  category: ComposioAppCategory;
-  icon: string;
-  authScheme: "OAUTH2" | "API_KEY";
+  logo: string | null;
+  categories: string[];
+  toolsCount: number | null;
+  auth: "oauth" | "api-key" | "none" | "other";
+  /** Connect works without the owner's own developer app keys. */
+  oneClick: boolean;
   isConnected: boolean;
-  connectedAccountId?: string;
-  popularActions: ComposioActionSummary[];
+  connectedAccountId: string | null;
+  connectionStatus: string | null;
 }
 
 export interface ComposioStatus {
@@ -1527,6 +1517,9 @@ export interface ComposioStatus {
   connectedCount: number;
   freeTierActive: boolean;
   monthlyQuota: number;
+  planName: string;
+  catalogueSize: number;
+  catalogueError: string | null;
 }
 
 export interface ComposioConnectionInitiateResult {
@@ -1534,11 +1527,20 @@ export interface ComposioConnectionInitiateResult {
   redirectUrl: string;
 }
 
+export type ComposioConnectionState = "connecting" | "connected" | "failed" | "unknown";
+
+export interface ComposioConnectionStatus {
+  connectionId: string;
+  status: string;
+  state: ComposioConnectionState;
+}
+
 export interface ComposioDesktopApi {
   getStatus: () => Promise<ComposioStatus>;
   setKey: (key: string) => Promise<ComposioStatus>;
-  listApps: () => Promise<ComposioAppMeta[]>;
+  listApps: (refresh?: boolean) => Promise<ComposioAppMeta[]>;
   connect: (appId: string) => Promise<ComposioConnectionInitiateResult>;
+  connectionStatus: (connectionId: string) => Promise<ComposioConnectionStatus>;
   disconnect: (connectionId: string) => Promise<boolean>;
 }
 

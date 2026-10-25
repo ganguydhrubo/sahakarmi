@@ -1,530 +1,1095 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isRecord } from "../protocol";
+import { describeTool, isActionSensitive } from "./composio-policy";
 import type {
   ComposioAppMeta,
+  ComposioConnection,
   ComposioConnectionInitiateResult,
+  ComposioConnectionState,
+  ComposioConnectionStatus,
+  ComposioDynamicTool,
   ComposioExecuteResult,
   ComposioStatus,
+  ComposioToolkitRecord,
+  ComposioToolRecord,
 } from "./types";
 
-const DEFAULT_COMPOSIO_BASE_URL = "https://backend.composio.dev/api/v1";
+/**
+ * Composio over plain HTTPS. Their v1 and v2 endpoints were removed (they answer 410);
+ * v3.1 is the current API: https://backend.composio.dev/api/v3.1
+ */
+export const DEFAULT_COMPOSIO_BASE_URL = "https://backend.composio.dev/api/v3.1";
+/** One owner per install. The API key is the tenant boundary; coworkers share the owner's connections. */
+export const OWNER_USER_ID = "sahkarmi-owner";
+/** Composio's Hobby plan: $0, no card, hard-capped at this many tool calls a month. */
+export const HOBBY_PLAN_TOOL_CALLS = 100_000;
+export const HOBBY_PLAN_NAME = "Hobby";
+export const COMPOSIO_DASHBOARD_URL = "https://app.composio.dev";
 
-export const CURATED_APPS: Omit<ComposioAppMeta, "isConnected" | "connectedAccountId">[] = [
+const KEY_FILE = "composio_api_key.txt";
+const CATALOGUE_FILE = "composio_toolkits.json";
+const CATALOGUE_TTL_MS = 24 * 60 * 60 * 1000;
+const TOOLS_TTL_MS = 30 * 60 * 1000;
+const CONNECTIONS_TTL_MS = 60 * 1000;
+const CATALOGUE_PAGE = 1000;
+const MAX_PAGES = 5;
+const MAX_TOOLS_PER_TOOLKIT = 40;
+const MAX_TOOLS_TOTAL = 200;
+const MAX_IN_FLIGHT = 4;
+const METADATA_TIMEOUT_MS = 15_000;
+const EXECUTE_TIMEOUT_MS = 45_000;
+const MAX_BACKOFF_MS = 8_000;
+const MAX_RATE_LIMIT_RETRIES = 3;
+const BREAKER_TRIP_AFTER = 5;
+const BREAKER_OPEN_MS = 60_000;
+const DESCRIPTION_CHARS = 500;
+
+/** Shown before the owner has added a key; the live catalogue replaces it afterwards. */
+export const FALLBACK_TOOLKITS: ComposioToolkitRecord[] = [
   {
-    id: "github",
+    slug: "github",
     name: "GitHub",
-    description: "Manage repositories, pull requests, issues, commits and releases across your projects.",
-    category: "developer",
-    icon: "github",
-    authScheme: "OAUTH2",
-    popularActions: [
-      {
-        name: "GITHUB_CREATE_AN_ISSUE",
-        displayName: "Create Issue",
-        description: "Create an issue in a GitHub repository.",
-        isSensitive: false,
-        requiredParams: ["owner", "repo", "title"],
-      },
-      {
-        name: "GITHUB_GET_AN_ISSUE",
-        displayName: "Get Issue",
-        description: "Retrieve details of a specific repository issue.",
-        isSensitive: false,
-        requiredParams: ["owner", "repo", "issue_number"],
-      },
-      {
-        name: "GITHUB_CREATE_A_PULL_REQUEST",
-        displayName: "Create Pull Request",
-        description: "Open a pull request from a branch.",
-        isSensitive: true,
-        requiredParams: ["owner", "repo", "head", "base", "title"],
-      },
-      {
-        name: "GITHUB_MERGE_A_PULL_REQUEST",
-        displayName: "Merge Pull Request",
-        description: "Merge a pull request into the target branch.",
-        isSensitive: true,
-        requiredParams: ["owner", "repo", "pull_number"],
-      },
-      {
-        name: "GITHUB_LIST_REPOSITORY_ISSUES",
-        displayName: "List Issues",
-        description: "List issues in a specific repository.",
-        isSensitive: false,
-        requiredParams: ["owner", "repo"],
-      },
-    ],
+    description: "Repositories, issues, pull requests, commits and releases.",
+    logo: null,
+    categories: ["Developer tools"],
+    toolsCount: null,
+    authSchemes: ["OAUTH2"],
+    managedAuthSchemes: ["OAUTH2"],
+    noAuth: false,
   },
   {
-    id: "slack",
-    name: "Slack",
-    description: "Send messages, update channel topics, and notify team members across public or private channels.",
-    category: "communication",
-    icon: "slack",
-    authScheme: "OAUTH2",
-    popularActions: [
-      {
-        name: "SLACK_CHAT_POST_MESSAGE",
-        displayName: "Send Message",
-        description: "Post a message to a Slack channel or direct message.",
-        isSensitive: true,
-        requiredParams: ["channel", "text"],
-      },
-      {
-        name: "SLACK_CONVERSATIONS_LIST",
-        displayName: "List Channels",
-        description: "List channels in a Slack workspace.",
-        isSensitive: false,
-        requiredParams: [],
-      },
-      {
-        name: "SLACK_CONVERSATIONS_HISTORY",
-        displayName: "Channel History",
-        description: "Fetch recent messages from a channel.",
-        isSensitive: false,
-        requiredParams: ["channel"],
-      },
-    ],
-  },
-  {
-    id: "googlecalendar",
-    name: "Google Calendar",
-    description: "Schedule meetings, read upcoming events, and find free slots for you and your team.",
-    category: "productivity",
-    icon: "calendar",
-    authScheme: "OAUTH2",
-    popularActions: [
-      {
-        name: "GOOGLECALENDAR_CREATE_EVENT",
-        displayName: "Schedule Event",
-        description: "Create a calendar event with title, date, time and attendees.",
-        isSensitive: false,
-        requiredParams: ["calendarId", "summary", "start", "end"],
-      },
-      {
-        name: "GOOGLECALENDAR_LIST_EVENTS",
-        displayName: "List Events",
-        description: "List events in a Google calendar within a date range.",
-        isSensitive: false,
-        requiredParams: ["calendarId"],
-      },
-      {
-        name: "GOOGLECALENDAR_DELETE_EVENT",
-        displayName: "Delete Event",
-        description: "Remove an event from the calendar.",
-        isSensitive: true,
-        requiredParams: ["calendarId", "eventId"],
-      },
-    ],
-  },
-  {
-    id: "gmail",
+    slug: "gmail",
     name: "Gmail",
-    description: "Draft customer responses, search correspondence, and send business emails.",
-    category: "communication",
-    icon: "mail",
-    authScheme: "OAUTH2",
-    popularActions: [
-      {
-        name: "GMAIL_SEND_EMAIL",
-        displayName: "Send Email",
-        description: "Send an email to a recipient.",
-        isSensitive: true,
-        requiredParams: ["to", "subject", "body"],
-      },
-      {
-        name: "GMAIL_CREATE_DRAFT",
-        displayName: "Create Draft",
-        description: "Create an email draft in Gmail without sending.",
-        isSensitive: false,
-        requiredParams: ["to", "subject", "body"],
-      },
-      {
-        name: "GMAIL_LIST_MESSAGES",
-        displayName: "Search Messages",
-        description: "Search messages or threads using Gmail search queries.",
-        isSensitive: false,
-        requiredParams: ["query"],
-      },
-    ],
+    description: "Read, search, draft and send business email.",
+    logo: null,
+    categories: ["Communication"],
+    toolsCount: null,
+    authSchemes: ["OAUTH2"],
+    managedAuthSchemes: ["OAUTH2"],
+    noAuth: false,
   },
   {
-    id: "notion",
+    slug: "googlecalendar",
+    name: "Google Calendar",
+    description: "Meetings, upcoming events and free slots for you and your team.",
+    logo: null,
+    categories: ["Productivity"],
+    toolsCount: null,
+    authSchemes: ["OAUTH2"],
+    managedAuthSchemes: ["OAUTH2"],
+    noAuth: false,
+  },
+  {
+    slug: "slack",
+    name: "Slack",
+    description: "Channels, messages and team notifications.",
+    logo: null,
+    categories: ["Communication"],
+    toolsCount: null,
+    authSchemes: ["OAUTH2"],
+    managedAuthSchemes: ["OAUTH2"],
+    noAuth: false,
+  },
+  {
+    slug: "notion",
     name: "Notion",
-    description: "Read documents, query workspace databases, and append notes to existing project pages.",
-    category: "productivity",
-    icon: "document",
-    authScheme: "OAUTH2",
-    popularActions: [
-      {
-        name: "NOTION_SEARCH_NOTION_PAGE",
-        displayName: "Search Pages",
-        description: "Search for pages or databases in Notion by title.",
-        isSensitive: false,
-        requiredParams: ["query"],
-      },
-      {
-        name: "NOTION_APPEND_BLOCK_CHILDREN",
-        displayName: "Append Content",
-        description: "Append paragraphs or blocks to a Notion page.",
-        isSensitive: false,
-        requiredParams: ["block_id", "children"],
-      },
-      {
-        name: "NOTION_QUERY_DATABASE",
-        displayName: "Query Database",
-        description: "Query rows in a Notion database with filters.",
-        isSensitive: false,
-        requiredParams: ["database_id"],
-      },
-    ],
+    description: "Pages, databases and notes in your workspace.",
+    logo: null,
+    categories: ["Productivity"],
+    toolsCount: null,
+    authSchemes: ["OAUTH2"],
+    managedAuthSchemes: ["OAUTH2"],
+    noAuth: false,
   },
   {
-    id: "jira",
+    slug: "jira",
     name: "Jira",
-    description: "Track agile sprints, create tickets, and manage engineering workflows.",
-    category: "project-management",
-    icon: "jira",
-    authScheme: "OAUTH2",
-    popularActions: [
-      {
-        name: "JIRA_CREATE_ISSUE",
-        displayName: "Create Ticket",
-        description: "Create an issue or bug ticket in a Jira project.",
-        isSensitive: false,
-        requiredParams: ["projectKey", "summary", "issueType"],
-      },
-      {
-        name: "JIRA_GET_ISSUE",
-        displayName: "Get Ticket",
-        description: "Get details and status of a Jira issue.",
-        isSensitive: false,
-        requiredParams: ["issueKey"],
-      },
-    ],
+    description: "Tickets, sprints and project workflows.",
+    logo: null,
+    categories: ["Project management"],
+    toolsCount: null,
+    authSchemes: ["OAUTH2"],
+    managedAuthSchemes: ["OAUTH2"],
+    noAuth: false,
   },
   {
-    id: "linear",
+    slug: "linear",
     name: "Linear",
-    description: "Sync tasks, manage cycles, and update development issues.",
-    category: "developer",
-    icon: "linear",
-    authScheme: "OAUTH2",
-    popularActions: [
-      {
-        name: "LINEAR_CREATE_ISSUE",
-        displayName: "Create Issue",
-        description: "Create an issue in Linear team.",
-        isSensitive: false,
-        requiredParams: ["teamId", "title"],
-      },
-      {
-        name: "LINEAR_LIST_ISSUES",
-        displayName: "List Issues",
-        description: "List issues assigned or filtered in Linear.",
-        isSensitive: false,
-        requiredParams: [],
-      },
-    ],
+    description: "Issues, cycles and project triage.",
+    logo: null,
+    categories: ["Developer tools"],
+    toolsCount: null,
+    authSchemes: ["OAUTH2"],
+    managedAuthSchemes: ["OAUTH2"],
+    noAuth: false,
   },
 ];
+
+export const CURATED_APPS: ComposioAppMeta[] = FALLBACK_TOOLKITS.map((toolkit) =>
+  appFromToolkit(toolkit),
+);
 
 export interface ComposioClientOptions {
   userDataPath: string;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
+  baseRetryDelayMs?: number;
+  now?: () => number;
 }
 
+interface CacheEntry<T> {
+  at: number;
+  value: T;
+}
+
+interface RequestOptions {
+  key: string;
+  timeoutMs: number;
+  /** Retries for 5xx answers and network failures. 429s have their own budget. */
+  retries: number;
+}
+
+interface CatalogueFile {
+  version: 1;
+  at: number;
+  items: ComposioToolkitRecord[];
+}
+
+/**
+ * Talks to Composio for the whole app: the owner's key, the toolkit catalogue, the owner's
+ * connected accounts, the tools of each connected toolkit and tool execution. Built to sit
+ * quietly inside a desktop app on many machines at once: every list is cached, identical
+ * requests in flight are shared, at most four requests run at a time, 429 and 5xx answers back
+ * off with jitter, every call has a deadline, and five failures in a row pause Composio calls
+ * for a minute instead of piling up.
+ */
 export class ComposioClient {
   readonly #userDataPath: string;
   readonly #fetch: typeof fetch;
   readonly #baseUrl: string;
+  readonly #baseRetryDelayMs: number;
+  readonly #now: () => number;
   #cachedKey: string | null = null;
   #keyLoaded = false;
+  #circuit = { failures: 0, trippedUntil: 0 };
+  #inFlight = 0;
+  readonly #waiters: Array<() => void> = [];
+  #catalogue: CacheEntry<ComposioToolkitRecord[]> | null = null;
+  #catalogueLoad: Promise<ComposioToolkitRecord[]> | null = null;
+  #catalogueError: string | null = null;
+  #connections: CacheEntry<ComposioConnection[]> | null = null;
+  #connectionsLoad: Promise<ComposioConnection[]> | null = null;
+  readonly #tools = new Map<string, CacheEntry<ComposioToolRecord[]>>();
+  readonly #toolsLoad = new Map<string, Promise<ComposioToolRecord[]>>();
+  readonly #toolToolkit = new Map<string, string>();
+  readonly #toolNames = new Map<string, string>();
+  readonly #authConfigs = new Map<string, string>();
 
   constructor(options: ComposioClientOptions) {
     this.#userDataPath = options.userDataPath;
     this.#fetch = options.fetchImpl ?? globalThis.fetch;
-    this.#baseUrl = options.baseUrl ?? DEFAULT_COMPOSIO_BASE_URL;
+    this.#baseUrl = (options.baseUrl ?? DEFAULT_COMPOSIO_BASE_URL).replace(/\/+$/, "");
+    this.#baseRetryDelayMs = options.baseRetryDelayMs ?? 500;
+    this.#now = options.now ?? (() => Date.now());
   }
 
   get keyFilePath(): string {
-    return join(this.#userDataPath, "composio_api_key.txt");
+    return join(this.#userDataPath, KEY_FILE);
   }
 
+  get catalogueFilePath(): string {
+    return join(this.#userDataPath, CATALOGUE_FILE);
+  }
+
+  get circuitState(): { isOpen: boolean; failures: number; trippedUntil: number } {
+    return {
+      isOpen: this.#now() < this.#circuit.trippedUntil,
+      failures: this.#circuit.failures,
+      trippedUntil: this.#circuit.trippedUntil,
+    };
+  }
+
+  /** Forget every cached list. The key and the on-disk catalogue stay. */
+  resetCaches(): void {
+    this.#catalogue = null;
+    this.#connections = null;
+    this.#tools.clear();
+    this.#toolToolkit.clear();
+    this.#toolNames.clear();
+    this.#authConfigs.clear();
+  }
+
+  // ----- API key -----------------------------------------------------------------------------
+
+  /** The environment variable wins; otherwise the key file in userData. Never written back to the environment. */
   async getApiKey(): Promise<string | null> {
     if (this.#keyLoaded) return this.#cachedKey;
-
-    if (process.env.COMPOSIO_API_KEY && process.env.COMPOSIO_API_KEY.trim()) {
-      this.#cachedKey = process.env.COMPOSIO_API_KEY.trim();
+    const fromEnv = process.env.COMPOSIO_API_KEY?.trim();
+    if (fromEnv) {
+      this.#cachedKey = fromEnv;
       this.#keyLoaded = true;
-      return this.#cachedKey;
+      return fromEnv;
     }
-
     try {
-      const content = await readFile(this.keyFilePath, "utf8");
-      const key = content.trim();
-      if (key) {
-        this.#cachedKey = key;
-        process.env.COMPOSIO_API_KEY = key;
-        this.#keyLoaded = true;
-        return key;
-      }
+      const key = (await readFile(this.keyFilePath, "utf8")).trim();
+      this.#cachedKey = key || null;
     } catch {
-      // Key file not found or unreadable
+      this.#cachedKey = null;
     }
-
     this.#keyLoaded = true;
-    return null;
+    return this.#cachedKey;
   }
 
-  async setApiKey(key: string): Promise<ComposioStatus> {
+  /** Saves the key after Composio has accepted it once; an empty key removes the saved one. */
+  async setApiKey(key: string, options: { verify?: boolean } = {}): Promise<ComposioStatus> {
     const trimmed = key.trim();
     if (!trimmed) {
       this.#cachedKey = null;
-      delete process.env.COMPOSIO_API_KEY;
-      try {
-        await writeFile(this.keyFilePath, "", { encoding: "utf8", mode: 0o600 });
-      } catch {
-        // ignore write error on empty
-      }
-    } else {
-      this.#cachedKey = trimmed;
-      process.env.COMPOSIO_API_KEY = trimmed;
-      await writeFile(this.keyFilePath, `${trimmed}\n`, { encoding: "utf8", mode: 0o600 });
+      this.#keyLoaded = true;
+      await writeFile(this.keyFilePath, "", { encoding: "utf8", mode: 0o600 }).catch(
+        () => undefined,
+      );
+      this.resetCaches();
+      return this.getStatus();
     }
+    if (options.verify !== false) {
+      const url = new URL(`${this.#baseUrl}/auth_configs`);
+      url.searchParams.set("limit", "1");
+      const res = await this.#request(
+        url.toString(),
+        { method: "GET" },
+        { key: trimmed, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
+      );
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          "Composio did not accept that key. Copy it again from app.composio.dev → Settings → API keys.",
+        );
+      }
+      if (!res.ok) throw new Error(await this.#failure("check the key", res));
+    }
+    await writeFile(this.keyFilePath, `${trimmed}\n`, { encoding: "utf8", mode: 0o600 });
+    this.#cachedKey = trimmed;
+    this.#keyLoaded = true;
+    this.resetCaches();
     return this.getStatus();
   }
 
   async getStatus(): Promise<ComposioStatus> {
     const key = await this.getApiKey();
+    const base = {
+      freeTierActive: true,
+      monthlyQuota: HOBBY_PLAN_TOOL_CALLS,
+      planName: HOBBY_PLAN_NAME,
+      catalogueError: this.#catalogueError,
+    };
     if (!key) {
       return {
+        ...base,
         configured: false,
         apiKeyMasked: null,
         connectedCount: 0,
-        freeTierActive: true,
-        monthlyQuota: 100_000,
+        catalogueSize: FALLBACK_TOOLKITS.length,
       };
     }
-
     let connectedCount = 0;
     try {
-      const connections = await this.listConnectedAccounts();
-      connectedCount = connections.length;
+      connectedCount = activeConnections(await this.#connectionsGet(key)).size;
     } catch {
-      // network/auth check failure
+      // Offline or paused: the count stays at zero until the next refresh.
     }
-
-    const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : "••••••••";
-
     return {
+      ...base,
       configured: true,
-      apiKeyMasked: masked,
+      apiKeyMasked: maskKey(key),
       connectedCount,
-      freeTierActive: true,
-      monthlyQuota: 100_000,
+      catalogueSize: this.#catalogue?.value.length ?? FALLBACK_TOOLKITS.length,
     };
   }
 
-  async listConnectedAccounts(entityId?: string): Promise<Array<{ id: string; appName: string; status: string }>> {
+  // ----- Apps and connections ----------------------------------------------------------------
+
+  /** Every toolkit Composio offers, with the owner's connection where one exists. */
+  async listApps(refresh = false): Promise<ComposioAppMeta[]> {
     const key = await this.getApiKey();
-    if (!key) return [];
-
-    const url = new URL(`${this.#baseUrl}/connectedAccounts`);
-    if (entityId) {
-      url.searchParams.set("user_uuid", entityId);
+    if (!key) return FALLBACK_TOOLKITS.map((toolkit) => appFromToolkit(toolkit));
+    const [catalogue, connections] = await Promise.all([
+      this.#catalogueGet(key, refresh).catch(() => FALLBACK_TOOLKITS),
+      this.#connectionsGet(key, refresh).catch(() => [] as ComposioConnection[]),
+    ]);
+    const active = activeConnections(connections);
+    const apps = catalogue.map((toolkit) => appFromToolkit(toolkit, active.get(toolkit.slug)));
+    for (const [slug, connection] of active) {
+      if (catalogue.some((toolkit) => toolkit.slug === slug)) continue;
+      apps.push(
+        appFromToolkit(
+          {
+            slug,
+            name: slug,
+            description: "",
+            logo: null,
+            categories: [],
+            toolsCount: null,
+            authSchemes: [],
+            managedAuthSchemes: [],
+            noAuth: false,
+          },
+          connection,
+        ),
+      );
     }
-
-    const res = await this.#fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        "x-api-key": key,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        throw new Error("Invalid Composio API key.");
-      }
-      return [];
-    }
-
-    const data = (await res.json()) as { items?: Array<{ id: string; appName?: string; appUniqueId?: string; status?: string }> };
-    const items = Array.isArray(data.items) ? data.items : [];
-    return items.map((item) => ({
-      id: item.id,
-      appName: (item.appName ?? item.appUniqueId ?? "").toLowerCase(),
-      status: item.status ?? "ACTIVE",
-    }));
+    return apps;
   }
 
-  async listApps(entityId?: string): Promise<ComposioAppMeta[]> {
-    const connections = await this.listConnectedAccounts(entityId).catch(() => []);
-    const connectionMap = new Map<string, string>();
-    for (const conn of connections) {
-      connectionMap.set(conn.appName.toLowerCase(), conn.id);
-    }
-
-    return CURATED_APPS.map((app) => {
-      const connId = connectionMap.get(app.id.toLowerCase());
-      return {
-        ...app,
-        isConnected: Boolean(connId),
-        connectedAccountId: connId,
-      };
-    });
-  }
-
-  async initiateConnection(appId: string, entityId?: string): Promise<ComposioConnectionInitiateResult> {
+  /** Starts Composio's hosted sign-in for a toolkit and returns the page to open. */
+  async initiateConnection(appId: string): Promise<ComposioConnectionInitiateResult> {
     const key = await this.getApiKey();
-    if (!key) {
-      throw new Error("Composio API key is not configured. Please set your key in Settings.");
-    }
-
-    const targetEntity = entityId ?? "default_sahkarmi_user";
-    const res = await this.#fetch(`${this.#baseUrl}/connectedAccounts`, {
-      method: "POST",
-      headers: {
-        "x-api-key": key,
-        "Content-Type": "application/json",
+    if (!key) throw new Error("Add your Composio key first (Marketplace → Apps).");
+    const slug = appId.trim().toLowerCase();
+    if (!slug) throw new Error("Which app should be connected?");
+    const catalogue = await this.#catalogueGet(key).catch(() => FALLBACK_TOOLKITS);
+    const toolkit: ComposioToolkitRecord = catalogue.find((item) => item.slug === slug) ?? {
+      slug,
+      name: slug,
+      description: "",
+      logo: null,
+      categories: [],
+      toolsCount: null,
+      authSchemes: [],
+      managedAuthSchemes: ["OAUTH2"],
+      noAuth: false,
+    };
+    const authConfigId = await this.#ensureAuthConfig(toolkit, key);
+    const res = await this.#request(
+      `${this.#baseUrl}/connected_accounts/link`,
+      {
+        method: "POST",
+        body: JSON.stringify({ auth_config_id: authConfigId, user_id: OWNER_USER_ID }),
       },
-      body: JSON.stringify({
-        appName: appId.toLowerCase(),
-        user_uuid: targetEntity,
-        redirectUri: "https://backend.composio.dev/api/v1/auth/callback",
-      }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Failed to initiate ${appId} connection: ${text || res.statusText}`);
-    }
-
-    const json = (await res.json()) as { id?: string; connectionId?: string; redirectUrl?: string; authUrl?: string };
-    const connectionId = json.id ?? json.connectionId ?? `conn_${Date.now()}`;
-    const redirectUrl = json.redirectUrl ?? json.authUrl;
-
-    if (!redirectUrl) {
-      throw new Error("Composio did not return an authorization URL.");
-    }
-
+      { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
+    );
+    if (!res.ok) throw new Error(await this.#failure(`connect ${toolkit.name}`, res));
+    const json = await readJson(res);
+    const redirectUrl =
+      isRecord(json) && typeof json.redirect_url === "string" ? json.redirect_url : "";
+    const connectionId =
+      isRecord(json) && typeof json.connected_account_id === "string"
+        ? json.connected_account_id
+        : "";
+    if (!redirectUrl) throw new Error("Composio did not return a sign-in link.");
+    this.#connections = null;
     return { connectionId, redirectUrl };
+  }
+
+  async getConnectionStatus(connectionId: string): Promise<ComposioConnectionStatus> {
+    const key = await this.getApiKey();
+    if (!key || !connectionId) {
+      return { connectionId, status: "UNKNOWN", state: "unknown" };
+    }
+    const res = await this.#request(
+      `${this.#baseUrl}/connected_accounts/${encodeURIComponent(connectionId)}`,
+      { method: "GET" },
+      { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
+    );
+    if (res.status === 404) return { connectionId, status: "NOT_FOUND", state: "failed" };
+    if (!res.ok) throw new Error(await this.#failure("check the connection", res));
+    const json = await readJson(res);
+    const status = isRecord(json) && typeof json.status === "string" ? json.status : "UNKNOWN";
+    const state = connectionState(status);
+    if (state === "connected") this.#connections = null;
+    return { connectionId, status, state };
   }
 
   async deleteConnection(connectionId: string): Promise<boolean> {
     const key = await this.getApiKey();
-    if (!key) return false;
+    if (!key || !connectionId) return false;
+    const res = await this.#request(
+      `${this.#baseUrl}/connected_accounts/${encodeURIComponent(connectionId)}`,
+      { method: "DELETE" },
+      { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
+    );
+    this.#connections = null;
+    this.#tools.clear();
+    return res.ok || res.status === 404;
+  }
 
-    const res = await this.#fetch(`${this.#baseUrl}/connectedAccounts/${encodeURIComponent(connectionId)}`, {
-      method: "DELETE",
-      headers: {
-        "x-api-key": key,
-      },
-    });
+  // ----- Tools for coworkers -----------------------------------------------------------------
 
-    return res.ok;
+  /** The important tools of every connected toolkit, with Composio's real input schemas. */
+  async getDynamicTools(): Promise<ComposioDynamicTool[]> {
+    const key = await this.getApiKey();
+    if (!key) return [];
+    const active = activeConnections(await this.#connectionsGet(key));
+    const tools: ComposioDynamicTool[] = [];
+    for (const slug of active.keys()) {
+      if (tools.length >= MAX_TOOLS_TOTAL) break;
+      let records: ComposioToolRecord[];
+      try {
+        records = await this.#toolkitTools(slug, key);
+      } catch {
+        continue; // One toolkit's listing failing must not take the others down.
+      }
+      for (const record of records) {
+        if (tools.length >= MAX_TOOLS_TOTAL) break;
+        tools.push(dynamicTool(record));
+      }
+    }
+    return tools;
+  }
+
+  /** Human words for an approval card: which toolkit, which tool. Best effort, never throws. */
+  describeAction(toolSlug: string): { toolkit: string; name: string } {
+    const slug = toolSlug.toUpperCase().replace(/-/g, "_");
+    const toolkitSlug = this.#toolToolkit.get(slug) ?? this.#guessToolkit(slug);
+    const toolkit =
+      (toolkitSlug &&
+        (this.#catalogue?.value.find((item) => item.slug === toolkitSlug)?.name ??
+          FALLBACK_TOOLKITS.find((item) => item.slug === toolkitSlug)?.name)) ||
+      (toolkitSlug ? describeTool(toolkitSlug) : "Composio");
+    const name = this.#toolNames.get(slug) ?? describeTool(slug, toolkitSlug ?? undefined);
+    return { toolkit, name };
   }
 
   async executeAction(
-    actionName: string,
+    toolSlug: string,
     args: Record<string, unknown>,
-    entityId?: string,
   ): Promise<ComposioExecuteResult> {
+    const slug = toolSlug.toUpperCase().replace(/-/g, "_");
     const key = await this.getApiKey();
     if (!key) {
       return {
         success: false,
-        error: "Composio is not configured with an API key. Go to Settings > Integrations to add your key.",
+        error:
+          "Composio is not set up yet. Ask the owner to add their free Composio key in Marketplace → Apps.",
       };
     }
-
-    const url = `${this.#baseUrl}/actions/${encodeURIComponent(actionName)}/execute`;
-    const body: Record<string, unknown> = {
-      user_uuid: entityId ?? "default_sahkarmi_user",
-      arguments: args,
-    };
-
     try {
-      const res = await this.#fetch(url, {
-        method: "POST",
-        headers: {
-          "x-api-key": key,
-          "Content-Type": "application/json",
+      const account = await this.#accountForTool(slug, key);
+      const body = account
+        ? { connected_account_id: account.id, arguments: args }
+        : { user_id: OWNER_USER_ID, arguments: args };
+      const res = await this.#request(
+        `${this.#baseUrl}/tools/execute/${encodeURIComponent(slug)}`,
+        { method: "POST", body: JSON.stringify(body) },
+        {
+          key,
+          timeoutMs: EXECUTE_TIMEOUT_MS,
+          // A send or a delete must not be repeated on a 5xx: it may already have happened.
+          retries: isActionSensitive(slug) ? 0 : 2,
         },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
+      );
+      if (!res.ok) return { success: false, error: await this.#failure(`run ${slug}`, res) };
+      const json = await readJson(res);
+      if (!isRecord(json)) return { success: true, data: json ?? null };
+      if (json.successful === false) {
         return {
           success: false,
-          error: `Composio action failed (${res.status}): ${errText || res.statusText}`,
+          data: json.data,
+          error:
+            typeof json.error === "string" && json.error
+              ? json.error
+              : "Composio reported that the action failed.",
         };
       }
-
-      const json = await res.json();
-      return {
-        success: true,
-        data: json,
-      };
+      return { success: true, data: json.data ?? null };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  async getDynamicTools(entityId?: string): Promise<Array<{
-    type: "function";
-    name: string;
-    description: string;
-    inputSchema: {
-      type: "object";
-      properties: Record<string, unknown>;
-      required?: string[];
-      additionalProperties?: boolean;
-    };
-  }>> {
-    const apps = await this.listApps(entityId);
-    const connectedApps = apps.filter((app) => app.isConnected);
-    if (connectedApps.length === 0) return [];
+  // ----- Catalogue ---------------------------------------------------------------------------
 
-    const tools: Array<{
-      type: "function";
-      name: string;
-      description: string;
-      inputSchema: {
-        type: "object";
-        properties: Record<string, unknown>;
-        required?: string[];
-        additionalProperties?: boolean;
-      };
-    }> = [];
+  async #catalogueGet(key: string, refresh = false): Promise<ComposioToolkitRecord[]> {
+    const now = this.#now();
+    if (!refresh && this.#catalogue && now - this.#catalogue.at < CATALOGUE_TTL_MS) {
+      return this.#catalogue.value;
+    }
+    if (!this.#catalogue) {
+      const stored = await this.#readCatalogueFile();
+      if (stored) this.#catalogue = stored;
+      if (!refresh && stored && now - stored.at < CATALOGUE_TTL_MS) return stored.value;
+    }
+    if (this.#catalogueLoad) return this.#catalogueLoad;
+    this.#catalogueLoad = this.#fetchCatalogue(key)
+      .then(async (items) => {
+        this.#catalogue = { at: this.#now(), value: items };
+        this.#catalogueError = null;
+        await this.#writeCatalogueFile(this.#catalogue).catch(() => undefined);
+        return items;
+      })
+      .catch((error: unknown) => {
+        this.#catalogueError = error instanceof Error ? error.message : String(error);
+        if (this.#catalogue) return this.#catalogue.value;
+        throw error;
+      })
+      .finally(() => {
+        this.#catalogueLoad = null;
+      });
+    return this.#catalogueLoad;
+  }
 
-    for (const app of connectedApps) {
-      for (const action of app.popularActions) {
-        const properties: Record<string, unknown> = {};
-        for (const param of action.requiredParams) {
-          properties[param] = { type: "string", description: `Parameter for ${action.displayName}` };
+  async #fetchCatalogue(key: string): Promise<ComposioToolkitRecord[]> {
+    const items: ComposioToolkitRecord[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const url = new URL(`${this.#baseUrl}/toolkits`);
+      url.searchParams.set("limit", String(CATALOGUE_PAGE));
+      url.searchParams.set("sort_by", "usage");
+      if (cursor) url.searchParams.set("cursor", cursor);
+      const res = await this.#request(
+        url.toString(),
+        { method: "GET" },
+        { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 2 },
+      );
+      if (!res.ok) throw new Error(await this.#failure("load the app list", res));
+      const json = await readJson(res);
+      for (const item of itemsOf(json)) {
+        const toolkit = toolkitFromApi(item);
+        if (toolkit) items.push(toolkit);
+      }
+      cursor =
+        isRecord(json) && typeof json.next_cursor === "string" && json.next_cursor
+          ? json.next_cursor
+          : null;
+      if (!cursor) break;
+    }
+    if (items.length === 0) throw new Error("Composio returned an empty app list.");
+    return items;
+  }
+
+  async #readCatalogueFile(): Promise<CacheEntry<ComposioToolkitRecord[]> | null> {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(this.catalogueFilePath, "utf8"));
+      if (
+        !isRecord(parsed) ||
+        parsed.version !== 1 ||
+        typeof parsed.at !== "number" ||
+        !Array.isArray(parsed.items)
+      ) {
+        return null;
+      }
+      const items = parsed.items.filter(isToolkitRecord);
+      return items.length > 0 ? { at: parsed.at, value: items } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async #writeCatalogueFile(entry: CacheEntry<ComposioToolkitRecord[]>): Promise<void> {
+    const file: CatalogueFile = { version: 1, at: entry.at, items: entry.value };
+    await writeFile(this.catalogueFilePath, JSON.stringify(file), "utf8");
+  }
+
+  // ----- Connections -------------------------------------------------------------------------
+
+  async #connectionsGet(key: string, refresh = false): Promise<ComposioConnection[]> {
+    const now = this.#now();
+    if (!refresh && this.#connections && now - this.#connections.at < CONNECTIONS_TTL_MS) {
+      return this.#connections.value;
+    }
+    if (this.#connectionsLoad) return this.#connectionsLoad;
+    this.#connectionsLoad = this.#fetchConnections(key)
+      .then((items) => {
+        this.#connections = { at: this.#now(), value: items };
+        return items;
+      })
+      .finally(() => {
+        this.#connectionsLoad = null;
+      });
+    return this.#connectionsLoad;
+  }
+
+  async #fetchConnections(key: string): Promise<ComposioConnection[]> {
+    const items: ComposioConnection[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const url = new URL(`${this.#baseUrl}/connected_accounts`);
+      url.searchParams.set("limit", "100");
+      if (cursor) url.searchParams.set("cursor", cursor);
+      const res = await this.#request(
+        url.toString(),
+        { method: "GET" },
+        { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 2 },
+      );
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          "Composio no longer accepts the saved key. Add it again in Marketplace → Apps.",
+        );
+      }
+      if (!res.ok) throw new Error(await this.#failure("list connected apps", res));
+      const json = await readJson(res);
+      for (const item of itemsOf(json)) {
+        const connection = connectionFromApi(item);
+        if (connection) items.push(connection);
+      }
+      cursor =
+        isRecord(json) && typeof json.next_cursor === "string" && json.next_cursor
+          ? json.next_cursor
+          : null;
+      if (!cursor) break;
+    }
+    return items;
+  }
+
+  async #ensureAuthConfig(toolkit: ComposioToolkitRecord, key: string): Promise<string> {
+    const cached = this.#authConfigs.get(toolkit.slug);
+    if (cached) return cached;
+    const url = new URL(`${this.#baseUrl}/auth_configs`);
+    url.searchParams.set("toolkit_slug", toolkit.slug);
+    url.searchParams.set("limit", "50");
+    const res = await this.#request(
+      url.toString(),
+      { method: "GET" },
+      { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
+    );
+    if (!res.ok) throw new Error(await this.#failure("read the app's sign-in settings", res));
+    const usable = itemsOf(await readJson(res)).filter((item) => {
+      if (typeof item.id !== "string") return false;
+      if (item.status !== undefined && item.status !== "ENABLED") return false;
+      const slug = isRecord(item.toolkit) ? item.toolkit.slug : undefined;
+      return typeof slug !== "string" || slug.toLowerCase() === toolkit.slug;
+    });
+    const existing = usable.find((item) => item.is_composio_managed === true) ?? usable[0];
+    if (existing && typeof existing.id === "string") {
+      this.#authConfigs.set(toolkit.slug, existing.id);
+      return existing.id;
+    }
+    if (toolkit.managedAuthSchemes.length === 0 && !toolkit.noAuth) {
+      throw new Error(
+        `${toolkit.name} needs your own developer app keys. Create an auth config for it at app.composio.dev (Auth Configs → Create), then press Connect again.`,
+      );
+    }
+    const created = await this.#request(
+      `${this.#baseUrl}/auth_configs`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          toolkit: { slug: toolkit.slug },
+          auth_config: { type: "use_composio_managed_auth", name: `Sahkarmi ${toolkit.name}` },
+        }),
+      },
+      { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
+    );
+    if (!created.ok) {
+      throw new Error(await this.#failure(`prepare ${toolkit.name} for sign-in`, created));
+    }
+    const json = await readJson(created);
+    const id =
+      isRecord(json) && isRecord(json.auth_config) && typeof json.auth_config.id === "string"
+        ? json.auth_config.id
+        : isRecord(json) && typeof json.id === "string"
+          ? json.id
+          : "";
+    if (!id) throw new Error("Composio did not return an auth config id.");
+    this.#authConfigs.set(toolkit.slug, id);
+    return id;
+  }
+
+  async #accountForTool(toolSlug: string, key: string): Promise<ComposioConnection | null> {
+    const active = activeConnections(await this.#connectionsGet(key));
+    const known = this.#toolToolkit.get(toolSlug);
+    if (known && active.has(known)) return active.get(known) ?? null;
+    const guessed = this.#guessToolkit(toolSlug, [...active.keys()]);
+    return guessed ? (active.get(guessed) ?? null) : null;
+  }
+
+  /** The longest toolkit slug that prefixes the tool slug ("GOOGLE_MAPS_..." → google_maps). */
+  #guessToolkit(toolSlug: string, candidates?: string[]): string | null {
+    const pool =
+      candidates ?? (this.#catalogue?.value ?? FALLBACK_TOOLKITS).map((toolkit) => toolkit.slug);
+    let best: string | null = null;
+    for (const slug of pool) {
+      const prefix = `${slug.toUpperCase().replace(/-/g, "_")}_`;
+      if (toolSlug.startsWith(prefix) && (!best || slug.length > best.length)) best = slug;
+    }
+    return best;
+  }
+
+  // ----- Tools -------------------------------------------------------------------------------
+
+  async #toolkitTools(toolkitSlug: string, key: string): Promise<ComposioToolRecord[]> {
+    const cached = this.#tools.get(toolkitSlug);
+    if (cached && this.#now() - cached.at < TOOLS_TTL_MS) return cached.value;
+    const pending = this.#toolsLoad.get(toolkitSlug);
+    if (pending) return pending;
+    const load = this.#fetchTools(toolkitSlug, key)
+      .then((records) => {
+        this.#tools.set(toolkitSlug, { at: this.#now(), value: records });
+        for (const record of records) {
+          this.#toolToolkit.set(record.slug, toolkitSlug);
+          this.#toolNames.set(record.slug, record.name);
         }
+        return records;
+      })
+      .finally(() => {
+        this.#toolsLoad.delete(toolkitSlug);
+      });
+    this.#toolsLoad.set(toolkitSlug, load);
+    return load;
+  }
 
-        tools.push({
-          type: "function",
-          name: action.name.toLowerCase(),
-          description: `[${app.name}] ${action.description}`,
-          inputSchema: {
-            type: "object",
-            properties,
-            required: action.requiredParams.length > 0 ? action.requiredParams : undefined,
-            additionalProperties: true,
-          },
+  async #fetchTools(toolkitSlug: string, key: string): Promise<ComposioToolRecord[]> {
+    const important = await this.#toolsPage(toolkitSlug, key, true);
+    const records =
+      important.length > 0 ? important : await this.#toolsPage(toolkitSlug, key, false);
+    return records.slice(0, MAX_TOOLS_PER_TOOLKIT);
+  }
+
+  async #toolsPage(
+    toolkitSlug: string,
+    key: string,
+    important: boolean,
+  ): Promise<ComposioToolRecord[]> {
+    const url = new URL(`${this.#baseUrl}/tools`);
+    url.searchParams.set("toolkit_slug", toolkitSlug);
+    url.searchParams.set("limit", String(MAX_TOOLS_PER_TOOLKIT));
+    if (important) url.searchParams.set("important", "true");
+    const res = await this.#request(
+      url.toString(),
+      { method: "GET" },
+      { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 2 },
+    );
+    if (!res.ok) throw new Error(await this.#failure(`list ${toolkitSlug} tools`, res));
+    const toolkitName =
+      this.#catalogue?.value.find((toolkit) => toolkit.slug === toolkitSlug)?.name ??
+      FALLBACK_TOOLKITS.find((toolkit) => toolkit.slug === toolkitSlug)?.name ??
+      describeTool(toolkitSlug);
+    const records: ComposioToolRecord[] = [];
+    for (const item of itemsOf(await readJson(res))) {
+      const record = toolFromApi(item, toolkitSlug, toolkitName);
+      if (record) records.push(record);
+    }
+    return records;
+  }
+
+  // ----- Transport ---------------------------------------------------------------------------
+
+  async #request(url: string, init: RequestInit, options: RequestOptions): Promise<Response> {
+    this.#checkCircuit();
+    await this.#acquire();
+    try {
+      return await this.#send(url, init, options);
+    } finally {
+      this.#release();
+    }
+  }
+
+  async #send(url: string, init: RequestInit, options: RequestOptions): Promise<Response> {
+    const headers = {
+      "x-api-key": options.key,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    let attempt = 0;
+    let rateLimited = 0;
+    for (;;) {
+      let res: Response;
+      try {
+        res = await this.#fetch(url, {
+          ...init,
+          headers,
+          signal: AbortSignal.timeout(options.timeoutMs),
         });
+      } catch (error) {
+        if (attempt >= options.retries) {
+          this.#recordFailure();
+          throw new Error(describeNetworkError(error, options.timeoutMs));
+        }
+        await sleep(this.#backoff(attempt));
+        attempt += 1;
+        continue;
+      }
+      if (res.status === 429) {
+        if (rateLimited < MAX_RATE_LIMIT_RETRIES) {
+          await sleep(retryAfterMs(res) ?? this.#backoff(rateLimited));
+          rateLimited += 1;
+          continue;
+        }
+        return res;
+      }
+      if (res.status >= 500 && res.status <= 504) {
+        if (attempt < options.retries) {
+          await sleep(this.#backoff(attempt));
+          attempt += 1;
+          continue;
+        }
+        this.#recordFailure();
+        return res;
+      }
+      if (res.ok) this.#recordSuccess();
+      return res;
+    }
+  }
+
+  /** Full jitter: a random wait between zero and min(8 s, base × 2^attempt). */
+  #backoff(attempt: number): number {
+    return Math.random() * Math.min(MAX_BACKOFF_MS, this.#baseRetryDelayMs * 2 ** attempt);
+  }
+
+  #checkCircuit(): void {
+    const remaining = this.#circuit.trippedUntil - this.#now();
+    if (remaining > 0) {
+      throw new Error(
+        `Composio is paused for ${Math.ceil(remaining / 1000)} s after repeated failures. Try again shortly.`,
+      );
+    }
+  }
+
+  #recordSuccess(): void {
+    this.#circuit = { failures: 0, trippedUntil: 0 };
+  }
+
+  #recordFailure(): void {
+    this.#circuit.failures += 1;
+    if (this.#circuit.failures >= BREAKER_TRIP_AFTER) {
+      this.#circuit.trippedUntil = this.#now() + BREAKER_OPEN_MS;
+    }
+  }
+
+  async #acquire(): Promise<void> {
+    if (this.#inFlight < MAX_IN_FLIGHT) {
+      this.#inFlight += 1;
+      return;
+    }
+    await new Promise<void>((resolve) => this.#waiters.push(resolve));
+    this.#inFlight += 1;
+  }
+
+  #release(): void {
+    this.#inFlight -= 1;
+    this.#waiters.shift()?.();
+  }
+
+  async #failure(action: string, res: Response): Promise<string> {
+    let detail = "";
+    try {
+      const json: unknown = await res.clone().json();
+      if (isRecord(json)) {
+        const error = json.error;
+        if (isRecord(error) && typeof error.message === "string") detail = error.message;
+        else if (typeof error === "string") detail = error;
+        else if (typeof json.message === "string") detail = json.message;
+      }
+    } catch {
+      try {
+        detail = (await res.text()).trim();
+      } catch {
+        detail = "";
       }
     }
-
-    return tools;
+    const hint =
+      res.status === 401 || res.status === 403
+        ? " Check the Composio key in Marketplace → Apps."
+        : res.status === 402
+          ? " The Composio plan's monthly limit may be used up."
+          : "";
+    const shown = detail ? ` (${clip(detail, 200)})` : "";
+    return `Could not ${action}: Composio answered ${res.status}${shown}.${hint}`;
   }
+}
+
+// ----- helpers ---------------------------------------------------------------------------------
+
+function appFromToolkit(
+  toolkit: ComposioToolkitRecord,
+  connection?: ComposioConnection,
+): ComposioAppMeta {
+  const schemes = toolkit.authSchemes.map((scheme) => scheme.toUpperCase());
+  const auth = toolkit.noAuth
+    ? "none"
+    : schemes.some((scheme) => scheme.startsWith("OAUTH"))
+      ? "oauth"
+      : schemes.some((scheme) =>
+            ["API_KEY", "BEARER_TOKEN", "BASIC", "BASIC_WITH_JWT"].includes(scheme),
+          )
+        ? "api-key"
+        : "other";
+  return {
+    id: toolkit.slug,
+    name: toolkit.name,
+    description: toolkit.description,
+    logo: toolkit.logo,
+    categories: toolkit.categories,
+    toolsCount: toolkit.toolsCount,
+    auth,
+    oneClick: toolkit.noAuth || toolkit.managedAuthSchemes.length > 0,
+    isConnected: Boolean(connection),
+    connectedAccountId: connection?.id ?? null,
+    connectionStatus: connection?.status ?? null,
+  };
+}
+
+function activeConnections(connections: ComposioConnection[]): Map<string, ComposioConnection> {
+  const active = new Map<string, ComposioConnection>();
+  for (const connection of connections) {
+    if (connectionState(connection.status) !== "connected") continue;
+    if (!active.has(connection.toolkitSlug)) active.set(connection.toolkitSlug, connection);
+  }
+  return active;
+}
+
+export function connectionState(status: string): ComposioConnectionState {
+  const upper = status.toUpperCase();
+  if (upper === "ACTIVE") return "connected";
+  if (upper === "INITIALIZING" || upper === "INITIATED" || upper === "PENDING") return "connecting";
+  if (
+    ["FAILED", "EXPIRED", "INACTIVE", "REVOKED", "DELETED", "ERROR", "NOT_FOUND"].includes(upper)
+  ) {
+    return "failed";
+  }
+  return "unknown";
+}
+
+function dynamicTool(record: ComposioToolRecord): ComposioDynamicTool {
+  const sensitive = isActionSensitive(record.slug);
+  const schema = record.inputParameters;
+  const properties: Record<string, unknown> = isRecord(schema.properties)
+    ? { ...schema.properties }
+    : {};
+  if (sensitive) {
+    properties.approval_id = {
+      type: "string",
+      description:
+        "Only after the owner approved this exact action: the approval id from the approval message.",
+    };
+  }
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((name): name is string => typeof name === "string")
+    : [];
+  return {
+    type: "function",
+    name: record.slug.toLowerCase(),
+    description: `[${record.toolkitName}] ${clip(record.description, DESCRIPTION_CHARS)}${
+      sensitive ? " Pauses for the owner's approval before it runs." : ""
+    }`,
+    inputSchema: {
+      type: "object",
+      properties,
+      ...(required.length > 0 ? { required } : {}),
+      additionalProperties: true,
+    },
+  };
+}
+
+function toolkitFromApi(item: Record<string, unknown>): ComposioToolkitRecord | null {
+  if (typeof item.slug !== "string" || !item.slug) return null;
+  const meta = isRecord(item.meta) ? item.meta : {};
+  const categories = Array.isArray(meta.categories)
+    ? meta.categories
+        .map((category) =>
+          typeof category === "string"
+            ? category
+            : isRecord(category) && typeof category.name === "string"
+              ? category.name
+              : null,
+        )
+        .filter((name): name is string => Boolean(name))
+    : [];
+  return {
+    slug: item.slug.toLowerCase(),
+    name: typeof item.name === "string" && item.name ? item.name : item.slug,
+    description: typeof meta.description === "string" ? meta.description : "",
+    logo: typeof meta.logo === "string" && meta.logo ? meta.logo : null,
+    categories,
+    toolsCount: typeof meta.tools_count === "number" ? meta.tools_count : null,
+    authSchemes: stringArray(item.auth_schemes),
+    managedAuthSchemes: stringArray(item.composio_managed_auth_schemes),
+    noAuth: item.no_auth === true,
+  };
+}
+
+function isToolkitRecord(value: unknown): value is ComposioToolkitRecord {
+  return (
+    isRecord(value) &&
+    typeof value.slug === "string" &&
+    typeof value.name === "string" &&
+    typeof value.description === "string" &&
+    Array.isArray(value.categories) &&
+    Array.isArray(value.authSchemes) &&
+    Array.isArray(value.managedAuthSchemes)
+  );
+}
+
+function connectionFromApi(item: Record<string, unknown>): ComposioConnection | null {
+  if (typeof item.id !== "string") return null;
+  const toolkitSlug =
+    isRecord(item.toolkit) && typeof item.toolkit.slug === "string"
+      ? item.toolkit.slug.toLowerCase()
+      : "";
+  if (!toolkitSlug) return null;
+  return {
+    id: item.id,
+    toolkitSlug,
+    status: typeof item.status === "string" ? item.status : "UNKNOWN",
+    userId: typeof item.user_id === "string" ? item.user_id : null,
+  };
+}
+
+function toolFromApi(
+  item: Record<string, unknown>,
+  toolkitSlug: string,
+  toolkitName: string,
+): ComposioToolRecord | null {
+  if (typeof item.slug !== "string" || !item.slug) return null;
+  if (item.is_deprecated === true) return null;
+  const toolkit = isRecord(item.toolkit) ? item.toolkit : {};
+  return {
+    slug: item.slug.toUpperCase(),
+    name:
+      typeof item.name === "string" && item.name ? item.name : describeTool(item.slug, toolkitSlug),
+    description: typeof item.description === "string" ? item.description : "",
+    toolkitSlug,
+    toolkitName: typeof toolkit.name === "string" && toolkit.name ? toolkit.name : toolkitName,
+    inputParameters: isRecord(item.input_parameters) ? item.input_parameters : {},
+  };
+}
+
+function itemsOf(json: unknown): Record<string, unknown>[] {
+  if (!isRecord(json) || !Array.isArray(json.items)) return [];
+  return json.items.filter(isRecord);
+}
+
+async function readJson(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function maskKey(key: string): string {
+  return key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : "••••••••";
+}
+
+function clip(text: string, max: number): string {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+}
+
+function retryAfterMs(res: Response): number | null {
+  const header = typeof res.headers?.get === "function" ? res.headers.get("retry-after") : null;
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.min(MAX_BACKOFF_MS, Math.max(0, seconds * 1000));
+  const at = Date.parse(header);
+  return Number.isFinite(at) ? Math.min(MAX_BACKOFF_MS, Math.max(0, at - Date.now())) : null;
+}
+
+function describeNetworkError(error: unknown, timeoutMs: number): string {
+  const name = isRecord(error) && typeof error.name === "string" ? error.name : "";
+  if (name === "TimeoutError" || name === "AbortError") {
+    return `Composio did not answer within ${Math.round(timeoutMs / 1000)} s.`;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return `Could not reach Composio: ${message}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

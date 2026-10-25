@@ -244,8 +244,11 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   composio: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.composioGetStatus),
     setKey: (key: string) => ipcRenderer.invoke(IPC_CHANNELS.composioSetApiKey, { key }),
-    listApps: () => ipcRenderer.invoke(IPC_CHANNELS.composioListApps),
+    listApps: (refresh?: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.composioListApps, { refresh: refresh === true }),
     connect: (appId: string) => ipcRenderer.invoke(IPC_CHANNELS.composioConnectApp, { appId }),
+    connectionStatus: (connectionId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.composioConnectionStatus, { connectionId }),
     disconnect: (connectionId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.composioDisconnectApp, { connectionId }),
   },
