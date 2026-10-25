@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { basename, dirname, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AgentModelId } from "../shared/ipc";
+import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
 import {
   type AccountReadResult,
@@ -475,7 +475,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
 
   async #applyModel(session: AcpSession, model: string | null): Promise<void> {
     if (!model) return;
-    const explicit = !this.#config.models.some((option) => option.model === model);
+    // Sessions get the wire id ("default"), the catalog lists the full one ("copilot:default").
+    const explicit = !this.#config.models.some(
+      (option) => option.model === model || modelWireId(option.model as AgentModelId) === model,
+    );
     const value = this.#config.modelValue(
       model as AgentModelId,
       session.modelOptions,

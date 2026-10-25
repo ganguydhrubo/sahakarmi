@@ -1137,8 +1137,12 @@ if (!hasSingleInstanceLock) {
         toolsDirectory,
         runtimeDirectory,
         recheck: (provider) => service.ensureProvider(provider),
+        openUrl: (url) => void shell.openExternal(url),
       });
       providerSetup.on("state", (state) => {
+        if (state.phase === "failed") {
+          appLog.write("warn", `provider connect failed: ${state.provider}`, state.message);
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.providerSetupEvent, state);
         }
