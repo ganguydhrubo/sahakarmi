@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isRecord } from "../protocol";
+import { COMPOSIO_CATALOG, COMPOSIO_LOGO_BASE } from "./composio-catalog";
 import { describeTool, isActionSensitive } from "./composio-policy";
 import type {
   ComposioAppMeta,
@@ -45,86 +46,28 @@ const BREAKER_TRIP_AFTER = 5;
 const BREAKER_OPEN_MS = 60_000;
 const DESCRIPTION_CHARS = 500;
 
-/** Shown before the owner has added a key; the live catalogue replaces it afterwards. */
-export const FALLBACK_TOOLKITS: ComposioToolkitRecord[] = [
-  {
-    slug: "github",
-    name: "GitHub",
-    description: "Repositories, issues, pull requests, commits and releases.",
-    logo: null,
-    categories: ["Developer tools"],
+/** Composio's own logo for a toolkit; works without a key. */
+export function composioLogoUrl(slug: string): string {
+  return `${COMPOSIO_LOGO_BASE}${encodeURIComponent(slug)}`;
+}
+
+/**
+ * Every app Composio lists publicly, bundled so the Apps tab is complete before the owner has
+ * added a key. The live catalogue from Composio's API replaces it once a key is saved.
+ */
+export const FALLBACK_TOOLKITS: ComposioToolkitRecord[] = COMPOSIO_CATALOG.map(
+  ([slug, name, description, category, auth]) => ({
+    slug,
+    name,
+    description,
+    logo: composioLogoUrl(slug),
+    categories: category ? [category] : [],
     toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "gmail",
-    name: "Gmail",
-    description: "Read, search, draft and send business email.",
-    logo: null,
-    categories: ["Communication"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "googlecalendar",
-    name: "Google Calendar",
-    description: "Meetings, upcoming events and free slots for you and your team.",
-    logo: null,
-    categories: ["Productivity"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "slack",
-    name: "Slack",
-    description: "Channels, messages and team notifications.",
-    logo: null,
-    categories: ["Communication"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "notion",
-    name: "Notion",
-    description: "Pages, databases and notes in your workspace.",
-    logo: null,
-    categories: ["Productivity"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "jira",
-    name: "Jira",
-    description: "Tickets, sprints and project workflows.",
-    logo: null,
-    categories: ["Project management"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-  {
-    slug: "linear",
-    name: "Linear",
-    description: "Issues, cycles and project triage.",
-    logo: null,
-    categories: ["Developer tools"],
-    toolsCount: null,
-    authSchemes: ["OAUTH2"],
-    managedAuthSchemes: ["OAUTH2"],
-    noAuth: false,
-  },
-];
+    authSchemes: auth === "oauth" ? ["OAUTH2"] : auth === "api-key" ? ["API_KEY"] : [],
+    managedAuthSchemes: auth === "oauth" ? ["OAUTH2"] : [],
+    noAuth: auth === "none",
+  }),
+);
 
 export const CURATED_APPS: ComposioAppMeta[] = FALLBACK_TOOLKITS.map((toolkit) =>
   appFromToolkit(toolkit),
@@ -656,7 +599,7 @@ export class ComposioClient {
     }
     if (toolkit.managedAuthSchemes.length === 0 && !toolkit.noAuth) {
       throw new Error(
-        `${toolkit.name} needs your own developer app keys. Create an auth config for it at app.composio.dev (Auth Configs → Create), then press Connect again.`,
+        `${toolkit.name} needs a one-time setup in Composio: open app.composio.dev → Auth configs → Create, pick ${toolkit.name}, then press Connect here again.`,
       );
     }
     const created = await this.#request(
@@ -989,7 +932,10 @@ function toolkitFromApi(item: Record<string, unknown>): ComposioToolkitRecord | 
     slug: item.slug.toLowerCase(),
     name: typeof item.name === "string" && item.name ? item.name : item.slug,
     description: typeof meta.description === "string" ? meta.description : "",
-    logo: typeof meta.logo === "string" && meta.logo ? meta.logo : null,
+    logo:
+      typeof meta.logo === "string" && meta.logo
+        ? meta.logo
+        : composioLogoUrl(item.slug.toLowerCase()),
     categories,
     toolsCount: typeof meta.tools_count === "number" ? meta.tools_count : null,
     authSchemes: stringArray(item.auth_schemes),

@@ -340,7 +340,7 @@ export const workspaceEn = {
     "Disconnect {name}? Coworkers lose access to it until you connect it again.",
   appsKeyTitle: "Add your free Composio key",
   appsKeyIntro:
-    "Create a free account at app.composio.dev, copy the API key from Settings and paste it here. The key stays on this computer.",
+    "1. Open Composio and create a free account (no card). 2. Copy the API key from Settings → API keys. 3. Paste it here and press Save key.",
   appsKeyPlaceholder: "Paste your Composio API key",
   appsKeySave: "Save key",
   appsKeySaving: "Checking…",
@@ -352,6 +352,11 @@ export const workspaceEn = {
     "Reading is instant. Anything that sends, creates, changes or deletes waits for your approval first.",
   appsLoading: "Loading apps…",
   appsNoResults: "No apps match “{query}”.",
+  appsKeyWhy:
+    "Composio holds the sign-ins to your apps and runs each action. The key only links this computer to your free Composio account. One key covers every app and every coworker, and it never leaves this computer.",
+  appsAddKey: "Add key",
+  appsKeyNotice: "Browse all {count} apps now. To connect one, you need a free Composio key.",
+  appsKeyNeededForConnect: "To connect {name}, add your free Composio key first.",
   appsNoDescription: "Tools for {name}.",
   appsNeedsOwnKeys: "Needs your own app keys",
   appsSignInOpened:
@@ -757,7 +762,7 @@ export const workspaceHi: WorkspaceDictionary = {
   appsDisconnectConfirm: "{name} को डिसकनेक्ट करें? दोबारा कनेक्ट करने तक सहकर्मी इसका इस्तेमाल नहीं कर पाएँगे.",
   appsKeyTitle: "अपनी मुफ़्त Composio key जोड़ें",
   appsKeyIntro:
-    "app.composio.dev पर मुफ़्त खाता बनाएँ, Settings से API key कॉपी करें और यहाँ पेस्ट करें. Key इसी कंप्यूटर पर रहती है.",
+    "1. Composio खोलें और मुफ़्त खाता बनाएँ (कार्ड नहीं चाहिए). 2. Settings → API keys से API key कॉपी करें. 3. यहाँ पेस्ट करके Key सेव करें दबाएँ.",
   appsKeyPlaceholder: "अपनी Composio API key पेस्ट करें",
   appsKeySave: "Key सेव करें",
   appsKeySaving: "जाँच हो रही है…",
@@ -769,6 +774,11 @@ export const workspaceHi: WorkspaceDictionary = {
     "पढ़ना तुरंत होता है. जो भी भेजता, बनाता, बदलता या हटाता है, वह पहले आपकी मंज़ूरी का इंतज़ार करता है.",
   appsLoading: "ऐप्स लोड हो रहे हैं…",
   appsNoResults: "“{query}” से कोई ऐप नहीं मिला.",
+  appsKeyWhy:
+    "Composio आपके ऐप्स के साइन-इन संभालता है और हर काम चलाता है. Key सिर्फ़ इस कंप्यूटर को आपके मुफ़्त Composio खाते से जोड़ती है. एक key हर ऐप और हर सहकर्मी के लिए काफ़ी है, और यह इसी कंप्यूटर पर रहती है.",
+  appsAddKey: "Key जोड़ें",
+  appsKeyNotice: "सभी {count} ऐप्स अभी देखें. किसी को कनेक्ट करने के लिए मुफ़्त Composio key चाहिए.",
+  appsKeyNeededForConnect: "{name} कनेक्ट करने के लिए पहले अपनी मुफ़्त Composio key जोड़ें.",
   appsNoDescription: "{name} के टूल.",
   appsNeedsOwnKeys: "आपकी अपनी ऐप keys चाहिए",
   appsSignInOpened: "{name} का साइन-इन पेज आपके ब्राउज़र में खुला है. वहाँ पूरा करें; यह सूची अपने आप अपडेट होगी.",
@@ -1166,7 +1176,7 @@ export const workspaceBn: WorkspaceDictionary = {
   appsDisconnectConfirm: "{name} বিচ্ছিন্ন করবেন? আবার যুক্ত না করা পর্যন্ত সহকর্মীরা এটি ব্যবহার করতে পারবে না।",
   appsKeyTitle: "আপনার বিনামূল্যের Composio key যোগ করুন",
   appsKeyIntro:
-    "app.composio.dev-এ বিনামূল্যে অ্যাকাউন্ট খুলুন, Settings থেকে API key কপি করে এখানে পেস্ট করুন। Key এই কম্পিউটারেই থাকে।",
+    "1. Composio খুলে বিনামূল্যে অ্যাকাউন্ট খুলুন (কার্ড লাগবে না)। 2. Settings → API keys থেকে API key কপি করুন। 3. এখানে পেস্ট করে Key সেভ করুন চাপুন।",
   appsKeyPlaceholder: "আপনার Composio API key পেস্ট করুন",
   appsKeySave: "Key সেভ করুন",
   appsKeySaving: "পরীক্ষা হচ্ছে…",
@@ -1178,6 +1188,11 @@ export const workspaceBn: WorkspaceDictionary = {
     "পড়া সঙ্গে সঙ্গে হয়। যা কিছু পাঠায়, তৈরি করে, বদলায় বা মোছে, তা আগে আপনার অনুমোদনের জন্য অপেক্ষা করে।",
   appsLoading: "অ্যাপ লোড হচ্ছে…",
   appsNoResults: "“{query}”-এর সঙ্গে মেলে এমন কোনো অ্যাপ নেই।",
+  appsKeyWhy:
+    "Composio আপনার অ্যাপগুলির সাইন-ইন রাখে এবং প্রতিটি কাজ চালায়। Key শুধু এই কম্পিউটারকে আপনার বিনামূল্যের Composio অ্যাকাউন্টের সঙ্গে যুক্ত করে। একটি key-ই সব অ্যাপ ও সব সহকর্মীর জন্য যথেষ্ট, আর তা এই কম্পিউটারেই থাকে।",
+  appsAddKey: "Key যোগ করুন",
+  appsKeyNotice: "সব {count} অ্যাপ এখনই দেখুন। কোনোটি যুক্ত করতে বিনামূল্যের Composio key লাগবে।",
+  appsKeyNeededForConnect: "{name} যুক্ত করতে আগে আপনার বিনামূল্যের Composio key যোগ করুন।",
   appsNoDescription: "{name}-এর টুল।",
   appsNeedsOwnKeys: "আপনার নিজের অ্যাপ key লাগবে",
   appsSignInOpened:

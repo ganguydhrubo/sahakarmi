@@ -231,8 +231,19 @@ describe("ComposioClient", () => {
     expect(status.monthlyQuota).toBe(HOBBY_PLAN_TOOL_CALLS);
     expect(status.planName).toBe("Hobby");
     const apps = await composio.listApps();
-    expect(apps.length).toBeGreaterThanOrEqual(6);
-    expect(apps.find((app) => app.id === "github")?.isConnected).toBe(false);
+    expect(apps.length).toBeGreaterThan(1000);
+    expect(apps.slice(0, 5).map((app) => app.id)).toContain("gmail");
+    const github = apps.find((app) => app.id === "github");
+    expect(github).toMatchObject({
+      name: "GitHub",
+      isConnected: false,
+      logo: "https://logos.composio.dev/api/github",
+      categories: ["Developer tools & DevOps"],
+      auth: "oauth",
+      oneClick: true,
+    });
+    expect(github?.description).toMatch(/code hosting/);
+    expect(status.catalogueSize).toBe(apps.length);
     expect(fake.calls).toHaveLength(0);
   });
 
@@ -285,7 +296,11 @@ describe("ComposioClient", () => {
       oneClick: true,
     });
     expect(apps[1]).toMatchObject({ isConnected: false, connectedAccountId: null });
-    expect(apps[2]).toMatchObject({ auth: "api-key", oneClick: false, logo: null });
+    expect(apps[2]).toMatchObject({
+      auth: "api-key",
+      oneClick: false,
+      logo: "https://logos.composio.dev/api/custom_crm",
+    });
     const toolkitCalls = () => fake.calls.filter((call) => call.url.pathname.endsWith("/toolkits"));
     expect(toolkitCalls()).toHaveLength(1);
     expect(toolkitCalls()[0].url.searchParams.get("sort_by")).toBe("usage");

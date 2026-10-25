@@ -13,6 +13,7 @@ import { t } from "../i18n";
 import { speechLocale } from "../preferences";
 
 const PAGE_SIZE = 24;
+const PAGE_STEP = 48;
 const POLL_EVERY_MS = 3_000;
 const POLL_FOR_MS = 3 * 60_000;
 const COMPOSIO_URL = "https://app.composio.dev";
@@ -27,8 +28,8 @@ export function appMatches(app: ComposioAppMeta, words: string[]): boolean {
 }
 
 /**
- * Marketplace → Apps: every app Composio offers, with the owner's connected ones first.
- * Runs on Composio's free Hobby plan; the owner pastes their own key once.
+ * Marketplace → Apps: every app Composio offers, with the owner's connected ones first. The
+ * whole list shows at once; a free Composio key is needed only to connect an app.
  */
 export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
   const [status, setStatus] = createSignal<ComposioStatus | null>(null);
@@ -42,6 +43,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
   const [busy, setBusy] = createSignal<Busy>(null);
   const [limit, setLimit] = createSignal(PAGE_SIZE);
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let keyField: HTMLInputElement | undefined;
   let disposed = false;
 
   async function refresh(force = false): Promise<void> {
@@ -73,8 +75,16 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
   const yours = createMemo(() => matching().filter((app) => app.isConnected));
   const more = createMemo(() => matching().filter((app) => !app.isConnected));
   const configured = () => status()?.configured === true;
-  const quota = () =>
-    new Intl.NumberFormat(speechLocale()).format(status()?.monthlyQuota ?? 100_000);
+  const number = (value: number) => new Intl.NumberFormat(speechLocale()).format(value);
+  const quota = () => number(status()?.monthlyQuota ?? 100_000);
+
+  function openKeyCard(): void {
+    setKeyOpen(true);
+    queueMicrotask(() => {
+      keyField?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      keyField?.focus();
+    });
+  }
 
   async function saveKey(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -86,6 +96,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
       setStatus(await window.sahkarmi.composio.setKey(key));
       setKeyInput("");
       setKeyOpen(false);
+      setNotice(null);
       setLoading(true);
       await refresh(true);
     } catch (cause) {
@@ -96,6 +107,11 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
   }
 
   async function connect(app: ComposioAppMeta): Promise<void> {
+    if (!configured()) {
+      setNotice(t("appsKeyNeededForConnect", { name: app.name }));
+      openKeyCard();
+      return;
+    }
     setBusy({ id: app.id, kind: "connect" });
     setError(null);
     setNotice(null);
@@ -162,7 +178,14 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
       <div class="apps-plan">
         <span class="apps-plan-dot" aria-hidden="true" />
         <span>{t("appsPlan", { quota: quota() })}</span>
-        <Show when={configured()}>
+        <Show
+          when={configured()}
+          fallback={
+            <button type="button" class="marketplace-link" onClick={openKeyCard}>
+              {t("appsAddKey")}
+            </button>
+          }
+        >
           <button type="button" class="marketplace-link" onClick={() => void refresh(true)}>
             {t("appsRefresh")}
           </button>
@@ -176,12 +199,23 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
         </Show>
       </div>
 
-      <Show when={!configured() || keyOpen()}>
+      <Show when={!configured() && !keyOpen()}>
+        <p class="apps-note">
+          {t("appsKeyNotice", { count: number(apps().length) })}{" "}
+          <button type="button" class="marketplace-link" onClick={openKeyCard}>
+            {t("appsAddKey")}
+          </button>
+        </p>
+      </Show>
+
+      <Show when={keyOpen()}>
         <form class="settings-card apps-key-card" onSubmit={(event) => void saveKey(event)}>
           <h2>{t("appsKeyTitle")}</h2>
+          <p>{t("appsKeyWhy")}</p>
           <p>{t("appsKeyIntro")}</p>
           <div class="apps-key-form">
             <input
+              ref={keyField}
               type="password"
               autocomplete="off"
               placeholder={t("appsKeyPlaceholder")}
@@ -261,7 +295,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
               <header class="marketplace-section-head">
                 <h2>{t("appsMore")}</h2>
                 <span class="marketplace-count">
-                  {t("appsCount", { count: String(more().length) })}
+                  {t("appsCount", { count: number(more().length) })}
                 </span>
               </header>
               <ul class="marketplace-grid">
@@ -280,7 +314,7 @@ export function AppsPanel(props: { query: string; pollEveryMs?: number }) {
                 <button
                   type="button"
                   class="marketplace-more"
-                  onClick={() => setLimit((current) => current + PAGE_SIZE)}
+                  onClick={() => setLimit((current) => current + PAGE_STEP)}
                 >
                   {t("marketShowMore")}
                 </button>
@@ -346,9 +380,6 @@ function AppCard(props: {
       <p>{props.app.description || t("appsNoDescription", { name: props.app.name })}</p>
       <div class="apps-card-foot">
         <small>{category()}</small>
-        <Show when={!props.app.oneClick && !props.app.isConnected}>
-          <span class="marketplace-badge marketplace-badge-setup">{t("appsNeedsOwnKeys")}</span>
-        </Show>
         <Show when={props.app.isConnected}>
           <button
             type="button"
