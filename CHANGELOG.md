@@ -5,6 +5,41 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-25
+
+### Added
+
+- Marketplace has a new Apps tab. It lists every app Composio offers (GitHub, Gmail, Google
+  Calendar, Slack, Notion, Jira, Linear and many more) with Connect buttons, logos and a search
+  box. Connected apps sit at the top under "Your apps". It runs on Composio's free Hobby plan:
+  $0, no card, 1,00,000 tool calls a month. You paste your own Composio key once; it stays on
+  this computer.
+- Coworkers use your connected apps through your own accounts. Reading is instant. Anything that
+  sends, creates, changes or deletes stops for your approval first; once you approve, the
+  coworker carries out that same action, exactly once.
+- The provider connect screen is rebuilt: brand marks, groups for Connected, Found on this
+  computer and Add a provider, Free badges, and inline install and sign-in progress.
+- 11 more agents over ACP: Cursor, GitHub Copilot, Kimi Code, Cline, Qwen Code, Grok, Factory
+  Droid, Qoder, Goose, Mistral Vibe and Kiro. Connect installs the tool when needed and starts
+  its sign-in; tools already installed are found.
+- Coworkers can create and change routines when you ask them to in chat.
+
+### Changed
+
+- The Composio section moved out of Business into Marketplace > Apps.
+- Composio is reached through its current API (the old one was switched off). A busy or slow
+  Composio is handled quietly: Sahkarmi waits and retries, never repeats a send or a delete, and
+  pauses for a minute after repeated failures.
+- When OpenCode's free limit is used up, you are told at once instead of waiting about a minute
+  per model.
+- Logos in the model picker and the first-run screen; missing agents read "Not installed".
+
+### Fixed
+
+- A failed message that is resent automatically no longer shows twice for a moment after an
+  automatic switch to the free model.
+- Composio replies and errors are cleaned of tokens before they reach a chat.
+
 ## [0.8.1] - 2026-10-25
 
 ### Added
