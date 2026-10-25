@@ -6,11 +6,12 @@ import type { SaveRoutineInput } from "../shared/ipc";
 import {
   cadenceFromImport,
   importDesktopRoutinesOnce,
+  loadSqlite,
   matchCoworker,
   planRoutineImport,
 } from "./routine-import";
 
-const sqlite = await import("node:sqlite").catch(() => null);
+const sqlite = await loadSqlite().catch(() => null);
 
 const roots: string[] = [];
 afterEach(async () => {

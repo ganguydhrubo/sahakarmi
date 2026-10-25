@@ -24,7 +24,7 @@ const MARKER_FILE = "routine-import.json";
  * Node's built-in SQLite, loaded only when the source database is actually present.
  */
 export async function readDesktopRoutines(databasePath: string): Promise<ImportedRoutine[]> {
-  const { DatabaseSync } = await import("node:sqlite");
+  const { DatabaseSync } = await loadSqlite();
   const db = new DatabaseSync(databasePath, { readOnly: true });
   try {
     const names = new Map<string, string>();
@@ -63,6 +63,15 @@ export async function readDesktopRoutines(databasePath: string): Promise<Importe
   } finally {
     db.close();
   }
+}
+
+/**
+ * Node's built-in SQLite. The name is kept out of the bundler's sight: some Vite versions do not
+ * yet list node:sqlite as a built-in and refuse to bundle it.
+ */
+export function loadSqlite(): Promise<typeof import("node:sqlite")> {
+  const name = "node:sqlite";
+  return import(/* @vite-ignore */ name);
 }
 
 /** the source app's schedule JSON in Sahkarmi's terms; null when it cannot be expressed. */
