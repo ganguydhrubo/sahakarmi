@@ -59,7 +59,7 @@ import {
 import type { BotStore } from "./bot-store";
 import {
   BROWSER_DYNAMIC_TOOLS,
-  type BrowserHost,
+  type CoworkerBrowser,
   SAHKARMI_BROWSER_NAMESPACE,
 } from "./browser-host";
 import { ClaudeAgentClient } from "./claude-client";
@@ -230,7 +230,7 @@ interface ModelListResponse {
 export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #store: BotStore;
   readonly #mailbox: MailboxStore;
-  readonly #browser: BrowserHost;
+  readonly #browser: CoworkerBrowser;
   readonly #approvals: ApprovalStore | null;
   readonly #permissions: PermissionService | null;
   readonly #permissionWaiters = new Map<string, (outcome: "approved" | "rejected") => void>();
@@ -299,7 +299,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   constructor(
     store: BotStore,
     mailbox: MailboxStore,
-    browser: BrowserHost,
+    browser: CoworkerBrowser,
     computerUsePrerequisites: (() => ComputerUsePrerequisites) | null = null,
     requestTimeoutMs = 30_000,
     preferredProvider: AgentProvider = "codex",
@@ -324,6 +324,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     this.#browser.onControlChanged((state) => {
       this.#emit({ type: "browser-control-changed", state });
+    });
+    // Sites refuse sign-in in a remote-controlled browser; the owner signs in in the same
+    // profile instead, and closing that window counts as handing the browser back.
+    this.#browser.onSignInBlocked?.(() => {
+      if (!this.#takeover.humanInControl) this.takeOverBrowser();
+    });
+    this.#browser.onHumanBrowserClosed?.(() => {
+      if (this.#takeover.humanInControl) void this.handBackBrowser(null);
     });
   }
 
@@ -519,6 +527,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   #emitTakeover(): void {
+    void this.#browser.setHumanControl?.(this.#takeover.humanInControl).catch((error) => {
+      console.error("Unable to switch the browser for the takeover:", error);
+    });
     this.#emit({ type: "browser-takeover-changed", state: this.getTakeover() });
   }
 
