@@ -71,6 +71,7 @@ import {
   isAiToolId,
   isAvatarColor,
   isAvatarShape,
+  isBotTemplateRef,
   isMessageReaction,
   isReasoningEffort,
   type MacPermissionId,
@@ -1332,6 +1333,10 @@ function parseUpdateBot(value: unknown): UpdateBotInput {
   if (value.avatarColor !== undefined) {
     if (!isAvatarColor(value.avatarColor)) throw new Error("Invalid avatar color.");
     result.avatarColor = value.avatarColor;
+  }
+  if (value.template !== undefined) {
+    if (!isBotTemplateRef(value.template)) throw new Error("Invalid coworker template.");
+    result.template = value.template;
   }
   return result;
 }

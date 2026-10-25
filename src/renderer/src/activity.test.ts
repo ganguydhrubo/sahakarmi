@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { QueueDelivery, QueueSnapshot, ToolCallSummary } from "../../shared/ipc";
 import { type ActivityInput, classifyTool, deriveActivity, OUTCOME_VISIBLE_MS } from "./activity";
 import * as vocabulary from "./activity-hinglish";
@@ -11,6 +11,10 @@ import {
   secondaryPool,
 } from "./components/ActivityIndicator";
 import type { BotMessage } from "./data";
+import { setActivityStyle } from "./preferences";
+
+// These tests pin the Hinglish vocabulary; English is checked separately below.
+beforeEach(() => setActivityStyle("seedha"));
 
 const NOW = 1_000_000;
 
@@ -259,5 +263,17 @@ describe("masti style", () => {
       expect(line).toMatch(/\b(hai|hain|ho|raha|rahi|rahe|lijiye|rakhiye)\b/);
       expect(line).not.toMatch(/poora ho gaya|bas ho gaya|almost/i);
     }
+  });
+});
+
+describe("English activity", () => {
+  it("uses plain English lines when the English style is chosen", async () => {
+    const english = await import("./activity-english");
+    setActivityStyle("english");
+    const { vocab } = await import("./activity-vocab");
+    expect(vocab().PRIMARY.thinking).toBe(english.PRIMARY.thinking);
+    expect(vocab().LABELS.queueQueued).toBe("queued");
+    expect(Object.keys(english.PRIMARY).sort()).toEqual(Object.keys(PRIMARY).sort());
+    expect(Object.keys(english.LABELS).sort()).toEqual(Object.keys(vocabulary.LABELS).sort());
   });
 });

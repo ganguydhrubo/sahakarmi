@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import type { QueueDelivery, QueueSnapshot } from "../../../shared/ipc";
-import { LABELS } from "../activity-hinglish";
+import { vocab } from "../activity-vocab";
 import { t } from "../i18n";
 
 interface TaskQueueStripProps {
@@ -47,16 +47,16 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
     >
       <div class="task-strip-counts">
         <span class="task-count task-count-queued">
-          <b>{queued().length}</b> {LABELS.queueQueued}
+          <b>{queued().length}</b> {vocab().LABELS.queueQueued}
         </span>
         <span class="task-count task-count-running">
-          <b>{running().length}</b> {LABELS.queueRunning}
+          <b>{running().length}</b> {vocab().LABELS.queueRunning}
         </span>
         <span class="task-count task-count-done">
-          <b>{done().length}</b> {LABELS.queueDone}
+          <b>{done().length}</b> {vocab().LABELS.queueDone}
         </span>
         <Show when={paused()}>
-          <span class="task-paused-pill">{LABELS.queuePaused}</span>
+          <span class="task-paused-pill">{vocab().LABELS.queuePaused}</span>
         </Show>
         <span class="task-strip-spacer" />
         <Show
@@ -66,6 +66,7 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
               type="button"
               class="task-strip-button"
               disabled={isEmpty()}
+              title={t("queuePauseHint")}
               onClick={props.onPause}
             >
               {t("pause")}
@@ -80,7 +81,7 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
             {t("resume")}
           </button>
         </Show>
-        <Show when={done().length > VISIBLE_DONE || queued().length + running().length > 3}>
+        <Show when={done().length > VISIBLE_DONE || queued().length + running().length > 1}>
           <button
             type="button"
             class="task-strip-button"
@@ -99,6 +100,7 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
                   <button
                     type="button"
                     onClick={props.onStop}
+                    title={t("queueStopHint")}
                     aria-label={`${t("stop")}: ${taskTitle(delivery)}`}
                   >
                     {t("stop")}
@@ -167,7 +169,7 @@ function TaskChip(props: {
   return (
     <li
       class={`task-chip task-chip-${props.state}`}
-      title={props.delivery.error ?? taskTitle(props.delivery)}
+      title={props.delivery.error ?? props.delivery.text.slice(0, 400)}
     >
       <span class="task-chip-dot" aria-hidden="true" />
       <span class="task-chip-title">
@@ -181,8 +183,28 @@ function TaskChip(props: {
   );
 }
 
-function taskTitle(delivery: QueueDelivery): string {
+/**
+ * A short title for a task: the first meaningful line of what was asked, without markdown
+ * markers, in sentence case when it was typed in capitals, cut at a word boundary.
+ */
+export function taskTitle(delivery: QueueDelivery): string {
   const text = delivery.text.replace(/^\[[^\]]+\]\s*/, "").trim();
-  if (text) return text.length > 60 ? `${text.slice(0, 60)}…` : text;
-  return delivery.attachments.map((attachment) => attachment.name).join(", ") || "Task";
+  const line =
+    text
+      .split(/\r?\n/)
+      .map((candidate) =>
+        candidate
+          .replace(/^[#>*\-\s\d.)]+/, "")
+          .replace(/[*_`]/g, "")
+          .trim(),
+      )
+      .find((candidate) => candidate.length > 0) ?? "";
+  if (!line) {
+    return delivery.attachments.map((attachment) => attachment.name).join(", ") || "Task";
+  }
+  const readable = /[a-z]/.test(line) ? line : line.charAt(0) + line.slice(1).toLowerCase();
+  if (readable.length <= 48) return readable;
+  const cut = readable.slice(0, 48);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > 24 ? cut.slice(0, space) : cut).replace(/[\s,;:—-]+$/, "")}…`;
 }

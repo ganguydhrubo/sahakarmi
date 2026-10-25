@@ -1,8 +1,11 @@
 import { render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { ActivityState } from "../activity";
+import { setActivityStyle } from "../preferences";
 import { ActivityIndicator, ROTATE_MS } from "./ActivityIndicator";
+
+beforeEach(() => setActivityStyle("seedha"));
 
 const THINKING: ActivityState = {
   phase: "thinking",

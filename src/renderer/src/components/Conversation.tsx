@@ -32,13 +32,15 @@ import type {
 } from "../../../shared/ipc";
 import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
 import { deriveActivity, isActivePhase } from "../activity";
-import { format, LABELS } from "../activity-hinglish";
+import { format } from "../activity-hinglish";
+import { vocab } from "../activity-vocab";
 import { copyText } from "../clipboard";
 import type { BotMessage, BotProfile } from "../data";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
 import { featureOn } from "../features";
 import { t } from "../i18n";
 import { markdownToPlainText } from "../markdown";
+import { activityStyle } from "../preferences";
 import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
 import { ApprovalCard } from "./ApprovalsView";
@@ -170,6 +172,25 @@ const BROWSER_ACTION_LABELS: Record<BrowserControlAction, string> = {
   screenshot: "Screenshot liya ja raha hai…",
   "close-tab": "Tab band ho raha hai…",
 };
+
+const BROWSER_ACTION_LABELS_EN: Record<BrowserControlAction, string> = {
+  open: "Opening a page…",
+  "list-tabs": "Checking tabs…",
+  snapshot: "Reading the page…",
+  click: "Clicking…",
+  type: "Typing…",
+  key: "Pressing a key…",
+  scroll: "Scrolling…",
+  back: "Going back…",
+  forward: "Going forward…",
+  reload: "Reloading…",
+  screenshot: "Taking a screenshot…",
+  "close-tab": "Closing a tab…",
+};
+
+function browserActionLabel(action: BrowserControlAction): string {
+  return (activityStyle() === "english" ? BROWSER_ACTION_LABELS_EN : BROWSER_ACTION_LABELS)[action];
+}
 
 const AVATAR_COLOR_LABELS: Record<BotAvatarColor, string> = {
   black: "Black",
@@ -542,6 +563,12 @@ function MessageBody(props: {
     props.message.author === "you" &&
     Boolean(props.message.body.trim()) &&
     /^(Failed|Interrupted|Cancelled)$/.test(props.message.status ?? "");
+  // Long instructions from the owner fold to a few lines so the reply stays in view.
+  const [expanded, setExpanded] = createSignal(false);
+  const collapsible = () =>
+    props.message.author === "you" &&
+    (props.message.body.length > 700 || props.message.body.split("\n").length > 12);
+  const collapsed = () => collapsible() && !expanded();
   return (
     <>
       <Show when={props.referencedMessage}>
@@ -556,7 +583,7 @@ function MessageBody(props: {
         <Show
           when={featureOn("rich-replies")}
           fallback={
-            <p class="message-copy">
+            <p class="message-copy" classList={{ "message-collapsed": collapsed() }}>
               <RichMessageText
                 body={props.message.body}
                 bots={props.bots}
@@ -566,7 +593,7 @@ function MessageBody(props: {
             </p>
           }
         >
-          <div class="message-copy message-rich">
+          <div class="message-copy message-rich" classList={{ "message-collapsed": collapsed() }}>
             <RichMarkdown
               body={props.message.body}
               inline={(text) => (
@@ -579,6 +606,16 @@ function MessageBody(props: {
               )}
             />
           </div>
+        </Show>
+        <Show when={collapsible()}>
+          <button
+            type="button"
+            class="message-expand"
+            aria-expanded={expanded()}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded() ? t("showLess") : t("marketShowMore")}
+          </button>
         </Show>
       </Show>
       <Show when={props.message.status}>
@@ -918,11 +955,11 @@ function ThinkingDisclosure(props: { message: BotMessage }) {
   return (
     <article class="thinking-entry">
       <details class="thinking-disclosure">
-        <summary aria-label={`${LABELS.thinking}: details dekhein`}>
+        <summary aria-label={`${vocab().LABELS.thinking}: details dekhein`}>
           <span class="thinking-mark" aria-hidden="true">
             <ThinkingIcon />
           </span>
-          <span>{LABELS.thinking}</span>
+          <span>{vocab().LABELS.thinking}</span>
           <Show when={props.message.streaming}>
             <span class="thinking-live-dots" aria-hidden="true">
               <i />
@@ -931,7 +968,7 @@ function ThinkingDisclosure(props: { message: BotMessage }) {
             </span>
           </Show>
           <Show when={!props.message.streaming && stepCount() > 1}>
-            <small>{format(LABELS.thinkingSteps, { count: stepCount() })}</small>
+            <small>{format(vocab().LABELS.thinkingSteps, { count: stepCount() })}</small>
           </Show>
           <span class="thinking-chevron" aria-hidden="true">
             <ChevronIcon />
@@ -2577,7 +2614,7 @@ export function Conversation(props: ConversationProps) {
                                 classList={{
                                   "browser-tab-control-acting": session().phase === "acting",
                                 }}
-                                title={`${controller()?.name ?? "Agent"}: ${BROWSER_ACTION_LABELS[session().action]}`}
+                                title={`${controller()?.name ?? "Agent"}: ${browserActionLabel(session().action)}`}
                               >
                                 <BrowserControlIcon />
                               </span>
@@ -2664,6 +2701,21 @@ export function Conversation(props: ConversationProps) {
               </button>
             </Show>
           </div>
+          <Show
+            when={
+              !props.takeover.humanInControl &&
+              takeoverRequests().length === 0 &&
+              activeBrowserControl()
+            }
+          >
+            {(control) => (
+              <div class="browser-control-strip" role="status">
+                <span class="browser-control-dot" aria-hidden="true" />
+                <strong>{browserControlBot()?.name ?? "Coworker"}</strong>
+                <span>{browserActionLabel(control().action)}</span>
+              </div>
+            )}
+          </Show>
           <Show when={props.takeover.humanInControl || takeoverRequests().length > 0}>
             <div
               class="takeover-banner"

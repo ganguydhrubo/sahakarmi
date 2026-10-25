@@ -87,6 +87,7 @@ const SEND_KEYS: Array<{ value: SendKey; label: MessageKey }> = [
 const ACTIVITY_STYLES: Array<{ value: ActivityStyle; label: MessageKey }> = [
   { value: "masti", label: "activityMasti" },
   { value: "seedha", label: "activitySeedha" },
+  { value: "english", label: "activityEnglish" },
 ];
 
 export function SettingsView(props: SettingsViewProps) {

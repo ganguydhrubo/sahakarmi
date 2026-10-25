@@ -560,8 +560,8 @@ textarea:focus-visible {
 }
 
 .scroll-fade-top:not(.scroll-fade-bottom) {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 18px, black 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, black 18px, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 8px, black 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black 8px, black 100%);
 }
 
 .scroll-fade-bottom:not(.scroll-fade-top) {
@@ -578,14 +578,14 @@ textarea:focus-visible {
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black 18px,
+    black 8px,
     black calc(100% - 18px),
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black 18px,
+    black 8px,
     black calc(100% - 18px),
     transparent 100%
   );
@@ -4195,6 +4195,11 @@ textarea {
   word-break: break-word;
 }
 
+/* The whole composer already shows the focus ring; no second box around the text. */
+.composer-editor-surface:focus-visible {
+  outline: none;
+}
+
 .composer-editor-surface[aria-disabled="true"] {
   pointer-events: none;
 }
@@ -5489,8 +5494,7 @@ body {
   color: rgb(var(--ink-rgb) / 0.5);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .workspace-group-count {
@@ -5741,22 +5745,24 @@ body {
 
 .task-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  max-height: 28px;
   margin: 0;
-  overflow-x: auto;
-  padding: 0 0 2px;
+  overflow: hidden;
+  padding: 0;
   list-style: none;
-  scrollbar-width: thin;
 }
 
 .task-chips-expanded {
-  flex-wrap: wrap;
+  max-height: none;
 }
 
 .task-chip {
   display: flex;
-  max-width: 280px;
-  flex: 0 0 auto;
+  max-width: min(280px, 100%);
+  min-width: 0;
+  flex: 0 1 auto;
   align-items: center;
   gap: 7px;
   border: 1px solid var(--sahkarmi-line);
@@ -5978,7 +5984,7 @@ body {
 
 /* ---------- Tool-call groups (Claude / Codex / Antigravity collapsible style) ---------- */
 .tool-group-card {
-  max-width: min(860px, 92%);
+  max-width: min(680px, 92%);
   margin: 6px 0 6px 40px;
   border: 1px solid var(--sahkarmi-line);
   border-radius: var(--radius-md);
@@ -6046,7 +6052,6 @@ body {
 .tool-group-breakdown {
   font-size: 11.5px;
   color: var(--text-muted);
-  font-family: var(--font-mono, monospace);
   line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
@@ -6547,6 +6552,46 @@ body {
   border-color: transparent;
   background: var(--brand-indigo);
   color: #fbf7f0;
+}
+
+/* Who is driving the browser right now, shown under the address bar. */
+.browser-control-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--success-fill, #2e9d5b) 10%, var(--surface-1));
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+.browser-control-strip strong {
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.browser-control-strip span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-control-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--success-fill, #2e9d5b);
+  animation: browser-control-pulse 1.4s ease-in-out infinite;
+}
+@keyframes browser-control-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-control-dot {
+    animation: none;
+  }
 }
 
 .takeover-banner {
@@ -7058,7 +7103,7 @@ fieldset.cadence-kinds {
 .center-view
 button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
   [role="tab"]
-) {
+):not(.marketplace-filter) {
   border: 1px solid var(--sahkarmi-line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
@@ -7999,6 +8044,33 @@ ol.md-list {
   color: var(--text-muted);
 }
 
+/* In the owner's dark bubble, list numbers and bullets match the text instead of muted grey. */
+.user-bubble .md-list li::marker {
+  color: inherit;
+  font-weight: 600;
+}
+
+/* Long owner instructions fold to about eight lines until expanded. */
+.message-collapsed {
+  max-height: 12.5em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+}
+.message-expand {
+  margin-top: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.16);
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+}
+.bot-bubble .message-expand {
+  background: var(--sahkarmi-hover);
+}
+
 .md-list li {
   margin: 2px 0;
 }
@@ -8520,6 +8592,195 @@ ol.md-list {
 }
 .marketplace-skill-bolt {
   background: #d4573f;
+}
+.marketplace-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 18px;
+}
+.marketplace-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 5px 12px;
+}
+.marketplace-filter[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-primary, inherit);
+}
+.marketplace-filter-count {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.marketplace-section {
+  margin: 0 0 8px;
+}
+.marketplace-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+.marketplace-section-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.marketplace-link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  padding: 2px 0;
+}
+.marketplace-count {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.marketplace-more {
+  display: block;
+  margin: -8px auto 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
+  padding: 8px 18px;
+}
+.marketplace-card {
+  grid-template-rows: auto 1fr auto auto;
+}
+.marketplace-card-title h3,
+.marketplace-card-title small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.marketplace-badge {
+  flex: none;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+.marketplace-badge-setup {
+  color: #9a5b00;
+  background: color-mix(in srgb, #e8a93a 22%, transparent);
+}
+.marketplace-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.marketplace-tags li {
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  padding: 2px 7px;
+}
+.marketplace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.marketplace-action-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.marketplace-action-quiet {
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+.marketplace-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.marketplace-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, #e8a93a 50%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, #e8a93a 10%, transparent);
+  font-size: 0.85rem;
+}
+.marketplace-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 0.4);
+}
+.marketplace-detail {
+  display: grid;
+  gap: 14px;
+  width: min(640px, 100%);
+  max-height: min(86vh, 900px);
+  overflow-y: auto;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.25);
+}
+.marketplace-detail h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.marketplace-detail > p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.marketplace-facts {
+  display: grid;
+  grid-template-columns: minmax(120px, 30%) 1fr;
+  gap: 10px 16px;
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.marketplace-facts dt {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.marketplace-facts dd {
+  margin: 0;
+}
+.marketplace-facts ol {
+  margin: 0;
+  padding-left: 18px;
+}
+.marketplace-muted {
+  color: var(--text-muted);
+}
+.marketplace-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 640px) {
+  .marketplace-facts {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Tasks view: one box to hand work to any coworker, recent tasks below. */
@@ -9166,13 +9427,33 @@ ol.md-list {
   padding: 8px 10px;
 }
 .coworker-panel-footer .rail-tagline {
-  margin: 4px 0 0;
-  font-size: 11px;
+  display: none;
 }
 .left-rail .team-list {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+}
+/* The title row must shrink with the sidebar: the name and role pill ellipsize, never overflow. */
+.bot-row-heading .bot-row-title-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+  font-size: inherit;
+}
+/* The name keeps its room first; a long role label gives way. */
+.bot-row-title-wrap strong {
+  flex: 0 0 auto;
+  max-width: 72%;
+}
+.bot-row-heading .team-row-role-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 96px;
+  color: rgb(var(--ink-rgb) / 0.7);
+  font-size: 10.5px;
+  line-height: 15px;
 }
 .left-rail .team-row {
   min-height: 64px;

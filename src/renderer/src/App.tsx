@@ -13,6 +13,7 @@ import {
   untrack,
 } from "solid-js";
 import { createMutable } from "solid-js/store";
+import { coworkerFromTemplate } from "../../shared/agent-catalog";
 import type {
   AccountUsage,
   AgentEvent,
@@ -41,7 +42,7 @@ import type {
   WorkspaceState,
 } from "../../shared/ipc";
 import type { MarketplaceAgent } from "../../shared/marketplace";
-import { ERROR_TITLES } from "./activity-hinglish";
+import { vocab } from "./activity-vocab";
 import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation } from "./components/Conversation";
 import { GlobalSearch } from "./components/GlobalSearch";
@@ -358,7 +359,7 @@ export function App() {
         setQueues((current) => ({ ...current, [botId]: queue }));
         scheduleConversation(snapshot);
       })
-      .catch((error) => appendUiError(botId, error, ERROR_TITLES.load));
+      .catch((error) => appendUiError(botId, error, vocab().ERROR_TITLES.load));
   });
 
   function handleAgentEvent(event: AgentEvent) {
@@ -449,7 +450,7 @@ export function App() {
         setPendingPrompts((current) => ({ ...current, [event.botId]: event }));
         return;
       case "error":
-        if (event.botId) appendUiError(event.botId, event.message, ERROR_TITLES.error);
+        if (event.botId) appendUiError(event.botId, event.message, vocab().ERROR_TITLES.error);
     }
   }
 
@@ -605,7 +606,7 @@ export function App() {
       setOnboardingRequest({ botId: newAgent.id, nonce: Date.now() });
     } catch (error) {
       setAgentPickerOpen(false);
-      if (activeBotId()) appendUiError(activeBotId(), error, ERROR_TITLES.create);
+      if (activeBotId()) appendUiError(activeBotId(), error, vocab().ERROR_TITLES.create);
     } finally {
       setCreatingAgent(false);
     }
@@ -618,11 +619,7 @@ export function App() {
     );
     const updated = await window.sahkarmi.agent.updateBot({
       botId: stored.id,
-      name: agent.name,
-      role: agent.role,
-      description: agent.description,
-      avatarShape: agent.avatarShape,
-      avatarColor: agent.avatarColor,
+      ...coworkerFromTemplate(agent),
     });
     const profile = createMutable(toBotProfile(updated));
     setBotList((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
@@ -704,7 +701,7 @@ export function App() {
       if (existing) Object.assign(existing, toBotProfile(stored));
       else setBotList((current) => [...current, createMutable(toBotProfile(stored))]);
     } catch (error) {
-      appendUiError(botId, error, ERROR_TITLES.settings);
+      appendUiError(botId, error, vocab().ERROR_TITLES.settings);
       throw error;
     }
   }
@@ -793,7 +790,7 @@ export function App() {
       if (bot && !botList().some((candidate) => candidate.id === bot.id)) {
         setBotList((current) => [bot, ...current]);
       }
-      appendUiError(botId, error, ERROR_TITLES.delete);
+      appendUiError(botId, error, vocab().ERROR_TITLES.delete);
       throw error;
     }
   }
@@ -824,7 +821,7 @@ export function App() {
       setUiErrors((current) => ({ ...current, [botId]: [] }));
       return true;
     } catch (error) {
-      appendUiError(botId, error, ERROR_TITLES.send);
+      appendUiError(botId, error, vocab().ERROR_TITLES.send);
       return false;
     }
   }
@@ -865,7 +862,7 @@ export function App() {
       setPendingPrompts((current) => ({ ...current, [bot.id]: undefined }));
       return true;
     } catch (error) {
-      appendUiError(bot.id, error, ERROR_TITLES.answer);
+      appendUiError(bot.id, error, vocab().ERROR_TITLES.answer);
       return false;
     }
   }
@@ -875,7 +872,7 @@ export function App() {
     if (!bot) return;
     void window.sahkarmi.agent
       .cancelQueuedMessage({ botId: bot.id, deliveryId })
-      .catch((error) => appendUiError(bot.id, error, ERROR_TITLES.cancel));
+      .catch((error) => appendUiError(bot.id, error, vocab().ERROR_TITLES.cancel));
   }
 
   function setQueuePaused(paused: boolean) {
@@ -884,7 +881,11 @@ export function App() {
     void window.sahkarmi.agent
       .setQueuePaused({ botId: bot.id, paused })
       .catch((error) =>
-        appendUiError(bot.id, error, paused ? ERROR_TITLES.pause : ERROR_TITLES.resume),
+        appendUiError(
+          bot.id,
+          error,
+          paused ? vocab().ERROR_TITLES.pause : vocab().ERROR_TITLES.resume,
+        ),
       );
   }
 
@@ -926,7 +927,7 @@ export function App() {
       setSchedules(await window.sahkarmi.schedules.list());
       return true;
     } catch (error) {
-      appendUiError(bot.id, error, ERROR_TITLES.schedule);
+      appendUiError(bot.id, error, vocab().ERROR_TITLES.schedule);
       return false;
     }
   }
@@ -935,7 +936,7 @@ export function App() {
     const botId = activeBot()?.id;
     void action()
       .then(() => window.sahkarmi.schedules.list().then(setSchedules))
-      .catch((error) => botId && appendUiError(botId, error, ERROR_TITLES.schedule));
+      .catch((error) => botId && appendUiError(botId, error, vocab().ERROR_TITLES.schedule));
   }
 
   function resumeQueue() {
@@ -943,7 +944,7 @@ export function App() {
     if (!bot) return;
     void window.sahkarmi.agent
       .setQueuePaused({ botId: bot.id, paused: false })
-      .catch((error) => appendUiError(bot.id, error, ERROR_TITLES.resume));
+      .catch((error) => appendUiError(bot.id, error, vocab().ERROR_TITLES.resume));
   }
 
   function stopActiveTurn() {
@@ -952,7 +953,7 @@ export function App() {
     if (!bot || !turnId) return;
     void window.sahkarmi.agent
       .interrupt({ botId: bot.id, turnId })
-      .catch((error) => appendUiError(bot.id, error, ERROR_TITLES.stop));
+      .catch((error) => appendUiError(bot.id, error, vocab().ERROR_TITLES.stop));
   }
 
   function appendUiError(botId: string, error: unknown, status: string) {
@@ -1207,7 +1208,9 @@ export function App() {
                   <MarketplaceView
                     bots={workspaceBots()}
                     onAddAgent={addMarketplaceAgent}
+                    onUpdateAgent={(botId, agent) => updateBot(botId, coworkerFromTemplate(agent))}
                     onOpenCoworker={selectBot}
+                    onConfigureCoworker={editBot}
                   />
                 </Match>
                 <Match when={view() === "activity"}>
@@ -1357,6 +1360,7 @@ function toBotProfile(stored: BotSummary): BotProfile {
     time: stored.updatedAt ? formatTime(stored.updatedAt) : "now",
     preview: cleanPreview(stored.preview),
     updatedAt: stored.updatedAt,
+    template: stored.template,
   };
 }
 

@@ -12,6 +12,7 @@ import {
   isAgentModel,
   isAvatarColor,
   isAvatarShape,
+  isBotTemplateRef,
   isReasoningEffort,
   legacyModelReplacement,
   providerForModel,
@@ -248,7 +249,7 @@ export class BotStore {
     const bot = this.#requireBot(input.botId);
     if (input.name !== undefined) bot.name = requiredText(input.name, "Coworker name", 80);
     if (input.role !== undefined) bot.role = input.role.trim().slice(0, 120);
-    if (input.description !== undefined) bot.description = input.description.trim().slice(0, 2_000);
+    if (input.description !== undefined) bot.description = input.description.trim().slice(0, 4_000);
     if (input.notifications !== undefined) bot.notifications = input.notifications;
     if (input.model !== undefined) {
       this.#newDefaultBotIds.delete(bot.id);
@@ -258,6 +259,7 @@ export class BotStore {
     if (input.reasoningEffort !== undefined) bot.reasoningEffort = input.reasoningEffort;
     if (input.avatarShape !== undefined) bot.avatarShape = input.avatarShape;
     if (input.avatarColor !== undefined) bot.avatarColor = input.avatarColor;
+    if (input.template !== undefined) bot.template = { ...input.template };
     bot.updatedAt = new Date().toISOString();
     await this.#persist();
     return { ...bot };
@@ -475,7 +477,8 @@ function isStoredBot(value: unknown): value is StoredBot {
     typeof value.preview === "string" &&
     (typeof value.updatedAt === "string" || value.updatedAt === null) &&
     isAvatarShape(value.avatarShape) &&
-    isAvatarColor(value.avatarColor)
+    isAvatarColor(value.avatarColor) &&
+    (value.template === undefined || isBotTemplateRef(value.template))
   );
 }
 

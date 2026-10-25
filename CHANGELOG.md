@@ -5,6 +5,45 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-25
+
+### Added
+
+- Marketplace with 175 coworkers in 15 categories: finance, sales, marketing, writing,
+  research, HR, operations, e-commerce, software and IT, design, websites, legal, education,
+  personal productivity and industry specialists. Every coworker works through the same steps:
+  understand, collect, plan, do the work, check it, deliver. Each one lists the inputs it needs,
+  the checks it runs, what it asks approval for, when it is done and what it will not do.
+- Software Engineering Team coworker. It plans the work in one file, gives each helper
+  coworker its own part of the code, and needs evidence for every finished part. It deploys
+  only after your approval.
+- Marketplace search across names, job tasks, skills and outputs. Category filters with counts,
+  plus Featured and "On my team". Grouped browsing with "Show all", and pages when filtering.
+  A details window for every coworker, and Add, Open, Configure and Update buttons.
+- Coworkers added from the Marketplace remember which template and version they came from.
+  When a template improves, the Marketplace offers Update. If you edited the coworker's brief,
+  it asks before replacing it.
+- English option for activity and status lines (Settings → Activity style). It is the default
+  when the app language is English.
+- The browser panel shows which coworker is using it and what it is doing.
+
+### Changed
+
+- The twelve original Marketplace coworkers keep their names and gain detailed workflows and
+  checks.
+- Clearer sidebar: role labels no longer cut off, no sideways scrollbar, calmer group headers,
+  and distinct names for pinned coworkers.
+- Task queue: shorter readable task titles with the full text on hover, a single row with
+  "Show all", and hints on Pause and Stop.
+- Long messages you send fold after a few lines with "Show more". Numbered lists in your
+  messages are easier to read.
+- Step cards say what ran ("2 commands, 1 file") instead of "2 other". Raw shell commands stay
+  out of the status line; hover to see them.
+
+### Fixed
+
+- Status labels now follow the activity style you choose.
+
 ## [0.7.5] - 2026-10-25
 
 ### Changed

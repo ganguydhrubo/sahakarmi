@@ -33,8 +33,11 @@ export const SUPPORTED_LANGUAGES: LanguageCode[] = [
 const THEME_KEY = "sahkarmi:theme";
 const ACTIVITY_STYLE_KEY = "sahkarmi:activity-style";
 
-/** masti: playful Hinglish while thinking (default) · seedha: plain factual lines only. */
-export type ActivityStyle = "masti" | "seedha";
+/**
+ * masti: playful Hinglish while thinking · seedha: plain Hinglish · english: plain English.
+ * With nothing chosen, activity follows the app language (English unless the app is not).
+ */
+export type ActivityStyle = "masti" | "seedha" | "english";
 const LANGUAGE_KEY = "sahkarmi:language";
 const UI_SIZE_KEY = "sahkarmi:ui-size";
 const SEND_KEY_KEY = "sahkarmi:send-key";
@@ -76,8 +79,13 @@ const [language, setLanguageSignal] = createSignal<LanguageCode>(
 );
 
 const [activityStyle, setActivityStyleSignal] = createSignal<ActivityStyle>(
-  readStored(ACTIVITY_STYLE_KEY) === "masti" ? "masti" : "seedha",
+  parseActivityStyle(readStored(ACTIVITY_STYLE_KEY), language()),
 );
+
+function parseActivityStyle(value: string | null, appLanguage: LanguageCode): ActivityStyle {
+  if (value === "masti" || value === "seedha" || value === "english") return value;
+  return appLanguage === "en" ? "english" : "seedha";
+}
 
 const [uiSize, setUiSizeSignal] = createSignal<UiSize>(parseUiSize(readStored(UI_SIZE_KEY)));
 const [sendKey, setSendKeySignal] = createSignal<SendKey>(

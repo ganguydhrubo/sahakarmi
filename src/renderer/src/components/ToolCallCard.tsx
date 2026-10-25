@@ -3,7 +3,7 @@ import type { ToolCallKind, ToolCallSummary } from "../../../shared/ipc";
 
 export type { ToolCallSummary };
 
-import { LABELS } from "../activity-hinglish";
+import { vocab } from "../activity-vocab";
 import { t } from "../i18n";
 
 export const KIND_GLYPHS: Record<ToolCallKind, string> = {
@@ -142,10 +142,10 @@ export function formatToolDisplay(tool: ToolCallSummary): {
 export function ToolCallCard(props: { tool: ToolCallSummary }) {
   const statusText = () =>
     props.tool.status === "running"
-      ? LABELS.toolRunning
+      ? vocab().LABELS.toolRunning
       : props.tool.status === "failed"
-        ? LABELS.toolFailed
-        : LABELS.toolDone;
+        ? vocab().LABELS.toolFailed
+        : vocab().LABELS.toolDone;
 
   const display = () => formatToolDisplay(props.tool);
 
@@ -200,17 +200,26 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
     setManuallyToggled(!isOpen());
   };
 
+  /** "2 commands, 1 file, 1 coworker message": what the steps were, never a bare "other". */
   const summaryBreakdown = () => {
-    const commands = props.tools.filter((t) => t.kind === "command").length;
-    const files = props.tools.filter((t) => t.kind === "file").length;
-    const browsers = props.tools.filter((t) => t.kind === "browser" || t.kind === "web").length;
-    const parts: string[] = [];
-    if (commands > 0) parts.push(`${commands} command${commands > 1 ? "s" : ""}`);
-    if (files > 0) parts.push(`${files} file${files > 1 ? "s" : ""}`);
-    if (browsers > 0) parts.push(`${browsers} web action${browsers > 1 ? "s" : ""}`);
-    const remaining = props.tools.length - commands - files - browsers;
-    if (remaining > 0) parts.push(`${remaining} other`);
-    return parts.join(", ") || `${props.tools.length} steps`;
+    const labels: Record<string, [string, string]> = {
+      command: ["command", "commands"],
+      file: ["file", "files"],
+      browser: ["web action", "web actions"],
+      web: ["web action", "web actions"],
+      coworker: ["coworker message", "coworker messages"],
+      approval: ["approval", "approvals"],
+      tool: ["app action", "app actions"],
+    };
+    const counts = new Map<string, number>();
+    for (const tool of props.tools) {
+      const [one] = labels[tool.kind] ?? labels.tool;
+      counts.set(one, (counts.get(one) ?? 0) + 1);
+    }
+    const plural = new Map(Object.values(labels).map(([one, many]) => [one, many]));
+    return [...counts]
+      .map(([one, count]) => `${count} ${count === 1 ? one : (plural.get(one) ?? one)}`)
+      .join(", ");
   };
 
   const activeToolIndex = () => {
@@ -263,7 +272,7 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
         </span>
         <div class="tool-group-info">
           <span class="tool-group-headline">
-            <Show when={isAnyRunning()} fallback={`Ran ${props.tools.length} operations`}>
+            <Show when={isAnyRunning()} fallback={`Ran ${props.tools.length} steps`}>
               {`Running step ${activeToolIndex() + 1} of ${props.tools.length}`}
             </Show>
           </span>

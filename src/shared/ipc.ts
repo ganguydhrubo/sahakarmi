@@ -440,6 +440,32 @@ export interface BotSummary {
   updatedAt: string | null;
   avatarShape: BotAvatarShape;
   avatarColor: BotAvatarColor;
+  /** The Marketplace template this coworker was added from, if any. */
+  template?: BotTemplateRef;
+}
+
+/**
+ * Which Marketplace template and version a coworker came from, and a hash of the brief it was
+ * given, so a newer template can update it without overwriting the owner's own edits.
+ */
+export interface BotTemplateRef {
+  id: string;
+  version: number;
+  briefHash: string;
+}
+
+export function isBotTemplateRef(value: unknown): value is BotTemplateRef {
+  if (typeof value !== "object" || value === null) return false;
+  const ref = value as Record<string, unknown>;
+  return (
+    typeof ref.id === "string" &&
+    /^[a-z0-9][a-z0-9-]{0,79}$/.test(ref.id) &&
+    typeof ref.version === "number" &&
+    Number.isInteger(ref.version) &&
+    ref.version > 0 &&
+    typeof ref.briefHash === "string" &&
+    /^[0-9a-f]{8}$/.test(ref.briefHash)
+  );
 }
 
 export const AGENT_MODELS = [
@@ -572,6 +598,7 @@ export interface UpdateBotInput {
   reasoningEffort?: AgentReasoningEffort;
   avatarShape?: BotAvatarShape;
   avatarColor?: BotAvatarColor;
+  template?: BotTemplateRef;
 }
 
 export interface WorkspaceSummary {

@@ -653,7 +653,7 @@ export function Sidebar(props: SidebarProps) {
                       </span>
                     </Show>
                   </div>
-                  <span class="pinned-coworker-name">{bot.name.split(" ")[0]}</span>
+                  <span class="pinned-coworker-name">{pinnedLabel(bot, topBots())}</span>
                 </div>
               );
             }}
@@ -889,6 +889,8 @@ export function AppNavigation(props: {
       <button
         type="button"
         class="app-rail-brand"
+        classList={{ "rail-nav-active": props.view === "coworker" }}
+        aria-current={props.view === "coworker" ? "page" : undefined}
         aria-label={t("team")}
         title={t("team")}
         onClick={props.onShowTeam}
@@ -942,4 +944,20 @@ export function AppNavigation(props: {
       </div>
     </nav>
   );
+}
+
+/**
+ * A short name for the quick bar. The first word, unless another pinned coworker starts with
+ * the same word ("SMM - Outreach - Sahkarmi" and "SMM - Outreach - GoLiv"): then the last part.
+ */
+export function pinnedLabel(bot: BotProfile, pinned: BotProfile[]): string {
+  const words = (name: string) => name.split(/[\s\-–—·|/]+/).filter(Boolean);
+  const first = words(bot.name)[0] ?? bot.name;
+  const clash = pinned.some(
+    (other) =>
+      other.id !== bot.id && (words(other.name)[0] ?? "").toLowerCase() === first.toLowerCase(),
+  );
+  if (!clash) return first;
+  const parts = words(bot.name);
+  return parts[parts.length - 1] ?? first;
 }
