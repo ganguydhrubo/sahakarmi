@@ -806,16 +806,6 @@ function browserRequestHeaders(
   const userAgent = browserUserAgent(sessionUserAgent, url);
   const headers = { ...requestHeaders };
   setRequestHeader(headers, "User-Agent", userAgent);
-  if (url && isClientHintUrl(url)) {
-    for (const [name, value] of Object.entries(
-      browserClientHints(process.versions.chrome, process.platform),
-    )) {
-      const present = Object.keys(headers).some(
-        (candidate) => candidate.toLowerCase() === name.toLowerCase(),
-      );
-      if (!present) headers[name] = value;
-    }
-  }
   setRequestHeader(headers, "Accept-Language", preferredBrowserLanguages());
   return headers;
 }
@@ -840,31 +830,6 @@ export function browserUserAgent(sessionUserAgent: string, url?: string): string
 function isGoogleSignInHost(url: string): boolean {
   try {
     return new URL(url).hostname.replace(/\.+$/u, "") === "accounts.google.com";
-  } catch {
-    return false;
-  }
-}
-
-/** The engine's own client hints: Chromium of this version, never a Chrome brand it is not. */
-export function browserClientHints(
-  chromeVersion: string,
-  platform: NodeJS.Platform,
-): Record<string, string> {
-  const platformName = platform === "darwin" ? "macOS" : platform === "win32" ? "Windows" : "Linux";
-  return {
-    "Sec-CH-UA": `"Chromium";v="${chromeVersion.split(".")[0]}"`,
-    "Sec-CH-UA-Mobile": "?0",
-    "Sec-CH-UA-Platform": `"${platformName}"`,
-  };
-}
-
-function isClientHintUrl(url: string): boolean {
-  try {
-    const target = new URL(url);
-    return (
-      target.protocol === "https:" ||
-      (target.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname))
-    );
   } catch {
     return false;
   }

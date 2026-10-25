@@ -17,8 +17,7 @@ All notable changes to Sahkarmi are documented here. The project follows
 ### Fixed
 
 - Google sign-in (Gmail, YouTube and every Google service) in the built-in browser. On Google's
-  sign-in pages the browser now names its Electron engine honestly and sends Chromium client
-  hints, so Google shows its normal password step instead of "This browser or app may not be
+  sign-in pages the browser now names its Electron engine honestly, so Google shows its normal password step instead of "This browser or app may not be
   secure". Click Take over, sign in in the panel, then Hand back.
 
 ## [0.7.4] - 2026-10-25

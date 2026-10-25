@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getName: () => "Sahkarmi" } }));
 
-const { browserClientHints, browserUserAgent } = await import("./browser-host");
+const { browserUserAgent } = await import("./browser-host");
 
 const sessionAgent =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Sahkarmi/0.7.5 Chrome/146.0.0.0 Electron/43.4.0 Safari/537.36";
@@ -21,15 +21,5 @@ describe("browserUserAgent", () => {
     );
     expect(agent).toContain(`Chrome/146.0.0.0 Electron/${process.versions.electron}`);
     expect(agent).not.toContain("Sahkarmi");
-  });
-});
-
-describe("browserClientHints", () => {
-  it("reports the Chromium engine, never a Chrome brand", () => {
-    expect(browserClientHints("146.0.7680.80", "win32")).toEqual({
-      "Sec-CH-UA": '"Chromium";v="146"',
-      "Sec-CH-UA-Mobile": "?0",
-      "Sec-CH-UA-Platform": '"Windows"',
-    });
   });
 });
