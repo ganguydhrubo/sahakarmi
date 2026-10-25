@@ -420,6 +420,107 @@
     .js .reveal.in { opacity: 1; transform: none; }
     @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    /* ===== Campaign ===== */
+    .hero-campaign { position: relative; overflow: hidden; padding-top: clamp(56px, 8vw, 110px); }
+    .aurora { position: absolute; inset: -20% -10% auto; height: 140%; pointer-events: none; z-index: 0; filter: blur(70px); opacity: 0.75; }
+    .aurora i { position: absolute; border-radius: 50%; mix-blend-mode: screen; animation: drift 18s var(--ease) infinite alternate; }
+    .aurora i:nth-child(1) { width: 46vw; height: 46vw; left: -6vw; top: 0; background: radial-gradient(circle, rgba(232, 119, 46, 0.55), transparent 65%); }
+    .aurora i:nth-child(2) { width: 40vw; height: 40vw; right: -4vw; top: 6vh; background: radial-gradient(circle, rgba(59, 74, 140, 0.7), transparent 65%); animation-duration: 22s; }
+    .aurora i:nth-child(3) { width: 34vw; height: 34vw; left: 34vw; top: 30vh; background: radial-gradient(circle, rgba(242, 183, 5, 0.35), transparent 65%); animation-duration: 26s; }
+    .aurora.soft { opacity: 0.5; inset: 0; height: 100%; }
+    @keyframes drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(4vw, 3vh, 0) scale(1.15); } }
+    .hero-campaign .wrap { position: relative; z-index: 1; }
+    .hero-campaign h1 { font-size: clamp(48px, 8.4vw, 104px); line-height: 0.98; letter-spacing: -0.03em; margin: 22px 0 14px; }
+    .hero-campaign h1 .accent { background: linear-gradient(100deg, #f2b705, #e8772e 45%, #ff5f6d); -webkit-background-clip: text; background-clip: text; color: transparent; display: inline-block; }
+    .rotator { font: 700 clamp(22px, 2.6vw, 32px)/1.2 var(--font-display); color: var(--text); margin: 0 0 18px; display: flex; flex-wrap: wrap; gap: 0 0.35em; }
+    .rot-words { display: inline-grid; }
+    .rot-words > span { grid-area: 1 / 1; color: var(--saffron-ink); opacity: 0; transform: translateY(0.6em); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
+    .rot-words > span.on { opacity: 1; transform: none; }
+    .rot-words > span.out { opacity: 0; transform: translateY(-0.6em); }
+    .btn-glow { position: relative; overflow: hidden; isolation: isolate; box-shadow: 0 0 0 0 rgba(232, 119, 46, 0.6), 0 14px 40px rgba(232, 119, 46, 0.45); animation: pulse 2.6s infinite; }
+    .btn-glow::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%); transform: translateX(-120%); animation: shine 3.2s 1s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(232, 119, 46, 0.55), 0 14px 40px rgba(232, 119, 46, 0.45); } 70% { box-shadow: 0 0 0 16px rgba(232, 119, 46, 0), 0 14px 40px rgba(232, 119, 46, 0.45); } 100% { box-shadow: 0 0 0 0 rgba(232, 119, 46, 0), 0 14px 40px rgba(232, 119, 46, 0.45); } }
+    @keyframes shine { 0%, 55% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+    .btn-xl { min-height: 64px; padding: 16px 34px; font-size: 20px; }
+    .hero-stage { position: relative; }
+    .hero-glow { position: absolute; inset: 8% 4%; background: conic-gradient(from 180deg, #e8772e, #3b4a8c, #f2b705, #e8772e); filter: blur(60px); opacity: 0.45; border-radius: 40px; animation: spin 14s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hero-campaign .hero-shot { position: relative; transform: perspective(1400px) rotateY(-8deg) rotateX(4deg); transition: transform 0.6s var(--ease); }
+    .hero-stage:hover .hero-shot { transform: perspective(1400px) rotateY(-2deg) rotateX(1deg); }
+    .toasts { list-style: none; margin: 0; padding: 0; }
+    .toast { position: absolute; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: color-mix(in srgb, var(--card-solid) 88%, transparent); border: 1px solid var(--line-2); box-shadow: var(--shadow); backdrop-filter: blur(10px); font-weight: 700; font-size: 14px; white-space: nowrap; opacity: 0; animation: pop 0.7s var(--ease) forwards, bob 5s ease-in-out infinite; }
+    .toast .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    .dot.leaf { background: var(--leaf-ink); } .dot.turmeric { background: var(--turmeric); } .dot.saffron { background: var(--saffron); } .dot.indigo { background: #7c8cff; }
+    .t1 { left: -6%; top: 8%; animation-delay: 0.6s, 1.3s; }
+    .t2 { right: -4%; top: 34%; animation-delay: 1.2s, 1.9s; }
+    .t3 { left: 2%; bottom: 16%; animation-delay: 1.8s, 2.5s; }
+    .t4 { right: 6%; bottom: -4%; animation-delay: 2.4s, 3.1s; }
+    @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(0.92); } to { opacity: 1; transform: none; } }
+    @keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -8px; } }
+    @media (max-width: 960px) { .t1 { left: 0; } .t2 { right: 0; } .toast { font-size: 12px; padding: 8px 10px; } .hero-campaign .hero-shot { transform: none; } }
+
+    .stats-band { padding: 0; border: 0; position: relative; z-index: 1; }
+    .stats { list-style: none; margin: 0 auto; padding: 22px clamp(16px, 3vw, 34px); display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; border: 1px solid var(--line-2); border-radius: 24px; background: var(--card); backdrop-filter: blur(12px); box-shadow: var(--shadow); }
+    .stats li { display: grid; gap: 2px; text-align: center; }
+    .stats b { font: 800 clamp(34px, 4.6vw, 58px)/1 var(--font-display); background: linear-gradient(180deg, var(--text), var(--saffron-ink)); -webkit-background-clip: text; background-clip: text; color: transparent; font-variant-numeric: tabular-nums; }
+    .stats span { color: var(--text-2); font-size: 14px; font-weight: 600; }
+    @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } .stats li:last-child { grid-column: 1 / -1; } }
+
+    .section-head.center { margin-inline: auto; text-align: center; }
+    .section-head.center .lead { margin-inline: auto; }
+    .apps-band { overflow: hidden; }
+    .marquee { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); margin-top: 16px; }
+    .marquee-track { list-style: none; margin: 0; padding: 6px 0; display: flex; gap: 14px; width: max-content; animation: scroll 46s linear infinite; }
+    .marquee.reverse .marquee-track { animation-direction: reverse; animation-duration: 52s; }
+    .marquee:hover .marquee-track { animation-play-state: paused; }
+    .marquee-track li { display: flex; align-items: center; gap: 12px; padding: 12px 20px 12px 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); font-weight: 700; white-space: nowrap; }
+    .marquee-track img { width: 34px; height: 34px; border-radius: 8px; background: #fff; padding: 4px; }
+    @keyframes scroll { to { transform: translateX(-50%); } }
+
+    .bento { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(170px, auto); }
+    .tile { position: relative; overflow: hidden; padding: 24px; border-radius: 22px; border: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; gap: 8px; transition: transform 0.35s var(--ease), border-color 0.3s; }
+    .tile::before { content: ""; position: absolute; inset: 0; background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(232, 119, 46, 0.16), transparent 45%); opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    .tile:hover { transform: translateY(-4px); border-color: var(--line-2); }
+    .tile:hover::before { opacity: 1; }
+    .tile h3 { font-size: 22px; }
+    .tile p { color: var(--text-2); font-size: 16px; }
+    .tile-xl { grid-column: span 2; grid-row: span 2; background: linear-gradient(160deg, rgba(232, 119, 46, 0.22), var(--card) 55%); }
+    .tile-wide { grid-column: span 2; }
+    .tile-tall { grid-column: span 2; }
+    .tile-lang { grid-column: 1 / -1; }
+    .tile-num { font: 800 clamp(72px, 10vw, 140px)/0.9 var(--font-display); background: linear-gradient(180deg, #f2b705, #e8772e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .tile-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(232, 119, 46, 0.16); color: var(--saffron-ink); font-size: 22px; font-weight: 800; }
+    .tile-big { font: 800 40px/1 var(--font-display); color: var(--saffron-ink); }
+    .avatars { display: flex; margin-top: auto; padding-top: 14px; }
+    .avatars i { display: grid; place-items: center; width: 46px; height: 46px; margin-right: -10px; border-radius: 50%; border: 3px solid var(--card-solid); background: var(--c); color: #fff; font: 800 18px var(--font-display); font-style: normal; }
+    .mini-logos { display: flex; gap: 10px; flex-wrap: wrap; margin-top: auto; padding-top: 10px; }
+    .mini-logos img { width: 40px; height: 40px; border-radius: 10px; background: #fff; padding: 6px; }
+    .ai-wall { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .ai-wall li { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 8px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-3); font-size: 14px; font-weight: 700; }
+    .ai-wall svg { width: 20px; height: 20px; color: var(--text); }
+    .ai-initial { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--indigo-hi); color: #fff; font-size: 12px; font-weight: 800; }
+    @media (max-width: 960px) { .bento { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px) { .bento { grid-template-columns: 1fr; } .tile-xl, .tile-wide, .tile-tall { grid-column: auto; grid-row: auto; } }
+
+    .go { position: relative; overflow: hidden; text-align: center; padding: clamp(80px, 12vw, 160px) 0; }
+    .go-inner { position: relative; z-index: 1; display: grid; justify-items: center; gap: 16px; }
+    .go h2 { font-size: clamp(40px, 7vw, 84px); letter-spacing: -0.03em; max-width: 16ch; }
+    .go .lead { margin-bottom: 10px; }
+
+    .dl-bar { position: fixed; left: 50%; bottom: 16px; z-index: 60; display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 20px; border-radius: 999px; border: 1px solid var(--line-2); background: color-mix(in srgb, var(--bg-2) 86%, transparent); backdrop-filter: blur(14px); box-shadow: var(--shadow); transform: translate(-50%, 140%); transition: transform 0.45s var(--ease); max-width: calc(100% - 32px); }
+    .dl-bar.show { transform: translate(-50%, 0); }
+    .dl-help a, .dl-card small a { display: inline-flex; align-items: center; min-height: 44px; }
+    .dl-bar-text { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .aurora i, .hero-glow, .btn-glow, .btn-glow::after, .marquee-track, .toast { animation: none !important; }
+      .toast { opacity: 1; }
+      .rot-words > span { transition: none; }
+      .tile:hover, .hero-stage:hover .hero-shot { transform: none; }
+      .marquee-track { flex-wrap: wrap; width: auto; justify-content: center; }
+      .marquee-track li[aria-hidden="true"] { display: none; }
+      .marquee { -webkit-mask-image: none; mask-image: none; }
+    }
   </style>
 </head>
 <body>
@@ -437,6 +538,7 @@
         <span><b>Sahkarmi</b><small lang="hi">सहकर्मी</small></span>
       </a>
       <nav class="nav" id="nav" aria-label="Main navigation">
+        <a href="#new" data-i18n="navNew">What's new</a>
         <a href="#see" data-i18n="navSee">See it working</a>
         <a href="#how" data-i18n="navHow">How it works</a>
         <a href="#features" data-i18n="navFeatures">Features</a>
@@ -460,32 +562,94 @@
 
   <main id="main">
     <!-- Hero -->
-    <section class="hero">
+    <section class="hero hero-campaign">
+      <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="wrap hero-grid">
-        <div>
-          <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Open source · Apache 2.0 · Version</span> <span data-release-version>latest</span></p>
-          <h1><span data-i18n="h1a">A team of AI coworkers</span> <span class="accent" data-i18n="h1b">on your own computer.</span></h1>
-          <p class="lead" data-i18n="lead">Sahkarmi is a free desktop app. Each coworker has its own workspace, memory, task queue and browser, works in the AI of your choice, and asks you before it pays, sends or posts. Made in India, for anyone.</p>
+        <div class="hero-copy">
+          <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Free · Open source · Version</span> <span data-release-version>latest</span></p>
+          <h1><span data-i18n="h1a">Hire an AI team.</span> <span class="accent" data-i18n="h1b">Pay ₹0.</span></h1>
+          <p class="rotator"><span data-i18n="rotPre">They</span> <span class="rot-words"><span data-i18n="rot1" class="on">chase your invoices.</span><span data-i18n="rot2">answer your customers.</span><span data-i18n="rot3">write your posts.</span><span data-i18n="rot4">research your market.</span><span data-i18n="rot5">fix your code.</span><span data-i18n="rot6">work while you sleep.</span></span></p>
+          <p class="lead" data-i18n="lead">Sahkarmi puts AI coworkers on your Windows PC. They browse, write, research, work inside 1,660 apps and run on a schedule. Before they pay, send or post, they ask you.</p>
           <div class="cta-row">
-            <a class="btn btn-primary" id="download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">
+            <a class="btn btn-primary btn-glow" id="download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
               <span id="download-label" data-i18n="download">Download for Windows</span>
             </a>
-            <a class="btn btn-secondary" href="#see" data-i18n="watch">See it working</a>
+            <a class="btn btn-secondary" href="#see"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg><span data-i18n="watch">Watch the 2-minute film</span></a>
           </div>
-          <p class="cta-meta"><span id="dl-meta" data-i18n="dlMeta">Free. No account, no card. 64-bit Windows 10 or 11.</span> <a href="#download" data-i18n="otherOs">macOS or Linux?</a> · <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer" data-i18n="source">Source code</a></p>
+          <p class="cta-meta"><span id="dl-meta" data-i18n="dlMeta">Free forever. No account, no card. Windows 10 and 11.</span> <a href="#download" data-i18n="otherOs">macOS or Linux?</a> · <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer" data-i18n="source">Source code</a></p>
           <ul class="proof">
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--saffron-ink)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i18n="p1">Runs on your PC, data stays local</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--saffron-ink)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i18n="p1">Runs on your PC</span></li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--turmeric)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="m9 12 2 2 4-4"/></svg><span data-i18n="p2">Asks before it pays or sends</span></li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--leaf-ink)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 16 0 8 8 0 1 0-16 0M9 12h6M12 9v6"/></svg><span data-i18n="p3">Free AI built in, or your own sign-ins</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--leaf-ink)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 16 0 8 8 0 1 0-16 0M9 12h6M12 9v6"/></svg><span data-i18n="p3">Open source, Apache 2.0</span></li>
           </ul>
         </div>
-        <div>
+        <div class="hero-stage">
+          <div class="hero-glow" aria-hidden="true"></div>
           <figure class="hero-shot" style="margin:0">
             <img src="/assets/shots/conversation-1440.webp" srcset="/assets/shots/conversation-480.webp 480w, /assets/shots/conversation-720.webp 720w, /assets/shots/conversation-1440.webp 1440w" sizes="(max-width: 960px) 92vw, 48vw" width="1440" height="876" alt="Sahkarmi 0.7.1 on Windows: the coworker list on the left and Vikram, the sales coworker, answering a request for a WhatsApp follow-up on the free built-in model" fetchpriority="high" />
           </figure>
-          <p class="hero-caption" data-i18n="heroCap">Real screenshot from the released app on Windows 11, free built-in model, nothing staged.</p>
+          <ul class="toasts" aria-hidden="true">
+            <li class="toast t1"><b class="dot leaf"></b><span data-i18n="toast1">Asha: GST invoice ready</span></li>
+            <li class="toast t2"><b class="dot turmeric"></b><span data-i18n="toast2">Approve: send the quote to the customer?</span></li>
+            <li class="toast t3"><b class="dot saffron"></b><span data-i18n="toast3">Kavya: 3 Instagram posts drafted</span></li>
+            <li class="toast t4"><b class="dot indigo"></b><span data-i18n="toast4">Routine: daily sales report, 9:00 AM</span></li>
+          </ul>
         </div>
+      </div>
+    </section>
+
+    <!-- Numbers -->
+    <section class="stats-band" aria-label="Sahkarmi in numbers">
+      <ul class="wrap stats">
+        <li><b data-count="175">175</b><span data-i18n="st1">ready-made coworkers</span></li>
+        <li><b data-count="1660">1,660</b><span data-i18n="st2">apps they work in</span></li>
+        <li><b data-count="15">15</b><span data-i18n="st3">AIs to choose from</span></li>
+        <li><b data-count="3">3</b><span data-i18n="st4">languages: English, हिन्दी, বাংলা</span></li>
+        <li><b>₹0</b><span data-i18n="st5">to download and use</span></li>
+      </ul>
+    </section>
+
+    <!-- Apps -->
+    <section id="apps" class="apps-band" aria-labelledby="apps-h">
+      <div class="wrap">
+        <div class="section-head center reveal">
+          <p class="eyebrow" data-i18n="mqEyebrow">1,660 apps</p>
+          <h2 id="apps-h" data-i18n="mqH2">Plugs into the apps you already use</h2>
+          <p class="lead" data-i18n="mqLead">Gmail, Sheets, Slack, Notion, GitHub, HubSpot and 1,600+ more through Composio's free plan. Connect once, and every coworker can use them. Anything that sends, changes or deletes waits for your OK.</p>
+        </div>
+      </div>
+      <div class="marquee">
+        <ul class="marquee-track"><li><img src="/assets/apps/gmail.svg" width="40" height="40" alt="Gmail" loading="lazy" /><span>Gmail</span></li><li><img src="/assets/apps/googlesheets.svg" width="40" height="40" alt="Google Sheets" loading="lazy" /><span>Google Sheets</span></li><li><img src="/assets/apps/slack.svg" width="40" height="40" alt="Slack" loading="lazy" /><span>Slack</span></li><li><img src="/assets/apps/notion.svg" width="40" height="40" alt="Notion" loading="lazy" /><span>Notion</span></li><li><img src="/assets/apps/github.svg" width="40" height="40" alt="GitHub" loading="lazy" /><span>GitHub</span></li><li><img src="/assets/apps/hubspot.svg" width="40" height="40" alt="HubSpot" loading="lazy" /><span>HubSpot</span></li><li><img src="/assets/apps/googlecalendar.svg" width="40" height="40" alt="Google Calendar" loading="lazy" /><span>Google Calendar</span></li><li><img src="/assets/apps/whatsapp.svg" width="40" height="40" alt="WhatsApp" loading="lazy" /><span>WhatsApp</span></li><li><img src="/assets/apps/shopify.svg" width="40" height="40" alt="Shopify" loading="lazy" /><span>Shopify</span></li><li><img src="/assets/apps/googledrive.svg" width="40" height="40" alt="Google Drive" loading="lazy" /><span>Google Drive</span></li><li><img src="/assets/apps/instagram.svg" width="40" height="40" alt="Instagram" loading="lazy" /><span>Instagram</span></li><li><img src="/assets/apps/linkedin.svg" width="40" height="40" alt="LinkedIn" loading="lazy" /><span>LinkedIn</span></li><li><img src="/assets/apps/youtube.svg" width="40" height="40" alt="YouTube" loading="lazy" /><span>YouTube</span></li><li><img src="/assets/apps/trello.svg" width="40" height="40" alt="Trello" loading="lazy" /><span>Trello</span></li><li aria-hidden="true"><img src="/assets/apps/gmail.svg" width="40" height="40" alt="Gmail" loading="lazy" /><span>Gmail</span></li><li aria-hidden="true"><img src="/assets/apps/googlesheets.svg" width="40" height="40" alt="Google Sheets" loading="lazy" /><span>Google Sheets</span></li><li aria-hidden="true"><img src="/assets/apps/slack.svg" width="40" height="40" alt="Slack" loading="lazy" /><span>Slack</span></li><li aria-hidden="true"><img src="/assets/apps/notion.svg" width="40" height="40" alt="Notion" loading="lazy" /><span>Notion</span></li><li aria-hidden="true"><img src="/assets/apps/github.svg" width="40" height="40" alt="GitHub" loading="lazy" /><span>GitHub</span></li><li aria-hidden="true"><img src="/assets/apps/hubspot.svg" width="40" height="40" alt="HubSpot" loading="lazy" /><span>HubSpot</span></li><li aria-hidden="true"><img src="/assets/apps/googlecalendar.svg" width="40" height="40" alt="Google Calendar" loading="lazy" /><span>Google Calendar</span></li><li aria-hidden="true"><img src="/assets/apps/whatsapp.svg" width="40" height="40" alt="WhatsApp" loading="lazy" /><span>WhatsApp</span></li><li aria-hidden="true"><img src="/assets/apps/shopify.svg" width="40" height="40" alt="Shopify" loading="lazy" /><span>Shopify</span></li><li aria-hidden="true"><img src="/assets/apps/googledrive.svg" width="40" height="40" alt="Google Drive" loading="lazy" /><span>Google Drive</span></li><li aria-hidden="true"><img src="/assets/apps/instagram.svg" width="40" height="40" alt="Instagram" loading="lazy" /><span>Instagram</span></li><li aria-hidden="true"><img src="/assets/apps/linkedin.svg" width="40" height="40" alt="LinkedIn" loading="lazy" /><span>LinkedIn</span></li><li aria-hidden="true"><img src="/assets/apps/youtube.svg" width="40" height="40" alt="YouTube" loading="lazy" /><span>YouTube</span></li><li aria-hidden="true"><img src="/assets/apps/trello.svg" width="40" height="40" alt="Trello" loading="lazy" /><span>Trello</span></li></ul>
+      </div>
+      <div class="marquee reverse">
+        <ul class="marquee-track"><li><img src="/assets/apps/outlook.svg" width="40" height="40" alt="Outlook" loading="lazy" /><span>Outlook</span></li><li><img src="/assets/apps/airtable.svg" width="40" height="40" alt="Airtable" loading="lazy" /><span>Airtable</span></li><li><img src="/assets/apps/salesforce.svg" width="40" height="40" alt="Salesforce" loading="lazy" /><span>Salesforce</span></li><li><img src="/assets/apps/zoom.svg" width="40" height="40" alt="Zoom" loading="lazy" /><span>Zoom</span></li><li><img src="/assets/apps/jira.svg" width="40" height="40" alt="Jira" loading="lazy" /><span>Jira</span></li><li><img src="/assets/apps/asana.svg" width="40" height="40" alt="Asana" loading="lazy" /><span>Asana</span></li><li><img src="/assets/apps/discord.svg" width="40" height="40" alt="Discord" loading="lazy" /><span>Discord</span></li><li><img src="/assets/apps/excel.svg" width="40" height="40" alt="Excel" loading="lazy" /><span>Excel</span></li><li><img src="/assets/apps/googledocs.svg" width="40" height="40" alt="Google Docs" loading="lazy" /><span>Google Docs</span></li><li><img src="/assets/apps/microsoft_teams.svg" width="40" height="40" alt="Microsoft Teams" loading="lazy" /><span>Microsoft Teams</span></li><li><img src="/assets/apps/clickup.svg" width="40" height="40" alt="ClickUp" loading="lazy" /><span>ClickUp</span></li><li><img src="/assets/apps/monday.svg" width="40" height="40" alt="monday.com" loading="lazy" /><span>monday.com</span></li><li><img src="/assets/apps/linear.svg" width="40" height="40" alt="Linear" loading="lazy" /><span>Linear</span></li><li><img src="/assets/apps/pipedrive.svg" width="40" height="40" alt="Pipedrive" loading="lazy" /><span>Pipedrive</span></li><li><img src="/assets/apps/reddit.svg" width="40" height="40" alt="Reddit" loading="lazy" /><span>Reddit</span></li><li aria-hidden="true"><img src="/assets/apps/outlook.svg" width="40" height="40" alt="Outlook" loading="lazy" /><span>Outlook</span></li><li aria-hidden="true"><img src="/assets/apps/airtable.svg" width="40" height="40" alt="Airtable" loading="lazy" /><span>Airtable</span></li><li aria-hidden="true"><img src="/assets/apps/salesforce.svg" width="40" height="40" alt="Salesforce" loading="lazy" /><span>Salesforce</span></li><li aria-hidden="true"><img src="/assets/apps/zoom.svg" width="40" height="40" alt="Zoom" loading="lazy" /><span>Zoom</span></li><li aria-hidden="true"><img src="/assets/apps/jira.svg" width="40" height="40" alt="Jira" loading="lazy" /><span>Jira</span></li><li aria-hidden="true"><img src="/assets/apps/asana.svg" width="40" height="40" alt="Asana" loading="lazy" /><span>Asana</span></li><li aria-hidden="true"><img src="/assets/apps/discord.svg" width="40" height="40" alt="Discord" loading="lazy" /><span>Discord</span></li><li aria-hidden="true"><img src="/assets/apps/excel.svg" width="40" height="40" alt="Excel" loading="lazy" /><span>Excel</span></li><li aria-hidden="true"><img src="/assets/apps/googledocs.svg" width="40" height="40" alt="Google Docs" loading="lazy" /><span>Google Docs</span></li><li aria-hidden="true"><img src="/assets/apps/microsoft_teams.svg" width="40" height="40" alt="Microsoft Teams" loading="lazy" /><span>Microsoft Teams</span></li><li aria-hidden="true"><img src="/assets/apps/clickup.svg" width="40" height="40" alt="ClickUp" loading="lazy" /><span>ClickUp</span></li><li aria-hidden="true"><img src="/assets/apps/monday.svg" width="40" height="40" alt="monday.com" loading="lazy" /><span>monday.com</span></li><li aria-hidden="true"><img src="/assets/apps/linear.svg" width="40" height="40" alt="Linear" loading="lazy" /><span>Linear</span></li><li aria-hidden="true"><img src="/assets/apps/pipedrive.svg" width="40" height="40" alt="Pipedrive" loading="lazy" /><span>Pipedrive</span></li><li aria-hidden="true"><img src="/assets/apps/reddit.svg" width="40" height="40" alt="Reddit" loading="lazy" /><span>Reddit</span></li></ul>
+      </div>
+    </section>
+
+    <!-- What's new -->
+    <section id="new" aria-labelledby="new-h">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow" data-i18n="newEyebrow">New in Sahkarmi</p>
+          <h2 id="new-h" data-i18n="newH2">Everything a real team does. Built in.</h2>
+        </div>
+        <ul class="bento reveal">
+          <li class="tile tile-xl tile-market"><span class="tile-num">175</span><h3 data-i18n="b1T">A marketplace of 175 coworkers</h3><p data-i18n="b1P">Accountant, HR manager, shop manager, tutor, designer, developer and many more. Add one in a click, each with its own steps, checks and results.</p>
+            <div class="avatars" aria-hidden="true"><i style="--c:#e8772e">A</i><i style="--c:#3b4a8c">V</i><i style="--c:#2e8b57">M</i><i style="--c:#7c3aed">A</i><i style="--c:#c99a06">K</i><i style="--c:#16a34a">D</i><i style="--c:#0891b2">T</i><i style="--c:#c0392b">+</i></div>
+          </li>
+          <li class="tile tile-wide tile-apps"><h3 data-i18n="b2T">1,660 apps, one free key</h3><p data-i18n="b2P">Gmail, Google Sheets, Slack, Notion and more through Composio's free Hobby plan: 1,00,000 tool calls a month, no card.</p>
+            <div class="mini-logos" aria-hidden="true"><img src="/assets/apps/gmail.svg" width="32" height="32" alt="gmail" loading="lazy" /><img src="/assets/apps/googlesheets.svg" width="32" height="32" alt="googlesheets" loading="lazy" /><img src="/assets/apps/slack.svg" width="32" height="32" alt="slack" loading="lazy" /><img src="/assets/apps/notion.svg" width="32" height="32" alt="notion" loading="lazy" /><img src="/assets/apps/github.svg" width="32" height="32" alt="github" loading="lazy" /><img src="/assets/apps/hubspot.svg" width="32" height="32" alt="hubspot" loading="lazy" /></div>
+          </li>
+          <li class="tile tile-tall tile-ai"><h3 data-i18n="b3T">15 AIs. Pick one per coworker.</h3><p data-i18n="b3P">Free built-in models, or your own ChatGPT, Claude, Gemini, GitHub Copilot, Cursor, Qwen, Kimi, Grok and more. No tokens copied, ever.</p>
+            <ul class="ai-wall"><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 24H2V0h20zM17 4.8H7v14.4h10z"/></svg><span>OpenCode</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg><span>ChatGPT</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg><span>Claude</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#8E75B2" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg><span>Gemini</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/></svg><span>GitHub Copilot</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/></svg><span>Cursor</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#6950EF" d="M23.919 14.545 20.817 9.17l1.47-2.544a.56.56 0 0 0 0-.566l-1.633-2.83a.57.57 0 0 0-.49-.283h-6.207L12.487.402a.57.57 0 0 0-.49-.284H8.732a.56.56 0 0 0-.49.284L5.139 5.775h-2.94a.56.56 0 0 0-.49.284L.077 8.887a.56.56 0 0 0 0 .567L3.18 14.83l-1.47 2.545a.56.56 0 0 0 0 .566l1.634 2.83a.57.57 0 0 0 .49.283h6.205l1.47 2.545a.57.57 0 0 0 .49.284h3.266a.57.57 0 0 0 .49-.284l3.104-5.375h2.94a.57.57 0 0 0 .49-.283l1.634-2.828a.55.55 0 0 0-.004-.568M8.733.686l1.634 2.828-1.634 2.828H21.8L20.164 9.17H7.425L5.63 6.06Zm1.306 19.801-6.205-.002 1.634-2.83h3.265L2.201 6.344h3.267q3.182 5.517 6.367 11.032zm10.124-5.66L18.53 12l-6.532 11.315-1.634-2.83c2.129-3.673 4.25-7.351 6.373-11.028h3.592l3.102 5.374z"/></svg><span>Qwen Code</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.765.351C22.998.351 24 1.353 24 2.586S22.998 4.82 21.765 4.82h-1.974c-.15 0-.26-.12-.26-.26V2.586A2.237 2.237 0 0 1 21.765.35M9.41 13.388l8.447-8.377c.16-.16.07-.471-.14-.471h-4.55s-.1.02-.14.06l-9.099 9.029c-.14.14-.35.02-.35-.21V4.81c0-.15-.1-.27-.221-.27H.22c-.12 0-.22.12-.22.27v18.57c0 .15.1.27.22.27h3.137c.12 0 .22-.12.22-.27v-3.79c0-.08.03-.16.08-.21l2.826-2.796c.07-.07.16-.08.241-.03l7.546 5.551a8.9 8.9 0 0 0 4.018 1.493c.12.01.23-.11.23-.27V19.76c0-.14-.08-.25-.19-.26a5.8 5.8 0 0 1-2.355-.942l-6.533-4.73c-.14-.09-.15-.32-.03-.441"/></svg><span>Kimi Code</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m23.365 13.556-1.442-2.895V8.994c0-2.764-2.218-5.002-4.954-5.002h-2.464c.178-.367.276-.779.276-1.213A2.77 2.77 0 0 0 12.018 0a2.77 2.77 0 0 0-2.763 2.779c0 .434.098.846.276 1.213H7.067c-2.736 0-4.954 2.238-4.954 5.002v1.667L.64 13.549c-.149.29-.149.636 0 .927l1.472 2.855v1.667C2.113 21.762 4.33 24 7.067 24h9.902c2.736 0 4.954-2.238 4.954-5.002V17.33l1.44-2.865c.143-.286.143-.622.002-.91m-12.854 2.36a2.27 2.27 0 0 1-2.261 2.273 2.27 2.27 0 0 1-2.261-2.273v-4.042A2.27 2.27 0 0 1 8.249 9.6a2.267 2.267 0 0 1 2.262 2.274zm7.285 0a2.27 2.27 0 0 1-2.26 2.273 2.27 2.27 0 0 1-2.262-2.273v-4.042A2.267 2.267 0 0 1 15.535 9.6a2.267 2.267 0 0 1 2.261 2.274z"/></svg><span>Cline</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg><span>Grok</span></li><li><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#FA520F" d="M17.143 3.429v3.428h-3.429v3.429h-3.428V6.857H6.857V3.43H3.43v13.714H0v3.428h10.286v-3.428H6.857v-3.429h3.429v3.429h3.429v-3.429h3.428v3.429h-3.428v3.428H24v-3.428h-3.43V3.429z"/></svg><span>Mistral Vibe</span></li><li><span class="ai-initial" aria-hidden="true">K</span><span>Kiro</span></li><li><span class="ai-initial" aria-hidden="true">G</span><span>Goose</span></li><li><span class="ai-initial" aria-hidden="true">F</span><span>Factory Droid</span></li><li><span class="ai-initial" aria-hidden="true">Q</span><span>Qoder</span></li></ul>
+          </li>
+          <li class="tile"><span class="tile-icon" aria-hidden="true">⇄</span><h3 data-i18n="b4T">Free limit used up? It switches.</h3><p data-i18n="b4P">When the free model hits its limit, the coworker moves to the next free AI you have connected and carries on.</p></li>
+          <li class="tile"><span class="tile-icon" aria-hidden="true">◎</span><h3 data-i18n="b5T">Its own browser</h3><p data-i18n="b5P">Every coworker browses in its own tab. Press Take over for logins and OTPs.</p></li>
+          <li class="tile"><span class="tile-icon" aria-hidden="true">↻</span><h3 data-i18n="b6T">Routines on autopilot</h3><p data-i18n="b6P">Hourly, daily or weekly. Build a routine once and it runs on its own.</p></li>
+          <li class="tile"><span class="tile-icon" aria-hidden="true">✓</span><h3 data-i18n="b7T">You approve the big moves</h3><p data-i18n="b7P">Payments, customer messages, posts and forms wait in your Approvals inbox.</p></li>
+          <li class="tile tile-wide tile-lang"><span class="tile-big" aria-hidden="true">अ · A · অ</span><h3 data-i18n="b8T">Speaks your language</h3><p data-i18n="b8P">English, हिन्दी and বাংলা. INR with lakh and crore, GST and IST built in.</p></li>
+        </ul>
       </div>
     </section>
 
@@ -494,8 +658,8 @@
       <div class="wrap">
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="seeEyebrow">See it working</p>
-          <h2 id="see-h" data-i18n="seeH2">Two minutes of the real app, and screenshots of every main screen</h2>
-          <p class="lead" data-i18n="seeLead">Everything here is captured from the released app. No mock-ups, no invented numbers.</p>
+          <h2 id="see-h" data-i18n="seeH2">See your AI team at work</h2>
+          <p class="lead" data-i18n="seeLead">The real app on a Windows PC, start to finish.</p>
         </div>
         <div class="stage reveal">
           <div>
@@ -514,7 +678,7 @@
               <button type="button" data-video="hi" aria-pressed="true" lang="hi">हिन्दी</button>
               <button type="button" data-video="en" aria-pressed="false">English</button>
             </div>
-            <p class="video-note" data-i18n="videoNote">Recorded from the released app on a clean Windows PC with the free built-in model. Captions included in both languages; the one cut, where the first free model was at its limit, is marked on screen.</p>
+            <p class="video-note" data-i18n="videoNote">Recorded on a clean Windows PC with the free built-in model. Captions in Hindi and English.</p>
           </div>
           <div class="gallery" id="gallery">
             <div class="gallery-tabs" role="tablist" aria-label="Screenshots">
@@ -576,7 +740,7 @@
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="cmpEyebrow">How it differs</p>
           <h2 id="compare-h" data-i18n="cmpH2">What you get here that a chat app or a cloud agent does not</h2>
-          <p class="lead" data-i18n="cmpLead">A plain comparison of categories, not a scorecard against named products. Check any row in the source code.</p>
+          <p class="lead" data-i18n="cmpLead">Chat apps talk. Sahkarmi gets the work done.</p>
         </div>
         <div class="table-wrap reveal">
           <table>
@@ -594,7 +758,6 @@
             </tbody>
           </table>
         </div>
-        <p class="note" data-i18n="cmpNote">Sahkarmi is a development preview. Approvals rely on the AI following its instructions, and the installers are not code-signed yet. Both are stated again below, because you should know before you install.</p>
       </div>
     </section>
 
@@ -618,8 +781,8 @@
       <div class="wrap">
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="featEyebrow">Features</p>
-          <h2 id="feat-h" data-i18n="featH2">What is in the current release</h2>
-          <p class="lead" data-i18n="featLead">Only what the released app does today. The roadmap lives in GitHub issues.</p>
+          <h2 id="feat-h" data-i18n="featH2">Everything you get. Free.</h2>
+          <p class="lead" data-i18n="featLead">Every feature here is in the app you download today.</p>
         </div>
         <ul class="grid reveal">
           <li class="card"><h3 data-i18n="f1">Nine coworkers to start</h3><p data-i18n="f1P">Mitra (orchestrator), Asha (accounts), Vikram (sales), Meera (support), Arjun (research), Kavya (content), Dev (code), Tara (ops) and Kabir (security). Rename, edit or delete any of them, with an 8-second undo.</p></li>
@@ -662,7 +825,7 @@
       <div class="wrap">
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="aiEyebrow">AI providers</p>
-          <h2 id="ai-h" data-i18n="aiH2">Free AI out of the box. Your own accounts when you want them.</h2>
+          <h2 id="ai-h" data-i18n="aiH2">15 AIs. Free ones built in. Yours when you want.</h2>
           <p class="lead" data-i18n="aiLead">Sahkarmi finds the AI tools installed on your computer and reuses their existing login. It never copies your tokens, and your password is only ever typed on the provider's own page.</p>
         </div>
         <div class="table-wrap reveal">
@@ -673,6 +836,7 @@
               <tr><td><strong>Claude</strong></td><td data-i18n="pCla">Your installed Claude Code and its login.</td><td data-i18n="pClaC">Your Claude plan</td></tr>
               <tr><td><strong>ChatGPT (Codex)</strong></td><td data-i18n="pCod">Your installed Codex CLI and its ChatGPT login.</td><td data-i18n="pCodC">Your ChatGPT plan</td></tr>
               <tr><td><strong>Google Antigravity</strong></td><td data-i18n="pGem">Google's own Antigravity agent, downloaded by Sahkarmi when you click Connect (Google's terms apply). One click opens Log in with Google; a Google AI Studio API key also works.</td><td data-i18n="pGemC">Your Google plan</td></tr>
+              <tr><td><strong data-i18n="pMoreT">11 more AI agents</strong></td><td data-i18n="pMore">GitHub Copilot, Cursor, Qwen Code, Kimi Code, Cline, Grok, Mistral Vibe, Kiro, Goose, Factory Droid and Qoder. Sahkarmi installs each one for you when you press Connect.</td><td data-i18n="pMoreC">Your plan; Copilot and Kiro have free tiers</td></tr>
             </tbody>
           </table>
         </div>
@@ -699,7 +863,7 @@
           <div class="dl-card" id="card-later">
             <div class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><h3 data-i18n="laterH3">macOS and Linux</h3></div>
             <span class="status none" data-i18n="stLater">Coming later</span>
-            <p data-i18n="laterP">Sahkarmi launches on Windows first. macOS and Linux builds are paused until they have been tested on real hardware, so nothing is offered for download for those systems yet. The source builds on all three.</p>
+            <p data-i18n="laterP">Windows comes first. macOS and Linux are next, once they are tested on real machines. The source already builds on all three.</p>
             <a class="btn btn-secondary" href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer"><span data-i18n="laterBtn">Watch the repository for news</span></a>
             <small><a href="/install.html#terminal" data-i18n="laterHelp">Build from source on any system</a></small>
           </div>
@@ -710,7 +874,6 @@
           <a href="/install.html#terminal" data-i18n="terminalLink">Terminal and source install</a>
           <a href="/install.html#troubleshooting" data-i18n="troubleLink">Troubleshooting</a>
         </div>
-        <p class="note" data-i18n="dlNote">A Windows Package Manager (winget) manifest has been submitted and is waiting for Microsoft's review; until it is accepted, use the installer above.</p>
         <p class="platforms sr-only">
           <a data-platform="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">Windows installer</a>
         </p>
@@ -722,17 +885,31 @@
       <div class="wrap">
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="privEyebrow">Privacy, security and permissions</p>
-          <h2 id="priv-h" data-i18n="privH2">Local-first, and honest about what that means</h2>
+          <h2 id="priv-h" data-i18n="privH2">Your PC. Your data. Your rules.</h2>
         </div>
         <ul class="grid reveal">
           <li class="card"><h3 data-i18n="pv1">No account, no analytics</h3><p data-i18n="pv1P">Coworkers, chats, files, usage history and the activity log are stored on your computer under your user profile. Sahkarmi has no cloud service and sends no analytics; the only outbound traffic of its own is the update check against GitHub Releases.</p></li>
           <li class="card"><h3 data-i18n="pv2">What goes to an AI provider</h3><p data-i18n="pv2P">When a coworker thinks, the text and files it needs are sent to the provider you chose for that coworker (OpenCode's free models, Claude, ChatGPT or Google) under that provider's terms. Nothing goes to Sahkarmi.</p></li>
-          <li class="card"><h3 data-i18n="pv3">What coworkers can do on your PC</h3><p data-i18n="pv3P">Coworkers can read and write files, run commands, use the network and drive their browser tab. The Permissions page in Settings sets how much they may do on their own. This is a development preview: run work you trust and keep backups.</p></li>
+          <li class="card"><h3 data-i18n="pv3">What coworkers can do on your PC</h3><p data-i18n="pv3P">Coworkers can read and write files, run commands, use the network and drive their browser tab. The Permissions page in Settings sets how much they may do on their own.</p></li>
           <li class="card"><h3 data-i18n="pv4">Approvals are instructions, not a wall</h3><p data-i18n="pv4P">Coworkers are told to stop before payments, customer messages, publishing and form submissions. Today that depends on the model following instructions. Never share card details or OTPs with a coworker; type them yourself with Take over.</p></li>
           <li class="card"><h3 data-i18n="pv5">Open source, verifiable builds</h3><p data-i18n="pv5P">Apache License 2.0. Every release is built by GitHub Actions from a tagged commit, with SHA-256 checksums, an SBOM and a build provenance attestation attached.</p></li>
           <li class="card"><h3 data-i18n="pv6">Report a vulnerability privately</h3><p data-i18n="pv6P">Use GitHub's private vulnerability reporting on the repository (Security, then Report a vulnerability). The security policy explains what to include and the current security model.</p></li>
         </ul>
         <p class="note"><a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="privLink">Privacy notes</a> · <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer" data-i18n="secLink">Security policy</a> · <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="licLink">License</a></p>
+      </div>
+    </section>
+
+    <!-- Final call -->
+    <section class="go" aria-labelledby="go-h">
+      <div class="aurora soft" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="wrap go-inner reveal">
+        <p class="eyebrow" data-i18n="goEyebrow">Ready when you are</p>
+        <h2 id="go-h" data-i18n="goH2">Your AI team is ready to start.</h2>
+        <p class="lead" data-i18n="goLead">Download free. Up and running in minutes. No account, no card.</p>
+        <a class="btn btn-primary btn-glow btn-xl" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          <span data-i18n="goBtn">Download free for Windows</span>
+        </a>
       </div>
     </section>
 
@@ -785,8 +962,8 @@
       <div class="wrap community reveal">
         <div>
           <p class="eyebrow" data-i18n="comEyebrow">Community and feedback</p>
-          <h2 id="community-h" data-i18n="comH2">Try it, break it, tell us</h2>
-          <p class="lead" style="margin-top:14px" data-i18n="comLead">Sahkarmi is a young project. The most useful thing you can do after installing it is to report what confused you or what broke, with the app version (Settings, then About) and the steps you took. Code, translations and documentation contributions are welcome under the Apache License 2.0.</p>
+          <h2 id="community-h" data-i18n="comH2">Tell us what to build next</h2>
+          <p class="lead" style="margin-top:14px" data-i18n="comLead">Report a bug or an idea with the app version (Settings, then About) and the steps you took. Code, translations and docs are welcome under the Apache License 2.0.</p>
           <div class="cta-row" style="margin-top:22px">
             <a class="btn btn-primary btn-small" href="https://github.com/ganguydhrubo/sahakarmi/issues/new" target="_blank" rel="noopener noreferrer" data-i18n="reportBtn">Report a bug or idea</a>
             <a class="btn btn-secondary btn-small" href="https://github.com/ganguydhrubo/sahakarmi/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" data-i18n="contribBtn">Contributing guide</a>
@@ -823,6 +1000,11 @@
     </section>
   </main>
 
+  <div class="dl-bar" id="dl-bar" aria-hidden="true">
+    <span class="dl-bar-text" data-i18n="barText">Your free AI team for Windows</span>
+    <a class="btn btn-primary btn-small" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe" tabindex="-1"><span data-i18n="mini">Download</span></a>
+  </div>
+
   <footer>
     <div class="wrap">
       <div class="footer-links">
@@ -848,29 +1030,29 @@
         navFaq: "FAQ",
         navCommunity: "Community",
         mini: "Download",
-        chip: "Open source · Apache 2.0 · Version",
-        h1a: "A team of AI coworkers",
-        h1b: "on your own computer.",
-        lead: "Sahkarmi is a free desktop app. Each coworker has its own workspace, memory, task queue and browser, works in the AI of your choice, and asks you before it pays, sends or posts. Made in India, for anyone.",
+        chip: "Free · Open source · Version",
+        h1a: "Hire an AI team.",
+        h1b: "Pay ₹0.",
+        lead: "Sahkarmi puts AI coworkers on your Windows PC. They browse, write, research, work inside 1,660 apps and run on a schedule. Before they pay, send or post, they ask you.",
         download: "Download for Windows",
         downloadOther: "Windows only, for now",
         downloadAny: "Download",
-        watch: "See it working",
-        dlMeta: "Free. No account, no card. 64-bit Windows 10 or 11.",
+        watch: "Watch the 2-minute film",
+        dlMeta: "Free forever. No account, no card. Windows 10 and 11.",
         dlMetaOther: "Free. No account, no card. Windows 10 or 11 today; macOS and Linux builds come later.",
         dlMetaMobile: "Free desktop app for Windows 10 and 11. Open this page on your Windows PC to install.",
         otherOs: "macOS or Linux?",
         source: "Source code",
-        p1: "Runs on your PC, data stays local",
+        p1: "Runs on your PC",
         p2: "Asks before it pays or sends",
-        p3: "Free AI built in, or your own sign-ins",
+        p3: "Open source, Apache 2.0",
         heroCap: "Real screenshot from the released app on Windows 11, free built-in model, nothing staged.",
         seeEyebrow: "See it working",
-        seeH2: "Two minutes of the real app, and screenshots of every main screen",
-        seeLead: "Everything here is captured from the released app. No mock-ups, no invented numbers.",
+        seeH2: "See your AI team at work",
+        seeLead: "The real app on a Windows PC, start to finish.",
         playLabel: "Play: Sahkarmi in under 3 minutes",
         videoLangLabel: "Narration:",
-        videoNote: "Recorded from the released app on a clean Windows PC with the free built-in model. Captions included in both languages; the one cut, where the first free model was at its limit, is marked on screen.",
+        videoNote: "Recorded on a clean Windows PC with the free built-in model. Captions in Hindi and English.",
         gSetup: "First launch",
         gBrowser: "Built-in browser",
         gSearch: "Search",
@@ -897,7 +1079,7 @@
         who3P: "The app works on first launch with free models and no login. Your chats and files never leave your PC except to the AI provider you choose.",
         cmpEyebrow: "How it differs",
         cmpH2: "What you get here that a chat app or a cloud agent does not",
-        cmpLead: "A plain comparison of categories, not a scorecard against named products. Check any row in the source code.",
+        cmpLead: "Chat apps talk. Sahkarmi gets the work done.",
         thWhat: "What",
         thChat: "Chat apps",
         thCloud: "Cloud agents",
@@ -939,8 +1121,8 @@
         how3: "You decide the risky bits",
         how3P: "Before a payment, a customer message, a post or a form, the coworker files a request in Approvals and waits. For logins and OTPs you press Take over and type them yourself.",
         featEyebrow: "Features",
-        featH2: "What is in the current release",
-        featLead: "Only what the released app does today. The roadmap lives in GitHub issues.",
+        featH2: "Everything you get. Free.",
+        featLead: "Every feature here is in the app you download today.",
         f1: "Nine coworkers to start",
         f1P: "Mitra (orchestrator), Asha (accounts), Vikram (sales), Meera (support), Arjun (research), Kavya (content), Dev (code), Tara (ops) and Kabir (security). Rename, edit or delete any of them, with an 8-second undo.",
         f2: "A browser per coworker",
@@ -972,7 +1154,7 @@
         taraP: "Ops: checklists, scheduling and day-to-day coordination.",
         kabirP: "Security: reviews risky requests and keeps an eye on permissions.",
         aiEyebrow: "AI providers",
-        aiH2: "Free AI out of the box. Your own accounts when you want them.",
+        aiH2: "15 AIs. Free ones built in. Yours when you want.",
         aiLead: "Sahkarmi finds the AI tools installed on your computer and reuses their existing login. It never copies your tokens, and your password is only ever typed on the provider's own page.",
         thProvider: "Provider",
         thHow: "How Sahkarmi uses it",
@@ -996,7 +1178,7 @@
         winHelp: "Windows install and first-launch steps",
         laterH3: "macOS and Linux",
         stLater: "Coming later",
-        laterP: "Sahkarmi launches on Windows first. macOS and Linux builds are paused until they have been tested on real hardware, so nothing is offered for download for those systems yet. The source builds on all three.",
+        laterP: "Windows comes first. macOS and Linux are next, once they are tested on real machines. The source already builds on all three.",
         laterBtn: "Watch the repository for news",
         laterHelp: "Build from source on any system",
         allReleases: "All releases and checksums on GitHub",
@@ -1005,13 +1187,13 @@
         troubleLink: "Troubleshooting",
         dlNote: "A Windows Package Manager (winget) manifest has been submitted and is waiting for Microsoft's review; until it is accepted, use the installer above.",
         privEyebrow: "Privacy, security and permissions",
-        privH2: "Local-first, and honest about what that means",
+        privH2: "Your PC. Your data. Your rules.",
         pv1: "No account, no analytics",
         pv1P: "Coworkers, chats, files, usage history and the activity log are stored on your computer under your user profile. Sahkarmi has no cloud service and sends no analytics; the only outbound traffic of its own is the update check against GitHub Releases.",
         pv2: "What goes to an AI provider",
         pv2P: "When a coworker thinks, the text and files it needs are sent to the provider you chose for that coworker (OpenCode's free models, Claude, ChatGPT or Google) under that provider's terms. Nothing goes to Sahkarmi.",
         pv3: "What coworkers can do on your PC",
-        pv3P: "Coworkers can read and write files, run commands, use the network and drive their browser tab. The Permissions page in Settings sets how much they may do on their own. This is a development preview: run work you trust and keep backups.",
+        pv3P: "Coworkers can read and write files, run commands, use the network and drive their browser tab. The Permissions page in Settings sets how much they may do on their own.",
         pv4: "Approvals are instructions, not a wall",
         pv4P: "Coworkers are told to stop before payments, customer messages, publishing and form submissions. Today that depends on the model following instructions. Never share card details or OTPs with a coworker; type them yourself with Take over.",
         pv5: "Open source, verifiable builds",
@@ -1040,8 +1222,8 @@
         q8: "Who makes Sahkarmi, and how do I report a problem?",
         a8: "Sahkarmi is built in India by the Sahkarmi Team and developed in the open on GitHub. Report bugs as GitHub issues with the app version and steps to reproduce, and report security problems privately through the repository's security policy.",
         comEyebrow: "Community and feedback",
-        comH2: "Try it, break it, tell us",
-        comLead: "Sahkarmi is a young project. The most useful thing you can do after installing it is to report what confused you or what broke, with the app version (Settings, then About) and the steps you took. Code, translations and documentation contributions are welcome under the Apache License 2.0.",
+        comH2: "Tell us what to build next",
+        comLead: "Report a bug or an idea with the app version (Settings, then About) and the steps you took. Code, translations and docs are welcome under the Apache License 2.0.",
         reportBtn: "Report a bug or idea",
         contribBtn: "Contributing guide",
         changelogBtn: "Changelog and releases",
@@ -1052,6 +1234,52 @@
         footInstall: "Install guide",
         footMade: "Made in India.",
         title: "Sahkarmi — open-source AI coworkers for your own computer",
+        navNew: "What's new",
+        rotPre: "They",
+        rot1: "chase your invoices.",
+        rot2: "answer your customers.",
+        rot3: "write your posts.",
+        rot4: "research your market.",
+        rot5: "fix your code.",
+        rot6: "work while you sleep.",
+        toast1: "Asha: GST invoice ready",
+        toast2: "Approve: send the quote to the customer?",
+        toast3: "Kavya: 3 Instagram posts drafted",
+        toast4: "Routine: daily sales report, 9:00 AM",
+        st1: "ready-made coworkers",
+        st2: "apps they work in",
+        st3: "AIs to choose from",
+        st4: "languages: English, हिन्दी, বাংলা",
+        st5: "to download and use",
+        mqEyebrow: "1,660 apps",
+        mqH2: "Plugs into the apps you already use",
+        mqLead: "Gmail, Sheets, Slack, Notion, GitHub, HubSpot and 1,600+ more through Composio's free plan. Connect once, and every coworker can use them. Anything that sends, changes or deletes waits for your OK.",
+        newEyebrow: "New in Sahkarmi",
+        newH2: "Everything a real team does. Built in.",
+        b1T: "A marketplace of 175 coworkers",
+        b1P: "Accountant, HR manager, shop manager, tutor, designer, developer and many more. Add one in a click, each with its own steps, checks and results.",
+        b2T: "1,660 apps, one free key",
+        b2P: "Gmail, Google Sheets, Slack, Notion and more through Composio's free Hobby plan: 1,00,000 tool calls a month, no card.",
+        b3T: "15 AIs. Pick one per coworker.",
+        b3P: "Free built-in models, or your own ChatGPT, Claude, Gemini, GitHub Copilot, Cursor, Qwen, Kimi, Grok and more. No tokens copied, ever.",
+        b4T: "Free limit used up? It switches.",
+        b4P: "When the free model hits its limit, the coworker moves to the next free AI you have connected and carries on.",
+        b5T: "Its own browser",
+        b5P: "Every coworker browses in its own tab. Press Take over for logins and OTPs.",
+        b6T: "Routines on autopilot",
+        b6P: "Hourly, daily or weekly. Build a routine once and it runs on its own.",
+        b7T: "You approve the big moves",
+        b7P: "Payments, customer messages, posts and forms wait in your Approvals inbox.",
+        b8T: "Speaks your language",
+        b8P: "English, हिन्दी and বাংলা. INR with lakh and crore, GST and IST built in.",
+        goEyebrow: "Ready when you are",
+        goH2: "Your AI team is ready to start.",
+        goLead: "Download free. Up and running in minutes. No account, no card.",
+        goBtn: "Download free for Windows",
+        barText: "Your free AI team for Windows",
+        pMore: "GitHub Copilot, Cursor, Qwen Code, Kimi Code, Cline, Grok, Mistral Vibe, Kiro, Goose, Factory Droid and Qoder. Sahkarmi installs each one for you when you press Connect.",
+        pMoreT: "11 more AI agents",
+        pMoreC: "Your plan; Copilot and Kiro have free tiers",
       },
       hi: {
         skip: "सामग्री पर जाएँ",
@@ -1063,29 +1291,29 @@
         navFaq: "सवाल",
         navCommunity: "समुदाय",
         mini: "डाउनलोड",
-        chip: "ओपन सोर्स · Apache 2.0 · वर्ज़न",
-        h1a: "AI सहकर्मियों की एक टीम,",
-        h1b: "आपके अपने कंप्यूटर पर.",
-        lead: "सहकर्मी एक मुफ़्त डेस्कटॉप ऐप है. हर सहकर्मी का अपना वर्कस्पेस, याददाश्त, काम की कतार और ब्राउज़र है. वह आपके चुने AI में काम करता है, और पैसे भेजने, मैसेज करने या पोस्ट करने से पहले आपसे पूछता है. भारत में बना, सबके लिए.",
+        chip: "मुफ़्त · ओपन सोर्स · वर्ज़न",
+        h1a: "AI टीम रखिए.",
+        h1b: "ख़र्च ₹0.",
+        lead: "सहकर्मी आपके Windows PC पर AI सहकर्मी लाता है. वे ब्राउज़ करते हैं, लिखते हैं, रिसर्च करते हैं, 1,660 ऐप्स में काम करते हैं और तय समय पर चलते हैं. पेमेंट, मैसेज या पोस्ट से पहले आपसे पूछते हैं.",
         download: "Windows के लिए डाउनलोड करें",
         downloadOther: "अभी सिर्फ़ Windows के लिए",
         downloadAny: "डाउनलोड करें",
-        watch: "इसे काम करते देखें",
-        dlMeta: "मुफ़्त. न अकाउंट, न कार्ड. 64-bit Windows 10 या 11.",
+        watch: "2 मिनट की फ़िल्म देखिए",
+        dlMeta: "हमेशा मुफ़्त. न अकाउंट, न कार्ड. Windows 10 और 11.",
         dlMetaOther: "मुफ़्त. न अकाउंट, न कार्ड. आज Windows 10 या 11; macOS और Linux बिल्ड बाद में.",
         dlMetaMobile: "Windows 10 और 11 के लिए मुफ़्त डेस्कटॉप ऐप. इंस्टॉल करने के लिए यह पेज अपने Windows PC पर खोलें.",
         otherOs: "macOS या Linux?",
         source: "सोर्स कोड",
-        p1: "आपके PC पर चलता है, डेटा लोकल रहता है",
-        p2: "भुगतान या मैसेज से पहले पूछता है",
-        p3: "मुफ़्त AI अंदर, या आपके अपने लॉगिन",
+        p1: "आपके PC पर चलता है",
+        p2: "पेमेंट या मैसेज से पहले पूछता है",
+        p3: "ओपन सोर्स, Apache 2.0",
         heroCap: "असली स्क्रीनशॉट: Windows 11 पर रिलीज़ हुआ ऐप, मुफ़्त बिल्ट-इन मॉडल, कुछ भी सजाया नहीं गया.",
         seeEyebrow: "इसे काम करते देखें",
-        seeH2: "असली ऐप के दो मिनट, और हर मुख्य स्क्रीन के स्क्रीनशॉट",
-        seeLead: "यहाँ सब कुछ रिलीज़ हुए ऐप से लिया गया है. कोई मॉक-अप नहीं, कोई बनाए हुए आँकड़े नहीं.",
+        seeH2: "अपनी AI टीम को काम करते देखिए",
+        seeLead: "Windows PC पर असली ऐप, शुरू से आख़िर तक.",
         playLabel: "चलाएँ: 3 मिनट से कम में सहकर्मी",
         videoLangLabel: "नैरेशन:",
-        videoNote: "साफ़ Windows PC पर रिलीज़ हुए ऐप से, मुफ़्त बिल्ट-इन मॉडल के साथ रिकॉर्ड. दोनों भाषाओं में कैप्शन; एक कट, जहाँ पहला मुफ़्त मॉडल अपनी सीमा पर था, स्क्रीन पर लिखा है.",
+        videoNote: "मुफ़्त बिल्ट-इन मॉडल के साथ एक नए Windows PC पर रिकॉर्ड किया गया. हिन्दी और English में कैप्शन.",
         gSetup: "पहली बार खोलना",
         gBrowser: "बिल्ट-इन ब्राउज़र",
         gSearch: "खोज",
@@ -1112,7 +1340,7 @@
         who3P: "ऐप पहली बार खोलते ही मुफ़्त मॉडल और बिना लॉगिन के चलता है. आपकी बातचीत और फ़ाइलें आपके PC से बाहर सिर्फ़ आपके चुने AI प्रदाता तक जाती हैं.",
         cmpEyebrow: "यह अलग कैसे है",
         cmpH2: "जो यहाँ मिलता है और चैट ऐप या क्लाउड एजेंट में नहीं",
-        cmpLead: "श्रेणियों की सीधी तुलना, किसी नामी प्रोडक्ट के खिलाफ़ स्कोरकार्ड नहीं. हर पंक्ति सोर्स कोड में जाँच सकते हैं.",
+        cmpLead: "चैट ऐप्स बात करते हैं. सहकर्मी काम पूरा करता है.",
         thWhat: "क्या",
         thChat: "चैट ऐप",
         thCloud: "क्लाउड एजेंट",
@@ -1154,8 +1382,8 @@
         how3: "जोखिम वाले फ़ैसले आपके",
         how3P: "भुगतान, ग्राहक को मैसेज, पोस्ट या फ़ॉर्म से पहले सहकर्मी Approvals में अनुरोध भेजकर रुकता है. लॉगिन और OTP के लिए आप Take over दबाकर ख़ुद टाइप करते हैं.",
         featEyebrow: "फ़ीचर",
-        featH2: "मौजूदा रिलीज़ में क्या है",
-        featLead: "सिर्फ़ वही जो रिलीज़ हुआ ऐप आज करता है. रोडमैप GitHub issues में है.",
+        featH2: "जो कुछ मिलता है, सब मुफ़्त.",
+        featLead: "यहाँ की हर सुविधा आज डाउनलोड होने वाले ऐप में है.",
         f1: "शुरुआत में नौ सहकर्मी",
         f1P: "मित्र (ऑर्केस्ट्रेटर), आशा (अकाउंट्स), विक्रम (सेल्स), मीरा (सपोर्ट), अर्जुन (रिसर्च), काव्या (कंटेंट), देव (कोड), तारा (ऑप्स) और कबीर (सिक्योरिटी). किसी का भी नाम बदलें, संपादित करें या हटाएँ, 8 सेकंड के Undo के साथ.",
         f2: "हर सहकर्मी का अपना ब्राउज़र",
@@ -1187,7 +1415,7 @@
         taraP: "ऑप्स: चेकलिस्ट, शेड्यूल और रोज़ का तालमेल.",
         kabirP: "सिक्योरिटी: जोखिम वाले अनुरोधों की जाँच और अनुमतियों पर नज़र.",
         aiEyebrow: "AI प्रदाता",
-        aiH2: "मुफ़्त AI पहले से तैयार. चाहें तो अपने अकाउंट जोड़ें.",
+        aiH2: "15 AI. मुफ़्त वाले पहले से. आपके अपने, जब चाहें.",
         aiLead: "सहकर्मी आपके कंप्यूटर पर इंस्टॉल AI टूल ढूँढकर उनका मौजूदा लॉगिन इस्तेमाल करता है. आपके टोकन कभी कॉपी नहीं करता, और पासवर्ड सिर्फ़ प्रदाता के अपने पेज पर टाइप होता है.",
         thProvider: "प्रदाता",
         thHow: "सहकर्मी इसे कैसे इस्तेमाल करता है",
@@ -1211,7 +1439,7 @@
         winHelp: "Windows इंस्टॉल और पहली बार खोलने के कदम",
         laterH3: "macOS और Linux",
         stLater: "बाद में आएगा",
-        laterP: "सहकर्मी पहले Windows पर लॉन्च हो रहा है. macOS और Linux बिल्ड असली हार्डवेयर पर परखने तक रोके गए हैं, इसलिए उन सिस्टम के लिए अभी कोई डाउनलोड नहीं है. सोर्स तीनों पर बनता है.",
+        laterP: "पहले Windows. असली मशीनों पर जाँच के बाद macOS और Linux आएँगे. सोर्स तीनों पर पहले से बनता है.",
         laterBtn: "ख़बर के लिए रिपॉज़िटरी देखें",
         laterHelp: "किसी भी सिस्टम पर सोर्स से बनाएँ",
         allReleases: "सभी रिलीज़ और चेकसम GitHub पर",
@@ -1220,13 +1448,13 @@
         troubleLink: "समस्या हो तो",
         dlNote: "Windows Package Manager (winget) का मैनिफ़ेस्ट जमा किया गया है और Microsoft की समीक्षा का इंतज़ार है; स्वीकार होने तक ऊपर का इंस्टॉलर इस्तेमाल करें.",
         privEyebrow: "गोपनीयता, सुरक्षा और अनुमतियाँ",
-        privH2: "लोकल-फ़र्स्ट, और इसके मतलब के बारे में साफ़",
+        privH2: "आपका PC. आपका डेटा. आपके नियम.",
         pv1: "न अकाउंट, न एनालिटिक्स",
         pv1P: "सहकर्मी, बातचीत, फ़ाइलें, उपयोग का इतिहास और गतिविधि लॉग आपके कंप्यूटर पर आपकी यूज़र प्रोफ़ाइल में रहते हैं. सहकर्मी की कोई क्लाउड सेवा नहीं है और यह कोई एनालिटिक्स नहीं भेजता; इसका अपना एकमात्र बाहरी ट्रैफ़िक GitHub Releases पर अपडेट की जाँच है.",
         pv2: "AI प्रदाता तक क्या जाता है",
         pv2P: "जब कोई सहकर्मी सोचता है, तो ज़रूरी टेक्स्ट और फ़ाइलें उस सहकर्मी के लिए चुने प्रदाता (OpenCode के मुफ़्त मॉडल, Claude, ChatGPT या Google) को उसकी शर्तों के तहत भेजी जाती हैं. सहकर्मी को कुछ नहीं जाता.",
         pv3: "सहकर्मी आपके PC पर क्या कर सकते हैं",
-        pv3P: "सहकर्मी फ़ाइलें पढ़-लिख सकते हैं, कमांड चला सकते हैं, इंटरनेट और अपना ब्राउज़र टैब इस्तेमाल कर सकते हैं. सेटिंग्स का Permissions पेज तय करता है कि वे अपने-आप कितना कर सकते हैं. यह डेवलपमेंट प्रीव्यू है: भरोसे का काम ही दें और बैकअप रखें.",
+        pv3P: "सहकर्मी फ़ाइलें पढ़-लिख सकते हैं, कमांड चला सकते हैं, इंटरनेट और अपना ब्राउज़र टैब इस्तेमाल कर सकते हैं. सेटिंग्स का Permissions पेज तय करता है कि वे अपने-आप कितना कर सकते हैं.",
         pv4: "अप्रूवल निर्देश हैं, दीवार नहीं",
         pv4P: "सहकर्मियों को भुगतान, ग्राहक को मैसेज, पोस्ट और फ़ॉर्म से पहले रुकने को कहा गया है. आज यह मॉडल के निर्देश मानने पर टिका है. कार्ड की जानकारी या OTP किसी सहकर्मी को कभी न दें; Take over से ख़ुद टाइप करें.",
         pv5: "ओपन सोर्स, जाँचने लायक बिल्ड",
@@ -1255,8 +1483,8 @@
         q8: "सहकर्मी कौन बनाता है, और समस्या की रिपोर्ट कैसे करूँ?",
         a8: "सहकर्मी भारत में Sahkarmi Team बनाती है और इसका विकास GitHub पर खुले में होता है. बग GitHub issue के रूप में ऐप वर्ज़न और दोहराने के कदमों के साथ रिपोर्ट करें, और सुरक्षा की समस्याएँ रिपॉज़िटरी की सुरक्षा नीति के ज़रिए निजी तौर पर बताएँ.",
         comEyebrow: "समुदाय और फ़ीडबैक",
-        comH2: "आज़माएँ, तोड़ें, हमें बताएँ",
-        comLead: "सहकर्मी एक नया प्रोजेक्ट है. इंस्टॉल करने के बाद सबसे उपयोगी काम यह है कि आप बताएँ क्या उलझा या क्या टूटा, ऐप वर्ज़न (सेटिंग्स, फिर परिचय) और अपने कदमों के साथ. कोड, अनुवाद और दस्तावेज़ों में योगदान Apache License 2.0 के तहत स्वागत है.",
+        comH2: "बताइए, आगे क्या बनाएँ",
+        comLead: "ऐप का वर्ज़न (Settings, फिर About) और आपने क्या किया, उसके साथ बग या आइडिया भेजिए. Apache License 2.0 के तहत कोड, अनुवाद और डॉक्स का स्वागत है.",
         reportBtn: "बग या सुझाव बताएँ",
         contribBtn: "योगदान गाइड",
         changelogBtn: "चेंजलॉग और रिलीज़",
@@ -1267,6 +1495,52 @@
         footInstall: "इंस्टॉल गाइड",
         footMade: "भारत में बना.",
         title: "सहकर्मी — आपके अपने कंप्यूटर के लिए ओपन-सोर्स AI सहकर्मी",
+        navNew: "नया क्या है",
+        rotPre: "वे",
+        rot1: "आपके इनवॉइस का पीछा करते हैं.",
+        rot2: "आपके ग्राहकों को जवाब देते हैं.",
+        rot3: "आपकी पोस्ट लिखते हैं.",
+        rot4: "आपके बाज़ार की रिसर्च करते हैं.",
+        rot5: "आपका कोड ठीक करते हैं.",
+        rot6: "आपके सोते समय भी काम करते हैं.",
+        toast1: "आशा: GST इनवॉइस तैयार",
+        toast2: "मंज़ूरी: ग्राहक को कोटेशन भेजें?",
+        toast3: "काव्या: 3 Instagram पोस्ट तैयार",
+        toast4: "रूटीन: रोज़ की सेल्स रिपोर्ट, सुबह 9:00",
+        st1: "तैयार सहकर्मी",
+        st2: "ऐप्स जिनमें वे काम करते हैं",
+        st3: "AI, जिनमें से चुनें",
+        st4: "भाषाएँ: English, हिन्दी, বাংলা",
+        st5: "डाउनलोड और इस्तेमाल का खर्च",
+        mqEyebrow: "1,660 ऐप्स",
+        mqH2: "उन ऐप्स से जुड़ता है जो आप पहले से चलाते हैं",
+        mqLead: "Composio के मुफ़्त प्लान से Gmail, Sheets, Slack, Notion, GitHub, HubSpot और 1,600 से ज़्यादा ऐप्स. एक बार जोड़िए, हर सहकर्मी इस्तेमाल कर सकता है. भेजने, बदलने या मिटाने से पहले आपकी हाँ ज़रूरी है.",
+        newEyebrow: "सहकर्मी में नया",
+        newH2: "असली टीम जो करती है, सब कुछ. पहले से मौजूद.",
+        b1T: "175 सहकर्मियों का मार्केटप्लेस",
+        b1P: "अकाउंटेंट, HR मैनेजर, दुकान मैनेजर, ट्यूटर, डिज़ाइनर, डेवलपर और बहुत कुछ. एक क्लिक में जोड़िए, हर एक के अपने स्टेप, जाँच और नतीजे.",
+        b2T: "1,660 ऐप्स, एक मुफ़्त key",
+        b2P: "Composio के मुफ़्त Hobby प्लान से Gmail, Google Sheets, Slack, Notion और बहुत कुछ: महीने में 1,00,000 टूल कॉल, कार्ड नहीं.",
+        b3T: "15 AI. हर सहकर्मी के लिए अलग चुनिए.",
+        b3P: "मुफ़्त बिल्ट-इन मॉडल, या आपके अपने ChatGPT, Claude, Gemini, GitHub Copilot, Cursor, Qwen, Kimi, Grok और भी. आपके टोकन कभी कॉपी नहीं होते.",
+        b4T: "फ्री लिमिट ख़त्म? अपने-आप बदल जाता है.",
+        b4P: "फ्री मॉडल की लिमिट पूरी होते ही सहकर्मी आपके जोड़े हुए अगले फ्री AI पर चला जाता है और काम जारी रखता है.",
+        b5T: "अपना ब्राउज़र",
+        b5P: "हर सहकर्मी अपने टैब में ब्राउज़ करता है. लॉगिन और OTP के लिए Take over दबाइए.",
+        b6T: "रूटीन, अपने-आप",
+        b6P: "हर घंटे, रोज़ या हर हफ़्ते. एक बार रूटीन बनाइए, फिर वह अपने-आप चलता है.",
+        b7T: "बड़े फ़ैसले आपके हाथ में",
+        b7P: "पेमेंट, ग्राहक को मैसेज, पोस्ट और फ़ॉर्म आपके Approvals इनबॉक्स में रुकते हैं.",
+        b8T: "आपकी भाषा बोलता है",
+        b8P: "English, हिन्दी और বাংলা. लाख-करोड़ वाला INR, GST और IST पहले से.",
+        goEyebrow: "जब आप तैयार, तब शुरू",
+        goH2: "आपकी AI टीम काम शुरू करने को तैयार है.",
+        goLead: "मुफ़्त डाउनलोड. कुछ ही मिनट में शुरू. न अकाउंट, न कार्ड.",
+        goBtn: "Windows के लिए मुफ़्त डाउनलोड",
+        barText: "Windows के लिए आपकी मुफ़्त AI टीम",
+        pMore: "GitHub Copilot, Cursor, Qwen Code, Kimi Code, Cline, Grok, Mistral Vibe, Kiro, Goose, Factory Droid और Qoder. Connect दबाते ही सहकर्मी इन्हें आपके लिए इंस्टॉल करता है.",
+        pMoreT: "11 और AI एजेंट",
+        pMoreC: "आपका प्लान; Copilot और Kiro के फ्री प्लान हैं",
       },
     };
 
@@ -1400,6 +1674,66 @@
       setTimeout(() => reveals.forEach((el) => el.classList.add("in")), 2500);
     } else {
       reveals.forEach((el) => el.classList.add("in"));
+    }
+    // ===== Campaign motion (all of it stops under reduced motion) =====
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // Rotating line under the headline.
+    const words = [...document.querySelectorAll(".rot-words > span")];
+    if (!calm && words.length > 1) {
+      let at = 0;
+      setInterval(() => {
+        const current = words[at];
+        current.classList.remove("on");
+        current.classList.add("out");
+        setTimeout(() => current.classList.remove("out"), 500);
+        at = (at + 1) % words.length;
+        words[at].classList.add("on");
+      }, 2200);
+    }
+
+    // Numbers count up the first time they scroll into view.
+    const counters = document.querySelectorAll("[data-count]");
+    const fmt = new Intl.NumberFormat("en-IN");
+    function countUp(el) {
+      const target = Number(el.dataset.count);
+      if (calm) { el.textContent = fmt.format(target); return; }
+      const start = performance.now();
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / 1400);
+        el.textContent = fmt.format(Math.round(target * (1 - Math.pow(1 - t, 3))));
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+    if ("IntersectionObserver" in window) {
+      const seen = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) { countUp(entry.target); seen.unobserve(entry.target); }
+        }
+      }, { threshold: 0.6 });
+      counters.forEach((el) => seen.observe(el));
+    }
+
+    // Spotlight that follows the pointer on the feature tiles.
+    for (const tile of document.querySelectorAll(".tile")) {
+      tile.addEventListener("pointermove", (event) => {
+        const box = tile.getBoundingClientRect();
+        tile.style.setProperty("--mx", `${event.clientX - box.left}px`);
+        tile.style.setProperty("--my", `${event.clientY - box.top}px`);
+      });
+    }
+
+    // Sticky download bar once the hero button is out of view (Windows visitors only).
+    const bar = document.getElementById("dl-bar");
+    const heroButton = document.getElementById("download");
+    if (bar && heroButton && detectPlatform() === "win" && "IntersectionObserver" in window) {
+      new IntersectionObserver(([entry]) => {
+        const show = !entry.isIntersecting && entry.boundingClientRect.top < 0;
+        bar.classList.toggle("show", show);
+        bar.setAttribute("aria-hidden", String(!show));
+        bar.querySelector("a").tabIndex = show ? 0 : -1;
+      }).observe(heroButton);
     }
   </script>
 </body>
