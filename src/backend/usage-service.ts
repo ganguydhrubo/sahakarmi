@@ -1,8 +1,11 @@
 import { join } from "node:path";
 import {
+  ACP_AGENT_PROVIDERS,
+  type AcpAgentProviderId,
   AGENT_PROVIDERS,
   type AgentProviderId,
   type AgentProviderStatus,
+  PROVIDER_LABELS,
   type ProviderUsageSummary,
   type UsageAlert,
   type UsageByBot,
@@ -68,6 +71,15 @@ export const USAGE_SOURCES: Record<AgentProviderId, { limits: string; tokens: st
     limits: "Google Antigravity quota",
     tokens: "Google Antigravity usage_update",
   },
+  ...(Object.fromEntries(
+    ACP_AGENT_PROVIDERS.map((provider) => [
+      provider,
+      {
+        limits: `${PROVIDER_LABELS[provider]} publishes no quota to Sahkarmi`,
+        tokens: `${PROVIDER_LABELS[provider]} ACP · usage_update`,
+      },
+    ]),
+  ) as Record<AcpAgentProviderId, { limits: string; tokens: string }>),
 };
 
 /**

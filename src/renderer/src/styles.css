@@ -170,7 +170,8 @@ body,
   height: 100%;
   min-width: 0;
   margin: 0;
-  overflow: hidden;
+  /* clip, not hidden: focus or scrollIntoView can never shift the whole app shell. */
+  overflow: clip;
 }
 
 body {
@@ -266,7 +267,7 @@ textarea {
 .provider-picker-option {
   min-height: 44px;
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -611,7 +612,7 @@ textarea:focus-visible {
   height: 100%;
   margin: 0;
   grid-template-columns: var(--left-panel-width, 275px) 0 minmax(0, 1fr);
-  overflow: hidden;
+  overflow: clip;
   border: 0;
   border-radius: 0;
   background: var(--sahkarmi-main);
@@ -4198,6 +4199,7 @@ textarea {
 /* The whole composer already shows the focus ring; no second box around the text. */
 .composer-editor-surface:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .composer-editor-surface[aria-disabled="true"] {
@@ -5468,11 +5470,30 @@ body {
   box-shadow: 0 0 0 2px var(--warning);
 }
 
+/* Unread count pinned to the avatar's top-right corner. */
+.team-row-unread-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 2px solid var(--sidebar-bg, var(--surface));
+  border-radius: 999px;
+  background: var(--danger, #c62828);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .pinned-coworker-name {
   max-width: 52px;
   overflow: hidden;
-  color: rgb(var(--ink-rgb) / 0.75);
-  font-size: 10.5px;
+  color: rgb(var(--ink-rgb) / 0.8);
+  font-size: 11.5px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5673,10 +5694,23 @@ body {
 
 .task-strip-counts {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 14px;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* Narrow windows: counts and buttons stay on one line instead of stacking word by word. */
+.task-count,
+.task-strip-button {
+  white-space: nowrap;
+}
+
+@container (max-width: 1100px) {
+  .task-strip-counts {
+    gap: 10px;
+  }
 }
 
 .task-count b {
@@ -6605,6 +6639,20 @@ body {
   padding: 8px 12px;
 }
 
+.takeover-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.takeover-banner-actions button:not(.button-primary) {
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 6px 14px;
+}
+
 .takeover-banner p {
   margin: 0;
 }
@@ -6730,6 +6778,12 @@ body {
   border-left-color: var(--success-fill);
 }
 
+.approval-card-pending.approval-risk-high {
+  border-left-color: var(--danger);
+  background:
+    linear-gradient(90deg, rgb(var(--danger-rgb) / 0.05), transparent 40%), var(--surface-1);
+}
+
 .approval-card-rejected {
   border-left-color: var(--brand-sindoor);
 }
@@ -6801,6 +6855,29 @@ body {
   margin: 0 0 10px;
   color: var(--text-secondary);
   white-space: pre-wrap;
+}
+
+.approval-technical {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.approval-technical summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.approval-technical pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--sahkarmi-wash, rgba(0, 0, 0, 0.04));
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
 }
 
 .approval-note input {
@@ -7103,7 +7180,7 @@ fieldset.cadence-kinds {
 .center-view
 button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
   [role="tab"]
-):not(.marketplace-filter) {
+):not(.marketplace-filter):not(.link-button) {
   border: 1px solid var(--sahkarmi-line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
@@ -7111,6 +7188,20 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
   padding: 6px 12px;
   font: 600 13px var(--font-ui);
   cursor: pointer;
+}
+
+/* The rule above flattens every centre-view button; selected options must still look selected. */
+.center-view
+:is(
+  .segmented button.segmented-active,
+  button.cadence-kind[aria-pressed="true"],
+  .calendar-modes button[aria-pressed="true"]
+):not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not([role="tab"]):not(
+  .marketplace-filter
+) {
+  border-color: var(--brand-indigo);
+  background: var(--brand-indigo);
+  color: #fbf7f0;
 }
 
 .center-view button:disabled {
@@ -9929,6 +10020,451 @@ ol.md-list {
 .conversation-panel:has(> .browser-panel) .conversation-header-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+/* Team memory: same light surfaces as the other centre views. */
+.memory-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.memory-search {
+  width: 220px;
+  max-width: 40vw;
+}
+
+.memory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 14px;
+}
+
+.memory-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.memory-card-head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.memory-kind {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgb(var(--ink-rgb) / 0.06);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.memory-content {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.memory-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.memory-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.memory-dialog {
+  width: min(480px, 100%);
+}
+
+.memory-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.memory-field input,
+.memory-field select,
+.memory-field textarea {
+  width: 100%;
+  font-weight: 400;
+}
+
+.memory-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Automatic notes to a coworker (approval results, browser hand-back): quiet, centred, not a chat bubble. */
+.message-entry-system {
+  align-items: center;
+}
+
+.message-entry-system .message-shell {
+  justify-content: center;
+}
+
+.message-entry-system .user-bubble {
+  max-width: min(560px, 92%);
+  border: 1px dashed rgb(var(--ink-rgb) / 0.18);
+  border-radius: 10px;
+  background: rgb(var(--ink-rgb) / 0.03);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  padding: 6px 12px;
+}
+
+.message-entry-system .user-bubble .message-copy {
+  color: inherit;
+}
+
+fieldset.memory-filters {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+
+/* Empty chat: three ready-made first tasks, one click to fill the composer. */
+.starter-prompts {
+  display: grid;
+  gap: 10px;
+  max-width: 640px;
+  margin: 8px 0 0;
+}
+
+.starter-prompts-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.starter-prompts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conversation-panel .starter-prompt {
+  border: 1px solid rgb(var(--primary-rgb) / 0.35);
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb) / 0.06);
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.conversation-panel .starter-prompt:hover {
+  border-color: rgb(var(--primary-rgb) / 0.7);
+  background: rgb(var(--primary-rgb) / 0.12);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-panel .starter-prompt,
+  .conversation-panel .starter-prompt:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Provider brand marks (Settings, model picker, usage rings). */
+.provider-logo {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--text-primary);
+}
+
+.provider-logo svg {
+  display: block;
+}
+
+.provider-logo-tile {
+  width: calc(var(--provider-logo-size) + 20px);
+  height: calc(var(--provider-logo-size) + 20px);
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.provider-logo-initial {
+  display: grid;
+  width: var(--provider-logo-size);
+  height: var(--provider-logo-size);
+  place-items: center;
+  border-radius: 6px;
+  background: var(--text-primary);
+  color: var(--surface-1);
+  font-size: calc(var(--provider-logo-size) * 0.62);
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Provider list (Settings → AI and models): grouped, brand marks, one clear action per row. */
+.provider-groups {
+  display: grid;
+  gap: 22px;
+  margin: 16px 0 8px;
+}
+
+.provider-group h3 {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.provider-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 14px;
+  background: var(--surface-1);
+  list-style: none;
+}
+
+.provider-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  transition: background 140ms ease;
+}
+
+.provider-row + .provider-row {
+  border-top: 1px solid var(--sahkarmi-line);
+}
+
+.provider-row:hover {
+  background: rgb(var(--primary-rgb) / 0.035);
+}
+
+.provider-row-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.provider-row-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.provider-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-row-name strong {
+  color: var(--text-primary);
+  font-size: 14.5px;
+}
+
+.provider-row-text small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-badge {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.provider-badge-free {
+  background: color-mix(in srgb, var(--success-fill) 14%, transparent);
+  color: var(--success-fill);
+}
+
+.provider-row-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-row-actions .link-button {
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.provider-row-actions .link-button:hover {
+  text-decoration: underline;
+}
+
+.provider-status-on {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success-fill);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.provider-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success-fill);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-fill) 20%, transparent);
+}
+
+.provider-connect-button {
+  display: inline-flex;
+  min-width: 96px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.provider-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: provider-spin 0.8s linear infinite;
+}
+
+@keyframes provider-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.provider-key-toggle {
+  margin-left: 54px;
+  font-size: 12.5px;
+}
+
+.provider-row .provider-connect-code,
+.provider-row .provider-connect-progress {
+  margin-left: 54px;
+}
+
+.provider-row .provider-connect-progress {
+  margin-top: 0;
+  border-radius: 10px;
+  background: rgb(var(--primary-rgb) / 0.06);
+  padding: 10px 12px;
+}
+
+.provider-row .provider-connect-progress progress {
+  height: 6px;
+  accent-color: rgb(var(--primary-rgb));
+}
+
+.provider-row .provider-connect-reason {
+  margin: 0 0 0 54px;
+}
+
+.provider-permissions-link {
+  margin: 4px 0 0;
+}
+
+/* Model picker rail: brand marks instead of letters. */
+.provider-model-brand {
+  display: inline-grid;
+  place-items: center;
+  background: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .provider-spinner {
+    animation-duration: 2.4s;
+  }
+
+  .provider-row {
+    transition: none;
+  }
+}
+
+.provider-picker-option .provider-logo-tile {
+  --provider-logo-size: 16px;
+  border-radius: 9px;
+}
+
+.provider-row button.link-button,
+.provider-permissions-link button.link-button {
+  color: rgb(var(--primary-rgb));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.provider-row button.link-button:hover,
+.provider-permissions-link button.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Settings cards box every button; text links stay plain links. */
+.settings-card button.link-button {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
 }
 
 /* Marketplace → Apps (Composio) */

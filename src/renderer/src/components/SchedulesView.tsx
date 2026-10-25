@@ -105,7 +105,7 @@ export function SchedulesView(props: {
         <h2 class="schedules-subheading">{t("calendarAllTasks")}</h2>
         <Show
           when={groups().length > 0}
-          fallback={<p class="center-view-empty">{t("noSchedules")}</p>}
+          fallback={<p class="center-view-empty">{t("schedulesEmptyAll")}</p>}
         >
           <For each={groups()}>
             {(group) => (

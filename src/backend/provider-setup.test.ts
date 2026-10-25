@@ -141,6 +141,63 @@ describe("ProviderSetup", () => {
     expect(final).toMatchObject({ phase: "failed", message: "Invalid code. Please try again." });
   });
 
+  it("signs GitHub Copilot in with a device code: opens GitHub's page and shows the code", async () => {
+    process.env.SAHKARMI_COPILOT_PATH = await fakeCli("copilot", "1.0.0");
+    const login = new FakeLogin();
+    const openUrl = vi.fn();
+    const recheck = vi
+      .fn<(provider: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("not signed in"))
+      .mockResolvedValue(undefined);
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck,
+      openUrl,
+      spawnImpl: (() => login) as never,
+    });
+    try {
+      const done = setup.connect("copilot");
+      await vi.waitFor(() => expect(login.listenerCount("exit")).toBe(1));
+      login.stdout.write("Press any key to copy to clipboard and open browser...\n");
+      login.stdout.write(
+        "To authenticate, visit https://github.com/login/device and enter code ABCD-1234\n",
+      );
+      await vi.waitFor(() =>
+        expect(openUrl).toHaveBeenCalledWith("https://github.com/login/device"),
+      );
+      expect(login.stdin.written).toEqual(["\n"]);
+      const waiting = (await setup.list()).find((state) => state.provider === "copilot");
+      expect(waiting?.message).toContain("ABCD-1234");
+      login.finish(0);
+      expect(await done).toMatchObject({ provider: "copilot" });
+      expect(recheck).toHaveBeenCalledTimes(2);
+    } finally {
+      delete process.env.SAHKARMI_COPILOT_PATH;
+    }
+  });
+
+  it("never starts a second install when Connect is clicked again during one", async () => {
+    process.env.SAHKARMI_COPILOT_PATH = join(root, "missing", "copilot.cmd");
+    const installer = new FakeLogin();
+    const spawnImpl = vi.fn(() => installer);
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck: vi.fn(async () => undefined),
+      spawnImpl: spawnImpl as never,
+    });
+    try {
+      void setup.connect("copilot");
+      await vi.waitFor(() => expect(spawnImpl).toHaveBeenCalledTimes(1));
+      const again = await setup.connect("copilot");
+      expect(again.phase).toBe("installing");
+      expect(again.message).toContain("2–3 minutes");
+      expect(spawnImpl).toHaveBeenCalledTimes(1);
+    } finally {
+      installer.finish(1);
+      delete process.env.SAHKARMI_COPILOT_PATH;
+    }
+  });
+
   it("downloads Codex, verifies its checksum and unpacks it into the tools folder", async () => {
     const triple = "x86_64-unknown-linux-musl";
     const packageDir = join(root, "pkg", "package", "vendor", triple, "bin");

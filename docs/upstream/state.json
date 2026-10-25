@@ -1,9 +1,15 @@
 {
   "version": 1,
-  "lastProcessedTag": "v0.49.0",
+  "lastProcessedTag": "v0.50.0",
   "processed": {
     "v0.49.0": {
       "at": "2026-10-24T11:46:17.562Z",
+      "licence": "polyform-nc",
+      "critical": true,
+      "issueUrl": null
+    },
+    "v0.50.0": {
+      "at": "2026-10-25T14:50:25.476Z",
       "licence": "polyform-nc",
       "critical": true,
       "issueUrl": null

@@ -24,19 +24,26 @@ import type {
   QueuedMessageReceipt,
   QueueSnapshot,
   RespondToPromptInput,
+  RoutineCadence,
+  RoutinesState,
+  SaveRoutineInput,
   SendMessageInput,
   SetMessageReactionInput,
   UpdateBotInput,
   UsageLimitWindow,
   UsageOverview,
+  Weekday,
   WorkspaceState,
 } from "../shared/ipc";
 import {
+  ACP_AGENT_PROVIDERS,
+  type AcpAgentProviderId,
   AGENT_PROVIDERS,
   APPROVAL_CATEGORIES,
   type AttachmentSummary,
   type ConversationMessage,
   DEFAULT_MODEL_FOR_PROVIDER,
+  isAcpAgentProvider,
   isAvatarColor,
   isAvatarShape,
   type MessageSearchHit,
@@ -45,12 +52,14 @@ import {
   providerForModel,
   type SearchMessagesInput,
 } from "../shared/ipc";
-import { NEXT_FREE_MODEL_HINT } from "./acp-client";
+import { createAcpAgentClient, resolveAcpAgentCli } from "./acp-agents";
+import { FREE_LIMIT_REACHED_HINT, NEXT_FREE_MODEL_HINT } from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
+import { describePermissionRequest } from "./approval-wording";
 import {
   attachmentPromptBlocks,
   deliverableFiles,
@@ -133,6 +142,25 @@ interface ThreadContextBudget {
   phase: "idle" | "requested" | "running";
   compactionTurnId: string | null;
   lastCompactedTokens: number | null;
+}
+
+/** Free providers a coworker may move to when OpenCode's free limit is used up, best first. */
+const FREE_FALLBACK_PROVIDERS = ["antigravity", "copilot", "kiro"] as const;
+
+/** Day names for the routine tool, indexed like Date.getDay(). */
+const DAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+export interface RoutineHost {
+  state(): RoutinesState;
+  save(input: SaveRoutineInput): Promise<RoutinesState>;
 }
 
 const CONTEXT_COMPACTION_THRESHOLD = 0.8;
@@ -297,6 +325,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
+  #routineHost: RoutineHost | null = null;
   #composioClient: ComposioClient | null = null;
   #composioSecurity: ComposioSecurityGuard | null = null;
 
@@ -347,6 +376,90 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Local usage ledger fed by provider notifications (see UsageService). */
   setUsageService(usage: UsageService): void {
     this.#usage = usage;
+  }
+
+  async #createOrUpdateRoutine(senderBotId: string, raw: unknown): Promise<string> {
+    const host = this.#routineHost;
+    if (!host) throw new Error("Routines are not ready yet. Try again in a moment.");
+    const args = isRecord(raw) ? raw : {};
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    const instruction = typeof args.instruction === "string" ? args.instruction.trim() : "";
+    const botId =
+      typeof args.coworkerId === "string" && args.coworkerId ? args.coworkerId : senderBotId;
+    if (!this.#store.list().some((bot) => bot.id === botId)) {
+      throw new Error(`No coworker has the id ${botId}.`);
+    }
+    const time = typeof args.time === "string" ? args.time : "";
+    const needTime = () => {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error("Give the time as HH:MM.");
+      return time;
+    };
+    let cadence: RoutineCadence | null;
+    switch (args.schedule) {
+      case "daily":
+        cadence = { kind: "daily", time: needTime() };
+        break;
+      case "weekdays":
+        cadence = { kind: "weekdays", time: needTime() };
+        break;
+      case "weekly":
+        {
+          const day = DAY_NAMES.indexOf(String(args.day) as (typeof DAY_NAMES)[number]);
+          if (day < 0) throw new Error("Say which day of the week.");
+          cadence = { kind: "weekly", day: day as Weekday, time: needTime() };
+        }
+        break;
+      case "hourly":
+        cadence = { kind: "hourly" };
+        break;
+      case "interval": {
+        const minutes = Number(args.everyMinutes);
+        if (!Number.isInteger(minutes) || minutes < 5) {
+          throw new Error("Repeat at most every 5 minutes.");
+        }
+        cadence = { kind: "interval", minutes };
+        break;
+      }
+      case "manual":
+        cadence = null;
+        break;
+      default:
+        throw new Error("Unknown schedule.");
+    }
+    const existing = host
+      .state()
+      .routines.find(
+        (routine) =>
+          routine.name.toLowerCase() === name.toLowerCase() &&
+          routine.steps.some((step) => step.botId === botId),
+      );
+    const state = await host.save({
+      id: existing?.id,
+      name,
+      steps: [{ id: existing?.steps[0]?.id, botId, instruction }],
+      cadence,
+      enabled: args.enabled !== false,
+    });
+    const saved = state.routines.find((routine) =>
+      existing ? routine.id === existing.id : routine.name === name.slice(0, 80),
+    );
+    return JSON.stringify({
+      success: true,
+      message: `${existing ? "Updated" : "Created"} routine "${name}". It shows in Routines.`,
+      routine: saved
+        ? {
+            id: saved.id,
+            enabled: saved.enabled,
+            cadence: saved.cadence,
+            nextRunAt: saved.nextRunAt,
+          }
+        : null,
+    });
+  }
+
+  /** Lets coworkers create and change routines when the owner asks them to in chat. */
+  setRoutineHost(host: RoutineHost): void {
+    this.#routineHost = host;
   }
 
   setComposioClient(client: ComposioClient): void {
@@ -405,6 +518,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       claude: resolveClaudeCli,
       antigravity: resolveAntigravityCli,
       opencode: resolveOpenCodeCli,
+      ...(Object.fromEntries(
+        ACP_AGENT_PROVIDERS.map((provider) => [provider, () => resolveAcpAgentCli(provider)]),
+      ) as Record<AcpAgentProviderId, () => Promise<AcpCliInfo>>),
     };
     for (const provider of AGENT_PROVIDERS) {
       if (this.#stopping) return;
@@ -542,6 +658,26 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return this.getTakeover();
   }
 
+  /** The owner says no to the coworkers' takeover requests; they must not carry on with that step. */
+  async declineBrowserTakeover(note: string | null = null): Promise<BrowserTakeoverState> {
+    const requests = this.#takeover.requests;
+    this.#takeover = { humanInControl: false, requests: [] };
+    this.#emitTakeover();
+    for (const botId of new Set(requests.map((request) => request.botId))) {
+      await this.#notifyBot(
+        botId,
+        [
+          "[Browser takeover declined] The owner chose not to take over the browser.",
+          note ? `Owner's note: ${note.slice(0, 2_000)}` : null,
+          "Do not continue the step that needed it. Tell the owner what you will do instead.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+    return this.getTakeover();
+  }
+
   #emitTakeover(): void {
     void this.#browser.setHumanControl?.(this.#takeover.humanInControl).catch((error) => {
       console.error("Unable to switch the browser for the takeover:", error);
@@ -632,7 +768,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (previous?.threadId && !bot.threadId) {
       this.#threadToBot.delete(previous.threadId);
       this.#loadedThreads.delete(previous.threadId);
-      this.#snapshots.delete(bot.id);
+      // Keep the revision rising: the window drops snapshots older than the last one it saw,
+      // so restarting at 0 would hide every reply on the new thread.
+      const stale = this.#snapshots.get(bot.id);
+      this.#snapshots.set(bot.id, {
+        botId: bot.id,
+        threadId: null,
+        activeTurnId: null,
+        revision: (stale?.revision ?? 0) + 1,
+        messages: [],
+      });
     }
     if (profileChanged && bot.threadId) {
       // Re-resume before the next turn so App Server receives the updated standing instructions.
@@ -918,7 +1063,26 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!bot.threadId) return;
     await this.#mailbox.setPaused(botId, true);
     this.#emitQueue(botId);
+    await this.#cancelPausedToolCalls(botId);
     await client.request("turn/interrupt", { threadId: bot.threadId, turnId });
+  }
+
+  /** Stop must also release a tool call parked on an approval, or the turn never ends. */
+  async #cancelPausedToolCalls(botId: string): Promise<void> {
+    const pending = (this.#approvals?.list() ?? []).filter(
+      (approval) =>
+        approval.botId === botId &&
+        approval.status === "pending" &&
+        approval.kind === "permission" &&
+        this.#permissionWaiters.has(approval.id),
+    );
+    for (const approval of pending) {
+      await this.decideApproval({
+        approvalId: approval.id,
+        decision: "rejected",
+        note: "Stopped by the owner, so the action did not run.",
+      }).catch(() => undefined);
+    }
   }
 
   async interruptAll(): Promise<void> {
@@ -930,6 +1094,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const client = bot ? this.#clientForBot(bot) : null;
       if (!client) continue;
       requests.push(this.#mailbox.setPaused(botId, true).then(() => this.#emitQueue(botId)));
+      requests.push(this.#cancelPausedToolCalls(botId));
       requests.push(
         client
           .request("turn/interrupt", {
@@ -1012,6 +1177,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           const antigravity = await resolveAntigravityCli();
           cli = antigravity;
           client = createAntigravityClient(antigravity, transcripts);
+        } else if (isAcpAgentProvider(provider)) {
+          const agent = await resolveAcpAgentCli(provider);
+          cli = agent;
+          client = createAcpAgentClient(provider, agent, transcripts);
         } else {
           const opencode = await resolveOpenCodeCli();
           cli = opencode;
@@ -1385,17 +1554,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Files an inbox request for a paused tool call and waits for the owner (or the timeout). */
   async #askOwner(request: PermissionRequest): Promise<"approved" | "rejected" | "timed-out"> {
     if (!this.#approvals || !request.botId) return "rejected";
+    const bot = this.#store.list().find((candidate) => candidate.id === request.botId);
+    const wording = describePermissionRequest(request, bot?.name ?? "Your coworker", {
+      shared: this.#store.sharedRoot,
+      own: bot?.workspacePath ?? null,
+    });
     const approval = await this.#approvals.create({
       botId: request.botId,
-      title: `Allow: ${request.action || request.category}`.slice(0, 200),
-      details: [
-        `Category: ${request.category.replaceAll("_", " ")}`,
-        `Provider: ${request.provider}`,
-        request.paths.length ? `Paths: ${request.paths.join(", ")}` : null,
-        "The coworker is paused until you decide.",
-      ]
-        .filter(Boolean)
-        .join("\n"),
+      title: wording.title,
+      details: wording.details,
+      technical: `${wording.technical}\nProvider: ${request.provider}`,
       category: approvalCategoryFor(request.category),
       kind: "permission",
       permissionCategory: request.category,
@@ -1754,6 +1922,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             }),
           },
         ],
+      };
+    }
+
+    if (params.tool === "create_or_update_routine") {
+      const text = await this.#createOrUpdateRoutine(senderBotId, params.arguments).catch(
+        (error: unknown) =>
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      );
+      return {
+        success: !text.includes('"success":false'),
+        contentItems: [{ type: "inputText", text }],
       };
     }
 
@@ -2672,6 +2854,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const reason = this.#lastTurnError.get(botId) ?? "";
       if (reason.includes(NEXT_FREE_MODEL_HINT)) {
         await this.#resendOnNextFreeModel(botId, delivery);
+      } else if (reason.includes(FREE_LIMIT_REACHED_HINT)) {
+        await this.#fallBackToOtherFreeProvider(botId, delivery);
       } else if (/429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded/i.test(reason)) {
         await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
       }
@@ -3122,6 +3306,40 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       `${from} ${reason}, so ${bot.name} switched to the free model and is answering your message again there. Switch back from the model picker whenever you like.`,
       botId,
     );
+    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
+    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
+    await this.sendMessage({ botId, text: delivery.delivery.text });
+    return true;
+  }
+
+  /**
+   * OpenCode's free limit is used up for every free model: move the coworker to another free
+   * provider the owner has already connected (Gemini, GitHub Copilot, Kiro) and send the message
+   * again there, once per message. Nothing connected → the owner keeps the clear limit message.
+   */
+  async #fallBackToOtherFreeProvider(botId: string, delivery: DeliveryContext): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot || providerForBot(bot) !== "opencode") return false;
+    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
+    if (delivery.managedAttachments.length) return false;
+    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    const target = FREE_FALLBACK_PROVIDERS.find(
+      (id) => this.#status.providers?.find((provider) => provider.id === id)?.state === "available",
+    );
+    if (!target) return false;
+    this.#fallbackRetried.add(delivery.delivery.id);
+    try {
+      await this.updateBot({ botId, model: DEFAULT_MODEL_FOR_PROVIDER[target] });
+    } catch {
+      this.#fallbackRetried.delete(delivery.delivery.id);
+      return false;
+    }
+    this.#emitError(
+      "fallback_model",
+      `OpenCode's free limit is used up, so ${bot.name} switched to ${PROVIDER_LABELS[target]} (also free) and is answering your message again there. Switch back from the model picker whenever you like.`,
+      botId,
+    );
+    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
     await this.sendMessage({ botId, text: delivery.delivery.text });
     return true;
   }
@@ -3142,6 +3360,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       `${bot.name} is sending your message again on the next free model.`,
       botId,
     );
+    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
+    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
     await this.sendMessage({ botId, text: delivery.delivery.text });
     return true;
   }
@@ -3324,6 +3544,39 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     },
     {
       type: "function",
+      name: "create_or_update_routine",
+      description:
+        "Create or change a routine: a task Sahkarmi runs for a coworker on a schedule (e.g. 'every day at 18:00'). Use this whenever the owner agrees to a recurring task; writing a file does not schedule anything. A routine with the same name for the same coworker is updated instead of duplicated. Times are the owner's local time.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 80 },
+          instruction: {
+            type: "string",
+            minLength: 1,
+            maxLength: 20000,
+            description: "What the coworker does on every run, written as a complete task.",
+          },
+          schedule: {
+            type: "string",
+            enum: ["daily", "weekdays", "weekly", "hourly", "interval", "manual"],
+            description: "'manual' = only when the owner presses Run now.",
+          },
+          time: { type: "string", pattern: "^[0-9]{2}:[0-9]{2}$", description: "24-hour HH:MM" },
+          day: { type: "string", enum: [...DAY_NAMES] },
+          everyMinutes: { type: "integer", minimum: 5, maximum: 10080 },
+          coworkerId: {
+            type: "string",
+            description: "Coworker who runs it; defaults to you. Ids come from list_agents.",
+          },
+          enabled: { type: "boolean", description: "Defaults to true." },
+        },
+        required: ["name", "instruction", "schedule"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
       name: "save_memory",
       description:
         "Save a persistent piece of knowledge, project decision, technical fact, or owner preference into long-term team memory. Persists across conversations.",
@@ -3459,7 +3712,13 @@ const SIGN_IN_HINTS: Record<AgentProvider, string> = {
   codex: "Run `codex login` to use ChatGPT (Codex).",
   claude: "Run `claude auth login` to use Claude.",
   opencode: "Run `opencode auth login` to use OpenCode.",
-  antigravity: "Click Connect next to Google Antigravity in Settings to sign in with Google.",
+  antigravity: "Click Connect to sign in with Google.",
+  ...(Object.fromEntries(
+    ACP_AGENT_PROVIDERS.map((provider) => [
+      provider,
+      `Click Connect to sign in to ${PROVIDER_LABELS[provider]}.`,
+    ]),
+  ) as Record<AcpAgentProviderId, string>),
 };
 
 function authFor(provider: AgentProvider, email: string | null): AgentStatus["auth"] {

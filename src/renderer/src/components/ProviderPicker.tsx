@@ -1,5 +1,6 @@
 import { createEffect, For, Show } from "solid-js";
 import type { AgentProviderId, AgentProviderState } from "../../../shared/ipc";
+import { ProviderLogo } from "./ProviderLogo";
 
 export interface ProviderPickerOption {
   id: AgentProviderId;
@@ -74,6 +75,7 @@ export function ProviderPicker(props: ProviderPickerProps) {
                   disabled={props.disabled || (!props.allowUnavailableSelection && !available())}
                   onChange={() => props.onChange(option.id)}
                 />
+                <ProviderLogo provider={option.id} size={18} tile />
                 <span class="provider-picker-identity">
                   <span class="provider-picker-name">{option.name}</span>
                   <Show when={option.email}>

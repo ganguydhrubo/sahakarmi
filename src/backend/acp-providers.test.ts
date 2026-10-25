@@ -10,6 +10,7 @@ import {
   createAntigravityClient,
   openCodeFreeModels,
   openCodeModelValue,
+  probeOpenCodeFreeLimit,
   readAntigravityAccount,
 } from "./acp-providers";
 
@@ -79,5 +80,43 @@ describe("OpenCode free model rotation", () => {
       ),
     ).toBe("opencode/big-pickle");
     expect(openCodeModelValue("opencode-default", options)).toBeNull();
+  });
+});
+
+describe("OpenCode free limit check", () => {
+  const reply = (status: number, body: string) =>
+    (async () => new Response(body, { status })) as unknown as typeof fetch;
+
+  it("reports a used-up free allowance", async () => {
+    const body = JSON.stringify({
+      type: "error",
+      error: { type: "FreeUsageLimitError", message: "Free usage limit reached." },
+    });
+    await expect(probeOpenCodeFreeLimit("opencode/big-pickle", reply(429, body))).resolves.toBe(
+      true,
+    );
+  });
+
+  it("does not blame the limit for other errors or a working server", async () => {
+    await expect(probeOpenCodeFreeLimit("opencode/big-pickle", reply(200, "{}"))).resolves.toBe(
+      false,
+    );
+    await expect(
+      probeOpenCodeFreeLimit("opencode/big-pickle", reply(429, "slow down")),
+    ).resolves.toBe(false);
+    const offline = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    await expect(probeOpenCodeFreeLimit("opencode/big-pickle", offline)).resolves.toBe(false);
+  });
+
+  it("sends the model name without OpenCode's prefix", async () => {
+    let sent = "";
+    const capture = (async (_url: string, init: RequestInit) => {
+      sent = String(init.body);
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    await probeOpenCodeFreeLimit("opencode/glm-5.3-flash-free", capture);
+    expect(JSON.parse(sent).model).toBe("glm-5.3-flash-free");
   });
 });

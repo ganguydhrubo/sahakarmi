@@ -1,27 +1,37 @@
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { AgentMemory } from "../../../shared/ipc";
 import { t } from "../i18n";
+
+type MemoryKind = "fact" | "decision" | "preference" | "architecture";
+
+const KINDS: MemoryKind[] = ["fact", "decision", "preference", "architecture"];
+
+const KIND_LABELS = {
+  fact: "memoryKindFact",
+  decision: "memoryKindDecision",
+  preference: "memoryKindPreference",
+  architecture: "memoryKindArchitecture",
+} as const;
+
+const kindLabel = (kind: string) => t(KIND_LABELS[kind as MemoryKind] ?? "memoryKindFact");
 
 export function MemoryView() {
   const [memories, setMemories] = createSignal<AgentMemory[]>([]);
   const [searchQuery, setSearchQuery] = createSignal("");
-  const [selectedCategory, setSelectedCategory] = createSignal<string>("all");
+  const [selectedKind, setSelectedKind] = createSignal<"all" | MemoryKind>("all");
   const [showAddModal, setShowAddModal] = createSignal(false);
+  const [error, setError] = createSignal("");
 
-  // Form signals
   const [newKey, setNewKey] = createSignal("");
   const [newContent, setNewContent] = createSignal("");
-  const [newCategory, setNewCategory] = createSignal<
-    "architecture" | "decision" | "preference" | "fact"
-  >("fact");
+  const [newKind, setNewKind] = createSignal<MemoryKind>("fact");
   const [newTags, setNewTags] = createSignal("");
+  let opener: HTMLButtonElement | undefined;
 
   const loadMemories = async () => {
     try {
       if (!window.sahkarmi?.memory) return;
-      const category = selectedCategory() === "all" ? undefined : selectedCategory();
-      const list = await window.sahkarmi.memory.list(category);
-      setMemories(list);
+      setMemories(await window.sahkarmi.memory.list());
     } catch (err) {
       console.error("Failed to load memories:", err);
     }
@@ -29,278 +39,212 @@ export function MemoryView() {
 
   onMount(() => {
     void loadMemories();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && showAddModal()) {
+        event.preventDefault();
+        closeDialog();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
   });
 
   const filteredMemories = () => {
     const q = searchQuery().toLowerCase().trim();
     return memories().filter((m) => {
-      const matchesCat = selectedCategory() === "all" || m.category === selectedCategory();
+      const matchesKind = selectedKind() === "all" || m.category === selectedKind();
       const matchesQuery =
         !q ||
         m.key.toLowerCase().includes(q) ||
         m.content.toLowerCase().includes(q) ||
-        m.tags.some((t) => t.toLowerCase().includes(q));
-      return matchesCat && matchesQuery;
+        m.tags.some((tag) => tag.toLowerCase().includes(q));
+      return matchesKind && matchesQuery;
     });
   };
 
-  const handleSave = async (e: Event) => {
-    e.preventDefault();
-    if (!newKey().trim() || !newContent().trim() || !window.sahkarmi?.memory) return;
+  const closeDialog = () => {
+    setShowAddModal(false);
+    setError("");
+    opener?.focus();
+  };
 
-    const tags = newTags()
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-
+  const handleSave = async (event: Event) => {
+    event.preventDefault();
+    if (!newKey().trim() || !newContent().trim()) {
+      setError(t("memoryNeedBoth"));
+      return;
+    }
+    if (!window.sahkarmi?.memory) return;
     await window.sahkarmi.memory.save({
       key: newKey().trim(),
       content: newContent().trim(),
-      category: newCategory(),
-      tags,
+      category: newKind(),
+      tags: newTags()
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
     });
-
     setNewKey("");
     setNewContent("");
     setNewTags("");
-    setShowAddModal(false);
+    closeDialog();
     await loadMemories();
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (memory: AgentMemory) => {
     if (!window.sahkarmi?.memory) return;
-    await window.sahkarmi.memory.delete(id);
+    if (!window.confirm(t("memoryDeleteConfirm", { name: memory.key }))) return;
+    await window.sahkarmi.memory.delete(memory.id);
     await loadMemories();
-  };
-
-  const categoryColor = (cat: string) => {
-    switch (cat) {
-      case "architecture":
-        return "bg-blue-500/15 text-blue-400 border-blue-500/30";
-      case "decision":
-        return "bg-purple-500/15 text-purple-400 border-purple-500/30";
-      case "preference":
-        return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
-      default:
-        return "bg-amber-500/15 text-amber-400 border-amber-500/30";
-    }
   };
 
   return (
-    <div class="h-full flex flex-col bg-[#0F1220] text-gray-200 overflow-hidden">
-      {/* Header */}
-      <div class="p-6 border-b border-[#212638] bg-[#141829] flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div class="flex items-center gap-2.5">
-            <span class="text-2xl">🧠</span>
-            <h1 class="text-xl font-bold text-white">{t("memoryTitle")}</h1>
-          </div>
-          <p class="text-xs text-gray-400 mt-1">{t("memorySubtitle")}</p>
-        </div>
-
-        <div class="flex items-center gap-3">
+    <section class="center-view memory-view" aria-labelledby="memory-heading">
+      <header class="center-view-header window-drag">
+        <h1 id="memory-heading">{t("memoryTitle")}</h1>
+        <span class="center-view-badge">{memories().length}</span>
+        <div class="memory-header-actions no-drag">
           <input
-            type="text"
-            placeholder="Search memory..."
+            type="search"
+            class="memory-search"
+            placeholder={t("memorySearch")}
+            aria-label={t("memorySearch")}
             value={searchQuery()}
-            onInput={(e) => setSearchQuery(e.currentTarget.value)}
-            class="px-3.5 py-1.5 rounded-xl bg-[#1A1F35] border border-[#2B314C] text-sm text-gray-200 focus:outline-none focus:border-amber-500 transition-colors placeholder:text-gray-500 w-56"
+            onInput={(event) => setSearchQuery(event.currentTarget.value)}
           />
           <button
+            ref={opener}
             type="button"
+            class="button-primary"
             onClick={() => setShowAddModal(true)}
-            class="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-sm transition-all shadow-md shadow-amber-500/20 cursor-pointer"
           >
-            + Add Memory
+            {t("memoryAdd")}
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Category Filter Pills */}
-      <div class="px-6 py-3 border-b border-[#212638] bg-[#121626] flex items-center gap-2 overflow-x-auto text-xs">
-        <For each={["all", "architecture", "decision", "preference", "fact"]}>
-          {(cat) => (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategory(cat);
-                void loadMemories();
-              }}
-              class={`px-3 py-1 rounded-lg border capitalize transition-all cursor-pointer ${
-                selectedCategory() === cat
-                  ? "bg-amber-500/20 border-amber-500/50 text-amber-300 font-medium"
-                  : "bg-[#181C2E] border-[#252B42] text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              {cat}
-            </button>
-          )}
-        </For>
-      </div>
+      <div class="center-view-body">
+        <p class="center-view-intro">{t("memorySubtitle")}</p>
+        <fieldset class="memory-filters">
+          <legend class="sr-only">{t("memoryKind")}</legend>
+          <For each={["all", ...KINDS] as const}>
+            {(kind) => (
+              <button
+                type="button"
+                class="marketplace-filter"
+                aria-pressed={selectedKind() === kind}
+                onClick={() => setSelectedKind(kind)}
+              >
+                {kind === "all" ? t("memoryAll") : kindLabel(kind)}
+              </button>
+            )}
+          </For>
+        </fieldset>
 
-      {/* Memory Cards Grid */}
-      <div class="flex-1 overflow-y-auto p-6">
         <Show
           when={filteredMemories().length > 0}
-          fallback={
-            <div class="h-64 flex flex-col items-center justify-center text-center p-6 border border-dashed border-[#282F48] rounded-2xl bg-[#131728]/50">
-              <span class="text-3xl mb-2">📓</span>
-              <p class="text-sm text-gray-400 max-w-md">{t("memoryEmpty")}</p>
-            </div>
-          }
+          fallback={<p class="center-view-empty">{t("memoryEmpty")}</p>}
         >
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <ul class="memory-grid">
             <For each={filteredMemories()}>
-              {(m) => (
-                <div class="bg-[#161B2E] border border-[#252C46] hover:border-amber-500/30 rounded-xl p-4 flex flex-col justify-between transition-all group shadow-sm">
-                  <div>
-                    <div class="flex items-center justify-between gap-2 mb-2">
-                      <h3 class="font-semibold text-sm text-white truncate">{m.key}</h3>
-                      <span
-                        class={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border capitalize ${categoryColor(
-                          m.category,
-                        )}`}
-                      >
-                        {m.category}
-                      </span>
-                    </div>
-                    <p class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap line-clamp-4">
-                      {m.content}
-                    </p>
+              {(memory) => (
+                <li class="memory-card">
+                  <div class="memory-card-head">
+                    <h2>{memory.key}</h2>
+                    <span class={`memory-kind memory-kind-${memory.category}`}>
+                      {kindLabel(memory.category)}
+                    </span>
                   </div>
-
-                  <div class="pt-3 mt-3 border-t border-[#21273F] flex items-center justify-between text-[11px] text-gray-500">
-                    <div class="flex flex-wrap gap-1">
-                      <For each={m.tags}>
-                        {(t) => (
-                          <span class="px-1.5 py-0.5 bg-[#1E243D] text-gray-400 rounded text-[10px]">
-                            #{t}
-                          </span>
-                        )}
-                      </For>
-                    </div>
+                  <p class="memory-content">{memory.content}</p>
+                  <div class="memory-card-foot">
+                    <span class="memory-tags">
+                      <For each={memory.tags}>{(tag) => <span>#{tag}</span>}</For>
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleDelete(m.id)}
-                      class="text-gray-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                      title="Delete memory"
+                      class="button-danger-quiet memory-delete"
+                      onClick={() => void handleDelete(memory)}
                     >
-                      ✕
+                      {t("memoryDelete")}
                     </button>
                   </div>
-                </div>
+                </li>
               )}
             </For>
-          </div>
+          </ul>
         </Show>
       </div>
 
-      {/* Add Memory Modal */}
       <Show when={showAddModal()}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div class="bg-[#181C2E] border border-[#2A3250] rounded-2xl max-w-md w-full p-6 shadow-2xl">
-            <div class="flex items-center justify-between pb-3 border-b border-[#252C46]">
-              <h3 class="font-bold text-white text-base">Save New Memory</h3>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                class="text-gray-400 hover:text-white"
+        {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: clicking the dimmed backdrop closes the dialog; Escape and Cancel do the same from the keyboard */}
+        <div class="marketplace-detail-backdrop" onClick={closeDialog}>
+          <form
+            ref={(form) => requestAnimationFrame(() => form.querySelector("input")?.focus())}
+            class="marketplace-detail memory-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="memory-dialog-title"
+            noValidate
+            onSubmit={(event) => void handleSave(event)}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeDialog();
+              }
+            }}
+          >
+            <h2 id="memory-dialog-title">{t("memoryNewTitle")}</h2>
+            <label class="memory-field">
+              <span>{t("memoryName")}</span>
+              <input
+                value={newKey()}
+                placeholder={t("memoryNamePlaceholder")}
+                onInput={(event) => setNewKey(event.currentTarget.value)}
+              />
+            </label>
+            <label class="memory-field">
+              <span>{t("memoryKind")}</span>
+              <select
+                value={newKind()}
+                onChange={(event) => setNewKind(event.currentTarget.value as MemoryKind)}
               >
-                ✕
+                <For each={KINDS}>{(kind) => <option value={kind}>{kindLabel(kind)}</option>}</For>
+              </select>
+            </label>
+            <label class="memory-field">
+              <span>{t("memoryDetails")}</span>
+              <textarea
+                rows={4}
+                value={newContent()}
+                placeholder={t("memoryDetailsPlaceholder")}
+                onInput={(event) => setNewContent(event.currentTarget.value)}
+              />
+            </label>
+            <label class="memory-field">
+              <span>{t("memoryTags")}</span>
+              <input
+                value={newTags()}
+                placeholder={t("memoryTagsPlaceholder")}
+                onInput={(event) => setNewTags(event.currentTarget.value)}
+              />
+            </label>
+            <Show when={error()}>
+              <p class="approval-error" role="alert">
+                {error()}
+              </p>
+            </Show>
+            <div class="memory-dialog-actions">
+              <button type="button" onClick={closeDialog}>
+                {t("cancel")}
+              </button>
+              <button type="submit" class="button-primary">
+                {t("memorySave")}
               </button>
             </div>
-
-            <form onSubmit={handleSave} class="space-y-4 pt-4 text-xs">
-              <div>
-                <label for="memory-key" class="block text-gray-300 mb-1 font-medium">
-                  Memory Title / Key
-                </label>
-                <input
-                  id="memory-key"
-                  type="text"
-                  required
-                  placeholder="e.g. Auth Token Strategy"
-                  value={newKey()}
-                  onInput={(e) => setNewKey(e.currentTarget.value)}
-                  class="w-full px-3 py-2 rounded-xl bg-[#121626] border border-[#282F48] text-white focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label for="memory-category" class="block text-gray-300 mb-1 font-medium">
-                  Category
-                </label>
-                <select
-                  id="memory-category"
-                  value={newCategory()}
-                  onChange={(e) => {
-                    const val = e.currentTarget.value;
-                    if (
-                      val === "fact" ||
-                      val === "decision" ||
-                      val === "architecture" ||
-                      val === "preference"
-                    ) {
-                      setNewCategory(val);
-                    }
-                  }}
-                  class="w-full px-3 py-2 rounded-xl bg-[#121626] border border-[#282F48] text-white focus:outline-none focus:border-amber-500 capitalize"
-                >
-                  <option value="fact">Fact</option>
-                  <option value="decision">Decision</option>
-                  <option value="architecture">Architecture</option>
-                  <option value="preference">Preference</option>
-                </select>
-              </div>
-
-              <div>
-                <label for="memory-content" class="block text-gray-300 mb-1 font-medium">
-                  Content / Details
-                </label>
-                <textarea
-                  id="memory-content"
-                  required
-                  rows={4}
-                  placeholder="Describe the fact, standard, or decision to remember..."
-                  value={newContent()}
-                  onInput={(e) => setNewContent(e.currentTarget.value)}
-                  class="w-full px-3 py-2 rounded-xl bg-[#121626] border border-[#282F48] text-white focus:outline-none focus:border-amber-500 resize-none"
-                />
-              </div>
-
-              <div>
-                <label for="memory-tags" class="block text-gray-300 mb-1 font-medium">
-                  Tags (comma-separated)
-                </label>
-                <input
-                  id="memory-tags"
-                  type="text"
-                  placeholder="jwt, auth, security"
-                  value={newTags()}
-                  onInput={(e) => setNewTags(e.currentTarget.value)}
-                  class="w-full px-3 py-2 rounded-xl bg-[#121626] border border-[#282F48] text-white focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div class="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  class="px-4 py-2 rounded-xl bg-[#232A44] hover:bg-[#2C3454] text-gray-300 font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold cursor-pointer"
-                >
-                  Save Memory
-                </button>
-              </div>
-            </form>
-          </div>
+          </form>
         </div>
       </Show>
-    </div>
+    </section>
   );
 }

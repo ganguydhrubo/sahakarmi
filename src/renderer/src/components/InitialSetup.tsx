@@ -8,7 +8,7 @@ import type {
   MacPermissionId,
   MacPermissionsState,
 } from "../../../shared/ipc";
-import { PROVIDER_LABELS } from "../../../shared/ipc";
+import { ACP_AGENT_PROVIDERS, PROVIDER_LABELS } from "../../../shared/ipc";
 import { ProviderPicker, type ProviderPickerOption } from "./ProviderPicker";
 
 interface InitialSetupProps {
@@ -28,7 +28,7 @@ const PROVIDERS: Array<{
   { id: "opencode", name: "OpenCode (free, built in)" },
   { id: "claude", name: "Claude" },
   { id: "codex", name: "ChatGPT (Codex)" },
-  { id: "antigravity", name: "Google Antigravity" },
+  { id: "antigravity", name: "Gemini (Google Antigravity)" },
 ];
 
 const PERMISSIONS: Array<{
@@ -62,7 +62,14 @@ export function InitialSetup(props: InitialSetupProps) {
   const [permissionBusy, setPermissionBusy] = createSignal<MacPermissionId | null>(null);
   const [error, setError] = createSignal("");
   const providerOptions = createMemo<ProviderPickerOption[]>(() =>
-    PROVIDERS.map((provider) => {
+    [
+      ...PROVIDERS,
+      // Other agents show up here once they are installed on this computer.
+      ...ACP_AGENT_PROVIDERS.filter((id) => {
+        const state = props.agentStatus.providers?.find((candidate) => candidate.id === id)?.state;
+        return state === "available" || state === "sign-in-required";
+      }).map((id) => ({ id, name: PROVIDER_LABELS[id] })),
+    ].map((provider) => {
       const status = props.agentStatus.providers?.find((candidate) => candidate.id === provider.id);
       return {
         ...provider,

@@ -51,7 +51,7 @@ export const SECONDARY: Record<ActivityPhase, string[]> = {
   executing_tool: ["Waiting for the step to finish…", "The workflow is moving ahead…"],
   processing_result: ["Checking the result…", "Preparing the next step…"],
   waiting_approval: [
-    "Open Approvals to approve or reject the request.",
+    "Approve or reject the request shown below.",
     "This task is paused until you decide.",
   ],
   waiting_user: ["Answer the question above and the work will continue."],
@@ -89,7 +89,7 @@ export const TOOL_FAILED_PRIMARY = "A step returned an error; looking into it…
 export const TOOL_FAILED_SECONDARY = ["Working out what went wrong…", "Deciding the next step…"];
 
 export const LABELS = {
-  statusIdle: "Free",
+  statusIdle: "Available",
   statusWorking: "Working",
   statusWaiting: "Needs you",
   statusError: "Needs attention",

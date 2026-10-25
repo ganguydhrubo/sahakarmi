@@ -1294,6 +1294,9 @@ export function App() {
                     onHandBackBrowser={(note) =>
                       void window.sahkarmi.browser.handBack(note).then(setTakeover)
                     }
+                    onDeclineTakeover={() =>
+                      void window.sahkarmi.browser.declineTakeover(null).then(setTakeover)
+                    }
                     onToggleLeftSidebar={() => setSidebarCollapsed(false)}
                     onOpenAiSettings={openAiSettings}
                     onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}

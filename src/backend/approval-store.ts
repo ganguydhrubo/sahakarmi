@@ -23,6 +23,7 @@ export interface CreateApprovalInput {
   amount?: string | null;
   kind?: "action" | "permission";
   permissionCategory?: PermissionCategory;
+  technical?: string;
 }
 
 const MAX_KEPT_DECIDED = 200;
@@ -83,6 +84,7 @@ export class ApprovalStore {
       ...(input.kind === "permission"
         ? { kind: "permission" as const, permissionCategory: input.permissionCategory }
         : {}),
+      ...(input.technical?.trim() ? { technical: input.technical.trim().slice(0, 4_000) } : {}),
     };
     this.#state.approvals.unshift(approval);
     await this.#persist();

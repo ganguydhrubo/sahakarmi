@@ -7,7 +7,19 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { AgentProviderId, ProviderSetupState } from "../shared/ipc";
+import {
+  type AcpAgentProviderId,
+  type AgentProviderId,
+  isAcpAgentProvider,
+  PROVIDER_LABELS,
+  type ProviderSetupState,
+} from "../shared/ipc";
+import {
+  ACP_AGENT_SPECS,
+  type AcpAgentSpec,
+  findAcpAgentExecutable,
+  signInCommandFor,
+} from "./acp-agents";
 import type { AcpAgentClient } from "./acp-client";
 import {
   ANTIGRAVITY_ACCOUNT_FILE,
@@ -27,12 +39,16 @@ import {
 /** Codex build fetched by Connect when none is installed (Apache-2.0, published by OpenAI on npm). */
 export const CODEX_VERSION = "0.163.0";
 const LOGIN_TIMEOUT_MS = 10 * 60_000;
+/** npm or a vendor installer may take a while on a slow connection. */
+const INSTALL_TIMEOUT_MS = 10 * 60_000;
 const URL_PATTERN = /https:\/\/[^\s"'<>]+/;
 /** Google's server returns from `authenticate` once the owner finishes the sign-in page. */
 const ANTIGRAVITY_SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
 export interface ProviderSetupOptions {
   toolsDirectory: string;
+  /** Opens a sign-in page in the owner's browser (device sign-in shows a code to enter there). */
+  openUrl?: (url: string) => void;
   /** Where downloaded agent runtimes live (Google's Antigravity server goes under it). */
   runtimeDirectory?: string;
   /** Re-checks a provider after sign-in so the app switches it to Connected. */
@@ -72,6 +88,9 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   }
 
   async connect(provider: AgentProviderId): Promise<ProviderSetupState> {
+    // A second click while the tool is still installing must not start a second install
+    // (two npm runs on the same folder fail with EBUSY and leave nothing usable).
+    if (this.#get(provider).phase === "installing") return this.#get(provider);
     this.cancel(provider);
     try {
       switch (provider) {
@@ -89,6 +108,8 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
         case "opencode":
           await this.check(provider);
           break;
+        default:
+          if (isAcpAgentProvider(provider)) await this.#connectAcpAgent(provider);
       }
     } catch (error) {
       this.#set(provider, { phase: "failed", message: messageOf(error) });
@@ -132,6 +153,11 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
         this.#set(provider, { phase: "failed", message: messageOf(error) });
       }
       return this.#get(provider);
+    } else if (isAcpAgentProvider(provider) && ACP_AGENT_SPECS[provider].apiKeyEnv?.length) {
+      const [name] = ACP_AGENT_SPECS[provider].apiKeyEnv ?? [];
+      if (!name) throw new Error("This provider does not use an API key.");
+      process.env[name] = key;
+      persistUserEnvironment(name, key);
     } else {
       throw new Error("This provider does not use an API key.");
     }
@@ -175,6 +201,137 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   stop(): void {
     for (const provider of [...this.#logins.keys()]) this.cancel(provider);
     this.cancel("antigravity");
+  }
+
+  /**
+   * Another vendor's agent: install it when missing, stop if it is already signed in, otherwise
+   * start its own sign-in. Sahkarmi never sees the password or the account's token.
+   */
+  async #connectAcpAgent(id: AcpAgentProviderId): Promise<void> {
+    const spec = ACP_AGENT_SPECS[id];
+    const label = PROVIDER_LABELS[id];
+    let executable = await findAcpAgentExecutable(spec);
+    if (!executable) {
+      if (!spec.install) {
+        throw new Error(
+          `${label} is not installed. Install it from its website, then click Connect again.`,
+        );
+      }
+      try {
+        await this.#installAcpAgent(id, spec.install);
+      } catch (error) {
+        // npm can report an error (a busy file, a warning) after the tool itself landed.
+        await refreshWindowsPath();
+        if (!(await findAcpAgentExecutable(spec))) throw error;
+      }
+      executable = await findAcpAgentExecutable(spec);
+      if (!executable) {
+        throw new Error(
+          `${label} was installed, but Windows cannot find it yet. Restart Sahkarmi, then click Connect.`,
+        );
+      }
+    }
+    this.#set(id, { phase: "checking", message: `Checking ${label}…`, progress: null });
+    try {
+      await this.#options.recheck(id);
+      this.#set(id, { phase: "connected", message: null, url: null });
+      return;
+    } catch {
+      // Not signed in yet: run the agent's own sign-in below.
+    }
+    if (spec.signIn.kind === "command") {
+      await this.#loginWithProcess(id, executable, spec.signIn.args);
+      return;
+    }
+    this.#openSignInWindow(id, signInCommandFor(spec, executable), spec.signIn);
+  }
+
+  /** npm for tools published there, otherwise the vendor's own PowerShell installer. */
+  async #installAcpAgent(id: AcpAgentProviderId, install: NonNullable<AcpAgentSpec["install"]>) {
+    const label = PROVIDER_LABELS[id];
+    const source = install.kind === "npm" ? `npm (${install.pkg})` : install.site;
+    this.#set(id, {
+      phase: "installing",
+      message: `Installing ${label} from ${source}. This takes 2–3 minutes; keep Sahkarmi open.`,
+      progress: null,
+      url: null,
+    });
+    // Fixed commands from ACP_AGENT_SPECS; nothing here comes from the owner or a web page.
+    const command = install.kind === "npm" ? process.env.ComSpec || "cmd.exe" : "powershell.exe";
+    const args =
+      install.kind === "npm"
+        ? ["/d", "/s", "/c", `npm install --global ${install.pkg}`]
+        : [
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            `irm '${install.url}' | iex`,
+          ];
+    const spawnImpl = this.#options.spawnImpl ?? spawn;
+    await new Promise<void>((resolvePromise, reject) => {
+      const child = spawnImpl(command, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        env: process.env,
+      });
+      let output = "";
+      const keep = (chunk: Buffer) => {
+        output = `${output}${chunk.toString("utf8")}`.slice(-4_000);
+      };
+      child.stdout?.on("data", keep);
+      child.stderr?.on("data", keep);
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error(`Installing ${label} took too long. Check your internet and try again.`));
+      }, INSTALL_TIMEOUT_MS);
+      timer.unref?.();
+      child.on("error", (error) => {
+        clearTimeout(timer);
+        reject(
+          install.kind === "npm"
+            ? new Error(`Installing ${label} needs Node.js (nodejs.org). ${messageOf(error)}`)
+            : error,
+        );
+      });
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolvePromise();
+        else reject(new Error(`Could not install ${label}: ${lastLine(output) || `code ${code}`}`));
+      });
+    });
+    await refreshWindowsPath();
+  }
+
+  /**
+   * Some agents sign in only inside their own window (Copilot's /login, for example). Open it,
+   * say what to do there, and check again as soon as the owner closes it.
+   */
+  #openSignInWindow(
+    id: AcpAgentProviderId,
+    executable: string,
+    signIn: { args: string[]; tip: string },
+  ): void {
+    const spawnImpl = this.#options.spawnImpl ?? spawn;
+    const quoted = [executable, ...signIn.args].map((part) => `"${part.replaceAll('"', "")}"`);
+    const child =
+      process.platform === "win32"
+        ? spawnImpl(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `"${quoted.join(" ")}"`], {
+            detached: true,
+            stdio: "ignore",
+            windowsHide: false,
+            windowsVerbatimArguments: true,
+            env: process.env,
+          })
+        : spawnImpl(executable, signIn.args, { detached: true, stdio: "ignore", env: process.env });
+    this.#logins.set(id, child);
+    this.#set(id, { phase: "terminal", message: signIn.tip, url: null, progress: null });
+    child.on("exit", () => {
+      if (this.#logins.get(id) === child) this.#logins.delete(id);
+      void this.check(id);
+    });
+    child.on("error", (error) => this.#set(id, { phase: "failed", message: messageOf(error) }));
   }
 
   async #codexExecutable(): Promise<string> {
@@ -296,11 +453,26 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       }, LOGIN_TIMEOUT_MS);
       timer.unref?.();
       let output = "";
+      let pressed = false;
       const onOutput = (chunk: Buffer) => {
         output = `${output}${chunk.toString("utf8")}`.slice(-8_000);
         const url = URL_PATTERN.exec(output)?.[0];
         const current = this.#get(provider);
-        if (url && current.url !== url) this.#set(provider, { url });
+        if (url && current.url !== url) {
+          this.#set(provider, { url });
+          // Device sign-in (GitHub Copilot): the page needs the code shown here, so open it.
+          if (/login\/device/.test(url)) this.#options.openUrl?.(url);
+        }
+        const code = /enter (?:the )?code:?\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i.exec(output)?.[1];
+        if (code && !current.message?.includes(code)) {
+          this.#set(provider, {
+            message: `On the GitHub page that opened, enter the code ${code} and allow access.`,
+          });
+        }
+        if (/press any key/i.test(output) && !pressed) {
+          pressed = true;
+          child.stdin?.write(String.fromCharCode(10));
+        }
         if (/paste (the )?code/i.test(output) && current.phase !== "needs-code") {
           this.#set(provider, {
             phase: "needs-code",
@@ -539,6 +711,36 @@ function lastLine(output: string): string {
       .filter(Boolean)
       .at(-1) ?? ""
   ).slice(0, 200);
+}
+
+/**
+ * An installer adds its folder to the user's PATH in the registry; Sahkarmi started before
+ * that, so read the new PATH back instead of asking for a restart.
+ */
+async function refreshWindowsPath(): Promise<void> {
+  if (process.platform !== "win32") return;
+  const read = (key: string) =>
+    new Promise<string>((resolvePromise) => {
+      execFile(
+        "reg",
+        ["query", key, "/v", "Path"],
+        { windowsHide: true, timeout: 5_000 },
+        (error, stdout) => {
+          if (error) return resolvePromise("");
+          resolvePromise(/Path\s+REG_(?:EXPAND_)?SZ\s+(.+)/i.exec(stdout)?.[1]?.trim() ?? "");
+        },
+      );
+    });
+  const expand = (value: string) =>
+    value.replace(/%([^%]+)%/g, (whole, name: string) => process.env[name] ?? whole);
+  const parts = [
+    ...(process.env.PATH ?? "").split(";"),
+    ...expand(await read("HKCU\\Environment")).split(";"),
+    ...expand(
+      await read("HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"),
+    ).split(";"),
+  ].filter(Boolean);
+  process.env.PATH = [...new Set(parts)].join(";");
 }
 
 function messageOf(error: unknown): string {

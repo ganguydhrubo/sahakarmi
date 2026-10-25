@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentEvent } from "../shared/ipc";
+import { ACP_AGENT_PROVIDERS, type AgentEvent } from "../shared/ipc";
 import {
   AgentService,
   isNoisyDiagnostic,
@@ -17,6 +17,7 @@ import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
 import { MailboxStore } from "./mailbox-store";
 import { PermissionService } from "./permission-service";
+import { RoutineStore } from "./routine-store";
 
 let root: string;
 let logPath: string;
@@ -186,6 +187,35 @@ describe.sequential("AgentService", () => {
     expect(persisted.bots.find((bot: { id: string }) => bot.id === "chief").preview).toBe(
       "SAVED_REPLY",
     );
+  });
+
+  it("lets a coworker schedule the routine the owner agreed to in chat", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "create_or_update_routine",
+      arguments: {
+        name: "LinkedIn daily post",
+        instruction: "Write and publish one LinkedIn post.",
+        schedule: "daily",
+        time: "18:00",
+      },
+    });
+    const { store, mailbox } = stores();
+    const routines = new RoutineStore(join(root, "user-data"));
+    await routines.initialize();
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex");
+    service.setRoutineHost(routines);
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Post on LinkedIn every day at 6" });
+
+    await waitFor(() => routines.state().routines.length === 1);
+    expect(routines.state().routines[0]).toMatchObject({
+      name: "LinkedIn daily post",
+      enabled: true,
+      cadence: { kind: "daily", time: "18:00" },
+      steps: [{ botId: "asha-accounts", instruction: "Write and publish one LinkedIn post." }],
+    });
+    expect(routines.state().routines[0]?.nextRunAt).not.toBeNull();
   });
 
   it("files approvals from coworkers and queues the owner's decision back to them", async () => {
@@ -528,6 +558,7 @@ describe.sequential("AgentService", () => {
         { id: "claude", state: "not-installed", version: null },
         { id: "antigravity", state: "not-installed", version: null },
         { id: "opencode", state: "not-installed", version: null },
+        ...ACP_AGENT_PROVIDERS.map((id) => ({ id, state: "not-installed", version: null })),
       ],
       capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
     });
@@ -599,6 +630,7 @@ describe.sequential("AgentService", () => {
         },
         { id: "antigravity", state: "not-installed" },
         { id: "opencode", state: "not-installed" },
+        ...ACP_AGENT_PROVIDERS.map((id) => ({ id, state: "not-installed" })),
       ],
     });
     await service.setPreferredProvider("codex");

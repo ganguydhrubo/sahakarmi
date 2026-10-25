@@ -3,7 +3,8 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_MODEL_FOR_PROVIDER } from "../shared/ipc";
 import { readModelOptions, stripLeakedToolCalls } from "./acp-client";
 import { openCodeModelValue, readAntigravityAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
@@ -283,6 +284,55 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     }
   });
 
+  it("moves a coworker to another connected free provider when OpenCode's free limit is used up", async () => {
+    process.env.SAHKARMI_ACP_SILENT_TURN_MS = "20000";
+    process.env.SAHKARMI_FREE_LIMIT_PROBE_MS = "150";
+    // Google Antigravity is the same fake ACP agent here, connected with a key.
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = process.env.SAHKARMI_OPENCODE_PATH;
+    process.env.GEMINI_API_KEY = "test-key";
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).includes("opencode.ai/zen")
+        ? new Response(JSON.stringify({ type: "error", error: { type: "FreeUsageLimitError" } }), {
+            status: 429,
+          })
+        : realFetch(input, init)) as typeof fetch);
+    try {
+      const store = new BotStore(join(root, "user-data"), join(root, "home"));
+      const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+      service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+      const events: Array<{ type: string; code?: string; message?: string }> = [];
+      service.on("event", (event) => events.push(event as { type: string; code?: string }));
+      await service.initialize();
+      await waitFor(
+        () =>
+          service?.getStatus().providers?.find((provider) => provider.id === "antigravity")
+            ?.state === "available",
+      );
+      await service.sendMessage({ botId: "meera-support", text: "stay silent" });
+      await waitFor(
+        () =>
+          service?.listBots().find((bot) => bot.id === "meera-support")?.model ===
+          DEFAULT_MODEL_FOR_PROVIDER.antigravity,
+      );
+      // The notice follows the model switch; on a busy machine it can arrive a moment later.
+      await waitFor(() =>
+        events.some((event) => event.type === "error" && event.code === "fallback_model"),
+      );
+      const note = events.find(
+        (event) => event.type === "error" && event.code === "fallback_model",
+      );
+      expect(note?.message).toContain("OpenCode's free limit is used up");
+      expect(note?.message).toContain("Google Antigravity");
+      await waitFor(() => service?.listQueue("meera-support").deliveries.length === 2);
+      expect(service.listQueue("meera-support").deliveries[1]?.text).toBe("stay silent");
+    } finally {
+      vi.unstubAllGlobals();
+      delete process.env.SAHKARMI_ACP_SILENT_TURN_MS;
+      delete process.env.SAHKARMI_FREE_LIMIT_PROBE_MS;
+    }
+  });
+
   it("moves a coworker to the free model and re-sends when its provider answers nothing", async () => {
     // Google Antigravity is the same fake ACP agent here; "say nothing" makes it end the turn empty.
     process.env.SAHKARMI_ANTIGRAVITY_PATH = process.env.SAHKARMI_OPENCODE_PATH;
@@ -306,14 +356,11 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     const note = events.find((event) => event.type === "error" && event.code === "fallback_model");
     expect(note?.message).toContain("Google Antigravity sent back an empty reply");
     expect(note?.message).toContain("switched to the free model");
-    // The same text went out again on the free model; nothing else was invented.
+    // The same text went out again on the free model; the failed copy is not shown twice.
     const userMessages = (await service.readConversation("meera-support")).messages.filter(
       (message) => message.author === "user",
     );
-    expect(userMessages.map((message) => message.text)).toEqual([
-      "say nothing, then Namaste",
-      "say nothing, then Namaste",
-    ]);
+    expect(userMessages.map((message) => message.text)).toEqual(["say nothing, then Namaste"]);
   });
 
   it("shows a file the coworker made during the turn under its reply, also after a restart", async () => {

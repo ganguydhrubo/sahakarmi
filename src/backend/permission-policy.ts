@@ -234,6 +234,9 @@ export function classifyAcpTool(
       return classifyCommand(command);
     }
     default:
+      // Sahkarmi's own tools (memory, approvals, coworker messages, browser) are checked by the
+      // app itself when they run; treating them as shell commands asked the owner for nonsense.
+      if (/^(mcp__)?sahkarmi(_browser)?[_:]/i.test(title.trim())) return "research";
       return /web|fetch|search/i.test(title) ? "research" : "shell";
   }
 }

@@ -5,6 +5,94 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-25
+
+### Fixed
+
+- GitHub Copilot, Cursor, Kimi Code and the other new agents connected but never answered
+  ("The selected model default is no longer reported"). They answer now.
+- Clicking Connect again while GitHub Copilot was still installing started a second install that
+  failed and left Copilot looking "not installed". A second click now shows the install in
+  progress, and Sahkarmi carries on when the tool did land.
+- GitHub Copilot signs in on its own: with your GitHub CLI sign-in when you have one, otherwise
+  GitHub's page opens and Sahkarmi shows the code to enter there. No console to type in.
+- A failed connect is now written to the app log, so it can be traced.
+
+## [0.9.0] - 2026-10-25
+
+### Added
+
+- Marketplace has a new Apps tab. It lists every app Composio offers (GitHub, Gmail, Google
+  Calendar, Slack, Notion, Jira, Linear and many more) with Connect buttons, logos and a search
+  box. Connected apps sit at the top under "Your apps". It runs on Composio's free Hobby plan:
+  $0, no card, 1,00,000 tool calls a month. You paste your own Composio key once; it stays on
+  this computer.
+- Coworkers use your connected apps through your own accounts. Reading is instant. Anything that
+  sends, creates, changes or deletes stops for your approval first; once you approve, the
+  coworker carries out that same action, exactly once.
+- The provider connect screen is rebuilt: brand marks, groups for Connected, Found on this
+  computer and Add a provider, Free badges, and inline install and sign-in progress.
+- 11 more agents over ACP: Cursor, GitHub Copilot, Kimi Code, Cline, Qwen Code, Grok, Factory
+  Droid, Qoder, Goose, Mistral Vibe and Kiro. Connect installs the tool when needed and starts
+  its sign-in; tools already installed are found.
+- Coworkers can create and change routines when you ask them to in chat. Agreeing to "post every
+  day at 6 PM" now creates a real routine instead of only a note.
+- Routines from your previous desktop agent are brought over once, paused, on first start, each
+  matched to the coworker with the same name. Its own data is only read, never changed.
+- When OpenCode's free limit is used up, a coworker moves by itself to another free provider you
+  have connected (Gemini, GitHub Copilot or Kiro) and answers your message there.
+
+### Changed
+
+- The Composio section moved out of Business into Marketplace > Apps.
+- Composio is reached through its current API (the old one was switched off). A busy or slow
+  Composio is handled quietly: Sahkarmi waits and retries, never repeats a send or a delete, and
+  pauses for a minute after repeated failures.
+- When OpenCode's free limit is used up, you are told at once instead of waiting about a minute
+  per model.
+- Logos in the model picker and the first-run screen; missing agents read "Not installed".
+- The Routines canvas shows times in your own clock style ("6:00 pm"), an On / Paused badge,
+  arrows between steps and each coworker's role.
+
+### Fixed
+
+- A failed message that is resent automatically no longer shows twice for a moment after an
+  automatic switch to the free model.
+- Composio replies and errors are cleaned of tokens before they reach a chat.
+
+## [0.8.1] - 2026-10-25
+
+### Added
+
+- An empty chat now suggests three first tasks for that coworker. One click puts the task in
+  the message box.
+- You can decline when a coworker asks you to take over the browser, for example to log in.
+- Approvals for money, outside messages, publishing or deleting have a red edge.
+
+### Changed
+
+- Approval requests are in plain English ("Asha wants to save a file"). They list the files and
+  the place, and fold the exact command under "Technical details".
+- Sahkarmi's own tools, such as saving a memory, no longer ask for permission as commands.
+- Memory screen rebuilt: matches the app, uses plain words, is translated, and has a proper
+  window that Esc closes.
+- An idle coworker's status reads "Available", so it no longer clashes with "Free model".
+
+### Fixed
+
+- Replies no longer disappear after you switch a coworker to a different AI provider.
+- Antigravity helper programs now close with the app. Before, dozens could stay running and
+  use a lot of memory.
+- Stop now ends a task that is waiting for your approval.
+- A failed message that is resent automatically no longer appears several times.
+- The model menu in the header closes with Esc or a click outside it.
+- The selected option is visible again in Settings, Routines and Schedules.
+- The unread count on pinned coworkers shows as a badge.
+- The message box shows a single focus outline.
+- The app window no longer shifts and leaves a blank strip.
+- A coworker's text after a tool step starts on a new line instead of joining the previous sentence.
+- The task counts stay on one line in narrow windows.
+
 ## [0.8.0] - 2026-10-25
 
 ### Added

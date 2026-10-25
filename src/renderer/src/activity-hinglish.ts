@@ -116,7 +116,7 @@ export const SECONDARY: Record<ActivityPhase, string[]> = {
     "Intermediate results check ho rahe hain…",
   ],
   waiting_approval: [
-    "Approvals mein request dekh kar manzoor ya reject karein.",
+    "Neeche di gayi request ko manzoor ya reject karein.",
     "Aapke faisle tak yeh kaam ruka hua hai.",
   ],
   waiting_user: ["Upar diye sawaal ka jawab dein, phir kaam aage badhega."],
@@ -223,7 +223,7 @@ export const TOOL_FAILED_SECONDARY = [
 
 /** Short labels used across the app (status dots, tool cards, task queue, thinking). */
 export const LABELS = {
-  statusIdle: "Free hai",
+  statusIdle: "Available hai",
   statusWorking: "Kaam chal raha hai",
   statusWaiting: "Aapka intezaar hai",
   statusError: "Dhyan dijiye",
