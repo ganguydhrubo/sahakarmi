@@ -7,6 +7,7 @@ import {
   onCleanup,
   onMount,
   Show,
+  untrack,
 } from "solid-js";
 import type {
   AgentEvent,
@@ -166,6 +167,8 @@ interface MediaPreview {
 type RightPanelMode = "none" | "browser" | "settings";
 
 const EMPTY_DRAFT: ComposerDraft = { text: "", attachments: [], replyToMessageId: null };
+/** A long chat opens with its latest messages only; "Show earlier" adds this many at a time. */
+export const MESSAGE_WINDOW = 80;
 const ONBOARDING_CHOICES = ["Accounts", "Sales", "Support", "Something else"];
 const SETTINGS_PANEL_STORAGE_KEY = "sahkarmi:settings-panel-width";
 const SETTINGS_PANEL_DEFAULT = 296;
@@ -743,6 +746,9 @@ function sameTools(left: ToolCallSummary[] | null, right: ToolCallSummary[] | nu
   return left.every((tool, index) => tool === right[index]);
 }
 
+/** Window event the app sends to bring an older message into the rendered window. */
+export const REVEAL_MESSAGE_EVENT = "sahkarmi:reveal-message";
+
 /** Notes the app sends a coworker for the owner (approval results, browser hand-back). */
 const SYSTEM_NOTE =
   /^\[(Approval (APPROVED|REJECTED)|Browser handed back|Browser takeover declined|Secure input (entered|declined))\]/;
@@ -1181,6 +1187,41 @@ export function Conversation(props: ConversationProps) {
     const id = props.bot?.id;
     return id ? (drafts()[id] ?? EMPTY_DRAFT) : EMPTY_DRAFT;
   });
+  // Messages hidden above the window, per coworker. Fixed when a chat first loads, so new
+  // messages extend the window instead of pushing older ones out while you read.
+  const [hiddenBefore, setHiddenBefore] = createSignal<Record<string, number>>({});
+  createEffect(() => {
+    const botId = props.bot?.id;
+    const count = props.messages.length;
+    if (!botId || !props.loaded || count === 0) return;
+    if (untrack(hiddenBefore)[botId] !== undefined) return;
+    setHiddenBefore((current) => ({ ...current, [botId]: Math.max(0, count - MESSAGE_WINDOW) }));
+  });
+  const hiddenCount = createMemo(() =>
+    Math.min(hiddenBefore()[props.bot?.id ?? ""] ?? 0, props.messages.length),
+  );
+  const shownMessages = createMemo(() =>
+    hiddenCount() === 0 ? props.messages : props.messages.slice(hiddenCount()),
+  );
+  function showEarlier(toIndex?: number) {
+    const botId = props.bot?.id;
+    if (!botId || !scrollElement) return;
+    const element = scrollElement;
+    const fromBottom = element.scrollHeight - element.scrollTop;
+    setHiddenBefore((current) => ({
+      ...current,
+      [botId]: Math.max(
+        0,
+        toIndex === undefined ? hiddenCount() - MESSAGE_WINDOW : Math.min(hiddenCount(), toIndex),
+      ),
+    }));
+    // Keep what you were reading in place while older messages appear above it.
+    if (toIndex === undefined) {
+      requestAnimationFrame(() => {
+        element.scrollTop = element.scrollHeight - fromBottom;
+      });
+    }
+  }
   const messagesById = createMemo(
     () => new Map(props.messages.map((message) => [message.id, message] as const)),
   );
@@ -1441,6 +1482,14 @@ export function Conversation(props: ConversationProps) {
   };
 
   onMount(() => {
+    // Search asks for a message that may be above the window: show from a little before it.
+    const revealMessage = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      const index = props.messages.findIndex((message) => message.id === id);
+      if (index >= 0 && index < hiddenCount()) showEarlier(Math.max(0, index - 5));
+    };
+    window.addEventListener(REVEAL_MESSAGE_EVENT, revealMessage);
+    onCleanup(() => window.removeEventListener(REVEAL_MESSAGE_EVENT, revealMessage));
     const unsubscribeImport = window.sahkarmi.agent.onAttachmentImport((event) => {
       if (event.type === "started") {
         const botId = props.bot?.id;
@@ -2468,12 +2517,17 @@ export function Conversation(props: ConversationProps) {
               </Show>
             </article>
           </Show>
-          <For each={props.messages}>
+          <Show when={hiddenCount() > 0}>
+            <button type="button" class="show-earlier" onClick={() => showEarlier()}>
+              {t("showEarlier", { count: String(Math.min(MESSAGE_WINDOW, hiddenCount())) })}
+            </button>
+          </Show>
+          <For each={shownMessages()}>
             {(message, index) => {
               const animateEntrance = message.animate === true && markMessageSeen(message.id);
               if (message.kind === "tool" && message.tool) {
                 // Recomputed as tool calls stream in: <For> maps each row only once.
-                const run = createMemo(() => toolRunAt(props.messages, index()), undefined, {
+                const run = createMemo(() => toolRunAt(shownMessages(), index()), undefined, {
                   equals: sameTools,
                 });
                 return (

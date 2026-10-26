@@ -11960,3 +11960,22 @@ fieldset.memory-filters {
     animation: none;
   }
 }
+
+.show-earlier {
+  display: block;
+  margin: 4px auto 12px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  opacity: 0.8;
+  cursor: pointer;
+}
+
+.show-earlier:hover,
+.show-earlier:focus-visible {
+  opacity: 1;
+}

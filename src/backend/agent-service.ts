@@ -1111,7 +1111,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       void this.ensureProvider(provider).catch(() => undefined);
     } else if (!this.#clientForBot(bot) && this.#initialized) {
       // A missing CLI must not break the thread view; the provider status explains it.
-      await this.ensureProvider(provider).catch(() => undefined);
+      const start = this.ensureProvider(provider).catch(() => undefined);
+      // Already known to be missing or signed out: show the saved chat now and check again
+      // in the background, instead of making every open of this chat wait for a start attempt.
+      const known = this.#status.providers?.find((candidate) => candidate.id === provider)?.state;
+      if (known !== "not-installed" && known !== "sign-in-required") await start;
     }
     if (provider === "antigravity" && this.#clients.has(provider)) this.#geminiIdle.touch();
     const client = this.#clientForBot(bot) ?? dormant ?? null;

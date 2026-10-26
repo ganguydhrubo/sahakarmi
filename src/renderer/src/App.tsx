@@ -46,7 +46,7 @@ import type {
 import type { MarketplaceAgent } from "../../shared/marketplace";
 import { vocab } from "./activity-vocab";
 import { ApprovalsView } from "./components/ApprovalsView";
-import { Conversation } from "./components/Conversation";
+import { Conversation, REVEAL_MESSAGE_EVENT } from "./components/Conversation";
 import { GlobalSearch } from "./components/GlobalSearch";
 import { InitialSetup } from "./components/InitialSetup";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./components/PanelResizer";
@@ -775,6 +775,8 @@ export function App() {
         setTimeout(() => element.classList.remove("message-entry-highlight"), 2400);
         return;
       }
+      // A long chat renders only its latest messages: ask it to show this one too.
+      window.dispatchEvent(new CustomEvent(REVEAL_MESSAGE_EVENT, { detail: messageId }));
       if (attempts++ < 20) setTimeout(find, 120);
     };
     setTimeout(find, 60);
@@ -1566,11 +1568,18 @@ function botMessagesEqual(left: BotMessage, right: BotMessage): boolean {
     left.senderBotId === right.senderBotId &&
     left.replyToMessageId === right.replyToMessageId &&
     left.reaction === right.reaction &&
-    JSON.stringify(left.attachments) === JSON.stringify(right.attachments) &&
-    JSON.stringify(left.exchange) === JSON.stringify(right.exchange) &&
-    JSON.stringify(left.items) === JSON.stringify(right.items) &&
-    JSON.stringify(left.tool) === JSON.stringify(right.tool)
+    sameJson(left.attachments, right.attachments) &&
+    sameJson(left.exchange, right.exchange) &&
+    sameJson(left.items, right.items) &&
+    sameJson(left.tool, right.tool)
   );
+}
+
+/** Most messages have none of these fields: skip serialising them on every snapshot. */
+function sameJson(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return false;
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function retainThinkingMessages(previous: BotMessage[], next: BotMessage[]): BotMessage[] {

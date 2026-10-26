@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACP_AGENT_PROVIDERS, type AgentEvent } from "../shared/ipc";
+import { ACP_AGENT_PROVIDERS, type AgentEvent, type ConversationSnapshot } from "../shared/ipc";
 import {
   AgentService,
   isNoisyDiagnostic,
@@ -608,10 +608,12 @@ describe.sequential("AgentService", () => {
     ]);
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
+    // The plan lives on the live snapshot; a fast turn may end before a read, so watch events.
+    const planned = planEvents(service);
     await service.initialize();
     await service.sendMessage({ botId: "arjun-research", text: "Reconcile" });
-    await waitFor(async () => Boolean((await service?.readConversation("arjun-research"))?.plan));
-    const snapshot = await service.readConversation("arjun-research");
+    await waitFor(() => planned.length > 0);
+    const snapshot = planned[0];
     expect(snapshot.plan).toEqual({
       turnId: snapshot.activeTurnId,
       explanation: "Three steps",
@@ -637,14 +639,16 @@ describe.sequential("AgentService", () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
+    const planned = planEvents(service);
     await service.sendMessage({ botId: "arjun-research", text: "Reconcile the bank" });
-    await waitFor(async () => Boolean((await service?.readConversation("arjun-research"))?.plan));
-    const snapshot = await service.readConversation("arjun-research");
-    expect(snapshot.plan?.steps).toEqual([
+    await waitFor(() => planned.length > 0);
+    expect(planned[0].plan?.steps).toEqual([
       { text: "Collect bank statements", status: "completed" },
       { text: "Match entries", status: "in_progress" },
     ]);
-    expect(snapshot.messages.some((message) => message.tool)).toBe(false);
+    expect(planned.some((snapshot) => snapshot.messages.some((message) => message.tool))).toBe(
+      false,
+    );
   });
 
   it("never sends streamed text again after a snapshot that already holds it", async () => {
@@ -834,6 +838,22 @@ describe.sequential("AgentService", () => {
       model: "gpt-5.6-luna",
       threadId: "thread-codex",
     });
+  });
+
+  it("opens a chat at once when its provider is known to be missing", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await store.getOrCreate("chief");
+    await store.updateBot({ botId: "chief", model: "claude-sonnet-5" });
+    expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
+      "not-installed",
+    );
+    // A start attempt that never ends must not hold the chat back.
+    const ensure = vi.spyOn(service, "ensureProvider").mockReturnValue(new Promise(() => {}));
+    await expect(service.readConversation("chief")).resolves.toMatchObject({ botId: "chief" });
+    expect(ensure).toHaveBeenCalledWith("claude");
+    ensure.mockRestore();
   });
 
   it("starts the second provider when an agent selects its model", async () => {
@@ -1403,6 +1423,15 @@ describe.sequential("AgentService", () => {
     expect(service.listQueue("chief").deliveries[1]?.status).toBe("completed");
   }, 70_000);
 });
+
+/** Every conversation update for this service that carries a plan, in order. */
+function planEvents(target: AgentService): ConversationSnapshot[] {
+  const seen: ConversationSnapshot[] = [];
+  target.on("event", (event: AgentEvent) => {
+    if (event.type === "conversation" && event.snapshot.plan) seen.push(event.snapshot);
+  });
+  return seen;
+}
 
 function stores(): { store: BotStore; mailbox: MailboxStore } {
   const store = new BotStore(join(root, "user-data"), join(root, "home"));
