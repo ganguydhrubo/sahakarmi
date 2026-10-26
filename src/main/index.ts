@@ -37,6 +37,7 @@ import {
   setToolsDirectory,
 } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
+import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
 import { MailboxStore } from "../backend/mailbox-store";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -911,6 +912,49 @@ function registerVoiceHandlers(voice: VoiceService): void {
   });
 }
 
+function registerGeminiAccountHandlers(
+  accounts: GeminiAccountStore,
+  setup: ProviderSetup,
+  service: AgentService,
+): void {
+  const accountId = (value: unknown) => {
+    if (typeof value !== "string" || !value || value.length > 64) {
+      throw new Error("Unknown Google account.");
+    }
+    return value;
+  };
+  // Sign-ins run in the background; their progress reaches the Gemini row as setup events.
+  const signIn = (id: string) => {
+    if (id === DEFAULT_GEMINI_ACCOUNT_ID) void setup.connect("antigravity");
+    else void setup.signInGeminiAccount(accounts.homeOf(id));
+  };
+  handleTrusted(IPC_CHANNELS.geminiAccountsList, () => accounts.list());
+  handleTrusted(IPC_CHANNELS.geminiAccountsAdd, async () => {
+    signIn(await accounts.add());
+    return accounts.list();
+  });
+  handleTrusted(IPC_CHANNELS.geminiAccountsSignIn, async (value: unknown) => {
+    const id = accountId(value);
+    accounts.homeOf(id);
+    signIn(id);
+    return accounts.list();
+  });
+  handleTrusted(IPC_CHANNELS.geminiAccountsUse, async (value: unknown) => {
+    const id = accountId(value);
+    const changed = accounts.activeId() !== id;
+    await accounts.setActive(id);
+    if (changed) void service.switchGeminiAccount().catch(() => undefined);
+    return accounts.list();
+  });
+  handleTrusted(IPC_CHANNELS.geminiAccountsRemove, async (value: unknown) => {
+    const id = accountId(value);
+    const wasActive = accounts.activeId() === id;
+    await accounts.remove(id);
+    if (wasActive) void service.switchGeminiAccount().catch(() => undefined);
+    return accounts.list();
+  });
+}
+
 function registerProviderSetupHandlers(setup: ProviderSetup): void {
   const provider = (value: unknown) => {
     if (!isAgentProvider(value)) throw new Error("Unknown provider.");
@@ -1045,6 +1089,16 @@ if (!hasSingleInstanceLock) {
         permissions,
       );
       const service = agentService;
+      const geminiAccounts = new GeminiAccountStore(app.getPath("userData"));
+      await geminiAccounts.initialize().catch((error) => {
+        appLog.write(
+          "error",
+          "Google account list unreadable; using the first account",
+          String(error),
+        );
+      });
+      service.setGeminiAccounts(geminiAccounts);
+      service.on("log", (message) => appLog.write("info", message));
       const usage = new UsageService(app.getPath("userData"));
       await usage.initialize().catch((error) => {
         appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
@@ -1108,6 +1162,7 @@ if (!hasSingleInstanceLock) {
       });
       service.on("event", forwardAgentEvent);
       const refreshOnWake = () => {
+        service.wakeIdleProviders();
         void service.refreshModels();
         void updateService?.checkOnWake();
         void aiRuntimeService?.check();
@@ -1180,6 +1235,7 @@ if (!hasSingleInstanceLock) {
         }
       });
       registerProviderSetupHandlers(providerSetup);
+      registerGeminiAccountHandlers(geminiAccounts, providerSetup, service);
       voiceService = new VoiceService({ userDataPath: app.getPath("userData") });
       await voiceService.initialize().catch((error) => {
         appLog.write("error", "voice settings unreadable; using defaults", String(error));

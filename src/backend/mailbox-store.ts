@@ -81,6 +81,8 @@ interface EnqueueInput {
 export interface DeliveryContext {
   delivery: QueueDelivery;
   managedAttachments: Array<AttachmentSummary & { path: string }>;
+  /** Sent again after a failure (another model or account): the failed copy stays hidden. */
+  retried?: boolean;
 }
 
 export interface ExportedAttachmentFile {
@@ -695,6 +697,7 @@ export class MailboxStore {
     const message = this.#requireMessage(delivery.messageId);
     return {
       delivery: this.#publicDelivery(delivery),
+      retried: delivery.retried === true,
       managedAttachments: message.attachments.map((attachment) => ({
         ...toAttachmentSummary(attachment),
         path: attachment.path,

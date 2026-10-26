@@ -89,6 +89,8 @@ import {
   snapshotFromThread,
   sortConversationMessages,
 } from "./conversation-snapshots";
+import type { GeminiAccountSource } from "./gemini-accounts";
+import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
 import { ComposioSecurityGuard } from "./integrations/composio-security";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
@@ -123,6 +125,14 @@ import type { UsageService } from "./usage-service";
 
 interface AgentServiceEvents {
   event: [event: AgentEvent];
+  /** Timings and housekeeping for the app log; never shown to the owner. */
+  log: [message: string];
+}
+
+interface StartedClient {
+  client: AgentClient;
+  cli: CodexCliInfo | ClaudeCliInfo | AcpCliInfo;
+  launchedAt: number;
 }
 
 interface PendingPrompt {
@@ -316,6 +326,23 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #cli = new Map<AgentProvider, CodexCliInfo | ClaudeCliInfo | AcpCliInfo>();
   readonly #accounts = new Map<AgentProvider, AccountReadResult["account"]>();
   readonly #providerStarts = new Map<AgentProvider, Promise<void>>();
+  /**
+   * Gemini's server stopped after a quiet spell (see #geminiIdle). Kept so a coworker's chat can
+   * still be read from Sahkarmi's own transcript while the server starts again.
+   */
+  readonly #dormantClients = new Map<AgentProvider, AgentClient>();
+  /** One thread open (start or resume) per coworker at a time: a pre-warm and a send share it. */
+  readonly #threadOpens = new Map<string, Promise<string>>();
+  #geminiAccounts: GeminiAccountSource | null = null;
+  #geminiRotation: GeminiRotation | null = null;
+  /** The Google account the running Gemini server was started with. */
+  #geminiClientAccount: string | null = null;
+  /** When Google last reported a quota or rate limit (stderr only; the turn just ends empty). */
+  #geminiQuotaAt = 0;
+  readonly #geminiIdle = new IdleWatch({
+    isBusy: () => this.#providerBusy("antigravity") || this.#providerStarts.has("antigravity"),
+    onIdle: () => this.#sleepProvider("antigravity"),
+  });
   #preferredProvider: AgentProvider;
   #initialized = false;
   #stopping = false;
@@ -376,6 +403,35 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Local usage ledger fed by provider notifications (see UsageService). */
   setUsageService(usage: UsageService): void {
     this.#usage = usage;
+  }
+
+  /** The owner's Google accounts for Gemini: which one to start on, and where to go at a limit. */
+  setGeminiAccounts(accounts: GeminiAccountSource): void {
+    this.#geminiAccounts = accounts;
+    this.#geminiRotation = new GeminiRotation(accounts);
+  }
+
+  /**
+   * The owner chose another Google account for Gemini (or removed the one in use): restart
+   * Google's server on it. Turns running on the old account end, as with any restart.
+   */
+  async switchGeminiAccount(): Promise<void> {
+    if (!this.#initialized) return;
+    if (!this.#clients.has("antigravity") && !this.#providerStarts.has("antigravity")) {
+      // Not running (never connected, or asleep): the next start uses the new account.
+      if (this.#dormantClients.has("antigravity"))
+        void this.ensureProvider("antigravity").catch(() => undefined);
+      return;
+    }
+    await this.#restartProvider("antigravity");
+  }
+
+  /** The app came to the front: wake a provider that was stopped while unused. */
+  wakeIdleProviders(): void {
+    if (!this.#initialized || this.#stopping) return;
+    for (const provider of this.#dormantClients.keys()) {
+      void this.ensureProvider(provider).catch(() => undefined);
+    }
   }
 
   async #createOrUpdateRoutine(senderBotId: string, raw: unknown): Promise<string> {
@@ -525,7 +581,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     for (const provider of AGENT_PROVIDERS) {
       if (this.#stopping) return;
       const busy = this.#providerBusy(provider);
-      if (busy || this.#providerStarts.has(provider)) continue;
+      // Asleep after a quiet spell: a background refresh must not wake it (using it does).
+      if (busy || this.#providerStarts.has(provider) || this.#dormantClients.has(provider))
+        continue;
       try {
         const latest = await resolvers[provider]();
         if (this.#stopping) return;
@@ -869,6 +927,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   async stop(): Promise<void> {
     this.#modelRefresh.stop();
+    this.#geminiIdle.cancel();
+    this.#dormantClients.clear();
     this.#stopping = true;
     this.#flushDeliverables();
     this.#initialized = false;
@@ -898,11 +958,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (cached?.activeTurnId) return structuredClone(cached);
     const revisionAtStart = cached?.revision ?? 0;
 
-    if (!this.#clientForBot(bot) && this.#initialized) {
+    const provider = providerForBot(bot);
+    const dormant = this.#clientForBot(bot) ? null : this.#dormantClients.get(provider);
+    if (dormant && this.#initialized) {
+      // Asleep after a quiet spell: wake it in the background and show the chat from
+      // Sahkarmi's own transcript meanwhile (that read needs no running server).
+      void this.ensureProvider(provider).catch(() => undefined);
+    } else if (!this.#clientForBot(bot) && this.#initialized) {
       // A missing CLI must not break the thread view; the provider status explains it.
-      await this.ensureProvider(providerForBot(bot)).catch(() => undefined);
+      await this.ensureProvider(provider).catch(() => undefined);
     }
-    const client = this.#clientForBot(bot);
+    if (provider === "antigravity" && this.#clients.has(provider)) this.#geminiIdle.touch();
+    const client = this.#clientForBot(bot) ?? dormant ?? null;
     if (!bot.threadId || !client || this.#status.phase !== "ready") {
       const snapshot = this.#ensureSnapshot(botId, bot.threadId);
       this.#syncMailboxMessages(snapshot);
@@ -1160,34 +1227,42 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const startOrder = [...requestedProviders].sort(
       (left, right) => Number(left === "antigravity") - Number(right === "antigravity"),
     );
+    // ...but its process is launched first: most of that minute is the server unpacking itself,
+    // which then runs while the other providers start instead of after them.
+    let early: Promise<StartedClient> | null =
+      startOrder.length > 1 &&
+      startOrder.includes("antigravity") &&
+      !this.#clients.has("antigravity")
+        ? this.#launchClient("antigravity")
+        : null;
+    early?.catch(() => undefined);
+    // A coworker that needs Gemini meanwhile waits for this start instead of launching another.
+    let finishEarly: () => void = () => undefined;
+    const earlyStart = early
+      ? new Promise<void>((resolve) => {
+          finishEarly = resolve;
+        })
+      : null;
+    if (earlyStart) this.#providerStarts.set("antigravity", earlyStart);
+    const releaseEarly = () => {
+      // Left early (Sahkarmi is stopping): the process launched ahead must not outlive it.
+      if (early) void early.then(({ client }) => client.stop()).catch(() => undefined);
+      early = null;
+      finishEarly();
+      if (earlyStart && this.#providerStarts.get("antigravity") === earlyStart) {
+        this.#providerStarts.delete("antigravity");
+      }
+    };
     for (const provider of startOrder) {
       if (this.#clients.has(provider)) continue;
       let client: AgentClient | null = null;
       let cli: CodexCliInfo | ClaudeCliInfo | AcpCliInfo | null = null;
       const finishStart = this.#announceEarlyReady(provider, providerStatuses, requestedProviders);
       try {
-        const transcripts = join(this.#store.userDataPath, "acp-transcripts");
-        if (provider === "codex") {
-          cli = await resolveCodexCli();
-          client = new CodexAppServerClient(cli.executable, this.#requestTimeoutMs);
-        } else if (provider === "claude") {
-          cli = await resolveClaudeCli();
-          client = new ClaudeAgentClient(cli);
-        } else if (provider === "antigravity") {
-          const antigravity = await resolveAntigravityCli();
-          cli = antigravity;
-          client = createAntigravityClient(antigravity, transcripts);
-        } else if (isAcpAgentProvider(provider)) {
-          const agent = await resolveAcpAgentCli(provider);
-          cli = agent;
-          client = createAcpAgentClient(provider, agent, transcripts);
-        } else {
-          const opencode = await resolveOpenCodeCli();
-          cli = opencode;
-          client = createOpenCodeClient(opencode, transcripts);
-        }
-        this.#bindClient(client);
-        client.start();
+        const launch = provider === "antigravity" && early ? early : this.#launchClient(provider);
+        if (provider === "antigravity") early = null;
+        const started = await launch;
+        ({ client, cli } = started);
         await client.request("initialize", {
           clientInfo: { name: "sahkarmi", title: "Sahkarmi", version: "0.1.0" },
           capabilities: { experimentalApi: true, mcpServerOpenaiFormElicitation: true },
@@ -1213,11 +1288,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         }
         if (this.#stopping) {
           await client.stop().catch(() => undefined);
+          releaseEarly();
           return;
         }
         this.#cli.set(provider, cli);
         this.#clients.set(provider, client);
+        this.#dormantClients.delete(provider);
         this.#accounts.set(provider, account.account);
+        if (provider === "antigravity") {
+          this.emit("log", `antigravity ready ${Date.now() - started.launchedAt} ms after launch`);
+          this.#geminiIdle.touch();
+        }
         setProviderStatus(providerStatuses, provider, {
           state: "available",
           version: cli.version,
@@ -1236,6 +1317,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // Show this provider's result right away instead of after every provider was tried.
       this.#setStatus({ providers: this.#mergeProviders(providerStatuses, requestedProviders) });
     }
+    releaseEarly();
 
     if (this.#stopping) return;
     if (this.#clients.size === 0) {
@@ -1280,6 +1362,105 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         this.#scheduleDrain(bot.id);
       }
     }
+    if (requestedProviders.includes("antigravity") && this.#clients.has("antigravity")) {
+      void this.#prewarmGemini();
+    }
+  }
+
+  /**
+   * Reopens the conversations of the most recently used Gemini coworkers in the background once
+   * Google's server is up, so the owner's next message goes straight to the model. Each open
+   * session keeps one of Google's helper processes alive, hence the small limit.
+   */
+  async #prewarmGemini(): Promise<void> {
+    const client = this.#clients.get("antigravity");
+    if (!client) return;
+    const bots = pickPrewarmBots(
+      this.#store.list(),
+      (bot) => providerForBot(bot) === "antigravity",
+      this.#loadedThreads,
+    );
+    for (const bot of bots) {
+      if (this.#stopping || this.#clients.get("antigravity") !== client) return;
+      const startedAt = Date.now();
+      try {
+        await this.#ensureThread(bot, client);
+        this.emit("log", `antigravity pre-warmed a conversation in ${Date.now() - startedAt} ms`);
+      } catch (error) {
+        this.emit("log", `antigravity pre-warm skipped: ${String(error)}`);
+      }
+    }
+  }
+
+  /** Stops a provider that has been unused for a while; it starts again when next needed. */
+  async #sleepProvider(provider: AgentProvider): Promise<void> {
+    const client = this.#clients.get(provider);
+    if (!client || this.#stopping || this.#providerStarts.has(provider)) return;
+    this.#clients.delete(provider);
+    this.#dormantClients.set(provider, client);
+    for (const bot of this.#store.list()) {
+      if (providerForBot(bot) === provider && bot.threadId)
+        this.#loadedThreads.delete(bot.threadId);
+    }
+    this.emit("log", `${provider} stopped after being unused; it starts again when needed`);
+    await client.stop().catch(() => undefined);
+  }
+
+  /** Stops a provider and starts it again (another Google account was chosen for Gemini). */
+  async #restartProvider(provider: AgentProvider): Promise<void> {
+    const running = this.#providerStarts.get(provider);
+    if (running) await running.catch(() => undefined);
+    const task = (async () => {
+      const old = this.#clients.get(provider);
+      this.#clients.delete(provider);
+      for (const bot of this.#store.list()) {
+        if (providerForBot(bot) === provider && bot.threadId) {
+          this.#loadedThreads.delete(bot.threadId);
+        }
+      }
+      await old?.stop().catch(() => undefined);
+      if (!this.#stopping) await this.#connect("restarting", [provider]);
+    })();
+    this.#providerStarts.set(provider, task);
+    try {
+      await task;
+    } finally {
+      if (this.#providerStarts.get(provider) === task) this.#providerStarts.delete(provider);
+    }
+  }
+
+  /** Finds a provider's program, builds its client and launches the process (no handshake yet). */
+  async #launchClient(provider: AgentProvider): Promise<StartedClient> {
+    const transcripts = join(this.#store.userDataPath, "acp-transcripts");
+    let client: AgentClient;
+    let cli: CodexCliInfo | ClaudeCliInfo | AcpCliInfo;
+    if (provider === "codex") {
+      cli = await resolveCodexCli();
+      client = new CodexAppServerClient(cli.executable, this.#requestTimeoutMs);
+    } else if (provider === "claude") {
+      cli = await resolveClaudeCli();
+      client = new ClaudeAgentClient(cli);
+    } else if (provider === "antigravity") {
+      const antigravity = await resolveAntigravityCli();
+      cli = antigravity;
+      this.#geminiClientAccount = this.#geminiAccounts?.activeId() ?? null;
+      client = createAntigravityClient(
+        antigravity,
+        transcripts,
+        this.#geminiAccounts?.activeGeminiHome() ?? null,
+      );
+    } else if (isAcpAgentProvider(provider)) {
+      const agent = await resolveAcpAgentCli(provider);
+      cli = agent;
+      client = createAcpAgentClient(provider, agent, transcripts);
+    } else {
+      const opencode = await resolveOpenCodeCli();
+      cli = opencode;
+      client = createOpenCodeClient(opencode, transcripts);
+    }
+    this.#bindClient(client);
+    client.start();
+    return { client, cli, launchedAt: Date.now() };
   }
 
   /**
@@ -1334,12 +1515,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   #bindClient(client: AgentClient): void {
-    client.on("notification", (notification) => this.#handleNotification(notification));
+    client.on("notification", (notification) => {
+      if (client.provider === "antigravity" && this.#clients.get("antigravity") === client) {
+        this.#geminiIdle.touch();
+      }
+      this.#handleNotification(notification);
+    });
     client.on("request", (request) => void this.#handleServerRequest(client, request));
     client.on("diagnostic", (message) => {
       const quota = quotaNotice(client.provider, message);
       if (quota) {
         const now = Date.now();
+        if (client.provider === "antigravity") this.#geminiQuotaAt = now;
         for (const botId of this.#botsWorkingOn(client.provider)) {
           if (now - (this.#quotaNoticeAt.get(botId) ?? 0) < QUOTA_NOTICE_INTERVAL_MS) continue;
           this.#quotaNoticeAt.set(botId, now);
@@ -1456,7 +1643,29 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return tools;
   }
 
+  /**
+   * One open per coworker at a time: a background pre-warm and the owner's first message share
+   * it instead of opening the same conversation twice. A failed pre-warm is simply retried.
+   */
   async #ensureThread(bot: BotSummary, client: AgentClient): Promise<string> {
+    const inflight = this.#threadOpens.get(bot.id);
+    if (inflight) {
+      try {
+        return await inflight;
+      } catch {
+        bot = this.#store.list().find((candidate) => candidate.id === bot.id) ?? bot;
+      }
+    }
+    const open = this.#openThread(bot, client);
+    this.#threadOpens.set(bot.id, open);
+    try {
+      return await open;
+    } finally {
+      if (this.#threadOpens.get(bot.id) === open) this.#threadOpens.delete(bot.id);
+    }
+  }
+
+  async #openThread(bot: BotSummary, client: AgentClient): Promise<string> {
     if (bot.threadId) {
       this.#threadToBot.set(bot.threadId, bot.id);
       if (!this.#loadedThreads.has(bot.threadId)) {
@@ -2826,6 +3035,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
     this.#attachDeliverables(botId, snapshot, turnId, latestAssistant);
     if (latestAssistant) {
+      if (status === "completed") this.#geminiRotation?.forget(botId);
       await this.#store.updatePreview(botId, previewText(latestAssistant.text));
       this.#emit({ type: "bots-changed", bots: this.#store.list() });
     } else if (
@@ -2840,8 +3050,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // Google's server answers a quota error with an "ok" and no text; a blank is not an answer.
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       const label = bot ? PROVIDER_LABELS[providerForBot(bot)] : "The AI";
+      const quotaJustHit = Date.now() - this.#geminiQuotaAt < GEMINI_QUOTA_WINDOW_MS;
       const fellBack = delivery
-        ? await this.#fallBackToFreeModel(botId, delivery, "sent back an empty reply")
+        ? (quotaJustHit && (await this.#rotateGeminiAccount(botId, delivery))) ||
+          (await this.#fallBackToFreeModel(botId, delivery, "sent back an empty reply"))
         : false;
       if (!fellBack) {
         this.#emitError(
@@ -2857,7 +3069,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       } else if (reason.includes(FREE_LIMIT_REACHED_HINT)) {
         await this.#fallBackToOtherFreeProvider(botId, delivery);
       } else if (/429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded/i.test(reason)) {
-        await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
+        if (!(await this.#rotateGeminiAccount(botId, delivery))) {
+          await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
+        }
       }
     }
     this.#lastTurnError.delete(botId);
@@ -3281,6 +3495,41 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    * why, and the same message is sent again there. Only once per message, and never when the
    * coworker already runs on the free model or that model is unavailable.
    */
+  /**
+   * A Gemini coworker's message hit Google's usage limit: move Gemini to the owner's next
+   * signed-in Google account, restart Google's server on it and send the message again there.
+   * Every account tried for this message is remembered, so the last one ends in the usual
+   * free-model fallback instead of a loop.
+   */
+  async #rotateGeminiAccount(botId: string, delivery: DeliveryContext): Promise<boolean> {
+    const rotation = this.#geminiRotation;
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!rotation || !bot || providerForBot(bot) !== "antigravity") return false;
+    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
+    if (delivery.managedAttachments.length) return false;
+    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    let plan: Awaited<ReturnType<GeminiRotation["plan"]>>;
+    try {
+      plan = await rotation.plan(botId, this.#geminiClientAccount);
+    } catch {
+      return false;
+    }
+    if (plan.kind === "none") return false;
+    this.#fallbackRetried.add(delivery.delivery.id);
+    this.#emitError(
+      "fallback_model",
+      `Google's limit for this account is used up, so Gemini moved to your next Google account and ${bot.name} is answering your message again there.`,
+      botId,
+    );
+    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
+    if (plan.kind === "switch") {
+      this.emit("log", "antigravity moved to the next Google account after a usage limit");
+      await this.#restartProvider("antigravity").catch(() => undefined);
+    }
+    await this.sendMessage({ botId, text: delivery.delivery.text });
+    return true;
+  }
+
   async #fallBackToFreeModel(
     botId: string,
     delivery: DeliveryContext,
@@ -3871,6 +4120,8 @@ export function previewText(markdown: string): string {
 }
 
 const QUOTA_NOTICE_INTERVAL_MS = 30_000;
+/** An empty Gemini reply this soon after Google reported a limit counts as that limit. */
+const GEMINI_QUOTA_WINDOW_MS = 2 * 60_000;
 
 /**
  * Google's Antigravity server reports a used-up quota only on stderr ("Error 429 ... Individual

@@ -59,8 +59,11 @@ export interface ProviderSetupOptions {
   arch?: string;
   /** Home folder (tests point it at a temporary one). */
   home?: string;
-  /** Builds the ACP client used for the Antigravity sign-in (tests supply a fake). */
-  antigravityClient?: (cli: AcpCliInfo) => AcpAgentClient;
+  /**
+   * Builds the ACP client used for the Antigravity sign-in (tests supply a fake). `geminiHome`
+   * is set when an extra Google account signs in (see gemini-accounts.ts).
+   */
+  antigravityClient?: (cli: AcpCliInfo, geminiHome: string | null) => AcpAgentClient;
 }
 
 interface ProviderSetupEvents {
@@ -507,7 +510,25 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
    * once), ask it whether it is signed in, and if not run its own "Log in with Google" sign-in,
    * which opens the Google page in the browser. No terminal, no password handled by Sahkarmi.
    */
-  async #connectAntigravity(methodId: "oauth-personal" | "gemini-api-key" = "oauth-personal") {
+  /**
+   * Signs in an extra Google account for Gemini. `home` is the account's own folder; Google's
+   * server keeps that sign-in under <home>/.gemini, apart from the first account's.
+   */
+  async signInGeminiAccount(home: string): Promise<ProviderSetupState> {
+    if (this.#get("antigravity").phase === "installing") return this.#get("antigravity");
+    this.cancel("antigravity");
+    try {
+      await this.#connectAntigravity("oauth-personal", home);
+    } catch (error) {
+      this.#set("antigravity", { phase: "failed", message: messageOf(error) });
+    }
+    return this.#get("antigravity");
+  }
+
+  async #connectAntigravity(
+    methodId: "oauth-personal" | "gemini-api-key" = "oauth-personal",
+    accountHome: string | null = null,
+  ) {
     const executable = await this.installAntigravity();
     const cli: AcpCliInfo = {
       executable,
@@ -522,8 +543,10 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       progress: null,
     });
     const transcripts = join(this.#options.toolsDirectory, "antigravity-sign-in");
+    const geminiHome = accountHome ? join(accountHome, ".gemini") : null;
     const client =
-      this.#options.antigravityClient?.(cli) ?? createAntigravityClient(cli, transcripts);
+      this.#options.antigravityClient?.(cli, geminiHome) ??
+      createAntigravityClient(cli, transcripts, geminiHome);
     this.#antigravitySignIn = client;
     const diagnostics: string[] = [];
     client.on("diagnostic", (message) => diagnostics.push(message));
@@ -552,13 +575,16 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
             "Google did not finish the sign-in. Click Connect to try again.",
         );
       }
-      await this.#noteAntigravityAccount(noted);
+      await this.#noteAntigravityAccount(noted, accountHome ?? this.#home());
     } finally {
       if (this.#antigravitySignIn === client) this.#antigravitySignIn = null;
       await client.stop().catch(() => undefined);
     }
-    await this.#options.recheck("antigravity");
-    const account = await readAntigravityAccount(this.#home());
+    // An extra account is only signed in here; Gemini moves to it when the owner picks it.
+    if (!accountHome) await this.#options.recheck("antigravity");
+    const account = accountHome
+      ? await readAntigravityAccount(accountHome, {})
+      : await readAntigravityAccount(this.#home());
     const who = [account.account?.email, account.account?.tier].filter(Boolean).join(" · ");
     this.#set("antigravity", {
       phase: "connected",
@@ -595,10 +621,13 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
   }
 
   /** Remembers which Google account and tier the sign-in reported, next to the server's own token. */
-  async #noteAntigravityAccount(noted: { email: string | null; tier: string | null } | null) {
+  async #noteAntigravityAccount(
+    noted: { email: string | null; tier: string | null } | null,
+    accountHome: string,
+  ) {
     if (!noted || (!noted.email && !noted.tier)) return;
     try {
-      const home = antigravityAcpHome(this.#home());
+      const home = antigravityAcpHome(accountHome);
       await mkdir(home, { recursive: true });
       await writeFile(join(home, ANTIGRAVITY_ACCOUNT_FILE), `${JSON.stringify(noted)}\n`, "utf8");
     } catch {

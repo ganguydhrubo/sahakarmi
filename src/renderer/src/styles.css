@@ -10419,6 +10419,54 @@ fieldset.memory-filters {
   margin: 0 0 0 54px;
 }
 
+.gemini-accounts {
+  display: grid;
+  margin-left: 54px;
+  justify-items: start;
+  gap: 6px;
+}
+
+.gemini-accounts .settings-meta {
+  margin: 0;
+}
+
+.gemini-account-list {
+  display: grid;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  list-style: none;
+}
+
+.gemini-account-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.gemini-account-name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-account-name small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.gemini-account-row .link-button,
+.gemini-accounts > .link-button {
+  font-size: 12.5px;
+}
+
 .provider-permissions-link {
   margin: 4px 0 0;
 }

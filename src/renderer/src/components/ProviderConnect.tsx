@@ -7,6 +7,7 @@ import type {
 } from "../../../shared/ipc";
 import { PROVIDER_CATALOG, type ProviderCatalogEntry } from "../../../shared/provider-catalog";
 import { t } from "../i18n";
+import { GeminiAccounts } from "./GeminiAccounts";
 import { ProviderLogo } from "./ProviderLogo";
 
 const BUSY: ProviderSetupState["phase"][] = [
@@ -161,6 +162,10 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
             </Show>
           </div>
         </div>
+
+        <Show when={id === "antigravity" && isOn()}>
+          <GeminiAccounts busy={busy()} />
+        </Show>
 
         <Show
           when={!isOn() && KEY_PLACEHOLDERS[id] && (rowProps.entry.kind !== "agent" || found(id))}

@@ -81,6 +81,12 @@ export interface AcpAgentConfig {
   env?: Record<string, string>;
   /** How long model discovery (a throwaway session/new) may take; Google's server needs longer. */
   modelListTimeoutMs?: number;
+  /**
+   * Read the model list once per server process (or from a session already open) instead of
+   * opening a throwaway session on every refresh. For agents whose sessions are expensive and
+   * cannot be closed (Google's server keeps a helper process per session until it stops).
+   */
+  reuseModelCatalog?: boolean;
 }
 
 interface ActiveTurn {
@@ -266,7 +272,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   }
 
   async request<T>(method: string, params: unknown): Promise<T> {
-    if (!this.#running) throw new Error(`${this.#config.label} is not running.`);
+    // Sahkarmi keeps its own transcript, so a chat can be read while the agent is stopped.
+    if (!this.#running && method !== "thread/read") {
+      throw new Error(`${this.#config.label} is not running.`);
+    }
     switch (method) {
       case "initialize": {
         const result = await this.#call<Record<string, unknown>>("initialize", {
@@ -292,22 +301,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       case "account/rateLimits/read":
         return { rateLimits: null, rateLimitsByLimitId: null } as T;
       case "model/list": {
-        let stale = false;
-        try {
-          await mkdir(this.#config.transcriptDir, { recursive: true });
-          // Metadata only: no prompt, tools, browser actions or model inference.
-          const result = await this.#call<Record<string, unknown>>(
-            "session/new",
-            { cwd: this.#config.transcriptDir, mcpServers: [] },
-            this.#config.modelListTimeoutMs ?? 5_000,
-          );
-          const options = readModelOptions(result);
-          if (options.length) this.#catalogOptions = options;
-          else stale = true;
-        } catch {
-          stale = true;
-          /* Preserve the last list during provider/network failures. */
-        }
+        const stale = await this.#discoverModels();
         return {
           stale,
           data: [
@@ -357,6 +351,34 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         return {} as T;
       default:
         throw new Error(`${this.#config.label} adapter does not implement ${method}.`);
+    }
+  }
+
+  /** Fills the model catalog; true when the list could not be read (the last one is kept). */
+  async #discoverModels(): Promise<boolean> {
+    if (this.#config.reuseModelCatalog) {
+      if (!this.#catalogOptions.length) {
+        const open = [...this.#sessions.values()].find((session) => session.modelOptions.length);
+        if (open) this.#catalogOptions = open.modelOptions;
+      }
+      // Already read from this server: no new session (see AcpAgentConfig.reuseModelCatalog).
+      if (this.#catalogOptions.length) return false;
+    }
+    try {
+      await mkdir(this.#config.transcriptDir, { recursive: true });
+      // Metadata only: no prompt, tools, browser actions or model inference.
+      const result = await this.#call<Record<string, unknown>>(
+        "session/new",
+        { cwd: this.#config.transcriptDir, mcpServers: [] },
+        this.#config.modelListTimeoutMs ?? 5_000,
+      );
+      const options = readModelOptions(result);
+      if (!options.length) return true;
+      this.#catalogOptions = options;
+      return false;
+    } catch {
+      /* Preserve the last list during provider/network failures. */
+      return true;
     }
   }
 

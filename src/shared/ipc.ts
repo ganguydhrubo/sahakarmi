@@ -83,6 +83,11 @@ export const IPC_CHANNELS = {
   providerSetupSetApiKey: "provider-setup:set-api-key",
   providerSetupCheck: "provider-setup:check",
   providerSetupEvent: "provider-setup:event",
+  geminiAccountsList: "gemini-accounts:list",
+  geminiAccountsAdd: "gemini-accounts:add",
+  geminiAccountsSignIn: "gemini-accounts:sign-in",
+  geminiAccountsUse: "gemini-accounts:use",
+  geminiAccountsRemove: "gemini-accounts:remove",
   usageOverview: "usage:overview",
   usageRefresh: "usage:refresh",
   usageClear: "usage:clear",
@@ -781,6 +786,30 @@ export interface ProviderSetupState {
   /** The provider's own sign-in link, shown in case the browser did not open. */
   url: string | null;
   progress: number | null;
+}
+
+/** One Google account Gemini (Antigravity) can use. */
+export interface GeminiAccount {
+  id: string;
+  email: string | null;
+  tier: string | null;
+  signedIn: boolean;
+  /** The account coworkers on Gemini use now. */
+  active: boolean;
+}
+
+export interface GeminiAccountsState {
+  accounts: GeminiAccount[];
+}
+
+export interface GeminiAccountsDesktopApi {
+  list: () => Promise<GeminiAccountsState>;
+  /** Adds a Google account and starts its sign-in; progress arrives as provider-setup events. */
+  add: () => Promise<GeminiAccountsState>;
+  signIn: (id: string) => Promise<GeminiAccountsState>;
+  /** Gemini coworkers use this account from now on (Google's server restarts on it). */
+  use: (id: string) => Promise<GeminiAccountsState>;
+  remove: (id: string) => Promise<GeminiAccountsState>;
 }
 
 export interface ProviderSetupDesktopApi {
@@ -1547,6 +1576,7 @@ export interface SahkarmiDesktopApi {
   approvals: ApprovalsDesktopApi;
   permissions: PermissionsDesktopApi;
   providerSetup: ProviderSetupDesktopApi;
+  geminiAccounts: GeminiAccountsDesktopApi;
   usage: UsageDesktopApi;
   features: FeaturesDesktopApi;
   business: BusinessDesktopApi;

@@ -227,6 +227,13 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.providerSetupEvent, handler);
     },
   },
+  geminiAccounts: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsList),
+    add: () => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsAdd),
+    signIn: (id) => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsSignIn, id),
+    use: (id) => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsUse, id),
+    remove: (id) => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsRemove, id),
+  },
   maintenance: {
     exportData: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportData),
     exportDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportDiagnostics),
