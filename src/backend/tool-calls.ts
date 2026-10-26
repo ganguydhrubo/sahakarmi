@@ -89,6 +89,8 @@ function toolKind(namespace: string | null, tool: string): ToolCallKind {
     name.includes("create_coworker")
   )
     return "coworker";
+  // Claude's ToolSearch looks up its own tools, not the web.
+  if (/(^|[._])tool_?search$/.test(name)) return "tool";
   if (name.includes("search") || name.includes("fetch")) return "web";
   if (/\b(bash|shell|exec)\b/.test(name)) return "command";
   if (/(read|write|edit|glob|grep)/.test(tool.toLowerCase())) return "file";

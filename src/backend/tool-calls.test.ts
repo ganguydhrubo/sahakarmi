@@ -43,6 +43,15 @@ describe("toolCallFromItem", () => {
     });
   });
 
+  it("does not count Claude's ToolSearch as a web action", () => {
+    expect(
+      toolCallFromItem({ type: "toolUse", id: "s", tool: "ToolSearch", arguments: {} }, true),
+    ).toMatchObject({ kind: "tool" });
+    expect(
+      toolCallFromItem({ type: "toolUse", id: "w", tool: "WebSearch", arguments: {} }, true),
+    ).toMatchObject({ kind: "web" });
+  });
+
   it("marks failures and clips long output", () => {
     const tool = toolCallFromItem(
       {
