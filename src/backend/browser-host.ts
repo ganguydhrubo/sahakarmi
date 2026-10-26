@@ -965,7 +965,8 @@ export function snapshotScript(revision: number): string {
     const elements = nodes.map((node, index) => {
       const ref = revision + ':' + index;
       node.setAttribute('data-sahkarmi-ref', ref);
-      const name = (node.getAttribute('aria-label') || node.getAttribute('title') || node.getAttribute('placeholder') || node.innerText || node.value || '').trim().slice(0, 500);
+      const secret = node instanceof HTMLInputElement && (node.type === 'password' || /one-time-code/.test(node.autocomplete));
+      const name = (node.getAttribute('aria-label') || node.getAttribute('title') || node.getAttribute('placeholder') || node.innerText || (secret ? '' : node.value) || '').trim().slice(0, 500);
       return {
         ref,
         tag: node.tagName.toLowerCase(),

@@ -252,7 +252,12 @@ export function VoiceRecorder(props: {
             </p>
           </Show>
           <Show when={phase() === "preview" || phase() === "sending"}>
-            <audio class="voice-audio" controls src={audioUrl() ?? undefined}>
+            <audio
+              class="voice-audio"
+              controls
+              src={audioUrl() ?? undefined}
+              onLoadedMetadata={(event) => revealRecordedDuration(event.currentTarget)}
+            >
               <track kind="captions" />
             </audio>
             <label class="voice-transcript">
@@ -338,4 +343,18 @@ export function VoiceRecorder(props: {
       </Show>
     </div>
   );
+}
+
+/**
+ * MediaRecorder WebM files carry no duration, so the player shows 0:00 until played. Seeking far
+ * past the end makes Chromium scan the file and learn the real length; then rewind to the start.
+ */
+export function revealRecordedDuration(audio: HTMLAudioElement) {
+  if (Number.isFinite(audio.duration)) return;
+  const rewind = () => {
+    audio.removeEventListener("durationchange", rewind);
+    if (Number.isFinite(audio.duration)) audio.currentTime = 0;
+  };
+  audio.addEventListener("durationchange", rewind);
+  audio.currentTime = Number.MAX_SAFE_INTEGER;
 }

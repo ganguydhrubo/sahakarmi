@@ -160,6 +160,8 @@ function configureContentSecurityPolicy(): void {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: sahkarmi-attachment: https:",
     "font-src 'self' data:",
+    // Voice-note previews play the just-recorded audio from a blob: URL made by the app itself.
+    "media-src 'self' blob:",
     `connect-src 'self'${developmentSources}`,
     "object-src 'none'",
     "frame-src 'self' sahkarmi-attachment:",
@@ -370,6 +372,23 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.browserDeclineTakeover, (note: unknown) =>
     service.declineBrowserTakeover(typeof note === "string" && note.trim() ? note : null),
+  );
+  handleTrusted(IPC_CHANNELS.browserPreview, (tabId: unknown) =>
+    browser.screenshot(requireString(tabId, "tabId")).catch(() => null),
+  );
+  handleTrusted(IPC_CHANNELS.secureInputList, () => service.listSecureInputs());
+  handleTrusted(IPC_CHANNELS.secureInputSubmit, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid secure input.");
+    return service.submitSecureInput(
+      requireString(input.id, "id"),
+      typeof input.value === "string" ? input.value : "",
+    );
+  });
+  handleTrusted(IPC_CHANNELS.secureInputDismiss, (id: unknown) =>
+    service.dismissSecureInput(requireString(id, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.secureInputTakeOver, (id: unknown) =>
+    service.takeOverSecureInput(requireString(id, "id")),
   );
 
   handleTrusted(IPC_CHANNELS.teamListWorkspaces, () => service.listWorkspaces());
