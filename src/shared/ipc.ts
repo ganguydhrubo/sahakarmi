@@ -126,6 +126,10 @@ export const IPC_CHANNELS = {
   composioConnectApp: "composio:connect-app",
   composioConnectionStatus: "composio:connection-status",
   composioDisconnectApp: "composio:disconnect-app",
+  telegramStatus: "telegram:status",
+  telegramSetToken: "telegram:set-token",
+  telegramSetCoworker: "telegram:set-coworker",
+  telegramUnpair: "telegram:unpair",
   voiceGetState: "voice:get-state",
   voiceInstall: "voice:install",
   voiceCancel: "voice:cancel",
@@ -1658,6 +1662,7 @@ export interface SahkarmiDesktopApi {
   orchestrator: OrchestratorDesktopApi;
   memory: MemoryDesktopApi;
   composio: ComposioDesktopApi;
+  telegram: TelegramDesktopApi;
   voice: VoiceDesktopApi;
 }
 
@@ -1700,6 +1705,26 @@ export interface ComposioConnectionStatus {
   connectionId: string;
   status: string;
   state: ComposioConnectionState;
+}
+
+/** Chatting with coworkers from Telegram, as Settings > Telegram shows it (never the token). */
+export interface TelegramStatus {
+  configured: boolean;
+  botUsername: string | null;
+  paired: boolean;
+  chatName: string | null;
+  /** The code to send as "/start <code>" while no chat is paired. */
+  pairingCode: string | null;
+  coworkerId: string | null;
+  running: boolean;
+  error: string | null;
+}
+
+export interface TelegramDesktopApi {
+  status: () => Promise<TelegramStatus>;
+  setToken: (token: string) => Promise<TelegramStatus>;
+  setCoworker: (botId: string) => Promise<TelegramStatus>;
+  unpair: () => Promise<TelegramStatus>;
 }
 
 export interface ComposioDesktopApi {

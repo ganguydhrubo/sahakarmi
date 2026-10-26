@@ -271,6 +271,12 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     disconnect: (connectionId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.composioDisconnectApp, { connectionId }),
   },
+  telegram: {
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.telegramStatus),
+    setToken: (token: string) => ipcRenderer.invoke(IPC_CHANNELS.telegramSetToken, { token }),
+    setCoworker: (botId: string) => ipcRenderer.invoke(IPC_CHANNELS.telegramSetCoworker, { botId }),
+    unpair: () => ipcRenderer.invoke(IPC_CHANNELS.telegramUnpair),
+  },
   voice: {
     getState: () => ipcRenderer.invoke(IPC_CHANNELS.voiceGetState),
     install: (modelId) => ipcRenderer.invoke(IPC_CHANNELS.voiceInstall, modelId),

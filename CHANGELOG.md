@@ -5,6 +5,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-26
+
 ### Added
 
 - Coworkers learn skills as they work. After a task that took several steps, a fix, or a
@@ -14,6 +16,12 @@ All notable changes to Sahkarmi are documented here. The project follows
   coworkers", where you can open or delete each one.
 - Coworkers can search earlier chats (their own, or the whole team's) to recall what was
   decided, sent or promised, instead of guessing.
+- Chat with your coworkers from Telegram. In Settings > Telegram, open @BotFather from the
+  button, paste the bot token, then tap "Pair in Telegram" and press Start; only that one chat
+  is answered. Your message goes into the coworker's normal queue, Telegram shows "typing..."
+  while it works, and its finished reply comes back to Telegram. A "Show me how" guide walks a
+  first-time user through all 7 steps with a picture for each. /coworkers lists them and /use switches. New approvals are announced there too (you
+  still allow or deny them in the app). Sahkarmi must be open on the computer.
 
 ### Fixed
 

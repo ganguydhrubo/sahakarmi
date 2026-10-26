@@ -49,6 +49,7 @@ import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
+import { TelegramBridge } from "../backend/telegram-bridge";
 import { UsageService } from "../backend/usage-service";
 import { VoiceService } from "../backend/voice/voice-service";
 import {
@@ -138,6 +139,7 @@ let updateService: UpdateService | null = null;
 let aiRuntimeService: AiRuntimeService | null = null;
 let scheduleStore: ScheduleStore | null = null;
 let routineStore: RoutineStore | null = null;
+let telegramBridge: TelegramBridge | null = null;
 let usageService: UsageService | null = null;
 let isQuitting = false;
 let shutdownStarted = false;
@@ -176,6 +178,17 @@ function configureContentSecurityPolicy(): void {
       },
     });
   });
+}
+
+function registerTelegramIpc(telegram: TelegramBridge): void {
+  handleTrusted(IPC_CHANNELS.telegramStatus, () => telegram.status());
+  handleTrusted(IPC_CHANNELS.telegramSetToken, (input: unknown) =>
+    telegram.setToken(isObject(input) && typeof input.token === "string" ? input.token : ""),
+  );
+  handleTrusted(IPC_CHANNELS.telegramSetCoworker, (input: unknown) =>
+    telegram.setCoworker(requireString(isObject(input) ? input.botId : null, "botId")),
+  );
+  handleTrusted(IPC_CHANNELS.telegramUnpair, () => telegram.unpair());
 }
 
 function registerIpcHandlers(
@@ -1301,6 +1314,21 @@ if (!hasSingleInstanceLock) {
         store,
         composioClient,
       );
+      const telegram = new TelegramBridge({
+        userDataPath: app.getPath("userData"),
+        agent: {
+          listBots: () => service.listBots(),
+          sendMessage: (input) => service.sendMessage(input),
+          readConversation: (botId) => service.readConversation(botId),
+          subscribe: (listener) => {
+            service.on("event", listener);
+            return () => service.off("event", listener);
+          },
+        },
+        log: (level, message, detail) => appLog.write(level, message, detail),
+      });
+      telegramBridge = telegram;
+      registerTelegramIpc(telegram);
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);
       void agentInitialization
@@ -1313,6 +1341,9 @@ if (!hasSingleInstanceLock) {
             });
           });
           routines.start(createRoutineExecutor(service));
+          void telegram
+            .initialize()
+            .catch((error) => appLog.write("error", "Telegram bridge did not start", error));
         })
         .catch((error) => {
           console.error("Unable to initialize the local agent backend:", error);
@@ -1418,6 +1449,7 @@ async function prepareForShutdown(): Promise<void> {
   routineStore?.stop();
   const cleanupTasks = Promise.all([
     browserHost?.destroy().catch(() => {}),
+    telegramBridge?.stop().catch(() => {}),
     agentService?.stop().catch(() => {}),
     usageService?.flush().catch(() => {}),
     voiceService?.dispose().catch(() => {}),
