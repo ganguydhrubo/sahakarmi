@@ -37,6 +37,7 @@ import type {
   RoutinesState,
   ScheduleCadence,
   ScheduledTask,
+  SecureInputRequest,
   UpdateBotInput,
   UpdateStatus,
   WorkspaceState,
@@ -220,6 +221,7 @@ export function App() {
     Record<string, { status: "completed" | "interrupted" | "failed"; at: number }>
   >({});
   const [takeover, setTakeover] = createSignal<BrowserTakeoverState>(EMPTY_TAKEOVER);
+  const [secureInputs, setSecureInputs] = createSignal<SecureInputRequest[]>([]);
   const pendingConversationChanges: Array<{ botId: string; revision: number; apply: () => void }> =
     [];
   const recentReplyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -260,6 +262,10 @@ export function App() {
     void window.sahkarmi.browser
       .getTakeover()
       .then(setTakeover)
+      .catch(() => undefined);
+    void window.sahkarmi.browser
+      .listSecureInputs()
+      .then(setSecureInputs)
       .catch(() => undefined);
     const unsubscribeUpdate = window.sahkarmi.update.onEvent(setUpdateStatus);
     const unsubscribeRuntime = window.sahkarmi.aiRuntime.onEvent(setRuntimeStatus);
@@ -421,6 +427,9 @@ export function App() {
         return;
       case "browser-takeover-changed":
         setTakeover(event.state);
+        return;
+      case "secure-inputs-changed":
+        setSecureInputs(event.requests);
         return;
       case "workspaces-changed":
         setWorkspaces(event.state);
@@ -1014,6 +1023,7 @@ export function App() {
     const waitingBots = new Set([
       ...pendingApprovals().map((approval) => approval.botId),
       ...takeover().requests.map((request) => request.botId),
+      ...secureInputs().map((request) => request.botId),
     ]);
     const statuses: Record<string, CoworkerStatus> = {};
     for (const bot of botList()) {
@@ -1270,6 +1280,20 @@ export function App() {
                     queue={activeQueue()}
                     schedules={schedules().filter((task) => task.botId === activeBot()?.id)}
                     takeover={takeover()}
+                    secureInputs={secureInputs().filter(
+                      (request) => request.botId === activeBot()?.id,
+                    )}
+                    onSubmitSecureInput={async (id, value) => {
+                      setSecureInputs(
+                        await window.sahkarmi.browser.submitSecureInput({ id, value }),
+                      );
+                    }}
+                    onTakeOverSecureInput={(id) =>
+                      void window.sahkarmi.browser.takeOverSecureInput(id).then(setSecureInputs)
+                    }
+                    onDismissSecureInput={(id) =>
+                      void window.sahkarmi.browser.dismissSecureInput(id).then(setSecureInputs)
+                    }
                     browserTabs={browserTabs()}
                     activeBrowserTabId={activeBrowserTabId()}
                     browserControlState={browserControlState()}

@@ -643,6 +643,19 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             (args) => call("sahkarmi", "request_browser_takeover", args),
           ),
           tool(
+            "request_secure_input",
+            "Ask the owner to type a password, OTP or PIN into one page field through a secure card in their chat. Pass tabId, revision and ref from a fresh snapshot. You never see the value; you are messaged when it is filled.",
+            {
+              tabId: z.string().min(1),
+              revision: z.number().int(),
+              ref: z.string().min(1),
+              kind: z.enum(["password", "otp", "pin", "other"]),
+              label: z.string().max(80).optional(),
+              submit: z.boolean().optional(),
+            },
+            (args) => call("sahkarmi", "request_secure_input", args),
+          ),
+          tool(
             "send_message",
             "Send an asynchronous message or local files to Sahkarmi coworkers.",
             {

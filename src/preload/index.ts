@@ -121,6 +121,11 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     handBack: (note) => ipcRenderer.invoke(IPC_CHANNELS.browserHandBack, note ?? null),
     declineTakeover: (note) =>
       ipcRenderer.invoke(IPC_CHANNELS.browserDeclineTakeover, note ?? null),
+    preview: (tabId) => ipcRenderer.invoke(IPC_CHANNELS.browserPreview, tabId),
+    listSecureInputs: () => ipcRenderer.invoke(IPC_CHANNELS.secureInputList),
+    submitSecureInput: (input) => ipcRenderer.invoke(IPC_CHANNELS.secureInputSubmit, input),
+    dismissSecureInput: (id) => ipcRenderer.invoke(IPC_CHANNELS.secureInputDismiss, id),
+    takeOverSecureInput: (id) => ipcRenderer.invoke(IPC_CHANNELS.secureInputTakeOver, id),
   },
   team: {
     listWorkspaces: () => ipcRenderer.invoke(IPC_CHANNELS.teamListWorkspaces),

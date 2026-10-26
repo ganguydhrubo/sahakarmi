@@ -297,6 +297,11 @@ describe("Sahkarmi connected desktop shell", () => {
           getTakeover: vi.fn().mockResolvedValue({ humanInControl: false, requests: [] }),
           takeOver: vi.fn().mockResolvedValue({ humanInControl: true, requests: [] }),
           handBack: vi.fn().mockResolvedValue({ humanInControl: false, requests: [] }),
+          preview: vi.fn().mockResolvedValue(null),
+          listSecureInputs: vi.fn().mockResolvedValue([]),
+          submitSecureInput: vi.fn().mockResolvedValue([]),
+          dismissSecureInput: vi.fn().mockResolvedValue([]),
+          takeOverSecureInput: vi.fn().mockResolvedValue([]),
         },
         team: {
           listWorkspaces: vi.fn().mockResolvedValue({
@@ -926,6 +931,40 @@ describe("Sahkarmi connected desktop shell", () => {
         note: null,
       }),
     );
+  });
+
+  it("asks for a password in a secure chat card and sends it only to the page", async () => {
+    const request = {
+      id: "si1",
+      botId: "chief",
+      kind: "password" as const,
+      label: "password",
+      origin: "https://mail.example.com",
+      tabId: "tab-1",
+      createdAt: "2026-10-26T10:00:00.000Z",
+    };
+    vi.mocked(window.sahkarmi.browser.listSecureInputs).mockResolvedValue([request]);
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const field = await screen.findByLabelText("Enter your password", { selector: "input" });
+    expect(field).toHaveAttribute("type", "password");
+    expect(screen.getByText("https://mail.example.com", { selector: "b" })).toBeInTheDocument();
+    expect(screen.getByText("This value is not added to chat.")).toBeInTheDocument();
+    const submit = screen.getByRole("button", { name: "Submit" });
+    expect(submit).toBeDisabled();
+
+    await fireEvent.input(field, { target: { value: "hunter2" } });
+    await fireEvent.click(submit);
+    await waitFor(() =>
+      expect(window.sahkarmi.browser.submitSecureInput).toHaveBeenCalledWith({
+        id: "si1",
+        value: "hunter2",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Enter your password", { selector: "input" })).toBeNull(),
+    );
+    expect(window.sahkarmi.agent.sendMessage).not.toHaveBeenCalled();
   });
 
   it("marks coworkers waiting for approval, working, or in error in the team list", async () => {
