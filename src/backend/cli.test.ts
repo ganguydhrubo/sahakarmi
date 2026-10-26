@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CodexCliError,
   managedOpenCodePaths,
+  orderClaudeCandidates,
   parseClaudeVersion,
   parseCodexVersion,
   resolveClaudeCli,
@@ -18,12 +19,14 @@ import {
 const originalAppData = process.env.APPDATA;
 const originalLocalAppData = process.env.LOCALAPPDATA;
 const originalPath = process.env.PATH;
+const originalUserProfile = process.env.USERPROFILE;
 const temporaryPaths: string[] = [];
 
 afterEach(async () => {
   restoreEnvironment("APPDATA", originalAppData);
   restoreEnvironment("LOCALAPPDATA", originalLocalAppData);
   restoreEnvironment("PATH", originalPath);
+  restoreEnvironment("USERPROFILE", originalUserProfile);
   await Promise.all(temporaryPaths.splice(0).map((path) => rm(path, { recursive: true })));
 });
 
@@ -95,7 +98,8 @@ describe("Windows CLI fallback paths", () => {
     async () => {
       await createWindowsNpmShims();
       await expect(resolveCodexCli()).resolves.toMatchObject({ version: "0.144.1" });
-      await expect(resolveClaudeCli()).resolves.toMatchObject({ version: "2.1.231" });
+      // No bundled binary here: the npm shim is the only Claude, so it must still start.
+      await expect(resolveClaudeCli([])).resolves.toMatchObject({ version: "2.1.231" });
     },
   );
 
@@ -126,6 +130,8 @@ async function createWindowsNpmShims(): Promise<void> {
     writeFile(join(npmDirectory, "claude.cmd"), "@echo off\r\necho 2.1.231 (Claude Code)\r\n"),
   ]);
   useIsolatedWindowsEnvironment(appData, join(root, "missing-local-app-data"));
+  // A real ~/.local/bin/claude.exe on this computer would rightly win over the shim.
+  process.env.USERPROFILE = join(root, "User Name");
 }
 
 function useIsolatedWindowsEnvironment(appData: string, localAppData: string): void {
@@ -138,3 +144,21 @@ function restoreEnvironment(name: string, value: string | undefined): void {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
 }
+
+describe("orderClaudeCandidates", () => {
+  it("never puts a Windows .cmd ahead of a real executable or the bundled binary", () => {
+    const found = [
+      "C:/Users/o/AppData/Roaming/npm/claude",
+      "C:/Users/o/AppData/Roaming/npm/claude.cmd",
+      "C:/Users/o/.local/bin/claude.exe",
+    ];
+    const bundled = ["C:/app/claude.exe"];
+    expect(orderClaudeCandidates(found, bundled, "win32")).toEqual([
+      found[0],
+      found[2],
+      bundled[0],
+      found[1],
+    ]);
+    expect(orderClaudeCandidates(found, bundled, "darwin")).toEqual([...found, ...bundled]);
+  });
+});

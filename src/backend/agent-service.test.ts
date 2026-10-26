@@ -51,6 +51,7 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_SERVER_REQUEST;
   delete process.env.SAHKARMI_FAKE_TOOL_ITEM;
   delete process.env.SAHKARMI_FAKE_SECOND_DELTA;
+  delete process.env.SAHKARMI_FAKE_PLAN;
   delete process.env.SAHKARMI_FAKE_TOOL_ITEM_DELAY;
   delete process.env.SAHKARMI_TEST_DELTA_BATCH;
   delete process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS;
@@ -596,6 +597,54 @@ describe.sequential("AgentService", () => {
       input: "ls ~/Sahkarmi/Shared",
       output: "invoices.xlsx",
     });
+  });
+
+  it("keeps the coworker's live plan on the conversation snapshot", async () => {
+    process.env.SAHKARMI_FAKE_PLAN = JSON.stringify([
+      { step: "Open the ledger", status: "completed" },
+      { step: "Match payments", status: "inProgress" },
+      { step: "  ", status: "pending" },
+      { step: "Send the report", status: "pending" },
+    ]);
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "arjun-research", text: "Reconcile" });
+    await waitFor(async () => Boolean((await service?.readConversation("arjun-research"))?.plan));
+    const snapshot = await service.readConversation("arjun-research");
+    expect(snapshot.plan).toEqual({
+      turnId: snapshot.activeTurnId,
+      explanation: "Three steps",
+      steps: [
+        { text: "Open the ledger", status: "completed" },
+        { text: "Match payments", status: "in_progress" },
+        { text: "Send the report", status: "pending" },
+      ],
+    });
+  });
+
+  it("shows the plan a coworker sends with sahkarmi.update_plan", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "update_plan",
+      arguments: {
+        steps: [
+          { step: "Collect bank statements", status: "completed" },
+          { step: "Match entries", status: "in_progress" },
+        ],
+      },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "arjun-research", text: "Reconcile the bank" });
+    await waitFor(async () => Boolean((await service?.readConversation("arjun-research"))?.plan));
+    const snapshot = await service.readConversation("arjun-research");
+    expect(snapshot.plan?.steps).toEqual([
+      { text: "Collect bank statements", status: "completed" },
+      { text: "Match entries", status: "in_progress" },
+    ]);
+    expect(snapshot.messages.some((message) => message.tool)).toBe(false);
   });
 
   it("never sends streamed text again after a snapshot that already holds it", async () => {
@@ -1479,6 +1528,7 @@ process.stdin.on("data", (chunk) => {
           write({ method: "thread/tokenUsage/updated", params: { threadId: message.params.threadId, turnId, tokenUsage: { total: { totalTokens }, last: { totalTokens }, modelContextWindow: 100000 } } });
         }
         write({ method: "item/agentMessage/delta", params: { threadId: message.params.threadId, turnId, itemId: "message-" + turnId, delta: "Streaming" } });
+        if (process.env.SAHKARMI_FAKE_PLAN) write({ method: "turn/plan/updated", params: { threadId: message.params.threadId, turnId, explanation: "Three steps", plan: JSON.parse(process.env.SAHKARMI_FAKE_PLAN) } });
         for (const respond of heldThreadReads.splice(0)) respond();
         if (process.env.SAHKARMI_FAKE_TOOL_CALL && turnCounter === 1) {
           const call = JSON.parse(process.env.SAHKARMI_FAKE_TOOL_CALL);

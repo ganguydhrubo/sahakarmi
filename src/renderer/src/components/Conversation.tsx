@@ -29,6 +29,7 @@ import type {
   ScheduleCadence,
   ScheduledTask,
   SecureInputRequest,
+  TurnPlan,
   UpdateBotInput,
 } from "../../../shared/ipc";
 import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
@@ -52,6 +53,7 @@ import { BrowserPageList, type BrowserStartAction, BrowserStartMenu } from "./Br
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
+import { PlanCard } from "./PlanCard";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { RichMarkdown } from "./RichMarkdown";
 import {
@@ -77,6 +79,8 @@ interface ConversationProps {
   takeover: BrowserTakeoverState;
   /** This coworker's password/OTP requests, answered in a secure card in the chat. */
   secureInputs?: SecureInputRequest[];
+  /** The coworker's own task list, shown while the turn it belongs to runs. */
+  plan?: TurnPlan | null;
   onSubmitSecureInput?: (id: string, value: string) => Promise<void>;
   onTakeOverSecureInput?: (id: string) => void;
   onDismissSecureInput?: (id: string) => void;
@@ -2651,6 +2655,13 @@ export function Conversation(props: ConversationProps) {
       </div>
 
       <div class="composer-wrap">
+        <Show
+          when={
+            props.plan?.steps.length && props.plan.turnId === props.activeTurnId ? props.plan : null
+          }
+        >
+          {(plan) => <PlanCard plan={plan()} />}
+        </Show>
         <Show when={awayFromLatest() && !props.agentPickerOpen}>
           <button
             type="button"

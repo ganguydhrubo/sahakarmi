@@ -1580,6 +1580,50 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(composer).toHaveTextContent("Next, check the invoices");
   });
 
+  it("pins the coworker's live plan above the message box during its turn", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const plan = {
+      turnId: "turn-plan",
+      explanation: null,
+      steps: [
+        { text: "Open the ledger", status: "completed" as const },
+        { text: "Match payments", status: "in_progress" as const },
+        { text: "Send the report", status: "pending" as const },
+      ],
+    };
+    emitAgentEvent?.({
+      type: "conversation",
+      snapshot: {
+        botId: "chief",
+        threadId: "thread-chief",
+        activeTurnId: "turn-plan",
+        revision: 7,
+        messages: [],
+        plan,
+      },
+    });
+    const card = await screen.findByRole("region", { name: "Plan" });
+    expect(card).toHaveTextContent("1 of 3 done");
+    expect(within(card).getByText("Match payments").closest("li")).toHaveClass(
+      "plan-step-in_progress",
+    );
+    await fireEvent.click(within(card).getByRole("button", { expanded: true }));
+    expect(card).toHaveTextContent("Match payments");
+    expect(within(card).queryByRole("list")).not.toBeInTheDocument();
+
+    emitAgentEvent?.({
+      type: "turn-completed",
+      botId: "chief",
+      threadId: "thread-chief",
+      turnId: "turn-plan",
+      status: "completed",
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Plan" })).not.toBeInTheDocument(),
+    );
+  });
+
   it("supports picker keyboard navigation and outside dismissal", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });

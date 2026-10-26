@@ -195,6 +195,94 @@ fi
     await client.stop();
   });
 
+  it("turns Claude's TodoWrite list into the turn's live plan", async () => {
+    const { client, notifications, output, threadId } = await createHarness();
+    const turnId = "44444444-4444-4444-8444-444444444444";
+    await startTurn(client, threadId, turnId);
+
+    output.push({
+      type: "assistant",
+      parent_tool_use_id: null,
+      session_id: threadId,
+      uuid: "todo-message",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "todo-1",
+            name: "TodoWrite",
+            input: {
+              todos: [
+                { content: "Read the invoices", status: "completed", activeForm: "Reading" },
+                { content: "Total by vendor", status: "in_progress", activeForm: "Totalling" },
+                { content: "Write the summary", status: "pending", activeForm: "Writing" },
+              ],
+            },
+          },
+        ],
+      },
+    } as unknown as SDKMessage);
+    output.push(resultMessage(threadId, turnId, "Done"));
+    await waitFor(() => notifications.some((event) => event.method === "turn/completed"));
+
+    expect(notifications).toContainEqual({
+      method: "turn/plan/updated",
+      params: {
+        threadId,
+        turnId,
+        explanation: null,
+        plan: [
+          { step: "Read the invoices", status: "completed" },
+          { step: "Total by vendor", status: "in_progress" },
+          { step: "Write the summary", status: "pending" },
+        ],
+      },
+    });
+    await client.stop();
+  });
+
+  it("follows newer Claude CLIs' TaskCreate and TaskUpdate as the live plan", async () => {
+    const { client, notifications, output, threadId } = await createHarness();
+    const turnId = "55555555-5555-4555-8555-555555555555";
+    await startTurn(client, threadId, turnId);
+    const toolUse = (id: string, name: string, input: unknown) =>
+      ({
+        type: "assistant",
+        parent_tool_use_id: null,
+        session_id: threadId,
+        uuid: `use-${id}`,
+        message: { content: [{ type: "tool_use", id, name, input }] },
+      }) as unknown as SDKMessage;
+    const toolResult = (id: string, text: string) =>
+      ({
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: threadId,
+        uuid: `result-${id}`,
+        message: { content: [{ type: "tool_result", tool_use_id: id, content: text }] },
+      }) as unknown as SDKMessage;
+
+    output.push(toolUse("c1", "TaskCreate", { subject: "Read the invoices", description: "" }));
+    output.push(toolResult("c1", "Task #1 created successfully: Read the invoices"));
+    output.push(toolUse("c2", "TaskCreate", { subject: "Write the summary", description: "" }));
+    output.push(toolResult("c2", "Task #2 created successfully: Write the summary"));
+    output.push(toolUse("u1", "TaskUpdate", { taskId: "1", status: "in_progress" }));
+    output.push(resultMessage(threadId, turnId, "Done"));
+    await waitFor(() => notifications.some((event) => event.method === "turn/completed"));
+
+    const plans = notifications.filter((event) => event.method === "turn/plan/updated");
+    expect(plans.at(-1)?.params).toEqual({
+      threadId,
+      turnId,
+      explanation: null,
+      plan: [
+        { step: "Read the invoices", status: "in_progress" },
+        { step: "Write the summary", status: "pending" },
+      ],
+    });
+    await client.stop();
+  });
+
   it("does not duplicate a fully streamed assistant message", async () => {
     const { client, notifications, output, threadId } = await createHarness();
     const turnId = "33333333-3333-4333-8333-333333333333";
