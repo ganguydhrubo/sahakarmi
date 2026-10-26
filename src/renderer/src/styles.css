@@ -7096,6 +7096,394 @@ body {
   font-family: var(--font-bengali);
 }
 
+/* Settings > About: hero, founder and links, with a staggered rise and gentle motion. */
+.about-card {
+  position: relative;
+  align-items: stretch;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.about-rise {
+  animation: about-rise 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--rise, 0) * 90ms);
+}
+
+@keyframes about-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.about-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(var(--primary-rgb) / 0.22), transparent 60%),
+    radial-gradient(120% 140% at 100% 100%, rgb(124 92 255 / 0.18), transparent 60%),
+    var(--surface-1);
+  padding: 18px 20px;
+  isolation: isolate;
+}
+
+.about-glow {
+  position: absolute;
+  z-index: -1;
+  inset: -40%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgb(var(--primary-rgb) / 0.18) 70deg,
+    transparent 140deg,
+    rgb(124 92 255 / 0.14) 220deg,
+    transparent 300deg
+  );
+  animation: about-spin 14s linear infinite;
+}
+
+@keyframes about-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.about-hero-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.about-hero-text strong {
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.about-version {
+  width: fit-content;
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb) / 0.14);
+  color: var(--primary-ink);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 9px;
+}
+
+.about-tagline {
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.about-founder {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 16px;
+  background: var(--surface-1);
+  padding: 16px 18px;
+}
+
+.about-card .about-avatar {
+  position: relative;
+  display: grid;
+  width: 76px;
+  height: 76px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.about-card .about-avatar:hover,
+.about-card .about-avatar:focus-visible {
+  transform: scale(1.06) rotate(-2deg);
+}
+
+.about-card .about-avatar-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #e8772e, #f5b041, #7c5cff, #0a66c2, #e8772e);
+  animation: about-spin 6s linear infinite;
+}
+
+.about-card .about-avatar-face {
+  position: relative;
+  display: grid;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  border: 3px solid var(--surface-1);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8772e, #b5451b);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.about-card .about-avatar-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 2px solid var(--surface-1);
+  border-radius: 8px;
+  background: #0a66c2;
+  color: #fff;
+}
+
+.about-card .about-avatar-badge svg {
+  width: 13px;
+  height: 13px;
+}
+
+.about-founder-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.about-eyebrow {
+  color: var(--primary-ink);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.about-name {
+  background: linear-gradient(
+    90deg,
+    var(--text-primary) 0%,
+    #e8772e 45%,
+    #7c5cff 55%,
+    var(--text-primary) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-family: var(--font-heading);
+  font-size: 26px;
+  line-height: 1.15;
+  animation: about-shimmer 5s ease-in-out infinite;
+}
+
+@keyframes about-shimmer {
+  0%,
+  100% {
+    background-position: 100% 0;
+  }
+  50% {
+    background-position: 0% 0;
+  }
+}
+
+.about-fullname {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.about-quote {
+  margin: 8px 0 0;
+  border-left: 3px solid rgb(var(--primary-rgb) / 0.6);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.5;
+  padding-left: 10px;
+}
+
+.about-heading {
+  margin: 4px 0 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.about-contact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.about-card .about-chip,
+.about-card .about-social {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 10px 14px;
+  text-align: left;
+  transition:
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+
+.about-card .about-chip::after,
+.about-card .about-social::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.35) 50%,
+    transparent 70%
+  );
+  content: "";
+  pointer-events: none;
+  transform: translateX(-120%);
+}
+
+.about-card .about-chip:hover,
+.about-card .about-chip:focus-visible,
+.about-card .about-social:hover,
+.about-card .about-social:focus-visible {
+  border-color: var(--chip-color, rgb(var(--primary-rgb)));
+  box-shadow: 0 10px 24px -12px var(--chip-color, rgb(var(--primary-rgb)));
+  transform: translateY(-3px);
+}
+
+.about-card .about-chip:hover::after,
+.about-card .about-social:hover::after {
+  transform: translateX(120%);
+  transition: transform 700ms ease;
+}
+
+.about-card .about-chip-logo {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--chip-color, rgb(var(--primary-rgb)));
+  color: #fff;
+  transition: transform 260ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.about-card .about-chip:hover .about-chip-logo,
+.about-card .about-social:hover .about-chip-logo {
+  transform: rotate(-8deg) scale(1.1);
+}
+
+.about-card .about-chip-logo svg {
+  width: 17px;
+  height: 17px;
+}
+
+.about-card .about-chip-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.about-card .about-chip-text strong {
+  font-size: 14px;
+}
+
+.about-card .about-chip-text span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about-follow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.about-card .about-social {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 14px 8px 8px;
+}
+
+.about-card .about-social .about-chip-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+.about-card .about-chip-linkedin,
+.about-card .about-social-linkedin {
+  --chip-color: #0a66c2;
+}
+
+.about-card .about-chip-telegram {
+  --chip-color: #229ed9;
+}
+
+.about-card .about-chip-email {
+  --chip-color: #e8772e;
+}
+
+.about-card .about-social-site {
+  --chip-color: #7c5cff;
+}
+
+.about-card .about-social-facebook {
+  --chip-color: #0866ff;
+}
+
+.about-card .about-social-instagram {
+  --chip-color: #dc2743;
+}
+
+.about-card .about-social-instagram .about-chip-logo {
+  background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-rise,
+  .about-glow,
+  .about-card .about-avatar-ring,
+  .about-name {
+    animation: none;
+  }
+
+  .about-card .about-chip,
+  .about-card .about-social,
+  .about-card .about-avatar,
+  .about-card .about-chip-logo {
+    transition: none;
+  }
+}
+
 .message-inline-code {
   border-radius: 5px;
   background: rgb(var(--ink-rgb) / 0.08);
@@ -7185,7 +7573,7 @@ fieldset.cadence-kinds {
 .center-view
 button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
   [role="tab"]
-):not(.marketplace-filter):not(.link-button) {
+):not(.marketplace-filter):not(.link-button):not(.about-btn) {
   border: 1px solid var(--sahkarmi-line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-1);

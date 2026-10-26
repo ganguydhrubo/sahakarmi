@@ -229,8 +229,8 @@ function registerIpcHandlers(
   });
   handleTrusted(IPC_CHANNELS.openUrl, (value: unknown) => {
     const url = new URL(requireString(value, "URL"));
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error("Only HTTP(S) links can open in the external browser.");
+    if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "mailto:") {
+      throw new Error("Only HTTP(S) and email links can open outside Sahkarmi.");
     }
     return shell.openExternal(url.toString());
   });

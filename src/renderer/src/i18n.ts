@@ -166,6 +166,13 @@ const en = {
   updateAutomatic: "Updates download automatically and install when you quit.",
   updateActionFailed: "Could not update. Please try again.",
   about: "About",
+  aboutTagline: "A free AI team for every Indian business",
+  aboutFounder: "Founder",
+  aboutFounderLine:
+    "Building Sahkarmi so one person with an idea can run like a full team, in their own language.",
+  aboutContact: "Talk to the founder",
+  aboutEmail: "Email",
+  aboutFollow: "Follow Sahkarmi",
   aboutBody:
     "Sahkarmi runs on your computer. Coworkers use your local Codex or Claude sign-in; there is no Sahkarmi cloud account.",
   attribution: "Sahkarmi — Your autonomous AI coworker team. Made with pride in India.",
@@ -342,6 +349,13 @@ const hi: Dictionary = {
   updateAutomatic: "अपडेट अपने आप डाउनलोड होते हैं और ऐप बंद करने पर इंस्टॉल होते हैं।",
   updateActionFailed: "अपडेट नहीं हो सका। फिर कोशिश करें।",
   about: "परिचय",
+  aboutTagline: "हर भारतीय कारोबार के लिए मुफ़्त AI टीम",
+  aboutFounder: "संस्थापक",
+  aboutFounderLine:
+    "सहकर्मी इसलिए बना रहे हैं ताकि एक आइडिया वाला अकेला इंसान भी अपनी भाषा में पूरी टीम की तरह काम कर सके।",
+  aboutContact: "संस्थापक से बात करें",
+  aboutEmail: "ईमेल",
+  aboutFollow: "सहकर्मी को फ़ॉलो करें",
   aboutBody:
     "सहकर्मी आपके कंप्यूटर पर चलता है। सहकर्मी आपके लोकल Codex या Claude साइन-इन का उपयोग करते हैं; कोई Sahkarmi क्लाउड खाता नहीं है।",
   attribution: "सहकर्मी — आपकी स्वायत्त AI टीम। भारत में निर्मित।",
@@ -515,6 +529,13 @@ const bn: Dictionary = {
   updateAutomatic: "আপডেট নিজে থেকে ডাউনলোড হয় এবং অ্যাপ বন্ধ করলে ইনস্টল হয়।",
   updateActionFailed: "আপডেট করা যায়নি। আবার চেষ্টা করুন।",
   about: "পরিচিতি",
+  aboutTagline: "প্রতিটি ভারতীয় ব্যবসার জন্য বিনামূল্যের AI টিম",
+  aboutFounder: "প্রতিষ্ঠাতা",
+  aboutFounderLine:
+    "সহকর্মী বানাচ্ছি যাতে একটি আইডিয়া নিয়ে একজন মানুষও নিজের ভাষায় পুরো টিমের মতো কাজ করতে পারেন।",
+  aboutContact: "প্রতিষ্ঠাতার সঙ্গে কথা বলুন",
+  aboutEmail: "ইমেল",
+  aboutFollow: "সহকর্মীকে ফলো করুন",
   aboutBody:
     "সহকর্মী আপনার কম্পিউটারে চলে। সহকর্মীরা আপনার লোকাল Codex বা Claude সাইন-ইন ব্যবহার করে; কোনো Sahkarmi ক্লাউড অ্যাকাউন্ট নেই।",
   attribution: "সহকর্মী — আপনার স্বায়ত্তশাসিত AI টিম। ভারতে সগৌরবে তৈরি।",

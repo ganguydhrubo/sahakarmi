@@ -22,6 +22,8 @@ All notable changes to Sahkarmi are documented here. The project follows
   restored, or shrunk to the page pictures.
 - Chat follows new messages only while you are at the bottom, scrolls smoothly, and shows a
   "Get to bottom" button with a new-message dot when you scroll up.
+- Settings > About: meet the founder, Dhrubo, with LinkedIn, Telegram and email, plus
+  Sahkarmi's website, LinkedIn, Facebook and Instagram, with smooth motion.
 - Settings > AI: add more Google accounts for Gemini. When one account reaches Google's limit,
   Sahkarmi moves to the next and sends the message again.
 

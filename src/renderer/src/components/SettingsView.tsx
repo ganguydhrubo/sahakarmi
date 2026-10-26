@@ -23,8 +23,8 @@ import {
   uiSize,
 } from "../preferences";
 import { SETTINGS_SECTION_KEY } from "../settings-section";
+import { AboutCard } from "./AboutCard";
 import { FeaturesSettings } from "./FeaturesSettings";
-import { LogoMark } from "./Logo";
 import { ModelSuggestions } from "./ModelSuggestions";
 import { PermissionsSettings } from "./PermissionsSettings";
 import { ProviderConnect } from "./ProviderConnect";
@@ -321,23 +321,7 @@ export function SettingsView(props: SettingsViewProps) {
           ))}
 
           {panel("about", () => (
-            <section class="settings-card settings-about">
-              <h2>{t("about")}</h2>
-              <div class="settings-about-brand">
-                <LogoMark size={44} />
-                <div>
-                  <strong>Sahkarmi · सहकर्मी</strong>
-                  <span>v{props.appInfo?.version ?? "—"}</span>
-                </div>
-              </div>
-              <ul class="settings-taglines">
-                <li lang="en">Your AI team. Made in India.</li>
-                <li lang="hi">आपकी AI टीम. भारत में बनी.</li>
-                <li lang="bn">আপনার AI টিম. ভারতে তৈরি.</li>
-              </ul>
-              <p>{t("aboutBody")}</p>
-              <p class="settings-meta">{t("attribution")}</p>
-            </section>
+            <AboutCard version={props.appInfo?.version ?? null} />
           ))}
         </div>
 
