@@ -58,6 +58,7 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_THREAD_READ_DELAY;
   delete process.env.SAHKARMI_FAKE_THREAD_READ_UNTIL_TURN;
   delete process.env.SAHKARMI_FAKE_AUTO_COMPLETE;
+  delete process.env.SAHKARMI_FAKE_PERSIST_TURNS;
   delete process.env.SAHKARMI_FAKE_CONTEXT_USAGE;
   delete process.env.SAHKARMI_FAKE_COMPACTION_ERROR;
   delete process.env.SAHKARMI_FAKE_ARCHIVED_THREAD;
@@ -1335,6 +1336,62 @@ describe.sequential("AgentService", () => {
     expect((await store.getOrCreate("chief")).threadId).toBe(threadId);
   });
 
+  it("renews a Codex chat from before a tool update and carries the chat over", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Banner noted for GoLiv";
+    process.env.SAHKARMI_FAKE_PERSIST_TURNS = "1";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "chief", text: "Remember the GoLiv banner" });
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "completed");
+    const oldThreadId = (await store.getOrCreate("chief")).threadId;
+    await service.stop();
+    // A chat started by an older version has no record of its tools.
+    await rm(join(root, "user-data", "codex-thread-tools.json"), { force: true });
+
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "chief", text: "Continue" });
+    await waitFor(() => service?.listQueue("chief").deliveries[1]?.status === "completed");
+
+    const requests = await protocolMessages();
+    const starts = requests.filter((message) => message.method === "thread/start");
+    expect(starts).toHaveLength(2);
+    expect(
+      requests.some(
+        (message) =>
+          message.method === "thread/resume" &&
+          (message.params as Record<string, unknown>).threadId === oldThreadId,
+      ),
+    ).toBe(false);
+    const renewed = starts[1]?.params as Record<string, unknown>;
+    expect(renewed.developerInstructions).toContain("--- earlier chat ---");
+    expect(renewed.developerInstructions).toContain("You: Banner noted for GoLiv");
+    const newThreadId = (await store.getOrCreate("chief")).threadId;
+    expect(newThreadId).not.toBe(oldThreadId);
+
+    // The owner still sees the earlier chat, and the next restart resumes the new chat.
+    const conversation = await service.readConversation("chief");
+    expect(conversation.messages.some((item) => item.text === "Remember the GoLiv banner")).toBe(
+      true,
+    );
+    expect(conversation.messages.some((item) => item.text === "Banner noted for GoLiv")).toBe(true);
+    await service.stop();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "chief", text: "One more" });
+    await waitFor(() => service?.listQueue("chief").deliveries[2]?.status === "completed");
+    const later = await protocolMessages();
+    expect(later.filter((message) => message.method === "thread/start")).toHaveLength(2);
+    expect(
+      later.some(
+        (message) =>
+          message.method === "thread/resume" &&
+          (message.params as Record<string, unknown>).threadId === newThreadId,
+      ),
+    ).toBe(true);
+  });
+
   it("unarchives a stored Codex thread and resumes the queued delivery", async () => {
     process.env.SAHKARMI_FAKE_ARCHIVED_THREAD = "1";
     const { store, mailbox } = stores();
@@ -1569,7 +1626,11 @@ const catalogPath = require("node:path").join(__dirname, "catalog.json");
 let buffer = "";
 let threadCounter = 0;
 let turnCounter = 0;
-const turns = new Map();
+// Like Codex, keep finished chats on disk across restarts when a test asks for it.
+const turnsFile = log + ".turns.json";
+const persistTurns = process.env.SAHKARMI_FAKE_PERSIST_TURNS === "1";
+const turns = new Map(persistTurns && fs.existsSync(turnsFile) ? JSON.parse(fs.readFileSync(turnsFile, "utf8")) : []);
+turnCounter = turns.size;
 const heldThreadReads = [];
 let archivedThread = process.env.SAHKARMI_FAKE_ARCHIVED_THREAD === "1";
 const write = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
@@ -1598,7 +1659,7 @@ process.stdin.on("data", (chunk) => {
       ] } });
       if (message.method === "plugin/list") write({ id: message.id, result: { marketplaces: [{ plugins: [{ id: "computer-use@openai-bundled", name: "computer-use", installed: true, enabled: true }] }] } });
       if (message.method === "thread/start") {
-        const threadId = "thread-" + (++threadCounter);
+        const threadId = "thread-" + process.pid + "-" + (++threadCounter);
         write({ id: message.id, result: { thread: { id: threadId, turns: [] } } });
       }
       if (message.method === "thread/resume") {
@@ -1670,6 +1731,7 @@ process.stdin.on("data", (chunk) => {
               turn.status = "completed";
               turn.items = [item];
             }
+            if (persistTurns) fs.writeFileSync(turnsFile, JSON.stringify([...turns]));
             write({ method: "item/completed", params: { threadId: message.params.threadId, turnId, item } });
             write({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: turnId, status: "completed" } } });
           }, completeDelay);

@@ -86,6 +86,12 @@ import {
   resolveOpenCodeCli,
 } from "./cli";
 import {
+  CodexThreadLedger,
+  carryOverNote,
+  joinThreadHistory,
+  toolShape,
+} from "./codex-tool-refresh";
+import {
   mergeConversationSnapshots,
   newAssistantMessage,
   normalizeCompletionStatus,
@@ -343,6 +349,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #dormantClients = new Map<AgentProvider, AgentClient>();
   /** One thread open (start or resume) per coworker at a time: a pre-warm and a send share it. */
   readonly #threadOpens = new Map<string, Promise<string>>();
+  readonly #codexThreads: CodexThreadLedger;
   #geminiAccounts: GeminiAccountSource | null = null;
   #geminiRotation: GeminiRotation | null = null;
   /** The Google account the running Gemini server was started with. */
@@ -380,6 +387,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     super();
     this.#store = store;
     this.#memoryStore = new AgentMemoryStore(store.userDataPath);
+    this.#codexThreads = new CodexThreadLedger(store.userDataPath);
     this.#mailbox = mailbox;
     this.#browser = browser;
     this.#approvals = approvals;
@@ -1140,6 +1148,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const fromThread = snapshotFromThread(botId, response.thread, (deliveryId) =>
         this.#mailbox.getDelivery(deliveryId),
       );
+      if (client.provider === "codex") {
+        fromThread.messages = await this.#withEarlierChats(bot, client, fromThread.messages);
+      }
       const live = this.#snapshots.get(botId);
       const snapshot =
         live && live.revision > revisionAtStart
@@ -1916,6 +1927,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   async #openThread(bot: BotSummary, client: AgentClient): Promise<string> {
+    if (bot.threadId && (await this.#codexToolsOutdated(bot.threadId, client))) {
+      return this.#startThread(bot, client, bot.threadId);
+    }
     if (bot.threadId) {
       this.#threadToBot.set(bot.threadId, bot.id);
       if (!this.#loadedThreads.has(bot.threadId)) {
@@ -1923,7 +1937,46 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       }
       return bot.threadId;
     }
+    return this.#startThread(bot, client, null);
+  }
 
+  /**
+   * Codex keeps the tools a chat started with for the whole chat. A chat from before an update
+   * that changed them (a new browser action, a new tool) is replaced on its next open.
+   */
+  async #codexToolsOutdated(threadId: string, client: AgentClient): Promise<boolean> {
+    if (client.provider !== "codex" || this.#loadedThreads.has(threadId)) return false;
+    return (await this.#codexThreads.get(threadId))?.shape !== CODEX_TOOL_SHAPE;
+  }
+
+  /** What the coworker said lately in the chat being replaced, for the new chat to carry on. */
+  async #carryOver(bot: BotSummary, client: AgentClient, threadId: string): Promise<string | null> {
+    try {
+      const response = await this.#requestWithArchivedThreadRecovery<ThreadResponse>(
+        bot,
+        client,
+        "thread/read",
+        { threadId, includeTurns: true },
+      );
+      const old = snapshotFromThread(bot.id, response.thread, (deliveryId) =>
+        this.#mailbox.getDelivery(deliveryId),
+      );
+      return carryOverNote(old.messages);
+    } catch {
+      const cached = this.#snapshots.get(bot.id);
+      return cached ? carryOverNote(cached.messages) : null;
+    }
+  }
+
+  async #startThread(
+    bot: BotSummary,
+    client: AgentClient,
+    replacesThreadId: string | null,
+  ): Promise<string> {
+    const carryOver = replacesThreadId
+      ? await this.#carryOver(bot, client, replacesThreadId)
+      : null;
+    const instructions = developerInstructions(bot, this.#store.sharedRoot);
     const response = await client.request<ThreadResponse>("thread/start", {
       model: modelWireId(bot.model),
       effort: bot.reasoningEffort,
@@ -1931,12 +1984,28 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       runtimeWorkspaceRoots: [bot.workspacePath, this.#store.sharedRoot],
       approvalPolicy: this.#codexApprovalPolicy,
       sandbox: "danger-full-access",
-      developerInstructions: developerInstructions(bot, this.#store.sharedRoot),
+      developerInstructions: carryOver
+        ? `${instructions}
+
+${carryOver}`
+        : instructions,
       ephemeral: false,
       serviceName: "sahkarmi",
       dynamicTools: await this.#buildDynamicTools(bot.id),
     });
     const threadId = response.thread.id;
+    if (client.provider === "codex") {
+      await this.#codexThreads.record(threadId, CODEX_TOOL_SHAPE, replacesThreadId);
+    }
+    if (replacesThreadId) {
+      this.emit(
+        "log",
+        `codex chat of ${bot.id} renewed for new tools (${replacesThreadId} -> ${threadId})`,
+      );
+      // The chat on screen keeps its messages; only the coworker's side starts again.
+      const live = this.#snapshots.get(bot.id);
+      if (live) live.threadId = threadId;
+    }
     await this.#store.setThreadId(bot.id, threadId);
     this.#threadToBot.set(threadId, bot.id);
     this.#loadedThreads.add(threadId);
@@ -1966,6 +2035,33 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       await client.request("thread/resume", params);
     }
     this.#loadedThreads.add(bot.threadId);
+  }
+
+  /** A renewed Codex chat still shows the chats it replaced, oldest first. */
+  async #withEarlierChats(
+    bot: BotSummary,
+    client: AgentClient,
+    messages: ConversationMessage[],
+  ): Promise<ConversationMessage[]> {
+    if (!bot.threadId) return messages;
+    const earlier = await this.#codexThreads.previousThreads(bot.threadId);
+    if (earlier.length === 0) return messages;
+    const older: Array<{ threadId: string; messages: ConversationMessage[] }> = [];
+    for (const threadId of earlier.reverse()) {
+      try {
+        const response = await client.request<ThreadResponse>("thread/read", {
+          threadId,
+          includeTurns: true,
+        });
+        const snapshot = snapshotFromThread(bot.id, response.thread, (deliveryId) =>
+          this.#mailbox.getDelivery(deliveryId),
+        );
+        older.push({ threadId, messages: snapshot.messages });
+      } catch {
+        // An old chat that can no longer be read is left out; the current one still shows.
+      }
+    }
+    return joinThreadHistory(older, messages);
   }
 
   async #requestWithArchivedThreadRecovery<T>(
@@ -4425,6 +4521,9 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     },
   ],
 } as const;
+
+/** The shape of the tools every Codex chat starts with (Composio apps are not counted). */
+const CODEX_TOOL_SHAPE = toolShape([...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS]);
 
 function developerInstructions(bot: BotSummary, sharedRoot: string): string {
   const profile = JSON.stringify(
