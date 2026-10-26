@@ -1,4 +1,5 @@
 import { For, type JSX } from "solid-js";
+import founderPhoto from "../assets/founder.jpg";
 import { type MessageKey, t } from "../i18n";
 import { LogoMark } from "./Logo";
 
@@ -145,7 +146,7 @@ export function AboutCard(props: { version: string | null }) {
           onClick={() => open(FOUNDER_LINKEDIN)}
         >
           <span class="about-avatar-ring" aria-hidden="true" />
-          <span class="about-avatar-face">D</span>
+          <img class="about-avatar-face" src={founderPhoto} alt="Dhrubo" />
           <span class="about-avatar-badge">
             <LinkedInIcon />
           </span>

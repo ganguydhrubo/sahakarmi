@@ -5,6 +5,12 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-26
+
+### Changed
+
+- Settings > About shows the founder's photo in the circle.
+
 ## [0.11.0] - 2026-10-26
 
 ### Added

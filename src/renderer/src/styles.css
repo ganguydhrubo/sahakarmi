@@ -7238,6 +7238,7 @@ body {
   font-family: var(--font-heading);
   font-size: 32px;
   font-weight: 800;
+  object-fit: cover;
 }
 
 .about-card .about-avatar-badge {
