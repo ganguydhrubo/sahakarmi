@@ -2683,6 +2683,7 @@ export function Conversation(props: ConversationProps) {
                       props.onDecideApproval?.(id, decision, note) ?? Promise.resolve()
                     }
                     onOpenCoworker={() => undefined}
+                    inline
                   />
                 )}
               </For>

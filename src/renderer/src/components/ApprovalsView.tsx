@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import type { ApprovalCategory, ApprovalRequest } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
@@ -78,8 +78,22 @@ export function ApprovalCard(props: {
   bot: BotProfile | undefined;
   onDecide: ApprovalsViewProps["onDecide"];
   onOpenCoworker: (botId: string) => void;
+  /** In the chat: take focus when nothing else has it, so Enter approves and Esc rejects. */
+  inline?: boolean;
 }) {
   const [note, setNote] = createSignal("");
+  let approveButton: HTMLButtonElement | undefined;
+  onMount(() => {
+    if (!props.inline || !pending()) return;
+    const active = document.activeElement;
+    const typing =
+      active instanceof HTMLElement &&
+      (active.isContentEditable ||
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement) &&
+      (active.textContent?.trim() || (active as HTMLInputElement).value?.trim());
+    if (!typing) approveButton?.focus({ preventScroll: true });
+  });
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const pending = () => props.approval.status === "pending";
@@ -101,6 +115,18 @@ export function ApprovalCard(props: {
     <li
       class={`approval-card approval-card-${props.approval.status}`}
       classList={{ "approval-risk-high": isHighRisk(props.approval) }}
+      onKeyDown={(event) => {
+        if (!props.inline || !pending() || event.defaultPrevented) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          void decide("rejected");
+        } else if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+          // Typing a note and pressing Enter approves with it.
+          event.preventDefault();
+          void decide("approved");
+        }
+      }}
     >
       <div class="approval-card-head">
         <button
@@ -173,6 +199,7 @@ export function ApprovalCard(props: {
             {t("reject")}
           </button>
           <button
+            ref={approveButton}
             type="button"
             class="button-primary"
             disabled={busy()}
@@ -181,6 +208,9 @@ export function ApprovalCard(props: {
             {t("approve")}
           </button>
         </div>
+        <Show when={props.inline}>
+          <p class="approval-keys">{t("approvalKeys")}</p>
+        </Show>
         <Show when={error()}>
           <p class="approval-error" role="alert">
             {error()}

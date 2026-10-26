@@ -4,7 +4,7 @@ import type { ToolCallKind, ToolCallSummary } from "../../../shared/ipc";
 export type { ToolCallSummary };
 
 import { vocab } from "../activity-vocab";
-import { t } from "../i18n";
+import { type MessageKey, t } from "../i18n";
 
 export const KIND_GLYPHS: Record<ToolCallKind, string> = {
   command: "M5 7l4 3-4 3M11 14h4",
@@ -42,11 +42,8 @@ export function formatToolDisplay(tool: ToolCallSummary): {
   if (tool.name === "sahkarmi_create_coworker" || tool.name.endsWith("create_coworker")) {
     const name = typeof parsed?.name === "string" ? parsed.name : "New Coworker";
     const role = typeof parsed?.role === "string" ? ` (${parsed.role})` : "";
-    title = `✨ Create Coworker: ${name}${role}`;
-    subtitle =
-      typeof parsed?.description === "string"
-        ? parsed.description
-        : "Initialized coworker workspace and persona";
+    title = `${t("toolCreateCoworker", { name })}${role}`;
+    subtitle = typeof parsed?.description === "string" ? parsed.description : "";
   } else if (tool.name === "sahkarmi_send_message" || tool.name.endsWith("send_message")) {
     const target =
       typeof parsed?.to === "string"
@@ -55,7 +52,7 @@ export function formatToolDisplay(tool: ToolCallSummary): {
           ? parsed.recipient
           : typeof parsed?.recipientBotId === "string"
             ? parsed.recipientBotId
-            : "Coworker";
+            : t("toolCoworker");
     const msg =
       typeof parsed?.message === "string"
         ? parsed.message
@@ -64,45 +61,37 @@ export function formatToolDisplay(tool: ToolCallSummary): {
           : typeof parsed?.content === "string"
             ? parsed.content
             : "";
-    title = `💬 Message to ${target}`;
-    subtitle = msg
-      ? msg.length > 80
-        ? `${msg.slice(0, 77)}…`
-        : msg
-      : "Dispatched task to coworker";
+    title = t("toolMessageTo", { name: target });
+    subtitle = msg.length > 80 ? `${msg.slice(0, 77)}…` : msg;
   } else if (tool.name === "save_memory") {
-    const key = typeof parsed?.key === "string" ? parsed.key : "Note";
+    const key = typeof parsed?.key === "string" ? parsed.key : "";
     const content = typeof parsed?.content === "string" ? parsed.content : "";
-    title = `🧠 Save Memory: ${key}`;
-    subtitle = content
-      ? content.length > 80
-        ? `${content.slice(0, 77)}…`
-        : content
-      : String(parsed?.category ?? "Persistent Memory");
+    title = key ? `${t("toolSaveMemory")}: ${key}` : t("toolSaveMemory");
+    subtitle = content.length > 80 ? `${content.slice(0, 77)}…` : content;
   } else if (tool.name === "search_memory") {
-    title = "🔍 Search Memory";
-    subtitle =
-      typeof parsed?.query === "string" ? `Query: "${parsed.query}"` : "Querying knowledge base";
+    title = t("toolSearchMemory");
+    subtitle = typeof parsed?.query === "string" ? `“${parsed.query}”` : "";
   } else if (tool.name === "list_memories") {
-    title = "📋 List Memories";
-    subtitle =
-      typeof parsed?.category === "string" ? `Category: ${parsed.category}` : "All stored memories";
+    title = t("toolListMemories");
+    subtitle = typeof parsed?.category === "string" ? parsed.category : "";
   } else if (parsed && (parsed.path || parsed.file_path || parsed.filePath)) {
     const fullPath = String(parsed.path || parsed.file_path || parsed.filePath);
     const fileName = fullPath.split(/[/\\]/).filter(Boolean).pop() ?? fullPath;
-    const op = tool.name.includes("edit")
-      ? "Edit"
-      : tool.name.includes("write")
-        ? "Write"
-        : tool.name.includes("read")
-          ? "Read"
-          : "File";
-    title = `${op} ${fileName}`;
+    const name = tool.name.toLowerCase();
+    const op = name.includes("edit")
+      ? "toolEditFile"
+      : name.includes("write")
+        ? "toolWriteFile"
+        : name.includes("read")
+          ? "toolReadFile"
+          : "toolFile";
+    title = t(op, { name: fileName });
     subtitle = fullPath;
   } else if (parsed && (parsed.command || parsed.cmd)) {
-    const cmd = String(parsed.command || parsed.cmd).trim();
-    title = cmd.split("\n")[0].slice(0, 75);
-    subtitle = "Terminal command";
+    const command = parsed.command || parsed.cmd;
+    const cmd = unwrapShell(Array.isArray(command) ? command.join(" ") : String(command));
+    title = clipLine(cmd);
+    subtitle = t("toolCommand");
   }
 
   if (!title) {
@@ -112,15 +101,11 @@ export function formatToolDisplay(tool: ToolCallSummary): {
         .replace(/[\s{]+$/, "")
         .trim();
       const fileName = cleaned.split(/[/\\]/).filter(Boolean).pop() ?? cleaned;
-      title = `File: ${fileName}`;
+      title = t("toolFile", { name: fileName });
       subtitle = cleaned;
     } else if (tool.kind === "command") {
-      const firstLine = rawInput
-        .split("\n")[0]
-        .trim()
-        .replace(/[\s{]+$/, "");
-      title = firstLine.length > 75 ? `${firstLine.slice(0, 72)}…` : firstLine;
-      subtitle = "Command";
+      title = clipLine(unwrapShell(rawInput.replace(/[\s{]+$/, "")));
+      subtitle = t("toolCommand");
     } else {
       const cleanedName = (tool.name || "Tool")
         .replace(/^sahkarmi_/, "")
@@ -136,6 +121,34 @@ export function formatToolDisplay(tool: ToolCallSummary): {
   }
 
   return { title, subtitle, cleanInput };
+}
+
+/** First line, at most 75 characters. */
+function clipLine(text: string): string {
+  const line = text.split("\n")[0].trim();
+  return line.length > 75 ? `${line.slice(0, 72)}…` : line;
+}
+
+/**
+ * Shows the command the coworker meant, not the shell that ran it:
+ * `"C:\…\powershell.exe" -Command "Get-ChildItem"` becomes `Get-ChildItem`.
+ */
+export function unwrapShell(command: string): string {
+  let text = command.trim();
+  const wrapper =
+    /^"?(?:[^"\s]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"?\s+(?:-(?!command\b|c\b)\w+\s+)*-(?:command|c)\s+([\s\S]+)$/i.exec(
+      text,
+    ) ??
+    /^"?(?:[^"\s]*[\\/])?(?:cmd)(?:\.exe)?"?\s+\/[cs]\s+([\s\S]+)$/i.exec(text) ??
+    /^"?(?:[^"\s]*\/)?(?:bash|sh|zsh)"?\s+-l?c\s+([\s\S]+)$/.exec(text);
+  if (wrapper) {
+    text = wrapper[1].trim();
+    const quote = text[0];
+    if ((quote === '"' || quote === "'") && text.endsWith(quote) && text.length > 1) {
+      text = text.slice(1, -1);
+    }
+  }
+  return text.replace(/\\\\/g, "\\").replace(/\\"/g, '"');
 }
 
 /** A single tool call card. */
@@ -202,23 +215,22 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
 
   /** "2 commands, 1 file, 1 coworker message": what the steps were, never a bare "other". */
   const summaryBreakdown = () => {
-    const labels: Record<string, [string, string]> = {
-      command: ["command", "commands"],
-      file: ["file", "files"],
-      browser: ["web action", "web actions"],
-      web: ["web action", "web actions"],
-      coworker: ["coworker message", "coworker messages"],
-      approval: ["approval", "approvals"],
-      tool: ["app action", "app actions"],
+    const labels: Record<string, [MessageKey, MessageKey]> = {
+      command: ["toolKindCommandOne", "toolKindCommandMany"],
+      file: ["toolKindFileOne", "toolKindFileMany"],
+      browser: ["toolKindWebOne", "toolKindWebMany"],
+      web: ["toolKindWebOne", "toolKindWebMany"],
+      coworker: ["toolKindCoworkerOne", "toolKindCoworkerMany"],
+      approval: ["toolKindApprovalOne", "toolKindApprovalMany"],
+      tool: ["toolKindToolOne", "toolKindToolMany"],
     };
-    const counts = new Map<string, number>();
+    const counts = new Map<[MessageKey, MessageKey], number>();
     for (const tool of props.tools) {
-      const [one] = labels[tool.kind] ?? labels.tool;
-      counts.set(one, (counts.get(one) ?? 0) + 1);
+      const pair = labels[tool.kind] ?? labels.tool;
+      counts.set(pair, (counts.get(pair) ?? 0) + 1);
     }
-    const plural = new Map(Object.values(labels).map(([one, many]) => [one, many]));
     return [...counts]
-      .map(([one, count]) => `${count} ${count === 1 ? one : (plural.get(one) ?? one)}`)
+      .map(([[one, many], count]) => t(count === 1 ? one : many, { count: String(count) }))
       .join(", ");
   };
 
@@ -272,8 +284,14 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
         </span>
         <div class="tool-group-info">
           <span class="tool-group-headline">
-            <Show when={isAnyRunning()} fallback={`Ran ${props.tools.length} steps`}>
-              {`Running step ${activeToolIndex() + 1} of ${props.tools.length}`}
+            <Show
+              when={isAnyRunning()}
+              fallback={t("toolRanSteps", { count: String(props.tools.length) })}
+            >
+              {t("toolRunningStep", {
+                current: String(activeToolIndex() + 1),
+                total: String(props.tools.length),
+              })}
             </Show>
           </span>
           <span class="tool-group-breakdown">{summaryBreakdown()}</span>
@@ -289,10 +307,10 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
           >
             <Show when={isAnyRunning()}>
               <i class="tool-card-spinner" aria-hidden="true" />
-              Running
+              {vocab().LABELS.toolRunning}
             </Show>
-            <Show when={isAnyFailed() && !isAnyRunning()}>Failed</Show>
-            <Show when={isAllDone()}>Done ✓</Show>
+            <Show when={isAnyFailed() && !isAnyRunning()}>{vocab().LABELS.toolFailed}</Show>
+            <Show when={isAllDone()}>{vocab().LABELS.toolDone}</Show>
           </span>
           <span
             class="tool-group-chevron"
