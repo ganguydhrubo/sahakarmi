@@ -5,6 +5,15 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-26
+
+### Fixed
+
+- Codex coworkers whose chat started before an update now get the new tools by themselves.
+  Codex cannot add tools to a running chat, so on the next message Sahkarmi starts a fresh chat
+  for the coworker and gives it the latest part of the earlier conversation. You still see the
+  whole chat; nothing to do by hand.
+
 ## [0.12.0] - 2026-10-26
 
 ### Added
