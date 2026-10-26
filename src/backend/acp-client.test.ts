@@ -619,12 +619,18 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
     await service.sendMessage({ botId: "meera-support", text: "Hello" });
     await waitFor(async () => (await answers("meera-support")) === 1);
-    await waitFor(async () => (await antigravityEntries("stdin-closed")) === 1);
-    expect(await antigravityEntries("started")).toBe(1);
+    // Asleep once every server it started has closed. On a busy machine a background read can
+    // wake it once more before this check, so count from the moment it is really asleep.
+    await waitFor(
+      async () =>
+        (await antigravityEntries("stdin-closed")) >= 1 &&
+        (await antigravityEntries("stdin-closed")) === (await antigravityEntries("started")),
+    );
+    const startedWhileAsleep = await antigravityEntries("started");
     // Asleep: the chat still reads from Sahkarmi's own transcript, and opening it wakes Gemini.
     const snapshot = await service.readConversation("meera-support");
     expect(snapshot.messages.some((message) => message.text.includes("Namaste"))).toBe(true);
-    await waitFor(async () => (await antigravityEntries("started")) === 2);
+    await waitFor(async () => (await antigravityEntries("started")) === startedWhileAsleep + 1);
     await waitFor(
       () =>
         service?.getStatus().providers?.find((p) => p.id === "antigravity")?.state === "available",

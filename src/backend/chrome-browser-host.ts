@@ -16,6 +16,7 @@ import {
   BrowserControlTracker,
   type BrowserHostEvents,
   type BrowserSnapshot,
+  CLICK_FILE_CHOOSER_MS,
   type CoworkerBrowser,
   checkUploadFiles,
   clickCatchingFilePicker,
@@ -461,7 +462,8 @@ export class ChromeBrowserHost implements CoworkerBrowser {
         10_000,
         "Browser action timed out.",
       );
-      await delay(300);
+      // A click has already waited for the page while watching for its file picker.
+      if (action.type !== "click") await delay(300);
       const snapshot = await this.#readSnapshot(tab, tab.revision + 1);
       return notice ? { ...snapshot, notice } : snapshot;
     });
@@ -1276,6 +1278,7 @@ async function performCdpAction(
           `document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]')?.click()`,
           10_000,
         );
+        await delay(CLICK_FILE_CHOOSER_MS);
         return;
       }
       const picker = await clickCatchingFilePicker(tabCdp(pipe, sessionId), async () => {

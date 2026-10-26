@@ -5,6 +5,32 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-10-26
+
+### Added
+
+- A live plan list above the message box shows the coworker's steps and ticks them off as it
+  works (Codex, Claude and other agents; new coworkers get a plan tool of their own).
+- Send stays available while a coworker works: your message goes into the queue. Esc in the
+  message box stops the coworker, and Send now on a queued message runs it next.
+- Approvals from the keyboard: Enter approves and Esc rejects an approval card in the chat.
+
+### Changed
+
+- Your message shows in the chat at once and the box is ready for the next one.
+- Long chats open fast: the latest 80 messages show first, with "Show earlier messages".
+- Tool rows read as one plain line in English, Hindi and Bengali, and commands show what the
+  coworker ran instead of the PowerShell wrapper.
+
+### Fixed
+
+- Tool calls no longer vanish while a coworker works; the row grows as calls arrive.
+- Streamed text no longer shows twice.
+- Claude coworkers start again on Windows (the npm .cmd shim no longer wins over claude.exe).
+- A chat whose AI tool is not installed opens at once instead of waiting about 6 seconds.
+- On a busy computer, a slow page's file picker no longer slips past and opens the Windows
+  dialog: a coworker's click now watches for it a little longer (400 ms).
+
 ## [0.11.3] - 2026-10-26
 
 ### Fixed

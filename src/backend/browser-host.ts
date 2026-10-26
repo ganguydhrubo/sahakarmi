@@ -324,7 +324,8 @@ export class BrowserHost implements CoworkerBrowser {
       } finally {
         restore?.();
       }
-      await delay(250);
+      // A click has already waited for the page while watching for its file picker.
+      if (action.type !== "click") await delay(250);
       const nextRevision = tab.revision + 1;
       const snapshot = await this.#readSnapshot(tab, nextRevision);
       return notice ? { ...snapshot, notice } : snapshot;
@@ -1096,6 +1097,7 @@ async function performAction(
           `document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]')?.click()`,
           true,
         );
+        await delay(CLICK_FILE_CHOOSER_MS);
         return;
       }
       const picker = await withDevToolsDebugger(contents, () =>
@@ -1184,8 +1186,11 @@ export interface UploadCdp {
   subscribe(listener: (method: string, params: Record<string, unknown>) => void): () => void;
 }
 
-/** How long after a click its file picker can still open; most open within a few ms. */
-const CLICK_FILE_CHOOSER_MS = 150;
+/**
+ * How long after a click its file picker can still open. A slow page on a busy computer can
+ * take a few hundred ms; the wait doubles as the page's settle time after a click.
+ */
+export const CLICK_FILE_CHOOSER_MS = 400;
 
 /**
  * Clicks with the page's file picker intercepted, so a coworker's click never opens a Windows
