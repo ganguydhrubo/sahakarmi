@@ -365,6 +365,8 @@ describe("Sahkarmi connected desktop shell", () => {
           installedSkills: vi.fn().mockResolvedValue([]),
           installSkill: vi.fn().mockImplementation(async (id: string) => [id]),
           uninstallSkill: vi.fn().mockResolvedValue([]),
+          learnedSkills: vi.fn().mockResolvedValue([]),
+          removeLearnedSkill: vi.fn().mockResolvedValue([]),
         },
         business: {
           integrations: vi.fn().mockResolvedValue([]),
@@ -862,6 +864,45 @@ describe("Sahkarmi connected desktop shell", () => {
     );
     expect(await screen.findByRole("button", { name: "Remove Project Plan" })).toBeInTheDocument();
     expect(screen.queryByText(/installs/i)).toBeNull();
+  });
+
+  it("shows skills coworkers learned and deletes one only after confirming", async () => {
+    const skill = {
+      id: "bank-reconciliation",
+      name: "Bank reconciliation",
+      whenToUse: "Matching bank entries with the ledger",
+      version: 2,
+      updatedAt: "2026-10-26T10:00:00.000Z",
+      author: "Asha",
+      sharedPath: "Skills/Learned/bank-reconciliation.md",
+    };
+    vi.mocked(window.sahkarmi.marketplace.learnedSkills).mockResolvedValue([skill]);
+    vi.mocked(window.sahkarmi.marketplace.removeLearnedSkill).mockResolvedValue([]);
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    await fireEvent.click(await screen.findByRole("button", { name: /Marketplace/ }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "Skills" }));
+    const card = (await screen.findByRole("heading", { name: "Bank reconciliation" })).closest(
+      "li",
+    ) as HTMLElement;
+    expect(within(card).getByText("Version 2 · by Asha · 26/10/2026")).toBeInTheDocument();
+    await fireEvent.click(within(card).getByRole("button", { name: "Open Bank reconciliation" }));
+    expect(window.sahkarmi.files.open).toHaveBeenCalledWith({
+      path: "Skills/Learned/bank-reconciliation.md",
+      action: "open",
+    });
+    await fireEvent.click(within(card).getByRole("button", { name: "Delete Bank reconciliation" }));
+    expect(window.sahkarmi.marketplace.removeLearnedSkill).not.toHaveBeenCalled();
+    expect(within(card).getByRole("alert")).toHaveTextContent("Coworkers will stop using it.");
+    await fireEvent.click(
+      within(within(card).getByRole("alert")).getByRole("button", { name: "Delete" }),
+    );
+    await waitFor(() =>
+      expect(window.sahkarmi.marketplace.removeLearnedSkill).toHaveBeenCalledWith(
+        "bank-reconciliation",
+      ),
+    );
+    expect(await screen.findByText(/No learned skills yet/)).toBeInTheDocument();
   });
 
   it("lists pending approvals with a badge and sends the owner's decision", async () => {

@@ -174,6 +174,9 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     installSkill: (skillId) => ipcRenderer.invoke(IPC_CHANNELS.marketplaceInstallSkill, skillId),
     uninstallSkill: (skillId) =>
       ipcRenderer.invoke(IPC_CHANNELS.marketplaceUninstallSkill, skillId),
+    learnedSkills: () => ipcRenderer.invoke(IPC_CHANNELS.marketplaceLearnedSkills),
+    removeLearnedSkill: (skillId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.marketplaceRemoveLearnedSkill, skillId),
   },
   schedules: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.schedulesList),

@@ -106,6 +106,8 @@ export const IPC_CHANNELS = {
   marketplaceInstalledSkills: "marketplace:installed-skills",
   marketplaceInstallSkill: "marketplace:install-skill",
   marketplaceUninstallSkill: "marketplace:uninstall-skill",
+  marketplaceLearnedSkills: "marketplace:learned-skills",
+  marketplaceRemoveLearnedSkill: "marketplace:remove-learned-skill",
   businessListTargets: "business:list-targets",
   businessSaveTarget: "business:save-target",
   businessDeleteTarget: "business:delete-target",
@@ -1554,6 +1556,20 @@ export interface MarketplaceDesktopApi {
   installedSkills: () => Promise<string[]>;
   installSkill: (skillId: string) => Promise<string[]>;
   uninstallSkill: (skillId: string) => Promise<string[]>;
+  /** Skills coworkers wrote for themselves in Shared/Skills/Learned, newest first. */
+  learnedSkills: () => Promise<LearnedSkillSummary[]>;
+  removeLearnedSkill: (skillId: string) => Promise<LearnedSkillSummary[]>;
+}
+
+export interface LearnedSkillSummary {
+  id: string;
+  name: string;
+  whenToUse: string;
+  version: number;
+  updatedAt: string;
+  author: string;
+  /** Path inside the Shared folder, for files.open. */
+  sharedPath: string;
 }
 
 export interface ApprovalsDesktopApi {

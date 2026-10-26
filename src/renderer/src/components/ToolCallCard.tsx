@@ -74,6 +74,16 @@ export function formatToolDisplay(tool: ToolCallSummary): {
   } else if (tool.name === "list_memories") {
     title = t("toolListMemories");
     subtitle = typeof parsed?.category === "string" ? parsed.category : "";
+  } else if (tool.name === "search_past_chats") {
+    title = t("toolSearchChats");
+    subtitle = typeof parsed?.query === "string" ? `“${parsed.query}”` : "";
+  } else if (tool.name === "list_skills") {
+    title = t("toolListSkills");
+  } else if (tool.name === "read_skill") {
+    title = t("toolReadSkill", { name: typeof parsed?.id === "string" ? parsed.id : "" });
+  } else if (tool.name === "save_skill") {
+    title = t("toolSaveSkill", { name: typeof parsed?.name === "string" ? parsed.name : "" });
+    subtitle = typeof parsed?.changeNote === "string" ? parsed.changeNote : "";
   } else if (parsed && (parsed.path || parsed.file_path || parsed.filePath)) {
     const fullPath = String(parsed.path || parsed.file_path || parsed.filePath);
     const fileName = fullPath.split(/[/\\]/).filter(Boolean).pop() ?? fullPath;

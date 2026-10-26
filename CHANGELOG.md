@@ -5,6 +5,16 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+### Added
+
+- Coworkers learn skills as they work. After a task that took several steps, a fix, or a
+  correction from you, a coworker saves the playbook to Shared/Skills/Learned, and later runs
+  improve it (the version goes up, with a note of what changed). Skills never hold passwords,
+  OTPs, keys or card numbers. Marketplace > Skills lists them under "Learned by your
+  coworkers", where you can open or delete each one.
+- Coworkers can search earlier chats (their own, or the whole team's) to recall what was
+  decided, sent or promised, instead of guessing.
+
 ## [0.11.4] - 2026-10-26
 
 ### Added

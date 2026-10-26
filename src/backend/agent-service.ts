@@ -96,6 +96,11 @@ import type { GeminiAccountSource } from "./gemini-accounts";
 import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
 import { ComposioSecurityGuard } from "./integrations/composio-security";
+import {
+  LIST_SKILLS_DESCRIPTION,
+  SAVE_SKILL_DESCRIPTION,
+  SEARCH_PAST_CHATS_DESCRIPTION,
+} from "./learning-tools";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
@@ -122,7 +127,7 @@ import {
   type ThreadResponse,
   type TurnResponse,
 } from "./protocol";
-import { installedSkillNames } from "./skill-library";
+import { installedSkillNames, LearnedSkills, learnedSkillNames } from "./skill-library";
 import { toolCallFromItem } from "./tool-calls";
 import type { UsageService } from "./usage-service";
 
@@ -1235,6 +1240,47 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const bots = this.#store
       .list()
       .filter((bot) => !input.workspaceId || bot.workspaceId === input.workspaceId);
+    return this.#searchConversations(
+      bots,
+      (text) => {
+        const index = text.indexOf(needle);
+        return index < 0 ? null : { index, length: needle.length };
+      },
+      input.limit ?? 40,
+    );
+  }
+
+  /**
+   * A coworker's recall: messages that contain every word of the query, from its own chats or
+   * the whole team's, newest first.
+   */
+  async #recallChats(senderBotId: string, args: Record<string, unknown>) {
+    const words = (typeof args.query === "string" ? args.query : "")
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((word) => word.length >= 2)
+      .slice(0, 12);
+    if (words.length === 0) throw new Error("query needs at least one word of 2+ letters.");
+    const limit =
+      typeof args.limit === "number" ? Math.max(1, Math.min(20, Math.floor(args.limit))) : 10;
+    const bots = this.#store
+      .list()
+      .filter((bot) => args.scope === "team" || bot.id === senderBotId);
+    return this.#searchConversations(
+      bots,
+      (text) => {
+        if (!words.every((word) => text.includes(word))) return null;
+        return { index: text.indexOf(words[0] as string), length: (words[0] as string).length };
+      },
+      limit,
+    );
+  }
+
+  async #searchConversations(
+    bots: BotSummary[],
+    match: (lowerText: string) => { index: number; length: number } | null,
+    limit: number,
+  ): Promise<MessageSearchHit[]> {
     const hits: MessageSearchHit[] = [];
     await Promise.all(
       bots.map(async (bot) => {
@@ -1253,14 +1299,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           ) {
             continue;
           }
-          const index = message.text.toLowerCase().indexOf(needle);
-          if (index < 0) continue;
+          const found = match(message.text.toLowerCase());
+          if (!found) continue;
           hits.push({
             botId: bot.id,
             botName: bot.name,
             messageId: message.id,
             author: message.author,
-            excerpt: searchExcerpt(message.text, index, needle.length),
+            excerpt: searchExcerpt(message.text, found.index, found.length),
             createdAt: message.createdAt,
           });
         }
@@ -1268,7 +1314,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     );
     return hits
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .slice(0, input.limit ?? 40);
+      .slice(0, limit);
   }
 
   async setMessageReaction(input: SetMessageReactionInput): Promise<void> {
@@ -2250,6 +2296,91 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     };
   }
 
+  /** Recall of past chats and the team's learned skills. */
+  async #handleLearningTool(
+    senderBotId: string,
+    params: DynamicToolCallParams,
+  ): Promise<{ success: boolean; contentItems: Array<{ type: "inputText"; text: string }> }> {
+    if (params.tool === "search_past_chats") {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const hits = await this.#recallChats(senderBotId, args);
+      return {
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({
+              count: hits.length,
+              results: hits.map((hit) => ({
+                coworker: hit.botName,
+                author: hit.author,
+                date: hit.createdAt,
+                excerpt: hit.excerpt,
+              })),
+            }),
+          },
+        ],
+      };
+    }
+
+    if (params.tool === "list_skills") {
+      const learned = await new LearnedSkills(this.#store.sharedRoot).list();
+      return {
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({
+              folder: join(this.#store.sharedRoot, "Skills"),
+              installed: installedSkillNames(this.#store.sharedRoot),
+              learned: learned.map((skill) => ({
+                id: skill.id,
+                name: skill.name,
+                whenToUse: skill.whenToUse,
+                version: skill.version,
+                updatedAt: skill.updatedAt,
+              })),
+            }),
+          },
+        ],
+      };
+    }
+
+    if (params.tool === "read_skill") {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const id = typeof args.id === "string" ? args.id : "";
+      const text = await new LearnedSkills(this.#store.sharedRoot).read(id);
+      if (text === null) throw new Error(`No learned skill with id "${id}". Call list_skills.`);
+      return { success: true, contentItems: [{ type: "inputText", text }] };
+    }
+
+    if (params.tool === "save_skill") {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const author = this.#store.list().find((bot) => bot.id === senderBotId)?.name ?? "Coworker";
+      const skill = await new LearnedSkills(this.#store.sharedRoot).save({
+        name: typeof args.name === "string" ? args.name : "",
+        whenToUse: typeof args.whenToUse === "string" ? args.whenToUse : "",
+        steps: typeof args.steps === "string" ? args.steps : "",
+        changeNote: typeof args.changeNote === "string" ? args.changeNote : undefined,
+        author,
+      });
+      return {
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({
+              success: true,
+              skill,
+              path: join(this.#store.sharedRoot, skill.sharedPath),
+            }),
+          },
+        ],
+      };
+    }
+    throw new Error(`Unknown tool: ${params.tool}`);
+  }
+
   async #handleSahkarmiTool(params: DynamicToolCallParams): Promise<{
     success: boolean;
     contentItems: Array<{ type: "inputText"; text: string }>;
@@ -2384,6 +2515,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           { type: "inputText", text: JSON.stringify({ success: true, shownToOwner: true }) },
         ],
       };
+    }
+
+    if (LEARNING_TOOLS.has(params.tool)) {
+      try {
+        return await this.#handleLearningTool(senderBotId, params);
+      } catch (error) {
+        // A coworker's mistake goes back to the coworker to fix, not to the owner as an error.
+        return {
+          success: false,
+          contentItems: [
+            { type: "inputText", text: error instanceof Error ? error.message : String(error) },
+          ],
+        };
+      }
     }
 
     if (params.tool === "save_memory") {
@@ -3961,6 +4106,8 @@ function finiteNumberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+const LEARNING_TOOLS = new Set(["search_past_chats", "list_skills", "read_skill", "save_skill"]);
+
 const SAHKARMI_DYNAMIC_TOOLS = {
   type: "namespace",
   name: "sahkarmi",
@@ -4224,6 +4371,58 @@ const SAHKARMI_DYNAMIC_TOOLS = {
         additionalProperties: false,
       },
     },
+    {
+      type: "function",
+      name: "search_past_chats",
+      description: SEARCH_PAST_CHATS_DESCRIPTION,
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", minLength: 2, maxLength: 200 },
+          scope: {
+            type: "string",
+            enum: ["mine", "team"],
+            description: "mine: only your own chats (default). team: every coworker's chats.",
+          },
+          limit: { type: "integer", minimum: 1, maximum: 20 },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "list_skills",
+      description: LIST_SKILLS_DESCRIPTION,
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    },
+    {
+      type: "function",
+      name: "read_skill",
+      description: "Read one learned skill's full playbook by its id (from list_skills).",
+      inputSchema: {
+        type: "object",
+        properties: { id: { type: "string", minLength: 1, maxLength: 80 } },
+        required: ["id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "save_skill",
+      description: SAVE_SKILL_DESCRIPTION,
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", minLength: 2, maxLength: 120 },
+          whenToUse: { type: "string", minLength: 2, maxLength: 300 },
+          steps: { type: "string", minLength: 2, maxLength: 20_000 },
+          changeNote: { type: "string", maxLength: 300 },
+        },
+        required: ["name", "whenToUse", "steps"],
+        additionalProperties: false,
+      },
+    },
   ],
 } as const;
 
@@ -4260,12 +4459,20 @@ function developerInstructions(bot: BotSummary, sharedRoot: string): string {
   ].join("\n");
 }
 
-/** Skills the owner installed from the Marketplace live as playbooks in Shared/Skills. */
+/**
+ * Skills the owner installed from the Marketplace, and skills coworkers learned, live as
+ * playbooks in Shared/Skills.
+ */
 function skillInstructions(sharedRoot: string): string[] {
-  const skills = installedSkillNames(sharedRoot);
-  if (skills.length === 0) return [];
+  const skills = [...installedSkillNames(sharedRoot), ...learnedSkillNames(sharedRoot)];
   return [
-    `Installed skills (playbooks in ${join(sharedRoot, "Skills")}): ${skills.join(", ")}. When a task matches a skill, read that file first and follow its steps.`,
+    ...(skills.length > 0
+      ? [
+          `Skills (playbooks in ${join(sharedRoot, "Skills")}): ${skills.join(", ")}. When a task matches a skill, read that file first and follow its steps.`,
+        ]
+      : []),
+    "Learn as you work: before a task call sahkarmi.list_skills and follow a matching skill. After finishing a task that took several steps, needed a fix, or got a correction from the owner, call sahkarmi.save_skill to save the playbook, or to improve the existing one under the same name.",
+    "To recall earlier conversations (what was decided, sent or promised), call sahkarmi.search_past_chats instead of guessing.",
   ];
 }
 

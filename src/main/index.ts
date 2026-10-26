@@ -48,7 +48,7 @@ import { importDesktopRoutinesOnce } from "../backend/routine-import";
 import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
-import { SkillLibrary } from "../backend/skill-library";
+import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { UsageService } from "../backend/usage-service";
 import { VoiceService } from "../backend/voice/voice-service";
 import {
@@ -489,6 +489,11 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.marketplaceUninstallSkill, (skillId: unknown) =>
     skills.uninstall(requireString(skillId, "skillId")),
+  );
+  const learnedSkills = new LearnedSkills(sharedFiles.root);
+  handleTrusted(IPC_CHANNELS.marketplaceLearnedSkills, () => learnedSkills.list());
+  handleTrusted(IPC_CHANNELS.marketplaceRemoveLearnedSkill, (skillId: unknown) =>
+    learnedSkills.remove(requireString(skillId, "skillId")),
   );
   handleTrusted(IPC_CHANNELS.businessListTargets, () => business.listTargets());
   handleTrusted(IPC_CHANNELS.businessSaveTarget, (input: unknown) =>

@@ -389,6 +389,12 @@ export const workspaceEn = {
   marketInstall: "Install",
   marketInstalled: "Installed",
   marketRemove: "Remove",
+  marketLearnedSkills: "Learned by your coworkers",
+  marketLearnedEmpty:
+    "No learned skills yet. Coworkers save one after a task that took several steps.",
+  marketLearnedMeta: "Version {version} · by {author} · {date}",
+  marketDelete: "Delete",
+  marketDeleteLearnedConfirm: "Delete the skill “{name}”? Coworkers will stop using it.",
   marketApps: "Apps",
   marketAppsIntro:
     "Connect the apps your team already uses. Coworkers then work inside them through your own accounts, on Composio's free Hobby plan.",
@@ -941,6 +947,11 @@ export const workspaceHi: WorkspaceDictionary = {
   marketInstall: "इंस्टॉल करें",
   marketInstalled: "इंस्टॉल है",
   marketRemove: "हटाएँ",
+  marketLearnedSkills: "आपके सहकर्मियों ने सीखा",
+  marketLearnedEmpty: "अभी कोई सीखी हुई स्किल नहीं है। कई चरणों वाले काम के बाद सहकर्मी इसे सहेजते हैं।",
+  marketLearnedMeta: "वर्ज़न {version} · {author} ने · {date}",
+  marketDelete: "मिटाएँ",
+  marketDeleteLearnedConfirm: "स्किल “{name}” मिटाएँ? सहकर्मी इसका उपयोग बंद कर देंगे।",
   marketApps: "ऐप्स",
   marketAppsIntro:
     "वे ऐप्स जोड़ें जिन्हें आपकी टीम पहले से इस्तेमाल करती है. फिर सहकर्मी आपके ही खातों से उनमें काम करते हैं, Composio के मुफ़्त Hobby प्लान पर.",
@@ -1482,6 +1493,11 @@ export const workspaceBn: WorkspaceDictionary = {
   marketInstall: "ইনস্টল করুন",
   marketInstalled: "ইনস্টল করা আছে",
   marketRemove: "সরান",
+  marketLearnedSkills: "আপনার সহকর্মীরা যা শিখেছে",
+  marketLearnedEmpty: "এখনও কোনো শেখা স্কিল নেই। কয়েক ধাপের কাজের পরে সহকর্মীরা একটি সংরক্ষণ করে।",
+  marketLearnedMeta: "সংস্করণ {version} · {author} · {date}",
+  marketDelete: "মুছুন",
+  marketDeleteLearnedConfirm: "স্কিল “{name}” মুছবেন? সহকর্মীরা আর এটি ব্যবহার করবে না।",
   marketApps: "অ্যাপ",
   marketAppsIntro:
     "আপনার টিম যে অ্যাপগুলি আগে থেকেই ব্যবহার করে, সেগুলি যুক্ত করুন। তারপর সহকর্মীরা আপনার নিজের অ্যাকাউন্ট দিয়েই সেখানে কাজ করে, Composio-র বিনামূল্যের Hobby প্ল্যানে।",
