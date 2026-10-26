@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
+import { GeminiAccountStore } from "./gemini-accounts";
 import { MailboxStore } from "./mailbox-store";
 import { PermissionService } from "./permission-service";
 
@@ -471,6 +472,168 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
   });
 });
 
+describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_000 }, () => {
+  const sessionsIn = async (cwd: string) =>
+    (await readLog()).filter(
+      (entry) =>
+        entry.method === "session/new" &&
+        (entry.params as { cwd?: string } | undefined)?.cwd?.toLowerCase() === cwd.toLowerCase(),
+    ).length;
+  const antigravityEntries = async (method: string) =>
+    (await readLog()).filter((entry) => entry.method === method && entry.agent === "antigravity")
+      .length;
+  const answers = async (botId: string) =>
+    ((await service?.readConversation(botId))?.messages ?? []).filter(
+      (message) => message.author === "assistant" && message.text.includes("Namaste"),
+    ).length;
+  const newService = (store: BotStore, mailbox: MailboxStore) =>
+    new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+
+  beforeEach(() => {
+    // Google Antigravity is the same fake ACP agent here, connected with a key.
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = process.env.SAHKARMI_OPENCODE_PATH;
+    process.env.GEMINI_API_KEY = "test-key";
+  });
+
+  it("starts Google's server alongside the other providers instead of after them", async () => {
+    process.env.SAHKARMI_FAKE_SLOW_INIT_MS = "1500";
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = newService(store, mailbox);
+    // OpenCode's state at the moment Gemini first showed as connected.
+    let openCodeWhenGeminiReady: string | null | undefined;
+    service.on("event", (event) => {
+      if (event.type !== "status" || openCodeWhenGeminiReady !== undefined) return;
+      const states = event.status.providers ?? [];
+      if (states.find((p) => p.id === "antigravity")?.state !== "available") return;
+      openCodeWhenGeminiReady = states.find((p) => p.id === "opencode")?.state ?? null;
+    });
+    await service.initialize();
+    await waitFor(
+      () =>
+        service?.getStatus().providers?.find((p) => p.id === "antigravity")?.state === "available",
+    );
+    const log = await readLog();
+    const launched = log.find(
+      (entry) => entry.method === "started" && entry.agent === "antigravity",
+    );
+    const openCodeReady = log.find(
+      (entry) => entry.method === "initialize-answered" && entry.agent === "opencode",
+    );
+    // It used to be launched only after every other provider had answered.
+    expect(Number(launched?.at)).toBeLessThan(Number(openCodeReady?.at));
+    // ...and its start no longer waits for a slow provider ahead of it.
+    expect(openCodeWhenGeminiReady).not.toBe("available");
+    expect(await antigravityEntries("started")).toBe(1);
+  });
+
+  it("starts only one Google server when a message needs Gemini while the app is still loading", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = newService(store, mailbox);
+    const initialized = service.initialize();
+    const needed = service.ensureProvider("antigravity");
+    await Promise.all([initialized, needed]);
+    await waitFor(
+      () =>
+        service?.getStatus().providers?.find((p) => p.id === "antigravity")?.state === "available",
+    );
+    expect(await antigravityEntries("started")).toBe(1);
+  });
+
+  it("reads Gemini's model list once per server and reopens recent chats before the next message", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = newService(store, mailbox);
+    await service.initialize();
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    await service.sendMessage({ botId: "meera-support", text: "Hello" });
+    await waitFor(async () => (await answers("meera-support")) === 1);
+    const modelListFolder = join(root, "user-data", "acp-transcripts", "antigravity");
+    expect(await sessionsIn(modelListFolder)).toBe(1);
+    await service.refreshModels(true);
+    await service.refreshModels(true);
+    // Each of Google's sessions keeps a helper process alive: refreshing opens no new one.
+    expect(await sessionsIn(modelListFolder)).toBe(1);
+
+    const workspace = service.listBots().find((bot) => bot.id === "meera-support")?.workspacePath;
+    expect(workspace).toBeTruthy();
+    expect(await sessionsIn(workspace as string)).toBe(1);
+    await service.stop();
+
+    // Sahkarmi starts again: Meera's chat is reopened in the background, before any message.
+    service = newService(store, mailbox);
+    await service.initialize();
+    await waitFor(async () => (await sessionsIn(workspace as string)) === 2);
+    await service.sendMessage({ botId: "meera-support", text: "Hello again" });
+    await waitFor(async () => (await answers("meera-support")) === 2);
+    // The message used the warm session instead of opening another.
+    expect(await sessionsIn(workspace as string)).toBe(2);
+  });
+
+  it("moves Gemini to the next signed-in Google account at Google's limit and sends again", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    const accounts = new GeminiAccountStore(join(root, "user-data"), join(root, "home"), {
+      GEMINI_API_KEY: "test-key",
+    });
+    await accounts.initialize();
+    const extra = await accounts.add();
+    const acpHome = join(accounts.homeOf(extra), ".gemini", "antigravity-acp");
+    await mkdir(acpHome, { recursive: true });
+    await writeFile(join(acpHome, "acp_token.json"), "{}");
+    service = newService(store, mailbox);
+    service.setGeminiAccounts(accounts);
+    const events: Array<{ type: string; code?: string; message?: string }> = [];
+    service.on("event", (event) => events.push(event as { type: string; code?: string }));
+    await service.initialize();
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    await service.sendMessage({ botId: "meera-support", text: "hit quota, then Namaste" });
+    await waitFor(async () => (await answers("meera-support")) === 1);
+    expect(accounts.activeId()).toBe(extra);
+    // Still on Gemini (no move to the free model), now on the second account's server.
+    expect(service.listBots().find((bot) => bot.id === "meera-support")?.model).toBe(
+      "antigravity-default",
+    );
+    expect(await readLog()).toContainEqual(
+      expect.objectContaining({
+        method: "started",
+        agent: "antigravity",
+        geminiHome: accounts.geminiHomeOf(extra),
+      }),
+    );
+    const note = events.find((event) => event.type === "error" && event.code === "fallback_model");
+    expect(note?.message).toContain("next Google account");
+    const userMessages = (await service.readConversation("meera-support")).messages.filter(
+      (message) => message.author === "user",
+    );
+    expect(userMessages.map((message) => message.text)).toEqual(["hit quota, then Namaste"]);
+  });
+
+  it("stops an unused Gemini server, still shows the chat, and wakes it when needed", async () => {
+    process.env.SAHKARMI_GEMINI_IDLE_MS = "500";
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = newService(store, mailbox);
+    await service.initialize();
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    await service.sendMessage({ botId: "meera-support", text: "Hello" });
+    await waitFor(async () => (await answers("meera-support")) === 1);
+    await waitFor(async () => (await antigravityEntries("stdin-closed")) === 1);
+    expect(await antigravityEntries("started")).toBe(1);
+    // Asleep: the chat still reads from Sahkarmi's own transcript, and opening it wakes Gemini.
+    const snapshot = await service.readConversation("meera-support");
+    expect(snapshot.messages.some((message) => message.text.includes("Namaste"))).toBe(true);
+    await waitFor(async () => (await antigravityEntries("started")) === 2);
+    await waitFor(
+      () =>
+        service?.getStatus().providers?.find((p) => p.id === "antigravity")?.state === "available",
+    );
+    await service.sendMessage({ botId: "meera-support", text: "Hello again" });
+    await waitFor(async () => (await answers("meera-support")) === 2);
+  });
+});
+
 describe("provider helpers", () => {
   it("reads grouped ACP models without dropping provider IDs", () => {
     expect(
@@ -513,7 +676,6 @@ describe("provider helpers", () => {
   });
 
   it("trusts only Google Antigravity's own sign-in, never a Gemini CLI or IDE login", async () => {
-    const { mkdir } = await import("node:fs/promises");
     const home = join(root, "agy-home");
     expect((await readAntigravityAccount(home, {})).account).toBeNull();
     expect((await readAntigravityAccount(home, { GEMINI_API_KEY: "x" })).account).toEqual({
@@ -598,6 +760,9 @@ const waiting = new Map();
 const cancellable = new Map();
 const cwdBySession = {};
 let lastCwd = null;
+const agent = process.env.ANTIGRAVITY_HARNESS_PATH ? "antigravity" : "opencode";
+log({ method: "started", agent, geminiHome: process.env.GEMINI_HOME || null, at: Date.now() });
+process.stdin.on("end", () => log({ method: "stdin-closed", agent }));
 const update = (sessionId, update) => write({ method: "session/update", params: { sessionId, update } });
 async function mcpCall(method, params) {
   const response = await fetch(mcp.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params }) });
@@ -607,7 +772,12 @@ async function handle(message) {
   log(message);
   if (message.id !== undefined && !message.method) { const resolve = waiting.get(message.id); waiting.delete(message.id); resolve?.(message); return; }
   const { id, method, params } = message;
-  if (method === "initialize") return write({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: false, mcpCapabilities: { http: true } } } });
+  if (method === "initialize") {
+    const delay = agent === "opencode" ? Number(process.env.SAHKARMI_FAKE_SLOW_INIT_MS || 0) : 0;
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    log({ method: "initialize-answered", agent, at: Date.now() });
+    return write({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: false, mcpCapabilities: { http: true } } } });
+  }
   if (method === "session/new") {
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
     cwdBySession["ses_" + Date.now()] = params.cwd; lastCwd = params.cwd;
@@ -620,6 +790,12 @@ async function handle(message) {
     const sessionId = params.sessionId;
     // Empty once per test (the log is shared by every fake process): the re-send must get an answer.
     if (text.includes("say nothing") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("say-nothing-done")) { log({ method: "say-nothing-done" }); return write({ id, result: { stopReason: "end_turn" } }); }
+    // Google's limit on the first account only: stderr says so, the turn ends with nothing.
+    if (text.includes("hit quota") && agent === "antigravity" && !process.env.GEMINI_HOME) {
+      process.stderr.write("Error 429 RESOURCE_EXHAUSTED: Individual quota reached for this model. Resets in 1h2m3s\\n");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return write({ id, result: { stopReason: "end_turn" } });
+    }
     if (text.includes("make a picture") && lastCwd) { fs.writeFileSync(require("node:path").join(lastCwd, "made.png"), Buffer.from("iVBORw0KGgo=", "base64")); }
     // Silent once per test (the log is shared by every fake process): the retry on the next free model answers.
     if (text.includes("stay silent") && !fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG, "utf8").includes("stay-silent-done")) { log({ method: "stay-silent-done" }); cancellable.set(sessionId, () => write({ id, result: { stopReason: "cancelled" } })); return; }

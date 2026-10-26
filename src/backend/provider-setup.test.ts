@@ -286,6 +286,44 @@ describe("ProviderSetup", () => {
     delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
   });
 
+  it("signs in an extra Google account in its own folder without touching the first", async () => {
+    process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.4.2");
+    const accountHome = join(root, "user-data", "gemini-accounts", "second");
+    const acpHome = join(accountHome, ".gemini", "antigravity-acp");
+    const client = new FakeAcpClient(async () => {
+      await mkdir(acpHome, { recursive: true });
+      await writeFile(join(acpHome, "acp_token.json"), "{}");
+      return { email: "second@example.in", tierName: "Free" };
+    });
+    const homes: Array<string | null> = [];
+    const recheck = vi.fn(async () => undefined);
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck,
+      home: join(root, "home"),
+      antigravityClient: (_cli, geminiHome) => {
+        homes.push(geminiHome);
+        return client as never;
+      },
+    });
+    const state = await setup.signInGeminiAccount(accountHome);
+    // Google's server ran with GEMINI_HOME in the account's folder.
+    expect(homes).toEqual([join(accountHome, ".gemini")]);
+    expect(client.signIns).toEqual(["oauth-personal"]);
+    expect(state.phase).toBe("connected");
+    expect(state.message).toBe("Connected to Google Antigravity (second@example.in · Free).");
+    // Gemini keeps running on the account in use until the owner picks this one.
+    expect(recheck).not.toHaveBeenCalled();
+    expect(JSON.parse(await readFile(join(acpHome, "sahkarmi-account.json"), "utf8"))).toEqual({
+      email: "second@example.in",
+      tier: "Free",
+    });
+    await expect(
+      readFile(join(root, "home", ".gemini", "antigravity-acp", "sahkarmi-account.json"), "utf8"),
+    ).rejects.toThrow();
+    delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
+  });
+
   it("skips the sign-in page when Google's server is already signed in", async () => {
     process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.4.2");
     const client = new FakeAcpClient(async () => ({}), false);

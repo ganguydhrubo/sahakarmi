@@ -5,6 +5,42 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-26
+
+### Added
+
+- Secure password and OTP card: when a site asks for a password, OTP or PIN, the coworker asks
+  for it in a card in the chat. What you type goes straight into that page field (same site
+  only) and is never shown to the coworker, saved or added to the chat. Take over and Decline
+  are on the card too.
+- Browser pages: every open page shows as a small live picture in its own column beside the
+  chat. Click one to open it, X to close it, + for a new page. Pages a coworker is using are
+  outlined.
+- Browser start menu: an empty browser offers Open Browser, Open Files, Open Tasks, Open Agent
+  settings and Open Voice.
+- The browser panel can be dragged wider or narrower, expanded to fill the chat space and
+  restored, or shrunk to the page pictures.
+- Chat follows new messages only while you are at the bottom, scrolls smoothly, and shows a
+  "Get to bottom" button with a new-message dot when you scroll up.
+- Settings > About: meet the founder, Dhrubo, with LinkedIn, Telegram and email, plus
+  Sahkarmi's website, LinkedIn, Facebook and Instagram, with smooth motion.
+- Settings > AI: add more Google accounts for Gemini. When one account reaches Google's limit,
+  Sahkarmi moves to the next and sends the message again.
+
+### Changed
+
+- Gemini starts together with the other AI tools instead of after them, keeps a recent chat
+  warm, and sleeps after 30 minutes without use. Replies on an existing Gemini chat arrive
+  about twice as fast once Gemini is ready.
+
+### Fixed
+
+- Gemini no longer starts twice at launch, and model checks no longer leave helper processes
+  running in the background.
+- The voice note preview shows its real length instead of 0:00.
+- A page a coworker was working on in the background could appear on top of the app, outside
+  the browser panel. Background pages now stay out of sight while coworkers use them.
+
 ## [0.10.0] - 2026-10-25
 
 ### Added

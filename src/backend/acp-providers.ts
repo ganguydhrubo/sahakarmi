@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { AgentModelId } from "../shared/ipc";
 import { modelWireId } from "../shared/ipc";
 import { AcpAgentClient, type AcpModelOption } from "./acp-client";
@@ -98,7 +98,16 @@ export function openCodeModelValue(
   return free.find((value) => !exhausted.has(value)) ?? free[0] ?? null;
 }
 
-export function createAntigravityClient(cli: AcpCliInfo, transcriptRoot: string): AcpAgentClient {
+/**
+ * Google's Antigravity server. `geminiHome` starts it on an extra Google account: Google keeps
+ * the sign-in under $GEMINI_HOME, so each extra account has a folder of its own (see
+ * gemini-accounts.ts). Null uses the first account in the real home folder.
+ */
+export function createAntigravityClient(
+  cli: AcpCliInfo,
+  transcriptRoot: string,
+  geminiHome: string | null = null,
+): AcpAgentClient {
   const harnessExecutable =
     process.platform === "win32" ? "localharness_external.exe" : "localharness_external";
   const harnessPath = join(cli.executable, "..", harnessExecutable);
@@ -109,13 +118,20 @@ export function createAntigravityClient(cli: AcpCliInfo, transcriptRoot: string)
     args: [],
     transcriptDir: join(transcriptRoot, "antigravity"),
     models: [{ model: "antigravity-default", displayName: "Antigravity Default" }],
-    readAccount: readAntigravityAccount,
+    // An extra account never counts an API key from the environment: that belongs to the first.
+    readAccount: geminiHome
+      ? () => readAntigravityAccount(dirname(geminiHome), {})
+      : () => readAntigravityAccount(),
     modelValue: antigravityModelValue,
     env: {
       ANTIGRAVITY_HARNESS_PATH: harnessPath,
+      ...(geminiHome ? { GEMINI_HOME: geminiHome } : {}),
     },
     // Google's server takes 30-60 s to answer initialize and a few seconds per session.
     modelListTimeoutMs: 30_000,
+    // Every session keeps one of Google's helper processes (~40 MB) alive until the server
+    // stops, so the model list is read once per server instead of on every refresh.
+    reuseModelCatalog: true,
   });
 }
 

@@ -50,6 +50,11 @@ export const IPC_CHANNELS = {
   browserTakeOver: "browser:take-over",
   browserHandBack: "browser:hand-back",
   browserDeclineTakeover: "browser:decline-takeover",
+  browserPreview: "browser:preview",
+  secureInputList: "secure-input:list",
+  secureInputSubmit: "secure-input:submit",
+  secureInputDismiss: "secure-input:dismiss",
+  secureInputTakeOver: "secure-input:take-over",
   teamListWorkspaces: "team:list-workspaces",
   teamCreateWorkspace: "team:create-workspace",
   teamRenameWorkspace: "team:rename-workspace",
@@ -83,6 +88,11 @@ export const IPC_CHANNELS = {
   providerSetupSetApiKey: "provider-setup:set-api-key",
   providerSetupCheck: "provider-setup:check",
   providerSetupEvent: "provider-setup:event",
+  geminiAccountsList: "gemini-accounts:list",
+  geminiAccountsAdd: "gemini-accounts:add",
+  geminiAccountsSignIn: "gemini-accounts:sign-in",
+  geminiAccountsUse: "gemini-accounts:use",
+  geminiAccountsRemove: "gemini-accounts:remove",
   usageOverview: "usage:overview",
   usageRefresh: "usage:refresh",
   usageClear: "usage:clear",
@@ -783,6 +793,30 @@ export interface ProviderSetupState {
   progress: number | null;
 }
 
+/** One Google account Gemini (Antigravity) can use. */
+export interface GeminiAccount {
+  id: string;
+  email: string | null;
+  tier: string | null;
+  signedIn: boolean;
+  /** The account coworkers on Gemini use now. */
+  active: boolean;
+}
+
+export interface GeminiAccountsState {
+  accounts: GeminiAccount[];
+}
+
+export interface GeminiAccountsDesktopApi {
+  list: () => Promise<GeminiAccountsState>;
+  /** Adds a Google account and starts its sign-in; progress arrives as provider-setup events. */
+  add: () => Promise<GeminiAccountsState>;
+  signIn: (id: string) => Promise<GeminiAccountsState>;
+  /** Gemini coworkers use this account from now on (Google's server restarts on it). */
+  use: (id: string) => Promise<GeminiAccountsState>;
+  remove: (id: string) => Promise<GeminiAccountsState>;
+}
+
 export interface ProviderSetupDesktopApi {
   list: () => Promise<ProviderSetupState[]>;
   connect: (provider: AgentProviderId) => Promise<ProviderSetupState>;
@@ -971,6 +1005,26 @@ export interface BrowserTakeoverState {
   humanInControl: boolean;
   /** Coworkers that asked the human to take over (login, 2FA, CAPTCHA, payment page). */
   requests: BrowserTakeoverRequest[];
+}
+
+export type SecureInputKind = "password" | "otp" | "pin" | "other";
+
+/** A coworker asked the owner to type a password or OTP into a page field it cannot fill itself. */
+export interface SecureInputRequest {
+  id: string;
+  botId: string;
+  kind: SecureInputKind;
+  /** Short label shown on the card, e.g. "Rediffmail password". */
+  label: string;
+  /** Origin the value may be typed into; the card refuses if the page moved elsewhere. */
+  origin: string;
+  tabId: string;
+  createdAt: string;
+}
+
+export interface SubmitSecureInput {
+  id: string;
+  value: string;
 }
 
 export type ConversationMessageAuthor = "user" | "assistant" | "agent" | "system";
@@ -1319,6 +1373,7 @@ export type AgentEvent =
   | { type: "browser-changed"; tabs: BrowserTab[]; activeTabId: string | null }
   | { type: "browser-control-changed"; state: BrowserControlState }
   | { type: "browser-takeover-changed"; state: BrowserTakeoverState }
+  | { type: "secure-inputs-changed"; requests: SecureInputRequest[] }
   | { type: "workspaces-changed"; state: WorkspaceState }
   | { type: "approvals-changed"; approvals: ApprovalRequest[] }
   | { type: "schedules-changed"; schedules: ScheduledTask[] }
@@ -1425,6 +1480,14 @@ export interface BrowserDesktopApi {
   handBack: (note?: string | null) => Promise<BrowserTakeoverState>;
   /** Says no to every pending "please take over" request; coworkers are told not to continue. */
   declineTakeover: (note?: string | null) => Promise<BrowserTakeoverState>;
+  /** A small picture of a tab for the compact browser card; null when it cannot be captured. */
+  preview: (tabId: string) => Promise<string | null>;
+  listSecureInputs: () => Promise<SecureInputRequest[]>;
+  /** Types the value straight into the page; it never reaches the coworker or the chat. */
+  submitSecureInput: (input: SubmitSecureInput) => Promise<SecureInputRequest[]>;
+  dismissSecureInput: (id: string) => Promise<SecureInputRequest[]>;
+  /** The owner would rather type it in the browser themselves. */
+  takeOverSecureInput: (id: string) => Promise<SecureInputRequest[]>;
 }
 
 export interface TeamDesktopApi {
@@ -1547,6 +1610,7 @@ export interface SahkarmiDesktopApi {
   approvals: ApprovalsDesktopApi;
   permissions: PermissionsDesktopApi;
   providerSetup: ProviderSetupDesktopApi;
+  geminiAccounts: GeminiAccountsDesktopApi;
   usage: UsageDesktopApi;
   features: FeaturesDesktopApi;
   business: BusinessDesktopApi;

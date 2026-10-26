@@ -28,6 +28,7 @@ import type {
   QueueSnapshot,
   ScheduleCadence,
   ScheduledTask,
+  SecureInputRequest,
   UpdateBotInput,
 } from "../../../shared/ipc";
 import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
@@ -47,6 +48,7 @@ import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
 import { ApprovalCard } from "./ApprovalsView";
 import { AvatarAura, statusAura } from "./AvatarAura";
+import { BrowserPageList, type BrowserStartAction, BrowserStartMenu } from "./BrowserPages";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
@@ -59,6 +61,7 @@ import {
   defaultCadenceDraft,
   ScheduleList,
 } from "./ScheduleControls";
+import { SecureInputCard } from "./SecureInputCard";
 import { SidebarToggleIcon } from "./Sidebar";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { TaskQueueStrip } from "./TaskQueueStrip";
@@ -72,6 +75,11 @@ interface ConversationProps {
   status: CoworkerStatus;
   schedules: ScheduledTask[];
   takeover: BrowserTakeoverState;
+  /** This coworker's password/OTP requests, answered in a secure card in the chat. */
+  secureInputs?: SecureInputRequest[];
+  onSubmitSecureInput?: (id: string, value: string) => Promise<void>;
+  onTakeOverSecureInput?: (id: string) => void;
+  onDismissSecureInput?: (id: string) => void;
   modelOptions: AgentModelOption[];
   messages: BotMessage[];
   loaded: boolean;
@@ -130,6 +138,8 @@ interface ConversationProps {
   onToggleLeftSidebar: () => void;
   /** Opens Settings → AI and models, where providers are connected. */
   onOpenAiSettings?: () => void;
+  /** Opens one of the app's own views (the browser start menu's Files and Tasks). */
+  onOpenView?: (view: "files" | "tasks") => void;
   onOpenAgentSetup: () => Promise<void>;
   onStop: () => void;
 }
@@ -156,10 +166,16 @@ const SETTINGS_PANEL_DEFAULT = 296;
 const SETTINGS_PANEL_MIN = 180;
 const SETTINGS_PANEL_MAX = 1600;
 const BROWSER_PANEL_STORAGE_KEY = "sahkarmi:browser-panel-width";
+const BROWSER_COMPACT_STORAGE_KEY = "sahkarmi:browser-compact";
+const BROWSER_PREVIEW_REFRESH_MS = 2_500;
+/** Pages other than the active one get a fresh picture every this many refreshes. */
+const BROWSER_BACKGROUND_PREVIEW_EVERY = 3;
 const BROWSER_PANEL_DEFAULT = 380;
 const BROWSER_PANEL_MIN = 220;
 const BROWSER_PANEL_MAX = 1600;
 const CONVERSATION_PANEL_MIN = 96;
+/** An expanded browser still leaves this much of the chat visible. */
+const EXPANDED_CHAT_MIN = 280;
 
 const BROWSER_ACTION_LABELS: Record<BrowserControlAction, string> = {
   open: "Page khola ja raha hai…",
@@ -226,6 +242,49 @@ function CloseIcon() {
       <path d="m5 5 10 10M15 5 5 15" stroke-width="1.4" stroke-linecap="round" />
     </svg>
   );
+}
+
+function ExpandIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="size-[14px] fill-none stroke-current">
+      <path
+        d="M11.5 3.5h5v5M8.5 16.5h-5v-5M16.5 3.5 11 9M3.5 16.5 9 11"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CollapseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="size-[14px] fill-none stroke-current">
+      <path
+        d="M16.5 8.5h-5v-5M3.5 11.5h5v5M11.5 8.5 17 3M8.5 11.5 3 17"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CompactIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="size-[14px] fill-none stroke-current">
+      <rect x="3" y="4" width="14" height="12" rx="2" stroke-width="1.4" />
+      <rect x="10" y="10" width="5" height="4" rx="1" stroke-width="1.4" />
+    </svg>
+  );
+}
+
+function readBrowserCompact(): boolean {
+  try {
+    return localStorage.getItem(BROWSER_COMPACT_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 function StopIcon() {
@@ -658,7 +717,7 @@ function MessageBody(props: {
 
 /** Notes the app sends a coworker for the owner (approval results, browser hand-back). */
 const SYSTEM_NOTE =
-  /^\[(Approval (APPROVED|REJECTED)|Browser handed back|Browser takeover declined)\]/;
+  /^\[(Approval (APPROVED|REJECTED)|Browser handed back|Browser takeover declined|Secure input (entered|declined))\]/;
 
 function isSystemNote(message: BotMessage): boolean {
   return message.author === "you" && SYSTEM_NOTE.test(message.body);
@@ -1056,6 +1115,12 @@ export function Conversation(props: ConversationProps) {
       SETTINGS_PANEL_MAX,
     ),
   );
+  const [browserCompact, setBrowserCompactSignal] = createSignal(readBrowserCompact());
+  /** Width to go back to after "Expand browser"; null while not expanded. */
+  const [browserExpandedFrom, setBrowserExpandedFrom] = createSignal<number | null>(null);
+  const [browserSizing, setBrowserSizing] = createSignal(false);
+  const [browserPreviews, setBrowserPreviews] = createSignal<Record<string, string>>({});
+  const [voiceStartRequest, setVoiceStartRequest] = createSignal(0);
   const [browserPanelWidth, setBrowserPanelWidth] = createSignal(
     readPanelWidth(
       BROWSER_PANEL_STORAGE_KEY,
@@ -1104,6 +1169,8 @@ export function Conversation(props: ConversationProps) {
     return botId ? (rightPanels()[botId] ?? "none") : "none";
   });
   const screenOpen = () => activeRightPanel() === "browser";
+  /** The full browser panel is on screen (not shrunk to the compact preview card). */
+  const browserLive = () => screenOpen() && !browserCompact();
   const settingsOpen = () => activeRightPanel() === "settings";
   const browserTabs = createMemo(() => {
     const bot = props.bot;
@@ -1221,6 +1288,11 @@ export function Conversation(props: ConversationProps) {
   let browserVisibilityGeneration = 0;
   let pickerInput: HTMLInputElement | undefined;
   let stickToLatest = true;
+  let lastScrollTop = 0;
+  let lastMessageCount = 0;
+  let lastLoaded = false;
+  const [awayFromLatest, setAwayFromLatest] = createSignal(false);
+  const [unseenWhileAway, setUnseenWhileAway] = createSignal(false);
   let lastConversationBotId: string | undefined;
   let lastPanelBotId: string | undefined;
   let lastHandledSettingsRequestNonce: number | undefined;
@@ -1289,6 +1361,32 @@ export function Conversation(props: ConversationProps) {
       delete next[botId];
       return next;
     });
+  }
+
+  /** Follows new messages only while the owner is at the bottom; scrolling up stops it. */
+  function trackScrollPosition(element: HTMLDivElement) {
+    const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
+    if (remaining <= 80) stickToLatest = true;
+    else if (element.scrollTop < lastScrollTop - 1) stickToLatest = false;
+    lastScrollTop = element.scrollTop;
+    const away = !stickToLatest && remaining > 80;
+    setAwayFromLatest(away);
+    if (!away) setUnseenWhileAway(false);
+  }
+
+  function scrollToLatest(behavior: ScrollBehavior) {
+    const element = scrollElement;
+    if (!element) return;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight <= 1) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    element.scrollTo({ top: element.scrollHeight, behavior: reduceMotion ? "auto" : behavior });
+  }
+
+  function jumpToLatest() {
+    stickToLatest = true;
+    setAwayFromLatest(false);
+    setUnseenWhileAway(false);
+    scrollToLatest("smooth");
   }
 
   function updateScrollFade(element = scrollElement) {
@@ -1411,13 +1509,24 @@ export function Conversation(props: ConversationProps) {
     props.loaded;
     props.agentPickerOpen;
     props.prompt;
+    // Opening a chat or its history landing jumps straight down; live updates glide.
+    let instant = !lastLoaded && props.loaded;
+    lastLoaded = props.loaded;
     if (botId !== lastConversationBotId) {
       lastConversationBotId = botId;
       stickToLatest = true;
+      instant = true;
+      setAwayFromLatest(false);
+      setUnseenWhileAway(false);
     }
+    const count = props.messages.length;
+    const grew = count > lastMessageCount;
+    if (lastMessageCount === 0) instant = true;
+    lastMessageCount = count;
     requestAnimationFrame(() => {
       if (!scrollElement) return;
-      if (stickToLatest) scrollElement.scrollTop = scrollElement.scrollHeight;
+      if (stickToLatest) scrollToLatest(instant ? "auto" : "smooth");
+      else if (grew) setUnseenWhileAway(true);
       updateScrollFade(scrollElement);
     });
   });
@@ -1505,6 +1614,8 @@ export function Conversation(props: ConversationProps) {
 
   createEffect(() => {
     const requested = props.takeover.requests.map((request) => request.botId);
+    if (requested.length === 0 && !props.takeover.humanInControl) return;
+    setBrowserCompact(false);
     if (requested.length === 0) return;
     setRightPanels((current) => {
       const next = { ...current };
@@ -1534,7 +1645,7 @@ export function Conversation(props: ConversationProps) {
 
   createEffect(() => {
     const botId = props.bot?.id;
-    const visible = screenOpen();
+    const visible = browserLive();
     const generation = ++browserVisibilityGeneration;
     if (browserVisibilityFrame !== undefined) cancelAnimationFrame(browserVisibilityFrame);
     browserResizeObserver?.disconnect();
@@ -1553,7 +1664,7 @@ export function Conversation(props: ConversationProps) {
       if (
         generation !== browserVisibilityGeneration ||
         props.bot?.id !== botId ||
-        !screenOpen() ||
+        !browserLive() ||
         !browserSurface
       ) {
         return;
@@ -1562,7 +1673,7 @@ export function Conversation(props: ConversationProps) {
         if (
           generation !== browserVisibilityGeneration ||
           props.bot?.id !== botId ||
-          !screenOpen() ||
+          !browserLive() ||
           !browserSurface
         ) {
           return;
@@ -1585,6 +1696,56 @@ export function Conversation(props: ConversationProps) {
       browserResizeObserver.observe(browserSurface);
       browserWindowResizeHandler = scheduleBoundsSync;
       window.addEventListener("resize", browserWindowResizeHandler);
+    });
+  });
+
+  // The page cards: the active page refreshes often, the others in turn, one per refresh.
+  createEffect(() => {
+    if (!screenOpen() || !browserCompact()) return;
+    const tabs = browserTabs();
+    const activeId = activeBrowserTab()?.id;
+    if (tabs.length === 0) return;
+    let cancelled = false;
+    let tick = 0;
+    let nextBackground = 0;
+    const capture = (tabId: string) => {
+      void window.sahkarmi.browser
+        .preview(tabId)
+        .then((image) => {
+          if (cancelled || !image) return;
+          setBrowserPreviews((current) =>
+            current[tabId] === image ? current : { ...current, [tabId]: image },
+          );
+        })
+        .catch(() => undefined);
+    };
+    const refresh = () => {
+      if (activeId) capture(activeId);
+      const others = tabs.filter((tab) => tab.id !== activeId);
+      if (others.length > 0) {
+        if (tick === 0) {
+          for (const tab of others) capture(tab.id);
+        } else if (tick % BROWSER_BACKGROUND_PREVIEW_EVERY === 0) {
+          capture(others[nextBackground % others.length].id);
+          nextBackground += 1;
+        }
+      }
+      tick += 1;
+    };
+    refresh();
+    const timer = window.setInterval(refresh, BROWSER_PREVIEW_REFRESH_MS);
+    onCleanup(() => {
+      cancelled = true;
+      window.clearInterval(timer);
+    });
+  });
+
+  // Forget pictures of pages that were closed.
+  createEffect(() => {
+    const open = new Set(props.browserTabs.map((tab) => tab.id));
+    setBrowserPreviews((current) => {
+      const kept = Object.entries(current).filter(([tabId]) => open.has(tabId));
+      return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept);
     });
   });
 
@@ -1670,6 +1831,8 @@ export function Conversation(props: ConversationProps) {
     );
     setSubmitting(false);
     if (sent) {
+      // Your own message always comes into view, even if you had scrolled up to read.
+      jumpToLatest();
       setDrafts((current) => ({ ...current, [botId]: EMPTY_DRAFT }));
       finishOnboarding(botId);
     }
@@ -1752,10 +1915,88 @@ export function Conversation(props: ConversationProps) {
     }
   }
 
-  function showBrowserPanel() {
-    setActiveRightPanel("browser");
-    if (browserTabs().length === 0) void openBrowserAddress();
+  function setBrowserCompact(compact: boolean) {
+    setBrowserCompactSignal(compact);
+    try {
+      localStorage.setItem(BROWSER_COMPACT_STORAGE_KEY, compact ? "1" : "0");
+    } catch {
+      // Storage is optional; the choice just won't survive a restart.
+    }
   }
+
+  function maxBrowserPanelWidth() {
+    return Math.min(
+      BROWSER_PANEL_MAX,
+      Math.max(
+        BROWSER_PANEL_MIN,
+        (conversationPanel?.clientWidth || window.innerWidth) - CONVERSATION_PANEL_MIN,
+      ),
+    );
+  }
+
+  /** Expand fills the room the chat can spare; pressing it again restores the dragged width. */
+  function toggleBrowserExpanded() {
+    const from = browserExpandedFrom();
+    setBrowserSizing(true);
+    window.setTimeout(() => setBrowserSizing(false), 260);
+    if (from !== null) {
+      setBrowserExpandedFrom(null);
+      setBrowserPanelWidth(from);
+      return;
+    }
+    setBrowserExpandedFrom(browserPanelWidth());
+    setBrowserPanelWidth(
+      Math.min(
+        BROWSER_PANEL_MAX,
+        Math.max(
+          BROWSER_PANEL_MIN,
+          (conversationPanel?.clientWidth || window.innerWidth) - EXPANDED_CHAT_MIN,
+        ),
+      ),
+    );
+  }
+
+  function showBrowserPanel() {
+    setBrowserCompact(false);
+    setActiveRightPanel("browser");
+  }
+
+  function openBrowserPage(tabId: string) {
+    props.onActivateBrowserTab(tabId);
+    showBrowserPanel();
+  }
+
+  function openNewBrowserPage() {
+    setBrowserAddress("https://www.google.com");
+    void openBrowserAddress().then(() => setBrowserCompact(false));
+  }
+
+  function runBrowserStartAction(action: BrowserStartAction) {
+    switch (action) {
+      case "browser":
+        openNewBrowserPage();
+        return;
+      case "files":
+      case "tasks":
+        props.onOpenView?.(action);
+        return;
+      case "settings":
+        setActiveRightPanel("settings");
+        return;
+      case "voice":
+        setVoiceStartRequest((request) => request + 1);
+        return;
+    }
+  }
+
+  const controlledBrowserTabIds = createMemo(
+    () =>
+      new Set(
+        browserTabs()
+          .filter((tab) => Boolean(browserControlForTab(tab)))
+          .map((tab) => tab.id),
+      ),
+  );
 
   function hideBrowserPanel() {
     setActiveRightPanel("none");
@@ -1830,7 +2071,8 @@ export function Conversation(props: ConversationProps) {
       class="conversation-panel"
       classList={{
         "conversation-drop-active": dropActive(),
-        "browser-panel-active": screenOpen(),
+        "browser-panel-active": browserLive(),
+        "browser-panel-expanded": browserLive() && browserExpandedFrom() !== null,
       }}
       style={`--settings-panel-width: ${settingsPanelWidth()}px; --browser-panel-width: ${browserPanelWidth()}px`}
       onDragEnter={(event) => {
@@ -2079,7 +2321,7 @@ export function Conversation(props: ConversationProps) {
         ref={(element) => (scrollElement = element)}
         onScroll={(event) => {
           const element = event.currentTarget;
-          stickToLatest = element.scrollHeight - element.scrollTop - element.clientHeight <= 80;
+          trackScrollPosition(element);
           updateScrollFade(element);
         }}
       >
@@ -2377,10 +2619,45 @@ export function Conversation(props: ConversationProps) {
               <PromptCard questions={prompt().questions} onSubmit={props.onAnswerPrompt} />
             )}
           </Show>
+          <For each={props.secureInputs ?? []}>
+            {(request) => (
+              <SecureInputCard
+                request={request}
+                onSubmit={(id, value) =>
+                  props.onSubmitSecureInput?.(id, value) ?? Promise.resolve()
+                }
+                onTakeOver={(id) => props.onTakeOverSecureInput?.(id)}
+                onDismiss={(id) => props.onDismissSecureInput?.(id)}
+              />
+            )}
+          </For>
         </Show>
       </div>
 
       <div class="composer-wrap">
+        <Show when={awayFromLatest() && !props.agentPickerOpen}>
+          <button
+            type="button"
+            class="jump-to-latest"
+            classList={{ "jump-to-latest-unseen": unseenWhileAway() }}
+            aria-label={t("jumpToLatest")}
+            title={t("jumpToLatest")}
+            onClick={jumpToLatest}
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              class="size-[16px] fill-none stroke-current"
+            >
+              <path
+                d="M10 4v11m0 0-4.5-4.5M10 15l4.5-4.5"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+        </Show>
         <Show when={showAttachments()}>
           <button
             type="button"
@@ -2530,6 +2807,7 @@ export function Conversation(props: ConversationProps) {
             </Show>
             <VoiceRecorder
               disabled={!agentReady() || submitting()}
+              startRequest={voiceStartRequest()}
               onAttach={(attachments, transcript) => {
                 addAttachments(attachments);
                 if (transcript) {
@@ -2647,11 +2925,69 @@ export function Conversation(props: ConversationProps) {
         )}
       </Show>
 
-      <Show when={screenOpen()}>
+      <Show when={screenOpen() && browserCompact()}>
+        <aside
+          class="browser-compact"
+          classList={{ "browser-compact-controlled": Boolean(activeBrowserControl()) }}
+          aria-label={t("browserPages")}
+        >
+          <header class="browser-compact-header">
+            <span class="browser-compact-heading">
+              <ComputerIcon />
+              {t("browser")}
+            </span>
+            <button
+              type="button"
+              class="browser-compact-action"
+              aria-label={t("browserNewPage")}
+              title={t("browserNewPage")}
+              onClick={openNewBrowserPage}
+            >
+              <PlusIcon />
+            </button>
+            <button
+              type="button"
+              class="browser-compact-action"
+              aria-label={t("browserExpand")}
+              title={t("browserExpand")}
+              onClick={showBrowserPanel}
+            >
+              <ExpandIcon />
+            </button>
+            <button
+              type="button"
+              class="browser-compact-action"
+              aria-label={t("hideBrowser")}
+              title={t("hideBrowser")}
+              onClick={hideBrowserPanel}
+            >
+              <CloseIcon />
+            </button>
+          </header>
+          <Show
+            when={browserTabs().length > 0}
+            fallback={<BrowserStartMenu onAction={runBrowserStartAction} />}
+          >
+            <BrowserPageList
+              tabs={browserTabs()}
+              activeTabId={activeBrowserTab()?.id ?? null}
+              previews={browserPreviews()}
+              controlledTabIds={controlledBrowserTabIds()}
+              onOpen={openBrowserPage}
+              onClose={props.onCloseBrowserTab}
+            />
+          </Show>
+        </aside>
+      </Show>
+
+      <Show when={browserLive()}>
         <aside
           id="browser-side-panel"
           class="browser-panel"
-          classList={{ "browser-panel-controlled": Boolean(activeBrowserControl()) }}
+          classList={{
+            "browser-panel-controlled": Boolean(activeBrowserControl()),
+            "browser-panel-sizing": browserSizing(),
+          }}
           aria-label="Browser"
         >
           <PanelResizer
@@ -2662,17 +2998,12 @@ export function Conversation(props: ConversationProps) {
             value={browserPanelWidth()}
             defaultValue={BROWSER_PANEL_DEFAULT}
             min={BROWSER_PANEL_MIN}
-            max={() =>
-              Math.min(
-                BROWSER_PANEL_MAX,
-                Math.max(
-                  BROWSER_PANEL_MIN,
-                  (conversationPanel?.clientWidth || window.innerWidth) - CONVERSATION_PANEL_MIN,
-                ),
-              )
-            }
+            max={maxBrowserPanelWidth}
             onResize={setBrowserPanelWidth}
-            onResizeEnd={(value) => savePanelWidth(BROWSER_PANEL_STORAGE_KEY, value)}
+            onResizeEnd={(value) => {
+              setBrowserExpandedFrom(null);
+              savePanelWidth(BROWSER_PANEL_STORAGE_KEY, value);
+            }}
           />
           <header class="browser-panel-header">
             <div class="browser-tabs">
@@ -2733,14 +3064,42 @@ export function Conversation(props: ConversationProps) {
                   type="button"
                   class="browser-new-tab"
                   aria-label="New browser tab"
-                  onClick={() => {
-                    setBrowserAddress("https://www.google.com");
-                    void openBrowserAddress();
-                  }}
+                  onClick={openNewBrowserPage}
                 >
                   <PlusIcon />
                 </button>
               </div>
+            </div>
+            <div class="browser-panel-actions">
+              <button
+                type="button"
+                class="browser-panel-action"
+                aria-label={t("browserCompact")}
+                title={t("browserCompact")}
+                onClick={() => {
+                  setBrowserExpandedFrom((from) => {
+                    if (from !== null) setBrowserPanelWidth(from);
+                    return null;
+                  });
+                  setBrowserCompact(true);
+                }}
+              >
+                <CompactIcon />
+              </button>
+              <button
+                type="button"
+                class="browser-panel-action"
+                aria-pressed={browserExpandedFrom() !== null}
+                aria-label={
+                  browserExpandedFrom() !== null ? t("browserRestore") : t("browserExpand")
+                }
+                title={browserExpandedFrom() !== null ? t("browserRestore") : t("browserExpand")}
+                onClick={toggleBrowserExpanded}
+              >
+                <Show when={browserExpandedFrom() !== null} fallback={<ExpandIcon />}>
+                  <CollapseIcon />
+                </Show>
+              </button>
             </div>
           </header>
           <div class="browser-toolbar">
@@ -2848,10 +3207,7 @@ export function Conversation(props: ConversationProps) {
           </Show>
           <div class="browser-surface" ref={(element) => (browserSurface = element)}>
             <Show when={browserTabs().length === 0}>
-              <div class="browser-empty-state">
-                <strong>Open a page</strong>
-                <span>The agent can browse here while it works.</span>
-              </div>
+              <BrowserStartMenu onAction={runBrowserStartAction} />
             </Show>
           </div>
         </aside>

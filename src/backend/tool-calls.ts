@@ -103,6 +103,7 @@ const FRIENDLY_NAMES: Record<string, string> = {
   send_message: "Message coworker",
   request_approval: "Ask for approval",
   request_browser_takeover: "Ask you to take over",
+  request_secure_input: "Ask you for a password or OTP",
 };
 
 function friendlyToolName(namespace: string | null, tool: string): string {

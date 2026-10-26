@@ -37,6 +37,7 @@ import {
   setToolsDirectory,
 } from "../backend/cli";
 import { FeatureRegistry } from "../backend/feature-registry";
+import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
 import { MailboxStore } from "../backend/mailbox-store";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -159,6 +160,8 @@ function configureContentSecurityPolicy(): void {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: sahkarmi-attachment: https:",
     "font-src 'self' data:",
+    // Voice-note previews play the just-recorded audio from a blob: URL made by the app itself.
+    "media-src 'self' blob:",
     `connect-src 'self'${developmentSources}`,
     "object-src 'none'",
     "frame-src 'self' sahkarmi-attachment:",
@@ -226,8 +229,8 @@ function registerIpcHandlers(
   });
   handleTrusted(IPC_CHANNELS.openUrl, (value: unknown) => {
     const url = new URL(requireString(value, "URL"));
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error("Only HTTP(S) links can open in the external browser.");
+    if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "mailto:") {
+      throw new Error("Only HTTP(S) and email links can open outside Sahkarmi.");
     }
     return shell.openExternal(url.toString());
   });
@@ -369,6 +372,26 @@ function registerIpcHandlers(
   );
   handleTrusted(IPC_CHANNELS.browserDeclineTakeover, (note: unknown) =>
     service.declineBrowserTakeover(typeof note === "string" && note.trim() ? note : null),
+  );
+  handleTrusted(IPC_CHANNELS.browserPreview, (tabId: unknown) =>
+    browser
+      .preview(requireString(tabId, "tabId"))
+      .then((image) => (image ? previewThumbnail(image) : null))
+      .catch(() => null),
+  );
+  handleTrusted(IPC_CHANNELS.secureInputList, () => service.listSecureInputs());
+  handleTrusted(IPC_CHANNELS.secureInputSubmit, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid secure input.");
+    return service.submitSecureInput(
+      requireString(input.id, "id"),
+      typeof input.value === "string" ? input.value : "",
+    );
+  });
+  handleTrusted(IPC_CHANNELS.secureInputDismiss, (id: unknown) =>
+    service.dismissSecureInput(requireString(id, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.secureInputTakeOver, (id: unknown) =>
+    service.takeOverSecureInput(requireString(id, "id")),
   );
 
   handleTrusted(IPC_CHANNELS.teamListWorkspaces, () => service.listWorkspaces());
@@ -911,6 +934,49 @@ function registerVoiceHandlers(voice: VoiceService): void {
   });
 }
 
+function registerGeminiAccountHandlers(
+  accounts: GeminiAccountStore,
+  setup: ProviderSetup,
+  service: AgentService,
+): void {
+  const accountId = (value: unknown) => {
+    if (typeof value !== "string" || !value || value.length > 64) {
+      throw new Error("Unknown Google account.");
+    }
+    return value;
+  };
+  // Sign-ins run in the background; their progress reaches the Gemini row as setup events.
+  const signIn = (id: string) => {
+    if (id === DEFAULT_GEMINI_ACCOUNT_ID) void setup.connect("antigravity");
+    else void setup.signInGeminiAccount(accounts.homeOf(id));
+  };
+  handleTrusted(IPC_CHANNELS.geminiAccountsList, () => accounts.list());
+  handleTrusted(IPC_CHANNELS.geminiAccountsAdd, async () => {
+    signIn(await accounts.add());
+    return accounts.list();
+  });
+  handleTrusted(IPC_CHANNELS.geminiAccountsSignIn, async (value: unknown) => {
+    const id = accountId(value);
+    accounts.homeOf(id);
+    signIn(id);
+    return accounts.list();
+  });
+  handleTrusted(IPC_CHANNELS.geminiAccountsUse, async (value: unknown) => {
+    const id = accountId(value);
+    const changed = accounts.activeId() !== id;
+    await accounts.setActive(id);
+    if (changed) void service.switchGeminiAccount().catch(() => undefined);
+    return accounts.list();
+  });
+  handleTrusted(IPC_CHANNELS.geminiAccountsRemove, async (value: unknown) => {
+    const id = accountId(value);
+    const wasActive = accounts.activeId() === id;
+    await accounts.remove(id);
+    if (wasActive) void service.switchGeminiAccount().catch(() => undefined);
+    return accounts.list();
+  });
+}
+
 function registerProviderSetupHandlers(setup: ProviderSetup): void {
   const provider = (value: unknown) => {
     if (!isAgentProvider(value)) throw new Error("Unknown provider.");
@@ -1045,6 +1111,16 @@ if (!hasSingleInstanceLock) {
         permissions,
       );
       const service = agentService;
+      const geminiAccounts = new GeminiAccountStore(app.getPath("userData"));
+      await geminiAccounts.initialize().catch((error) => {
+        appLog.write(
+          "error",
+          "Google account list unreadable; using the first account",
+          String(error),
+        );
+      });
+      service.setGeminiAccounts(geminiAccounts);
+      service.on("log", (message) => appLog.write("info", message));
       const usage = new UsageService(app.getPath("userData"));
       await usage.initialize().catch((error) => {
         appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
@@ -1108,6 +1184,7 @@ if (!hasSingleInstanceLock) {
       });
       service.on("event", forwardAgentEvent);
       const refreshOnWake = () => {
+        service.wakeIdleProviders();
         void service.refreshModels();
         void updateService?.checkOnWake();
         void aiRuntimeService?.check();
@@ -1180,6 +1257,7 @@ if (!hasSingleInstanceLock) {
         }
       });
       registerProviderSetupHandlers(providerSetup);
+      registerGeminiAccountHandlers(geminiAccounts, providerSetup, service);
       voiceService = new VoiceService({ userDataPath: app.getPath("userData") });
       await voiceService.initialize().catch((error) => {
         appLog.write("error", "voice settings unreadable; using defaults", String(error));
@@ -1634,4 +1712,13 @@ function parseBounds(value: unknown): BrowserBounds {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Page pictures for the browser page cards: small JPEGs, so several pages stay cheap to show. */
+function previewThumbnail(dataUrl: string): string | null {
+  const image = nativeImage.createFromDataURL(dataUrl);
+  if (image.isEmpty()) return null;
+  const { width } = image.getSize();
+  const small = width > 640 ? image.resize({ width: 640, quality: "good" }) : image;
+  return `data:image/jpeg;base64,${small.toJPEG(72).toString("base64")}`;
 }

@@ -487,6 +487,86 @@ describe.sequential("AgentService", () => {
     expect(resumed?.text).toContain("Logged in, OTP done");
   });
 
+  it("types a secure password into the page without ever showing it to the coworker", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "request_secure_input",
+      arguments: { tabId: "tab-1", revision: 4, ref: "4:7", kind: "password", submit: true },
+    });
+    const { store, mailbox } = stores();
+    const acts: Array<{ tabId: string; revision: number; action: unknown }> = [];
+    let tabUrl = "https://mail.rediff.com/cgi-bin/login.cgi";
+    const browser = {
+      ...fakeBrowser(),
+      listTabs: () => [{ id: "tab-1", url: tabUrl, title: "Rediffmail", loading: false }],
+      act: async (tabId: string, revision: number, action: unknown) => {
+        acts.push({ tabId, revision, action });
+        return {};
+      },
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Check my Rediffmail" });
+
+    await waitFor(() => service?.listSecureInputs().length === 1);
+    const [request] = service.listSecureInputs();
+    expect(request).toMatchObject({
+      botId: "asha-accounts",
+      kind: "password",
+      origin: "https://mail.rediff.com",
+      tabId: "tab-1",
+    });
+    expect(JSON.stringify(request)).not.toContain("4:7");
+
+    tabUrl = "https://evil.example/login";
+    await expect(service.submitSecureInput(request.id, "s3cret!")).rejects.toThrow(
+      "no longer on https://mail.rediff.com",
+    );
+    expect(acts).toEqual([]);
+
+    tabUrl = "https://mail.rediff.com/cgi-bin/login.cgi";
+    expect(await service.submitSecureInput(request.id, "s3cret!")).toEqual([]);
+    expect(acts).toEqual([
+      {
+        tabId: "tab-1",
+        revision: 4,
+        action: { type: "type", ref: "4:7", text: "s3cret!", submit: true },
+      },
+    ]);
+    const resumed = service.listQueue("asha-accounts").deliveries.at(-1);
+    expect(resumed?.text).toContain("[Secure input entered]");
+    expect(resumed?.text).not.toContain("s3cret!");
+  });
+
+  it("turns a secure input request into a takeover when the owner prefers to type it", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "request_secure_input",
+      arguments: { tabId: "tab-1", revision: 2, ref: "2:3", kind: "otp", label: "Bank OTP" },
+    });
+    const { store, mailbox } = stores();
+    const browser = {
+      ...fakeBrowser(),
+      listTabs: () => [{ id: "tab-1", url: "https://bank.example/otp", title: "", loading: false }],
+      activate: async () => undefined,
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Pay the vendor" });
+
+    await waitFor(() => service?.listSecureInputs().length === 1);
+    const [request] = service.listSecureInputs();
+    expect(service.takeOverSecureInput(request.id)).toEqual([]);
+    expect(service.getTakeover()).toMatchObject({
+      humanInControl: true,
+      requests: [{ botId: "asha-accounts", reason: "Bank OTP on https://bank.example" }],
+    });
+    await service.handBackBrowser(null);
+    expect(service.listQueue("asha-accounts").deliveries.at(-1)?.text).toContain(
+      "[Browser handed back]",
+    );
+  });
+
   it("shows tool calls as collapsible cards in the conversation", async () => {
     process.env.SAHKARMI_FAKE_TOOL_ITEM = JSON.stringify({
       type: "commandExecution",

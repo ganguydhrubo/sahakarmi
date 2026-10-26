@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import type { DraftAttachment } from "../../../shared/ipc";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
@@ -36,6 +36,8 @@ export function VoiceRecorder(props: {
   disabled?: boolean;
   onAttach: (attachments: DraftAttachment[], transcript: string) => void;
   onError: (message: string) => void;
+  /** Changing this number starts a recording, as if the mic button was pressed. */
+  startRequest?: number;
 }) {
   const [state, setState] = createSignal(INITIAL_VOICE_STATE);
   const [open, setOpen] = createSignal(false);
@@ -58,6 +60,16 @@ export function VoiceRecorder(props: {
     setAudioUrl(null);
     blob = null;
   }
+
+  createEffect(
+    on(
+      () => props.startRequest,
+      (request) => {
+        if (request && !open() && !props.disabled) void start();
+      },
+      { defer: true },
+    ),
+  );
 
   onCleanup(() => {
     controller.dispose();
@@ -252,7 +264,12 @@ export function VoiceRecorder(props: {
             </p>
           </Show>
           <Show when={phase() === "preview" || phase() === "sending"}>
-            <audio class="voice-audio" controls src={audioUrl() ?? undefined}>
+            <audio
+              class="voice-audio"
+              controls
+              src={audioUrl() ?? undefined}
+              onLoadedMetadata={(event) => revealRecordedDuration(event.currentTarget)}
+            >
               <track kind="captions" />
             </audio>
             <label class="voice-transcript">
@@ -338,4 +355,18 @@ export function VoiceRecorder(props: {
       </Show>
     </div>
   );
+}
+
+/**
+ * MediaRecorder WebM files carry no duration, so the player shows 0:00 until played. Seeking far
+ * past the end makes Chromium scan the file and learn the real length; then rewind to the start.
+ */
+export function revealRecordedDuration(audio: HTMLAudioElement) {
+  if (Number.isFinite(audio.duration)) return;
+  const rewind = () => {
+    audio.removeEventListener("durationchange", rewind);
+    if (Number.isFinite(audio.duration)) audio.currentTime = 0;
+  };
+  audio.addEventListener("durationchange", rewind);
+  audio.currentTime = Number.MAX_SAFE_INTEGER;
 }

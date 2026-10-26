@@ -26,6 +26,8 @@ export function snapshotFromThread(
       const createdAt = new Date(baseTime + itemIndex).toISOString();
       if (item.type === "userMessage" && typeof item.id === "string") {
         const delivery = item.clientId ? findDelivery(item.clientId) : null;
+        // The same message went out again on the same conversation; show it once.
+        if (delivery?.retried) continue;
         const text = (item.content ?? [])
           .filter((part) => part.type === "text" && typeof part.text === "string")
           .map((part) => part.text)

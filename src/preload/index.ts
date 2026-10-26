@@ -121,6 +121,11 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     handBack: (note) => ipcRenderer.invoke(IPC_CHANNELS.browserHandBack, note ?? null),
     declineTakeover: (note) =>
       ipcRenderer.invoke(IPC_CHANNELS.browserDeclineTakeover, note ?? null),
+    preview: (tabId) => ipcRenderer.invoke(IPC_CHANNELS.browserPreview, tabId),
+    listSecureInputs: () => ipcRenderer.invoke(IPC_CHANNELS.secureInputList),
+    submitSecureInput: (input) => ipcRenderer.invoke(IPC_CHANNELS.secureInputSubmit, input),
+    dismissSecureInput: (id) => ipcRenderer.invoke(IPC_CHANNELS.secureInputDismiss, id),
+    takeOverSecureInput: (id) => ipcRenderer.invoke(IPC_CHANNELS.secureInputTakeOver, id),
   },
   team: {
     listWorkspaces: () => ipcRenderer.invoke(IPC_CHANNELS.teamListWorkspaces),
@@ -226,6 +231,13 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.on(IPC_CHANNELS.providerSetupEvent, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.providerSetupEvent, handler);
     },
+  },
+  geminiAccounts: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsList),
+    add: () => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsAdd),
+    signIn: (id) => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsSignIn, id),
+    use: (id) => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsUse, id),
+    remove: (id) => ipcRenderer.invoke(IPC_CHANNELS.geminiAccountsRemove, id),
   },
   maintenance: {
     exportData: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportData),
