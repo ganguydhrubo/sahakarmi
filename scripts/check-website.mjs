@@ -259,7 +259,13 @@ async function main() {
     check(`local reference exists: ${ref}`, asset.status === 200, String(asset.status));
   }
   // Secondary pages: indexable, canonical, titled.
-  for (const page of ["/install.html"]) {
+  for (const page of [
+    "/install.html",
+    "/docs.html",
+    "/changelog.html",
+    "/privacy.html",
+    "/terms.html",
+  ]) {
     const secondary = await load(page);
     check(`${page} returns 200`, secondary.status === 200, String(secondary.status));
     const secondaryTitle = secondary.text.match(/<title>([^<]*)<\/title>/)?.[1] ?? "";

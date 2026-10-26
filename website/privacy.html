@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sahkarmi privacy policy — what stays on your PC</title>
+  <meta name="description" content="How the Sahkarmi Windows app and the sahkarmi.site website handle your data: what is stored on your computer, what goes to AI providers, and how to delete it." />
+  <link rel="canonical" href="https://sahkarmi.site/privacy.html" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0F1220" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta property="og:site_name" content="Sahkarmi" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://sahkarmi.site/privacy.html" />
+  <meta property="og:title" content="Sahkarmi privacy policy — what stays on your PC" />
+  <meta property="og:description" content="What the Sahkarmi app stores on your computer, what it sends and to whom, what the website collects, and how to delete your data." />
+  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    @font-face { font-family: "Baloo 2"; font-weight: 800; font-display: swap; src: url(/assets/fonts/baloo-2-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 400; font-display: swap; src: url(/assets/fonts/mukta-latin-400-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 700; font-display: swap; src: url(/assets/fonts/mukta-latin-700-normal.woff2) format("woff2"); }
+    :root { --saffron: #e8772e; --saffron-ink: #f0904f; --bg: #0b0d17; --bg-2: #161a2e; --text: #f3efe6; --text-2: #c9c4b8; --muted: #9a9cb3; --line: rgba(255,255,255,0.1); --line-2: rgba(255,255,255,0.18); --leaf: #5ec48a; --turmeric: #f2b705; color-scheme: dark; }
+    @media (prefers-color-scheme: light) { :root { --bg: #fbf7f0; --bg-2: #ffffff; --text: #141829; --text-2: #3a3f55; --muted: #646a85; --line: rgba(20,24,41,0.1); --line-2: rgba(20,24,41,0.2); --saffron-ink: #a84e14; --leaf: #22703f; color-scheme: light; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.65 "Mukta", system-ui, sans-serif; }
+    a { color: var(--saffron-ink); text-underline-offset: 3px; }
+    :focus-visible { outline: 3px solid var(--turmeric); outline-offset: 3px; border-radius: 6px; }
+    .wrap { width: min(860px, 100% - 2 * clamp(16px, 4vw, 40px)); margin-inline: auto; }
+    header { border-bottom: 1px solid var(--line); }
+    header .wrap { display: flex; align-items: center; gap: 14px; min-height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font: 800 20px "Baloo 2", "Mukta", sans-serif; }
+    .brand svg { width: 30px; height: 30px; }
+    header nav { margin-left: auto; display: flex; gap: 14px; font-weight: 700; font-size: 15px; }
+    h1 { font: 800 clamp(32px, 5vw, 46px)/1.1 "Baloo 2", "Mukta", sans-serif; margin: 40px 0 10px; }
+    h2 { font: 800 clamp(24px, 3vw, 30px)/1.15 "Baloo 2", "Mukta", sans-serif; margin: 56px 0 12px; padding-top: 18px; border-top: 1px solid var(--line); scroll-margin-top: 80px; }
+    h3 { font: 700 19px/1.2 "Mukta", sans-serif; margin: 26px 0 8px; }
+    p, li { color: var(--text-2); }
+    .lead { font-size: 19px; }
+    .status { display: inline-block; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+    .tested { background: rgba(94,196,138,0.16); color: var(--leaf); }
+    .built { background: rgba(242,183,5,0.16); color: var(--turmeric); }
+    .none { background: rgba(192,57,43,0.16); color: #e46a5c; }
+    pre { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; color: var(--text); }
+    code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.93em; }
+    .toc { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .toc a { display: inline-block; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 15px; }
+    .box { background: var(--bg-2); border: 1px solid var(--line); border-left: 4px solid var(--saffron); border-radius: 12px; padding: 14px 18px; margin: 18px 0; }
+    .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 10px 22px; border-radius: 999px; background: var(--saffron); color: #0f1220; font-weight: 700; text-decoration: none; }
+    table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 12px 0; display: block; overflow-x: auto; }
+    pre, code { overflow-wrap: anywhere; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+    footer { border-top: 1px solid var(--line); margin-top: 64px; padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+    .foot-nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; font-weight: 700; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Sahkarmi home">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><defs><clipPath id="l"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l)"/></svg>
+        Sahkarmi
+      </a>
+      <nav aria-label="Site"><a href="/">Home</a><a href="/#download">Download</a><a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Privacy policy</h1>
+    <p class="lead">Sahkarmi is a free, open-source desktop app for Windows. It keeps your coworkers, chats and files on your own computer. There is no Sahkarmi account, no Sahkarmi cloud and no analytics in the app. This page explains exactly what is stored, what leaves your computer, and where it goes.</p>
+    <p><strong>Last updated: 26 October 2026.</strong> This policy covers the current Sahkarmi Windows app (version 0.12) and the website sahkarmi.site.</p>
+    <ul class="toc">
+      <li><a href="#short">In short</a></li>
+      <li><a href="#stored">Stored on your PC</a></li>
+      <li><a href="#network">What leaves your PC</a></li>
+      <li><a href="#providers">AI providers</a></li>
+      <li><a href="#agents">What coworkers can do</a></li>
+      <li><a href="#telegram">Telegram</a></li>
+      <li><a href="#website">This website</a></li>
+      <li><a href="#delete">Delete your data</a></li>
+      <li><a href="#changes">Changes</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+
+    <h2 id="short">In short</h2>
+    <ul>
+      <li>Sahkarmi has no account, no cloud service, no telemetry and no analytics. The Sahkarmi Team cannot see your coworkers, chats, files or settings.</li>
+      <li>Your data is stored as files on your computer, inside your Windows user profile.</li>
+      <li>When a coworker works, the text and files it needs go to the AI provider you chose for it, under that provider's terms.</li>
+      <li>The app also talks to GitHub (updates), the npm registry (AI tool downloads), and to the websites and services you or your coworkers use.</li>
+      <li>The website counts clicks on Download buttons without cookies or a visitor ID, and does not count at all when your browser asks not to be tracked.</li>
+    </ul>
+
+    <h2 id="stored">What the app stores on your computer</h2>
+    <p>Everything below stays on your PC. Sahkarmi does not copy it anywhere. The files are ordinary files under your Windows user account, so anyone who can sign in to Windows as you can read them. Sahkarmi does not add its own encryption.</p>
+    <table>
+      <thead><tr><th>Folder</th><th>What is in it</th></tr></thead>
+      <tbody>
+        <tr><td><code>%APPDATA%\Sahkarmi</code></td><td>App settings, your coworkers and their instructions, chat history and message queues, approvals, schedules and routines, copies of attachments you add to a chat, the shared browser profile (cookies and website logins), and logs (<code>logs\sahkarmi.log</code>). If you connect Telegram, <code>telegram.json</code> holds your bot token and the paired chat. If you add a Composio key in Marketplace, Apps, the key is saved here too.</td></tr>
+        <tr><td><code>%USERPROFILE%\Sahkarmi\Coworkers</code></td><td>One working folder for each coworker.</td></tr>
+        <tr><td><code>%USERPROFILE%\Sahkarmi\Shared</code></td><td>Files shared by the whole team, including skills and playbooks in <code>Shared\Skills</code>.</td></tr>
+        <tr><td><code>%USERPROFILE%\Sahkarmi\Downloads</code></td><td>Files downloaded in the built-in browser.</td></tr>
+        <tr><td><code>%LOCALAPPDATA%\sahkarmi-updater</code></td><td>Downloaded app updates.</td></tr>
+      </tbody>
+    </table>
+    <p>Attachments copied into Sahkarmi stay in its storage even after you move or delete the original file. All coworkers share one built-in browser profile, so a site you sign in to is signed in for every coworker.</p>
+    <p>Sahkarmi never copies or manages the logins of the AI tools it uses. <code>%USERPROFILE%\.codex</code> belongs to the Codex CLI and <code>%USERPROFILE%\.claude</code> belongs to Claude Code. Sahkarmi only uses the sign-in those tools already have.</p>
+    <p>Logs can contain the email address of a connected provider account. Settings, Data &amp; privacy, <strong>Export diagnostics</strong> makes a redacted bundle with versions and capability states and no conversation content. Remove anything personal before you share a log in public.</p>
+
+    <h2 id="network">What leaves your computer</h2>
+    <p>Sahkarmi does not open a port for other computers to connect to. It does connect out to these places:</p>
+    <table>
+      <thead><tr><th>When</th><th>Where it goes</th><th>What is sent</th></tr></thead>
+      <tbody>
+        <tr><td>A coworker works on a task</td><td>The AI provider you chose for that coworker</td><td>The messages, instructions and files the coworker needs. See <a href="#providers">AI providers</a>.</td></tr>
+        <tr><td>Checking for app updates</td><td>GitHub Releases (github.com)</td><td>A normal download request. Updates are downloaded from GitHub.</td></tr>
+        <tr><td>Installing or updating AI tools</td><td>The npm registry (registry.npmjs.org)</td><td>Download requests for AI tool runtimes such as OpenCode, Claude Code and Codex, and other agents you choose to connect.</td></tr>
+        <tr><td>Connecting Google Antigravity</td><td>Google</td><td>Download of Google's Antigravity agent after you accept Google's terms, then Google's own sign-in.</td></tr>
+        <tr><td>Downloading a voice model (Settings, Voice)</td><td>Hugging Face (huggingface.co)</td><td>A download request, only when you choose a model. After that, dictation runs on your PC and your voice does not leave it.</td></tr>
+        <tr><td>Using the built-in browser</td><td>The websites you or a coworker open</td><td>What any browser sends: your IP address, cookies for that site, and what you or the coworker type into the page.</td></tr>
+        <tr><td>Marketplace, Apps (optional)</td><td>Composio (composio.dev)</td><td>App logos load from logos.composio.dev when you open the Apps tab. If you add your own Composio key, coworker actions on your connected apps go through Composio under its terms.</td></tr>
+        <tr><td>Telegram chat (optional)</td><td>Telegram (api.telegram.org)</td><td>See <a href="#telegram">Telegram</a>.</td></tr>
+        <tr><td>You click an outside link</td><td>That website, in your normal browser</td><td>A normal page visit.</td></tr>
+      </tbody>
+    </table>
+    <p>Nothing in this list goes to the Sahkarmi Team. The app sends no usage statistics, crash reports or analytics.</p>
+
+    <h2 id="providers">AI providers</h2>
+    <p>Each coworker uses one AI provider: OpenCode's free models (built in), Claude, ChatGPT (Codex), Google Antigravity or Gemini, or another agent you connect. When a coworker thinks, the text and files it needs are sent to that provider. The provider handles them under its own terms and privacy policy, and with your own account where you signed in. Sahkarmi does not control what the provider stores or how long it keeps it. Read the provider's policy before you give a coworker private or customer data.</p>
+    <p>Usage limits shown in Sahkarmi are read from the provider on your computer. They are not sent to the Sahkarmi Team.</p>
+
+    <h2 id="agents">What coworkers can do on your computer</h2>
+    <p>Please read this part carefully. Coworkers are AI agents with real access to your PC. They can:</p>
+    <ul>
+      <li>read, create, change and delete files on your computer;</li>
+      <li>run programs and commands;</li>
+      <li>use the internet;</li>
+      <li>control the built-in browser, including sites where you are already signed in.</li>
+    </ul>
+    <p>The Permissions page in Settings sets how much they may do on their own. Coworkers are told to stop and ask you before payments, messages to customers, publishing and form submissions. Today that depends on the AI model following its instructions; it is not a hard technical block. Keep backups. Do not give a coworker a task you would not trust a command-line tool to do. Never give card details, passwords or OTPs to a coworker in chat: type them yourself with <strong>Take over</strong> or in the secure password card.</p>
+
+    <h2 id="telegram">Telegram (optional)</h2>
+    <p>If you connect Telegram in Settings, Telegram, Sahkarmi talks only to api.telegram.org using the bot you created in @BotFather. Your messages to the bot and the coworker's replies pass through Telegram's servers, under <a href="https://telegram.org/privacy" target="_blank" rel="noopener noreferrer">Telegram's privacy policy</a>. Only the one chat you paired is answered. New approvals are announced there, but you still allow or deny them in the app. The bot token and the paired chat are saved in <code>%APPDATA%\Sahkarmi\telegram.json</code>. <strong>Disconnect</strong> in Settings, Telegram removes the token.</p>
+
+    <h2 id="website">This website (sahkarmi.site)</h2>
+    <h3>Hosting</h3>
+    <p>The website is a static site hosted on GitHub Pages. GitHub may log information about visitors, including IP addresses, for security and operation. See the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener noreferrer">GitHub General Privacy Statement</a>. Installer downloads are also served by GitHub.</p>
+    <h3>No cookies, no analytics</h3>
+    <p>The website sets no cookies and loads no analytics or advertising scripts. Fonts, images and the explainer video are served from sahkarmi.site itself.</p>
+    <h3>Download click count</h3>
+    <p>When you click a Download button, the page sends one small message so the team can see how many people download Sahkarmi. It goes to a Google Apps Script web app run by the Sahkarmi Team, which emails the click to the team. Google handles this under the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google Privacy Policy</a>. The message contains only:</p>
+    <ul>
+      <li>the installer file name and version, and which button was clicked;</li>
+      <li>your operating system, browser and device type, estimated from the browser's user agent (the user agent text is included, shortened);</li>
+      <li>the page language, your browser languages, time zone and screen size;</li>
+      <li>the website that linked you here (if any) and campaign tags in the page address (<code>utm_</code> tags and <code>ref</code>).</li>
+    </ul>
+    <p>It contains no cookie, no visitor ID and no data taken from your IP address. Country is estimated from the time zone; city is never collected. Nothing is sent when your browser has Global Privacy Control or Do Not Track turned on. The count never delays your download. A click is not a finished download, because browsers do not report that.</p>
+    <h3>Links to other sites</h3>
+    <p>Links to GitHub, LinkedIn, Facebook, Instagram, WhatsApp and AI providers open their own sites, which have their own privacy policies.</p>
+
+    <h2 id="delete">Delete your data</h2>
+    <ol>
+      <li>Quit Sahkarmi.</li>
+      <li>Uninstall it: Windows Settings, Apps, Installed apps, Sahkarmi, Uninstall. This removes the program only.</li>
+      <li>To remove your data, delete <code>%APPDATA%\Sahkarmi</code> (coworkers, chats, settings, browser cookies and logins, logs, Telegram token), <code>%LOCALAPPDATA%\sahkarmi-updater</code> (downloaded updates) and <code>%USERPROFILE%\Sahkarmi</code> (coworker folders, Shared files and Downloads).</li>
+      <li>If you connected Telegram, you can also revoke the bot token in @BotFather.</li>
+      <li>Data sent to an AI provider, Composio or Telegram is held by that service. Use its own controls to delete it.</li>
+    </ol>
+    <p>Check the folders and keep a backup of anything you need before you delete them. Deleted data cannot be brought back from a Sahkarmi cloud, because there is none. Sahkarmi does not delete <code>.codex</code> or <code>.claude</code>; use each tool's own controls for those.</p>
+    <p>The download click emails carry no name or visitor ID, so the team cannot find one person's clicks in them.</p>
+
+    <h2 id="changes">Changes to this policy</h2>
+    <p>When the app or the website changes what it stores or sends, this page is updated and the date at the top changes. Earlier versions can be seen in the <a href="https://github.com/ganguydhrubo/sahakarmi/commits/main/website/privacy.html" target="_blank" rel="noopener noreferrer">history of this page on GitHub</a>.</p>
+
+    <h2 id="contact">Contact</h2>
+    <p>Ask privacy questions in <a href="https://github.com/ganguydhrubo/sahakarmi/discussions" target="_blank" rel="noopener noreferrer">GitHub Discussions</a>. Report security problems privately as described in <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">SECURITY.md</a>. Do not attach passwords, tokens, chats or private files.</p>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <nav class="foot-nav" aria-label="Site pages"><a href="/install.html">Install guide</a><a href="/docs.html">Get started</a><a href="/changelog.html">Changelog</a><a href="/privacy.html">Privacy policy</a><a href="/terms.html">Terms of use</a></nav>
+      © 2026 Sahkarmi Team · Apache License 2.0 · <a href="/">sahkarmi.site</a> · <a href="mailto:hi@goliv.online">hi@goliv.online</a> · <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer">WhatsApp +91 82408 01921</a></div>
+  </footer>
+</body>
+</html>

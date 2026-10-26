@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sahkarmi terms of use — free, open-source software</title>
+  <meta name="description" content="Plain terms of use for Sahkarmi: Apache License 2.0, provided as is without warranty, you are responsible for your AI coworkers, no affiliation with AI companies." />
+  <link rel="canonical" href="https://sahkarmi.site/terms.html" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0F1220" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta property="og:site_name" content="Sahkarmi" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://sahkarmi.site/terms.html" />
+  <meta property="og:title" content="Sahkarmi terms of use — free, open-source software" />
+  <meta property="og:description" content="Sahkarmi is free, open-source software under the Apache License 2.0, provided as is. A plain summary of the terms." />
+  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    @font-face { font-family: "Baloo 2"; font-weight: 800; font-display: swap; src: url(/assets/fonts/baloo-2-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 400; font-display: swap; src: url(/assets/fonts/mukta-latin-400-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 700; font-display: swap; src: url(/assets/fonts/mukta-latin-700-normal.woff2) format("woff2"); }
+    :root { --saffron: #e8772e; --saffron-ink: #f0904f; --bg: #0b0d17; --bg-2: #161a2e; --text: #f3efe6; --text-2: #c9c4b8; --muted: #9a9cb3; --line: rgba(255,255,255,0.1); --line-2: rgba(255,255,255,0.18); --leaf: #5ec48a; --turmeric: #f2b705; color-scheme: dark; }
+    @media (prefers-color-scheme: light) { :root { --bg: #fbf7f0; --bg-2: #ffffff; --text: #141829; --text-2: #3a3f55; --muted: #646a85; --line: rgba(20,24,41,0.1); --line-2: rgba(20,24,41,0.2); --saffron-ink: #a84e14; --leaf: #22703f; color-scheme: light; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.65 "Mukta", system-ui, sans-serif; }
+    a { color: var(--saffron-ink); text-underline-offset: 3px; }
+    :focus-visible { outline: 3px solid var(--turmeric); outline-offset: 3px; border-radius: 6px; }
+    .wrap { width: min(860px, 100% - 2 * clamp(16px, 4vw, 40px)); margin-inline: auto; }
+    header { border-bottom: 1px solid var(--line); }
+    header .wrap { display: flex; align-items: center; gap: 14px; min-height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font: 800 20px "Baloo 2", "Mukta", sans-serif; }
+    .brand svg { width: 30px; height: 30px; }
+    header nav { margin-left: auto; display: flex; gap: 14px; font-weight: 700; font-size: 15px; }
+    h1 { font: 800 clamp(32px, 5vw, 46px)/1.1 "Baloo 2", "Mukta", sans-serif; margin: 40px 0 10px; }
+    h2 { font: 800 clamp(24px, 3vw, 30px)/1.15 "Baloo 2", "Mukta", sans-serif; margin: 56px 0 12px; padding-top: 18px; border-top: 1px solid var(--line); scroll-margin-top: 80px; }
+    h3 { font: 700 19px/1.2 "Mukta", sans-serif; margin: 26px 0 8px; }
+    p, li { color: var(--text-2); }
+    .lead { font-size: 19px; }
+    .status { display: inline-block; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+    .tested { background: rgba(94,196,138,0.16); color: var(--leaf); }
+    .built { background: rgba(242,183,5,0.16); color: var(--turmeric); }
+    .none { background: rgba(192,57,43,0.16); color: #e46a5c; }
+    pre { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; color: var(--text); }
+    code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.93em; }
+    .toc { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .toc a { display: inline-block; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 15px; }
+    .box { background: var(--bg-2); border: 1px solid var(--line); border-left: 4px solid var(--saffron); border-radius: 12px; padding: 14px 18px; margin: 18px 0; }
+    .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 10px 22px; border-radius: 999px; background: var(--saffron); color: #0f1220; font-weight: 700; text-decoration: none; }
+    table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 12px 0; display: block; overflow-x: auto; }
+    pre, code { overflow-wrap: anywhere; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+    footer { border-top: 1px solid var(--line); margin-top: 64px; padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+    .foot-nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; font-weight: 700; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Sahkarmi home">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><defs><clipPath id="l"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l)"/></svg>
+        Sahkarmi
+      </a>
+      <nav aria-label="Site"><a href="/">Home</a><a href="/#download">Download</a><a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Terms of use</h1>
+    <p class="lead">Sahkarmi is free, open-source software. You can use it, change it and share it under its open-source licence. This page sums up what that means for you.</p>
+    <p><strong>Last updated: 26 October 2026.</strong></p>
+    <div class="box"><strong>Please note:</strong> These terms are a plain summary. They are not legal advice. The licence text in the repository is the binding document.</div>
+
+    <h2 id="licence">Licence</h2>
+    <p>Sahkarmi is licensed under the <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Apache License, Version 2.0</a>. Copyright 2026 Sahkarmi Team. The <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/NOTICE" target="_blank" rel="noopener noreferrer">NOTICE</a> file lists the attributions that must travel with the software, including the project Sahkarmi is partly derived from and the software and fonts bundled with it (for example OpenCode under the MIT License and fonts under the SIL Open Font License 1.1).</p>
+    <p>In plain words, the Apache License 2.0 lets you use Sahkarmi for any purpose, including at work, change it and share copies, free of charge. If you share Sahkarmi or a changed version, you must include the licence and the NOTICE file, and say which files you changed. The licence does not give you the right to use the Sahkarmi name or logo for your own product.</p>
+    <p>There is no price, no subscription and no Sahkarmi account. Contributions to the project are licensed under the same licence.</p>
+
+    <h2 id="as-is">Provided "as is"</h2>
+    <p>Sahkarmi is a development preview. It is provided "as is", without warranty of any kind. The Sahkarmi Team does not promise that it will work without errors, that it is fit for a particular purpose, or that it will keep your data safe. To the extent the law allows, the Sahkarmi Team is not liable for any loss or damage from using it. The exact wording is in sections 7 and 8 of the licence.</p>
+    <p>Keep backups of anything important. Read the <a href="/privacy.html">privacy policy</a> to understand what the app stores and sends.</p>
+
+    <h2 id="your-coworkers">You are responsible for your AI coworkers</h2>
+    <p>Sahkarmi coworkers are AI agents that act on your computer with your accounts. They can read and change files, run programs, use the internet and control the built-in browser. You decide what work to give them and what they may do on their own.</p>
+    <ul>
+      <li>You are responsible for what your coworkers do, and for checking their work before you rely on it. AI models make mistakes.</li>
+      <li>Approvals before payments, customer messages, publishing and form submissions depend on the model following its instructions. They are not a guarantee.</li>
+      <li>Do not use Sahkarmi for anything unlawful, to harm others, or to send spam.</li>
+      <li>Never give card details, passwords or OTPs to a coworker in chat. Type them yourself with Take over.</li>
+    </ul>
+
+    <h2 id="third-party">AI providers, websites and other services</h2>
+    <p>Sahkarmi uses AI providers and services through your own accounts: for example OpenCode, Claude, ChatGPT (Codex), Google Antigravity and Gemini, Composio and Telegram. Your use of each one is covered by that provider's own terms, usage limits and prices, not by these terms. Paid plans are billed by those providers, not by Sahkarmi.</p>
+    <p>When a coworker uses a website, you must follow that website's terms, just as if you used it yourself. Some sites do not allow automated use. It is your job to check.</p>
+
+    <h2 id="trademarks">No affiliation, trademarks</h2>
+    <p>Sahkarmi is an independent project by the Sahkarmi Team. It is not affiliated with, endorsed by or sponsored by OpenAI, Anthropic, Google or any other AI company. Codex, ChatGPT, Claude, Google Antigravity, Gemini and other product names are named only to describe compatibility. All trademarks belong to their owners.</p>
+
+    <h2 id="changes">Changes</h2>
+    <p>These terms may change when the project changes. The date at the top shows the last update, and the <a href="https://github.com/ganguydhrubo/sahakarmi/commits/main/website/terms.html" target="_blank" rel="noopener noreferrer">history of this page</a> is on GitHub. The licence that came with your copy of Sahkarmi stays in force for that copy.</p>
+
+    <h2 id="contact">Questions</h2>
+    <p>Ask in <a href="https://github.com/ganguydhrubo/sahakarmi/discussions" target="_blank" rel="noopener noreferrer">GitHub Discussions</a>. Report security problems privately as described in <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">SECURITY.md</a>.</p>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <nav class="foot-nav" aria-label="Site pages"><a href="/install.html">Install guide</a><a href="/docs.html">Get started</a><a href="/changelog.html">Changelog</a><a href="/privacy.html">Privacy policy</a><a href="/terms.html">Terms of use</a></nav>
+      © 2026 Sahkarmi Team · Apache License 2.0 · <a href="/">sahkarmi.site</a> · <a href="mailto:hi@goliv.online">hi@goliv.online</a> · <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer">WhatsApp +91 82408 01921</a></div>
+  </footer>
+</body>
+</html>
