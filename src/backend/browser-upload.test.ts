@@ -167,3 +167,27 @@ describe("sameSiteTabIds", () => {
     expect(sameSiteTabIds(tabs, "blank", "about:blank")).toEqual([]);
   });
 });
+
+describe("staleReloadDelay", () => {
+  const fresh = {
+    stale: true,
+    ownerTouched: false,
+    coworkerTyped: false,
+    loadFailed: false,
+    lastAutoReload: 0,
+  };
+
+  it("reloads an out-of-date page at most once per gap", async () => {
+    const { staleReloadDelay } = await import("./browser-host");
+    expect(staleReloadDelay(fresh, 100_000, 30_000)).toBe(0);
+    expect(staleReloadDelay({ ...fresh, lastAutoReload: 90_000 }, 100_000, 30_000)).toBe(20_000);
+    expect(staleReloadDelay({ ...fresh, stale: false }, 100_000, 30_000)).toBeNull();
+  });
+
+  it("never reloads over unsaved typing or an error page", async () => {
+    const { staleReloadDelay } = await import("./browser-host");
+    expect(staleReloadDelay({ ...fresh, ownerTouched: true }, 100_000, 30_000)).toBeNull();
+    expect(staleReloadDelay({ ...fresh, coworkerTyped: true }, 100_000, 30_000)).toBeNull();
+    expect(staleReloadDelay({ ...fresh, loadFailed: true }, 100_000, 30_000)).toBeNull();
+  });
+});

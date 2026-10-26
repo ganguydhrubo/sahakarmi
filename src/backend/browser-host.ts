@@ -42,11 +42,39 @@ interface InternalTab {
   stale: boolean;
   /** The owner pressed a key or clicked here since it went stale; never reload over their work. */
   ownerTouched: boolean;
+  /** A coworker typed here since the page loaded; reloading would wipe its unsaved work. */
+  coworkerTyped: boolean;
+  /** The page is an error (HTTP 400 or more, or it failed to load); reloading never helps. */
+  loadFailed: boolean;
+  /** When Sahkarmi last reloaded this tab by itself (ms), so it never reloads in a loop. */
+  lastAutoReload: number;
 }
 
 /** Actions that can change what a site stores (a scroll or a back never does). */
 const CHANGING_ACTIONS = new Set<BrowserAction["type"]>(["click", "type", "key", "upload"]);
 const OWNER_INPUT = new Set(["mouseDown", "keyDown", "rawKeyDown", "char"]);
+/** Actions that leave unsaved input in the page. */
+const TYPING_ACTIONS = new Set<BrowserAction["type"]>(["type", "key", "upload"]);
+
+/**
+ * How long to wait before reloading an out-of-date tab: null when it must not be reloaded at
+ * all (the owner or a coworker has unsaved input there, or it is an error page), otherwise the
+ * milliseconds left until the tab may be reloaded again.
+ */
+export function staleReloadDelay(
+  tab: {
+    stale: boolean;
+    ownerTouched: boolean;
+    coworkerTyped: boolean;
+    loadFailed: boolean;
+    lastAutoReload: number;
+  },
+  now: number,
+  minimumGapMs: number,
+): number | null {
+  if (!tab.stale || tab.ownerTouched || tab.coworkerTyped || tab.loadFailed) return null;
+  return Math.max(0, tab.lastAutoReload + minimumGapMs - now);
+}
 
 /**
  * Tabs that show the same site as the tab a coworker just changed. Their page was loaded
@@ -191,7 +219,10 @@ async function captureIfPainted(view: WebContentsView): Promise<string | null> {
 export class BrowserHost implements CoworkerBrowser {
   static readonly CONTROL_IDLE_GRACE_MS = 1_200;
   /** How long after a coworker's last change the owner's open page of that site reloads. */
-  static readonly STALE_REFRESH_MS = 1_500;
+  /** Quiet time after a coworker's last change before the shown tab is reloaded. */
+  static STALE_REFRESH_MS = 5_000;
+  /** A tab is reloaded by itself at most this often, however busy the coworker is. */
+  static STALE_MIN_GAP_MS = 30_000;
   readonly #window: BrowserWindow;
   readonly #session: Session;
   readonly #downloadsRoot: string;
@@ -350,11 +381,15 @@ export class BrowserHost implements CoworkerBrowser {
       tab.stale = true;
     }
     // Wait until the coworker stops, so the page is reloaded once with the finished work.
+    this.#scheduleStaleRefresh(BrowserHost.STALE_REFRESH_MS);
+  }
+
+  #scheduleStaleRefresh(delayMs: number): void {
     if (this.#staleRefreshTimer) clearTimeout(this.#staleRefreshTimer);
     this.#staleRefreshTimer = setTimeout(() => {
       this.#staleRefreshTimer = null;
       this.#refreshShownTabIfStale();
-    }, BrowserHost.STALE_REFRESH_MS);
+    }, delayMs);
   }
 
   /**
@@ -365,8 +400,16 @@ export class BrowserHost implements CoworkerBrowser {
   #refreshShownTabIfStale(): void {
     if (!this.#visible || !this.#activeTabId) return;
     const tab = this.#tabs.get(this.#activeTabId);
-    if (!tab?.stale || tab.ownerTouched) return;
+    if (!tab) return;
+    const wait = staleReloadDelay(tab, Date.now(), BrowserHost.STALE_MIN_GAP_MS);
+    if (wait === null) return;
+    if (wait > 0) {
+      // Reloaded a moment ago: once more after the gap, with whatever the coworker has done.
+      this.#scheduleStaleRefresh(wait);
+      return;
+    }
     tab.stale = false;
+    tab.lastAutoReload = Date.now();
     tab.view.webContents.reload();
   }
 
@@ -399,6 +442,8 @@ export class BrowserHost implements CoworkerBrowser {
       } finally {
         restore?.();
       }
+      // Typing that submitted and loaded a new page left nothing unsaved behind.
+      if (TYPING_ACTIONS.has(action.type) && tab.revision === revision) tab.coworkerTyped = true;
       if (CHANGING_ACTIONS.has(action.type)) this.#markSameSiteStale(tab);
       // A click has already waited for the page while watching for its file picker.
       if (action.type !== "click") await delay(250);
@@ -503,6 +548,9 @@ export class BrowserHost implements CoworkerBrowser {
       queue: Promise.resolve(),
       stale: false,
       ownerTouched: false,
+      coworkerTyped: false,
+      loadFailed: false,
+      lastAutoReload: 0,
     };
   }
 
@@ -555,14 +603,20 @@ export class BrowserHost implements CoworkerBrowser {
     contents.on("input-event", (_event, input) => {
       if (tab.stale && OWNER_INPUT.has(input.type)) tab.ownerTouched = true;
     });
-    contents.on("did-navigate", (_event, url) => {
+    contents.on("did-navigate", (_event, url, httpResponseCode) => {
       // A full load reads the site afresh.
       tab.stale = false;
       tab.ownerTouched = false;
+      tab.coworkerTyped = false;
+      tab.loadFailed = httpResponseCode >= 400;
       if (isPersistableBrowserUrl(url)) tab.requestedUrl = persistentBrowserUrl(url);
       tab.revision += 1;
       changed();
       this.#schedulePersist();
+    });
+    contents.on("did-fail-load", (_event, errorCode, _description, _url, isMainFrame) => {
+      // -3 is a load the page itself cancelled (a redirect or a new navigation), not an error.
+      if (isMainFrame && errorCode !== -3) tab.loadFailed = true;
     });
     contents.on("did-navigate-in-page", (_event, url) => {
       if (isPersistableBrowserUrl(url)) tab.requestedUrl = persistentBrowserUrl(url);

@@ -1308,6 +1308,8 @@ if (!hasSingleInstanceLock) {
         },
         autoDownload: () => permissions.get().levels.app_updates === "auto",
         log: (level, message) => appLog.write(level, "ai-runtime", message),
+        // Restarts that provider on the new copy now if it is idle, otherwise on a later refresh.
+        onToolDownloaded: () => void service.refreshModels(true).catch(() => {}),
       });
       aiRuntimeService.onStatus(forwardAiRuntimeStatus);
       scheduleAiRuntimeChecks();

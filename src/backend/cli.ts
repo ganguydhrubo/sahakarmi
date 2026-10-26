@@ -95,6 +95,58 @@ function compareVersionStrings(left: string, right: string): number {
   return 0;
 }
 
+/** Where a downloaded copy keeps its program inside its version folder. */
+export function managedToolBinary(
+  tool: "claude" | "codex",
+  versionFolder: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const suffix = platform === "win32" ? ".exe" : "";
+  return tool === "claude"
+    ? join(versionFolder, `claude${suffix}`)
+    : join(versionFolder, "bin", `codex${suffix}`);
+}
+
+/**
+ * The newest Claude Code or Codex that Sahkarmi downloaded itself: <runtime>/<tool>/<version>/.
+ * Every version has its own folder, so an update never replaces a program that is running.
+ */
+export function managedRuntimeBinary(
+  tool: "claude" | "codex",
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (!runtimeDirectory) return null;
+  const root = join(runtimeDirectory, tool);
+  if (!existsSync(root)) return null;
+  const versions = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d+\.\d+\.\d+$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort(compareVersionStrings)
+    .reverse();
+  for (const version of versions) {
+    const binary = managedToolBinary(tool, join(root, version), platform);
+    if (existsSync(binary)) return binary;
+  }
+  return null;
+}
+
+/** Sahkarmi's own copy when it is newer than the one found on this computer. */
+async function newerManagedCopy(
+  found: { executable: string; version: string } | null,
+  managed: string | null,
+  parseVersion: (stdout: string) => string,
+): Promise<{ executable: string; version: string } | null> {
+  if (!managed || managed === found?.executable) return null;
+  try {
+    const version = parseVersion(await readCliVersion(managed));
+    return !found || compareVersionStrings(version, found.version) > 0
+      ? { executable: managed, version }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Codex downloaded by the Connect button: <tools>/codex/bin/codex(.exe). */
 export function managedCodexPath(platform: NodeJS.Platform = process.platform): string | null {
   if (!toolsDirectory) return null;
@@ -126,6 +178,8 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
     ...(!override?.trim() && managed ? [managed] : []),
   ];
   const failures: CodexCliError[] = [];
+  const downloaded = override?.trim() ? null : managedRuntimeBinary("codex");
+  let found: CodexCliInfo | null = null;
 
   for (const candidate of candidates) {
     if (!(await isExecutable(candidate))) continue;
@@ -140,7 +194,8 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
         );
       }
 
-      return { executable: candidate, version };
+      found = { executable: candidate, version };
+      break;
     } catch (error) {
       failures.push(
         error instanceof CodexCliError
@@ -150,6 +205,9 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
     }
   }
 
+  const newer = await newerManagedCopy(found, downloaded, parseCodexVersion);
+  if (newer) return newer;
+  if (found) return found;
   const outdated = failures.find((failure) => failure.code === "outdated");
   if (outdated) throw outdated;
   if (failures.length > 0) {
@@ -190,7 +248,9 @@ export async function resolveClaudeCli(
     await collectCandidates("claude", override),
     override?.trim() ? [] : bundled,
   );
+  const downloaded = override?.trim() ? null : managedRuntimeBinary("claude");
   let foundCandidate = false;
+  let found: ClaudeCliInfo | null = null;
 
   for (const candidate of candidates) {
     if (!(await isExecutable(candidate))) continue;
@@ -198,12 +258,16 @@ export async function resolveClaudeCli(
 
     try {
       const stdout = await readCliVersion(candidate);
-      return { executable: candidate, version: parseClaudeVersion(stdout) };
+      found = { executable: candidate, version: parseClaudeVersion(stdout) };
+      break;
     } catch {
       // Try the next executable candidate.
     }
   }
 
+  const newer = await newerManagedCopy(found, downloaded, parseClaudeVersion);
+  if (newer) return newer;
+  if (found) return found;
   if (foundCandidate) {
     throw new CodexCliError(
       "Claude CLI was found but could not be started. Run `claude --version` in a new terminal.",

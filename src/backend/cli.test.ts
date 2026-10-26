@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CodexCliError,
   managedOpenCodePaths,
+  managedRuntimeBinary,
+  managedToolBinary,
   orderClaudeCandidates,
   parseClaudeVersion,
   parseCodexVersion,
@@ -71,6 +73,30 @@ describe("OpenCode runtime that Sahkarmi downloaded", () => {
     setRuntimeDirectory(root);
     expect(managedOpenCodePaths("win32")).toEqual([]);
     setRuntimeDirectory("");
+  });
+});
+
+describe("Claude Code and Codex copies that Sahkarmi downloaded", () => {
+  it("uses the newest finished copy and skips half-finished folders", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-cli-runtime-"));
+    temporaryPaths.push(root);
+    await mkdir(join(root, "claude", "2.1.304"), { recursive: true });
+    await writeFile(join(root, "claude", "2.1.304", "claude.exe"), "binary");
+    await mkdir(join(root, "claude", "2.1.310.partial-1"), { recursive: true });
+    await writeFile(join(root, "claude", "2.1.310.partial-1", "claude.exe"), "binary");
+    await mkdir(join(root, "claude", "2.1.400"), { recursive: true });
+    await mkdir(join(root, "codex", "0.164.0", "bin"), { recursive: true });
+    await writeFile(join(root, "codex", "0.164.0", "bin", "codex.exe"), "binary");
+    setRuntimeDirectory(root);
+    expect(managedRuntimeBinary("claude", "win32")).toBe(
+      join(root, "claude", "2.1.304", "claude.exe"),
+    );
+    expect(managedRuntimeBinary("codex", "win32")).toBe(
+      join(root, "codex", "0.164.0", "bin", "codex.exe"),
+    );
+    expect(managedToolBinary("codex", "x", "linux")).toBe(join("x", "bin", "codex"));
+    setRuntimeDirectory("");
+    expect(managedRuntimeBinary("claude", "win32")).toBeNull();
   });
 });
 

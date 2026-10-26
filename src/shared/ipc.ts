@@ -199,6 +199,8 @@ export interface AiToolUpdate {
   command: string | null;
   /** A short, honest note, such as why upstream code is not merged. */
   note: string | null;
+  /** The newer version is already downloaded and is used once coworkers are idle. */
+  ready?: boolean;
 }
 
 export interface AiRuntimeStatus {

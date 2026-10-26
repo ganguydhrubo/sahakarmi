@@ -3,10 +3,12 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   createWriteStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -17,13 +19,15 @@ import { basename, dirname, join, relative } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
+import { managedToolBinary } from "../backend/cli";
 import type { AiRuntimeStatus, AiToolId, AiToolUpdate } from "../shared/ipc";
 
 const execFileAsync = promisify(execFile);
 
 const NPM_REGISTRY = "https://registry.npmjs.org";
 const DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1_000;
-const NPM_INSTALL_TIMEOUT_MS = 15 * 60 * 1_000;
+/** Downloaded versions of one tool kept on disk: the newest, plus one that may still be running. */
+const KEPT_TOOL_VERSIONS = 2;
 
 export interface AiToolDefinition {
   id: AiToolId;
@@ -35,6 +39,8 @@ export interface AiToolDefinition {
   /** The command that updates the tool when Sahkarmi cannot do it. */
   command: string | null;
 }
+
+type DownloadedToolId = "claude" | "codex";
 
 export const AI_TOOLS: AiToolDefinition[] = [
   {
@@ -48,15 +54,15 @@ export const AI_TOOLS: AiToolDefinition[] = [
     id: "codex",
     label: "Codex CLI",
     packageName: "@openai/codex",
-    managed: false,
-    command: "npm install -g @openai/codex@latest",
+    managed: true,
+    command: null,
   },
   {
     id: "claude",
     label: "Claude Code",
     packageName: "@anthropic-ai/claude-code",
-    managed: false,
-    command: "npm install -g @anthropic-ai/claude-code@latest",
+    managed: true,
+    command: null,
   },
 ];
 
@@ -67,6 +73,21 @@ export function openCodePlatformPackage(
 ): string {
   const npmPlatform = platform === "win32" ? "windows" : platform;
   return `opencode-${npmPlatform}-${arch}`;
+}
+
+/**
+ * The npm package and version that carry the Claude Code or Codex program for one platform.
+ * These are the same files `npm install -g` would fetch.
+ */
+export function toolPlatformPackage(
+  toolId: DownloadedToolId,
+  version: string,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): { name: string; version: string } {
+  return toolId === "claude"
+    ? { name: `@anthropic-ai/claude-code-${platform}-${arch}`, version }
+    : { name: "@openai/codex", version: `${version}-${platform}-${arch}` };
 }
 
 export function openCodeBinaryName(platform: NodeJS.Platform = process.platform): string {
@@ -127,9 +148,12 @@ async function fetchJson(url: string, timeoutMs = 20_000): Promise<unknown> {
   return response.json();
 }
 
-export async function latestNpmRelease(packageName: string): Promise<NpmRelease> {
+export async function latestNpmRelease(
+  packageName: string,
+  version = "latest",
+): Promise<NpmRelease> {
   const payload = (await fetchJson(
-    `${NPM_REGISTRY}/${encodeURIComponent(packageName)}/latest`,
+    `${NPM_REGISTRY}/${encodeURIComponent(packageName)}/${encodeURIComponent(version)}`,
   )) as {
     version?: string;
     dist?: { tarball?: string; integrity?: string };
@@ -153,8 +177,12 @@ export interface AiRuntimeServiceOptions {
     | Record<string, string | null>;
   /** True when the owner allows Sahkarmi to install updates without asking. */
   autoDownload: () => boolean;
+  /** A new Claude Code or Codex copy is ready; the app switches to it when coworkers are idle. */
+  onToolDownloaded?: (toolId: AiToolId) => void;
   log: (level: "info" | "warn" | "error", message: string) => void;
   platform?: NodeJS.Platform;
+  /** Reads a program's version (tests swap it for a fake). */
+  readVersion?: (binary: string) => Promise<string | null>;
   arch?: string;
 }
 
@@ -171,8 +199,8 @@ export class AiRuntimeService {
   };
   #listeners = new Set<(status: AiRuntimeStatus) => void>();
   #working = false;
-  /** The bundled runtime is installed on its own at most once per app session. */
-  #autoUpdatedOpenCode = false;
+  /** Each tool is installed on its own at most once per app session. */
+  #autoUpdated = new Set<AiToolId>();
 
   constructor(options: AiRuntimeServiceOptions) {
     this.#options = options;
@@ -188,11 +216,11 @@ export class AiRuntimeService {
   }
 
   /**
-   * Looks up the newest versions. Only the bundled OpenCode runtime is ever installed on its
-   * own (once per app session). The owner's own npm tools (Codex, Claude) are never touched
-   * without "Update now": an automatic `npm install -g` ran in a loop on computers where
-   * Sahkarmi uses a copy of the CLI that npm does not own (the version never changed, so every
-   * check installed again), and it broke the other npm shims while it ran.
+   * Looks up the newest versions. Sahkarmi keeps its own copy of OpenCode, Claude Code and Codex,
+   * one folder per version, and never changes the owner's own installs: `npm install -g` updated
+   * a copy Sahkarmi did not use (Claude's own installer puts claude.exe first) and failed while
+   * a coworker was running the old program. Each tool is downloaded on its own at most once per
+   * app session, and only when the owner allows automatic updates.
    */
   async check(force = false, autoUpdate = true): Promise<AiRuntimeStatus> {
     if (this.#working) return this.getStatus();
@@ -201,7 +229,7 @@ export class AiRuntimeService {
     this.#working = true;
     let shouldAutoUpdate = false;
     let openCodeUpdate = false;
-    const npmUpdatesToRun: AiToolId[] = [];
+    const toolUpdatesToRun: AiToolId[] = [];
     this.#setStatus({ phase: "checking", message: null, progress: null });
     try {
       const platform = this.#options.platform ?? process.platform;
@@ -229,19 +257,27 @@ export class AiRuntimeService {
       for (const tool of AI_TOOLS.filter((entry) => entry.id !== "opencode")) {
         const release = await latestNpmRelease(tool.packageName).catch(() => null);
         const installedVersion = installed[tool.id] ?? null;
-        const hasUpdate =
-          installedVersion && release && compareVersions(release.version, installedVersion) > 0;
-        if (hasUpdate) npmUpdatesToRun.push(tool.id);
+        const newer = Boolean(
+          installedVersion && release && compareVersions(release.version, installedVersion) > 0,
+        );
+        const downloaded =
+          newer &&
+          release !== null &&
+          this.#hasDownloaded(tool.id as DownloadedToolId, release.version, platform);
+        if (newer && !downloaded) toolUpdatesToRun.push(tool.id);
         tools.push({
           id: tool.id,
           label: tool.label,
           installed: installedVersion,
           latest: release?.version ?? null,
           managed: true,
-          command: tool.command,
-          note: hasUpdate
-            ? `Click Update now to run ${tool.command ?? "npm install -g"}. Sahkarmi never changes your own tools by itself.`
-            : null,
+          command: null,
+          ready: downloaded,
+          note: downloaded
+            ? `v${release?.version} is downloaded. Sahkarmi switches to it when your coworkers are not busy.`
+            : newer
+              ? "Update now downloads Sahkarmi's own copy. Your own install is not changed."
+              : null,
         });
       }
 
@@ -249,7 +285,7 @@ export class AiRuntimeService {
       openCodeUpdate = Boolean(
         currentVersion && openCodeLatest && compareVersions(openCodeLatest, currentVersion) > 0,
       );
-      const anyUpdate = Boolean(openCodeUpdate) || npmUpdatesToRun.length > 0;
+      const anyUpdate = Boolean(openCodeUpdate) || toolUpdatesToRun.length > 0;
       this.#setStatus({
         phase: anyUpdate ? "available" : "up-to-date",
         currentVersion,
@@ -259,8 +295,8 @@ export class AiRuntimeService {
         message: null,
         tools,
       });
-      shouldAutoUpdate =
-        autoUpdate && openCodeUpdate && !this.#autoUpdatedOpenCode && this.#options.autoDownload();
+      if (openCodeUpdate) toolUpdatesToRun.unshift("opencode");
+      shouldAutoUpdate = autoUpdate && this.#options.autoDownload();
     } catch (error) {
       this.#setStatus({
         phase: "error",
@@ -272,8 +308,11 @@ export class AiRuntimeService {
       this.#working = false;
     }
     if (shouldAutoUpdate) {
-      this.#autoUpdatedOpenCode = true;
-      await this.update("opencode");
+      for (const toolId of toolUpdatesToRun) {
+        if (this.#autoUpdated.has(toolId)) continue;
+        this.#autoUpdated.add(toolId);
+        await this.update(toolId);
+      }
     }
     return this.getStatus();
   }
@@ -287,7 +326,7 @@ export class AiRuntimeService {
       if (toolId === "opencode") {
         await this.#updateOpenCodeRuntime();
       } else {
-        await this.#updateNpmTool(toolId);
+        await this.#downloadTool(toolId as DownloadedToolId);
       }
       succeeded = true;
     } catch (error) {
@@ -302,18 +341,10 @@ export class AiRuntimeService {
     }
     if (succeeded) {
       // Re-read versions, but never chain another install from here.
+      const { phase, message } = this.#status;
       await this.check(true, false);
-      const tool = this.#status.tools.find((entry) => entry.id === toolId);
-      if (
-        toolId !== "opencode" &&
-        tool?.installed &&
-        tool.latest &&
-        tool.installed !== tool.latest
-      ) {
-        this.#setStatus({
-          message: `npm installed ${tool.label} ${tool.latest}, but Sahkarmi runs the copy it found first (${tool.installed}). Update that copy the way it was installed, or remove it so the npm one is used.`,
-        });
-      }
+      this.#setStatus({ phase, message });
+      if (toolId !== "opencode") this.#options.onToolDownloaded?.(toolId);
     }
     return this.getStatus();
   }
@@ -392,27 +423,101 @@ export class AiRuntimeService {
     }
   }
 
-  async #updateNpmTool(toolId: AiToolId): Promise<void> {
+  #hasDownloaded(toolId: DownloadedToolId, version: string, platform: NodeJS.Platform): boolean {
+    return existsSync(
+      managedToolBinary(toolId, join(this.#options.runtimeDirectory, toolId, version), platform),
+    );
+  }
+
+  /**
+   * Downloads Claude Code or Codex from npm into <runtime>/<tool>/<version>/, next to the older
+   * copy, checks npm's checksum and the program's own version, then makes the folder appear in
+   * one step. A coworker still running the older copy is not disturbed, and nothing the owner
+   * installed is changed.
+   */
+  async #downloadTool(toolId: DownloadedToolId): Promise<void> {
     const tool = AI_TOOLS.find((entry) => entry.id === toolId);
     if (!tool) throw new Error("Unknown AI tool.");
+    const platform = this.#options.platform ?? process.platform;
+    const arch = this.#options.arch ?? process.arch;
+    const { version } = await latestNpmRelease(tool.packageName);
+    const root = join(this.#options.runtimeDirectory, toolId);
+    const target = join(root, version);
+    const ready = `${tool.label} ${version} is ready. Sahkarmi switches to it when your coworkers are not busy.`;
+    if (this.#hasDownloaded(toolId, version, platform)) {
+      this.#setStatus({ phase: "updated", progress: null, message: ready });
+      return;
+    }
+    const platformPackage = toolPlatformPackage(toolId, version, platform, arch);
+    const release = await latestNpmRelease(platformPackage.name, platformPackage.version);
+    if (!release.tarball || !release.integrity) {
+      throw new Error(`npm did not publish ${tool.label} ${version} for ${platform}-${arch}.`);
+    }
     this.#setStatus({
       phase: "updating",
-      progress: null,
-      message: `Updating ${tool.label}…`,
+      progress: 0,
+      message: `Downloading ${tool.label} ${version}…`,
     });
-    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-    await execFileAsync(npm, ["install", "-g", `${tool.packageName}@latest`], {
-      timeout: NPM_INSTALL_TIMEOUT_MS,
-      maxBuffer: 4 * 1024 * 1024,
-      windowsHide: true,
-      shell: process.platform === "win32",
-    });
-    this.#options.log("info", `${tool.label} updated with npm install -g`);
-    this.#setStatus({
-      phase: "updated",
-      progress: 100,
-      message: `${tool.label} was updated. Restart Sahkarmi so it picks up the new version.`,
-    });
+    const work = mkdtempSync(join(tmpdir(), `sahkarmi-${toolId}-`));
+    const staged = `${target}.partial-${Date.now()}`;
+    try {
+      const tarball = join(work, "package.tgz");
+      await downloadFile(release.tarball, tarball, (percent) =>
+        this.#setStatus({ phase: "updating", progress: percent }),
+      );
+      if (!verifyFileIntegrity(tarball, release.integrity)) {
+        throw new Error("The downloaded file did not match the checksum npm published.");
+      }
+      const extracted = join(work, "extracted");
+      mkdirSync(extracted, { recursive: true });
+      await extractTarball(tarball, extracted);
+      let source = join(extracted, "package");
+      if (toolId === "codex") {
+        const vendor = join(source, "vendor");
+        const [triple] = existsSync(vendor) ? readdirSync(vendor) : [];
+        if (!triple) throw new Error("The Codex package did not contain a program.");
+        source = join(vendor, triple);
+      }
+      const binary = managedToolBinary(toolId, source, platform);
+      if (!existsSync(binary)) {
+        throw new Error(`The ${tool.label} package did not contain a program.`);
+      }
+      if (platform !== "win32") chmodSync(binary, 0o755);
+      const reported = await (this.#options.readVersion ?? readBinaryVersion)(binary);
+      if (reported !== version) {
+        throw new Error(`The downloaded ${tool.label} reported ${reported ?? "no version"}.`);
+      }
+      mkdirSync(root, { recursive: true });
+      cpSync(source, staged, { recursive: true });
+      renameSync(staged, target);
+      this.#options.log("info", `${tool.label} ${version} downloaded to ${target}`);
+      this.#pruneToolVersions(root);
+      this.#setStatus({ phase: "updated", progress: 100, message: ready });
+    } finally {
+      for (const leftover of [work, staged]) {
+        try {
+          rmSync(leftover, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+        } catch (error) {
+          this.#options.log("warn", `Temporary update folder not removed: ${reasonOf(error)}`);
+        }
+      }
+    }
+  }
+
+  /** Removes older downloaded versions; one still running stays until a later update. */
+  #pruneToolVersions(root: string): void {
+    const versions = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^\d+\.\d+\.\d+$/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort(compareVersions)
+      .reverse();
+    for (const old of versions.slice(KEPT_TOOL_VERSIONS)) {
+      try {
+        rmSync(join(root, old), { recursive: true, force: true });
+      } catch {
+        /* Still running; removed after a later update. */
+      }
+    }
   }
 
   #setStatus(patch: Partial<AiRuntimeStatus>): void {
