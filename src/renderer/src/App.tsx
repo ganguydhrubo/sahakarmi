@@ -948,6 +948,14 @@ export function App() {
       .catch((error) => appendUiError(bot.id, error, vocab().ERROR_TITLES.cancel));
   }
 
+  function sendQueuedNow(deliveryId: string) {
+    const bot = activeBot();
+    if (!bot) return;
+    void window.sahkarmi.agent
+      .sendQueuedNow({ botId: bot.id, deliveryId })
+      .catch((error) => appendUiError(bot.id, error, vocab().ERROR_TITLES.send));
+  }
+
   function setQueuePaused(paused: boolean) {
     const bot = activeBot();
     if (!bot) return;
@@ -1372,6 +1380,7 @@ export function App() {
                     onCompleteOnboarding={completeOnboarding}
                     onAnswerPrompt={answerPrompt}
                     onCancelQueuedMessage={cancelQueuedMessage}
+                    onSendQueuedNow={sendQueuedNow}
                     onPauseQueue={() => setQueuePaused(true)}
                     onResumeQueue={resumeQueue}
                     onActivateBrowserTab={activateBrowserTab}

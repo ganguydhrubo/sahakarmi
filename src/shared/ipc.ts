@@ -36,6 +36,7 @@ export const IPC_CHANNELS = {
   agentOpenAttachment: "agent:open-attachment",
   agentListQueue: "agent:list-queue",
   agentCancelQueuedMessage: "agent:cancel-queued-message",
+  agentSendQueuedNow: "agent:send-queued-now",
   agentSetQueuePaused: "agent:set-queue-paused",
   agentInterrupt: "agent:interrupt",
   agentRespondToPrompt: "agent:respond-to-prompt",
@@ -1463,6 +1464,7 @@ export interface AgentDesktopApi {
   setMessageReaction: (input: SetMessageReactionInput) => Promise<void>;
   listQueue: (botId: string) => Promise<QueueSnapshot>;
   cancelQueuedMessage: (input: CancelQueuedMessageInput) => Promise<void>;
+  sendQueuedNow: (input: CancelQueuedMessageInput) => Promise<void>;
   setQueuePaused: (input: SetQueuePausedInput) => Promise<void>;
   interrupt: (input: InterruptTurnInput) => Promise<void>;
   respondToPrompt: (input: RespondToPromptInput) => Promise<void>;

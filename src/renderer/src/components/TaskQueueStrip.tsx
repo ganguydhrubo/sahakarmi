@@ -117,8 +117,8 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
                     type="button"
                     class="task-chip-steer"
                     onClick={() => props.onSteer?.(delivery.id)}
-                    aria-label={`Steer active turn with task ${delivery.position ?? ""}`.trim()}
-                    title="Steer: guide the active turn with this task immediately"
+                    aria-label={`${t("sendNow")}: ${taskTitle(delivery)}`}
+                    title={t("sendNowHint")}
                   >
                     <svg
                       aria-hidden="true"
@@ -134,7 +134,7 @@ export function TaskQueueStrip(props: TaskQueueStripProps) {
                       <polyline points="10 6 14 10 10 14" />
                       <path d="M2 2v4a4 4 0 0 0 4 4h8" />
                     </svg>
-                    <span>Steer</span>
+                    <span>{t("sendNow")}</span>
                   </button>
                 </Show>
                 <button

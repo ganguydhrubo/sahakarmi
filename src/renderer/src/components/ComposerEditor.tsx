@@ -13,6 +13,8 @@ interface ComposerEditorProps {
   disabled: boolean;
   onValueChange: (value: string) => void;
   onSubmit: () => void;
+  /** Escape with no mention list open (the chat uses it to stop a working coworker). */
+  onEscape?: () => void;
 }
 
 interface MentionContext {
@@ -144,6 +146,10 @@ export function ComposerEditor(props: ComposerEditorProps) {
     if (event.key === "Escape" && mention()) {
       event.preventDefault();
       setMention(null);
+      return;
+    }
+    if (event.key === "Escape" && props.onEscape) {
+      props.onEscape();
       return;
     }
     if (event.key === "Enter" && event.shiftKey) {
