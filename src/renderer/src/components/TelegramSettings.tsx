@@ -2,6 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { TelegramStatus } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { t } from "../i18n";
+import { TelegramGuide } from "./TelegramGuide";
 
 /** While waiting for the owner to send the code from their phone, check every few seconds. */
 const PAIRING_POLL_MS = 3_000;
@@ -49,14 +50,11 @@ export function TelegramSettings(props: { bots: BotProfile[] }) {
   return (
     <>
       <p class="settings-meta">{t("telegramIntro")}</p>
+      <TelegramGuide open={status() !== null && !status()?.paired} />
       <Show
         when={status()?.configured}
         fallback={
           <>
-            <ol class="telegram-steps">
-              <li>{t("telegramStepBotFather")}</li>
-              <li>{t("telegramStepPaste")}</li>
-            </ol>
             <div class="settings-buttons">
               <button type="button" onClick={() => open("https://t.me/BotFather")}>
                 {t("telegramOpenBotFather")}

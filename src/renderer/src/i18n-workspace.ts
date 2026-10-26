@@ -85,6 +85,26 @@ export const workspaceEn = {
   telegramPairStep:
     "Last step: tap the button, then press Start in Telegram. Sahkarmi pairs by itself.",
   telegramOpenBotFather: "Open @BotFather",
+  tgGuideShow: "Show me how, step by step (7 steps, about 3 minutes)",
+  tgGuide1Title: "Open @BotFather in Telegram",
+  tgGuide1Text:
+    "Click “Open @BotFather” below. Telegram opens on your phone or computer. Check for the blue tick next to the name, then tap Start.",
+  tgGuide2Title: "Send /newbot",
+  tgGuide2Text: "Type /newbot and send it. BotFather asks for a name.",
+  tgGuide3Title: "Give your bot a name",
+  tgGuide3Text:
+    "Any name you like, for example your company name plus “Helper”. You will see this name at the top of the chat.",
+  tgGuide4Title: "Give it a username and copy the token",
+  tgGuide4Text:
+    "The username must be new and end in “bot”, like sharma_helper_bot. If it is taken, try another. BotFather then sends a long token: tap it once to copy it. Keep it secret, because anyone who has it can control the bot.",
+  tgGuide5Title: "Paste the token in Sahkarmi",
+  tgGuide5Text: "Come back to this page, paste the token in the Bot token box and click Connect.",
+  tgGuide6Title: "Pair your phone",
+  tgGuide6Text:
+    "Click “Pair in Telegram”. Your new bot opens in Telegram: tap Start. You get the message “Paired”, and this page shows your name.",
+  tgGuide7Title: "Chat with your coworker",
+  tgGuide7Text:
+    "Write as you write in Sahkarmi. You see “typing…” while the coworker works, then its reply. Send /coworkers to see everyone and /use Asha to switch. Keep Sahkarmi open on the computer.",
   telegramPairButton: "Pair in Telegram",
   telegramPairManual: "Or send this to {bot} yourself:",
   telegramPairedWith: "Paired with {name}. Messages from this chat go to the coworker below.",
@@ -670,6 +690,25 @@ export const workspaceHi: WorkspaceDictionary = {
   telegramConnectedAs: "{name} के रूप में जुड़ा है।",
   telegramPairStep: "आख़िरी कदम: बटन दबाएँ, फिर टेलीग्राम में Start दबाएँ। Sahkarmi अपने-आप जुड़ जाएगा।",
   telegramOpenBotFather: "@BotFather खोलें",
+  tgGuideShow: "कदम-दर-कदम दिखाएँ (7 कदम, लगभग 3 मिनट)",
+  tgGuide1Title: "टेलीग्राम में @BotFather खोलें",
+  tgGuide1Text:
+    "नीचे “@BotFather खोलें” पर क्लिक करें। आपके फ़ोन या कंप्यूटर पर टेलीग्राम खुलेगा। नाम के पास नीला निशान देखें, फिर Start दबाएँ।",
+  tgGuide2Title: "/newbot भेजें",
+  tgGuide2Text: "/newbot लिखकर भेजें। BotFather बॉट का नाम पूछेगा।",
+  tgGuide3Title: "बॉट का नाम दें",
+  tgGuide3Text: "कोई भी नाम, जैसे आपकी कंपनी का नाम और “Helper”। यह नाम चैट में सबसे ऊपर दिखेगा।",
+  tgGuide4Title: "यूज़रनेम दें और टोकन कॉपी करें",
+  tgGuide4Text:
+    "यूज़रनेम नया होना चाहिए और “bot” पर ख़त्म होना चाहिए, जैसे sharma_helper_bot। अगर वह लिया जा चुका है, तो दूसरा आज़माएँ। फिर BotFather एक लंबा टोकन भेजेगा: उसे कॉपी करने के लिए एक बार दबाएँ। इसे किसी को न दें, क्योंकि जिसके पास टोकन है वह बॉट चला सकता है।",
+  tgGuide5Title: "टोकन Sahkarmi में चिपकाएँ",
+  tgGuide5Text: "इस पेज पर वापस आएँ, टोकन “बॉट टोकन” बॉक्स में चिपकाएँ और “कनेक्ट करें” दबाएँ।",
+  tgGuide6Title: "अपना फ़ोन जोड़ें",
+  tgGuide6Text:
+    "“टेलीग्राम में जोड़ें” पर क्लिक करें। आपका नया बॉट टेलीग्राम में खुलेगा: Start दबाएँ। आपको “Paired” संदेश मिलेगा और इस पेज पर आपका नाम दिखेगा।",
+  tgGuide7Title: "अपने सहकर्मी से बात करें",
+  tgGuide7Text:
+    "वैसे ही लिखें जैसे Sahkarmi में लिखते हैं। सहकर्मी काम करते समय “typing…” दिखेगा, फिर उसका जवाब आएगा। सबको देखने के लिए /coworkers और बदलने के लिए /use Asha भेजें। कंप्यूटर पर Sahkarmi खुला रखें।",
   telegramPairButton: "टेलीग्राम में जोड़ें",
   telegramPairManual: "या ख़ुद {bot} को यह भेजें:",
   telegramPairedWith: "{name} से जुड़ा है। इस चैट के संदेश नीचे वाले सहकर्मी को जाते हैं।",
@@ -1237,6 +1276,25 @@ export const workspaceBn: WorkspaceDictionary = {
   telegramConnectedAs: "{name} হিসেবে যুক্ত।",
   telegramPairStep: "শেষ ধাপ: বোতামটি চাপুন, তারপর টেলিগ্রামে Start চাপুন। Sahkarmi নিজেই জুড়ে যাবে।",
   telegramOpenBotFather: "@BotFather খুলুন",
+  tgGuideShow: "ধাপে ধাপে দেখান (৭টি ধাপ, প্রায় ৩ মিনিট)",
+  tgGuide1Title: "টেলিগ্রামে @BotFather খুলুন",
+  tgGuide1Text:
+    "নিচে “@BotFather খুলুন”-এ ক্লিক করুন। আপনার ফোনে বা কম্পিউটারে টেলিগ্রাম খুলবে। নামের পাশে নীল টিক দেখে নিন, তারপর Start চাপুন।",
+  tgGuide2Title: "/newbot পাঠান",
+  tgGuide2Text: "/newbot লিখে পাঠান। BotFather বটের নাম জানতে চাইবে।",
+  tgGuide3Title: "বটের নাম দিন",
+  tgGuide3Text: "যে কোনো নাম, যেমন আপনার কোম্পানির নাম আর “Helper”। এই নামটি চ্যাটের উপরে দেখা যাবে।",
+  tgGuide4Title: "ইউজারনেম দিন আর টোকেন কপি করুন",
+  tgGuide4Text:
+    "ইউজারনেম নতুন হতে হবে আর “bot” দিয়ে শেষ হতে হবে, যেমন sharma_helper_bot। নেওয়া থাকলে অন্যটি চেষ্টা করুন। তারপর BotFather একটি লম্বা টোকেন পাঠাবে: কপি করতে একবার চাপুন। এটি কাউকে দেবেন না, কারণ টোকেন যার কাছে থাকে সে বট চালাতে পারে।",
+  tgGuide5Title: "টোকেন Sahkarmi-তে পেস্ট করুন",
+  tgGuide5Text: "এই পাতায় ফিরে এসে টোকেনটি “বট টোকেন” বাক্সে পেস্ট করুন আর “কানেক্ট করুন” চাপুন।",
+  tgGuide6Title: "আপনার ফোন জুড়ুন",
+  tgGuide6Text:
+    "“টেলিগ্রামে জুড়ুন”-এ ক্লিক করুন। আপনার নতুন বট টেলিগ্রামে খুলবে: Start চাপুন। আপনি “Paired” বার্তা পাবেন, আর এই পাতায় আপনার নাম দেখা যাবে।",
+  tgGuide7Title: "সহকর্মীর সঙ্গে কথা বলুন",
+  tgGuide7Text:
+    "Sahkarmi-তে যেমন লেখেন তেমনই লিখুন। সহকর্মী কাজ করার সময় “typing…” দেখাবে, তারপর উত্তর আসবে। সবাইকে দেখতে /coworkers আর বদলাতে /use Asha পাঠান। কম্পিউটারে Sahkarmi খোলা রাখুন।",
   telegramPairButton: "টেলিগ্রামে জুড়ুন",
   telegramPairManual: "অথবা নিজে {bot}-কে এটি পাঠান:",
   telegramPairedWith: "{name}-এর সঙ্গে জোড়া লাগানো। এই চ্যাটের বার্তা নিচের সহকর্মীর কাছে যায়।",

@@ -7001,10 +7001,140 @@ body {
   font-size: 12.5px;
 }
 
-.telegram-steps {
+.tg-guide {
+  width: 100%;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.tg-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tg-guide-steps {
+  display: grid;
+  gap: 18px;
+  margin: 14px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.tg-step {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.tg-step-text h3 {
+  margin: 4px 0 6px;
+  font-size: 1rem;
+}
+
+.tg-step-text p {
   margin: 0;
-  padding-left: 22px;
-  list-style: decimal;
+  line-height: 1.5;
+}
+
+/* A drawn Telegram screen; fixed colours because it is a picture of Telegram, not app chrome. */
+.tg-phone {
+  overflow: hidden;
+  border: 6px solid #1f2430;
+  border-radius: 18px;
+  background: #cfe0c3;
+  color: #111;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tg-phone-bar {
+  padding: 8px 10px;
+  background: #517da2;
+  color: #fff;
+  font-weight: 600;
+}
+
+.tg-phone-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 110px;
+  padding: 10px 8px;
+}
+
+.tg-bubble {
+  max-width: 88%;
+  padding: 6px 9px;
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+
+.tg-bubble-me {
+  align-self: flex-end;
+  background: #effdde;
+}
+
+.tg-bubble-them {
+  align-self: flex-start;
+  background: #fff;
+}
+
+.tg-typing {
+  color: #517da2;
+  font-style: italic;
+}
+
+.tg-token {
+  display: block;
+  margin-top: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #fff3b0;
+  color: #111;
+  font-size: 11px;
+}
+
+.tg-phone-start {
+  align-self: stretch;
+  margin-top: auto;
+  padding: 7px;
+  border-radius: 8px;
+  background: #fff;
+  color: #3a7bd5;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tg-phone-form {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: #fbf7f0;
+}
+
+.tg-phone-field {
+  padding: 6px 8px;
+  border: 1px solid #c9c2b6;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.tg-phone-button {
+  justify-self: start;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: #e8692c;
+  color: #fff;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .tg-step {
+    grid-template-columns: 1fr;
+  }
 }
 
 .telegram-token {
