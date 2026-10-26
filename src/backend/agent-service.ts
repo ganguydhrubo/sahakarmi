@@ -1172,6 +1172,19 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emitQueue(botId);
   }
 
+  /**
+   * "Send now" for a queued message: it goes to the front of the queue, the current turn is
+   * stopped, and the queue runs again, so the message starts next with its attachments.
+   */
+  async sendQueuedNow(botId: string, deliveryId: string): Promise<void> {
+    await this.#mailbox.moveToFront(botId, deliveryId);
+    const turnId = this.#snapshots.get(botId)?.activeTurnId;
+    if (turnId) await this.interrupt(botId, turnId);
+    await this.#mailbox.setPaused(botId, false);
+    this.#emitQueue(botId);
+    this.#scheduleDrain(botId);
+  }
+
   async setQueuePaused(botId: string, paused: boolean): Promise<void> {
     await this.#store.getOrCreate(botId);
     await this.#mailbox.setPaused(botId, paused);
@@ -3097,7 +3110,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             revision: snapshot.revision,
           });
         }
-        if (process.env.VITEST) {
+        if (process.env.VITEST && !process.env.SAHKARMI_TEST_DELTA_BATCH) {
           this.#flushDeltas(itemId);
         } else if (!this.#deltaFlushTimer) {
           this.#deltaFlushTimer = setTimeout(() => {
@@ -3642,6 +3655,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     if (this.#lastConversationSignatures.get(snapshot.botId) === signature) return;
     this.#lastConversationSignatures.set(snapshot.botId, signature);
+    // This snapshot already holds every streamed token so far. Sending the batched deltas after
+    // it would add their text a second time (the owner saw repeated phrases while streaming).
+    for (const [key, pending] of this.#pendingDeltas) {
+      if (pending.botId === snapshot.botId) this.#pendingDeltas.delete(key);
+    }
     snapshot.revision += 1;
     this.#emit({ type: "conversation", snapshot: structuredClone(snapshot) });
   }

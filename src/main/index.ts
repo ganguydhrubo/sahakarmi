@@ -337,6 +337,10 @@ function registerIpcHandlers(
     const parsed = parseCancelQueuedMessage(input);
     return service.cancelQueuedMessage(parsed.botId, parsed.deliveryId);
   });
+  handleTrusted(IPC_CHANNELS.agentSendQueuedNow, (input: unknown) => {
+    const parsed = parseCancelQueuedMessage(input);
+    return service.sendQueuedNow(parsed.botId, parsed.deliveryId);
+  });
   handleTrusted(IPC_CHANNELS.agentSetQueuePaused, (input: unknown) => {
     const parsed = parseSetQueuePaused(input);
     return service.setQueuePaused(parsed.botId, parsed.paused);

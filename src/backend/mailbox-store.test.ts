@@ -40,6 +40,29 @@ describe("MailboxStore", () => {
     await expect(access(first?.managedAttachments[0]?.path ?? "missing")).resolves.toBeUndefined();
   });
 
+  it("moves a queued message to the front of its coworker's queue only", async () => {
+    const send = (text: string, recipient = "chief") =>
+      store.enqueue({ sender: { kind: "user" }, recipientBotIds: [recipient], text });
+    await send("first");
+    await send("other coworker", "sales-outbound");
+    await send("second");
+    const third = await send("third");
+    await store.moveToFront("chief", third.deliveries[0].id);
+    expect(store.nextQueued("chief")?.delivery.text).toBe("third");
+    expect(store.listQueue("chief").deliveries.map((item) => [item.text, item.position])).toEqual(
+      expect.arrayContaining([
+        ["third", 1],
+        ["first", 2],
+        ["second", 3],
+      ]),
+    );
+    expect(store.nextQueued("sales-outbound")?.delivery.text).toBe("other coworker");
+    await store.cancel("chief", third.deliveries[0].id);
+    await expect(store.moveToFront("chief", third.deliveries[0].id)).rejects.toThrow(
+      "Only queued messages can be sent now.",
+    );
+  });
+
   it("persists cancellation, pause state, and idempotent agent sends", async () => {
     const first = await store.enqueue({
       sender: { kind: "bot", botId: "chief" },

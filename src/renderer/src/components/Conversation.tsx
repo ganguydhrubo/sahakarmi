@@ -132,6 +132,8 @@ interface ConversationProps {
   ) => Promise<boolean>;
   onAnswerPrompt: (answers: Record<string, string[]>) => Promise<boolean>;
   onCancelQueuedMessage: (deliveryId: string) => void;
+  /** Moves a queued message to the front and stops the current turn so it runs next. */
+  onSendQueuedNow?: (deliveryId: string) => void;
   onResumeQueue: () => void;
   onActivateBrowserTab: (tabId: string) => void;
   onCloseBrowserTab: (tabId: string) => void;
@@ -2334,15 +2336,7 @@ export function Conversation(props: ConversationProps) {
           onResume={props.onResumeQueue}
           onCancel={props.onCancelQueuedMessage}
           onStop={props.onStop}
-          onSteer={async (deliveryId) => {
-            const delivery = props.queue?.deliveries.find((d) => d.id === deliveryId);
-            if (!delivery) return;
-            props.onCancelQueuedMessage(deliveryId);
-            if (props.activeTurnId) {
-              props.onStop();
-            }
-            await props.onSendMessage(delivery.text, [], null);
-          }}
+          onSteer={(deliveryId) => props.onSendQueuedNow?.(deliveryId)}
         />
       </Show>
 
@@ -2783,6 +2777,10 @@ export function Conversation(props: ConversationProps) {
               ariaLabel={t("messagePlaceholder", { name: props.bot?.name ?? "" })}
               onValueChange={(text) => updateCurrentDraft({ text })}
               onSubmit={() => void submitMessage()}
+              onEscape={() => {
+                // Like Claude Code: Esc in the box stops a working coworker.
+                if (props.activeTurnId && !scheduleMode()) props.onStop();
+              }}
             />
           </div>
           <div class="composer-toolbar">
@@ -2854,29 +2852,37 @@ export function Conversation(props: ConversationProps) {
               {t("runOnSchedule")}
             </button>
             <span class="composer-toolbar-spacer" />
-            <Show
-              when={props.activeTurnId && !scheduleMode()}
-              fallback={
-                <button
-                  type="button"
-                  class="voice-button send-button"
-                  aria-label={scheduleMode() ? t("scheduleLabel") : "Send message"}
-                  disabled={submitting() || !agentReady() || onboardingModelRequired()}
-                  onClick={() => void submitMessage()}
-                >
-                  <Show when={scheduleMode()} fallback={submitting() ? "…" : "↑"}>
-                    <ClockIcon />
-                  </Show>
-                </button>
-              }
-            >
+            <Show when={props.activeTurnId && !scheduleMode()}>
               <button
                 type="button"
                 class="voice-button voice-button-active"
                 aria-label="Stop coworker"
+                title={t("stopHint")}
                 onClick={props.onStop}
               >
                 <StopIcon />
+              </button>
+            </Show>
+            {/* While a coworker works, Send stays: the message waits in its queue. */}
+            <Show
+              when={
+                !props.activeTurnId ||
+                scheduleMode() ||
+                currentDraft().text.trim() ||
+                currentDraft().attachments.length
+              }
+            >
+              <button
+                type="button"
+                class="voice-button send-button"
+                aria-label={scheduleMode() ? t("scheduleLabel") : "Send message"}
+                title={props.activeTurnId && !scheduleMode() ? t("queueHint") : undefined}
+                disabled={submitting() || !agentReady() || onboardingModelRequired()}
+                onClick={() => void submitMessage()}
+              >
+                <Show when={scheduleMode()} fallback={submitting() ? "…" : "↑"}>
+                  <ClockIcon />
+                </Show>
               </button>
             </Show>
           </div>

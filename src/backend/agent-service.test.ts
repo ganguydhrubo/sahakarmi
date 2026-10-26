@@ -50,6 +50,9 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_TOOL_CALL;
   delete process.env.SAHKARMI_FAKE_SERVER_REQUEST;
   delete process.env.SAHKARMI_FAKE_TOOL_ITEM;
+  delete process.env.SAHKARMI_FAKE_SECOND_DELTA;
+  delete process.env.SAHKARMI_FAKE_TOOL_ITEM_DELAY;
+  delete process.env.SAHKARMI_TEST_DELTA_BATCH;
   delete process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS;
   delete process.env.SAHKARMI_FAKE_THREAD_READ_DELAY;
   delete process.env.SAHKARMI_FAKE_THREAD_READ_UNTIL_TURN;
@@ -593,6 +596,50 @@ describe.sequential("AgentService", () => {
       input: "ls ~/Sahkarmi/Shared",
       output: "invoices.xlsx",
     });
+  });
+
+  it("never sends streamed text again after a snapshot that already holds it", async () => {
+    process.env.SAHKARMI_TEST_DELTA_BATCH = "1";
+    process.env.SAHKARMI_FAKE_SECOND_DELTA = " more";
+    // The tool finishes well after the 33 ms delta batch, so the batch is sent on its own.
+    process.env.SAHKARMI_FAKE_TOOL_ITEM_DELAY = "250";
+    process.env.SAHKARMI_FAKE_TOOL_ITEM = JSON.stringify({
+      type: "commandExecution",
+      id: "cmd-dup",
+      command: "dir",
+      aggregatedOutput: "",
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    await service.sendMessage({ botId: "arjun-research", text: "Stream please" });
+    await waitFor(async () => {
+      const snapshot = await service?.readConversation("arjun-research");
+      return snapshot?.messages.some((message) => message.tool?.status === "completed");
+    });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    // Replay the events the way the chat window applies them.
+    let text = "";
+    let revision = -1;
+    const shown: string[] = [];
+    for (const event of events) {
+      if (event.type === "conversation" && event.snapshot.botId === "arjun-research") {
+        if (event.snapshot.revision < revision) continue;
+        revision = event.snapshot.revision;
+        text =
+          event.snapshot.messages.find((message) => message.id === "message-turn-1")?.text ?? text;
+      } else if (event.type === "conversation-delta" && event.messageId === "message-turn-1") {
+        if (event.revision <= revision) continue;
+        revision = event.revision;
+        text += event.delta;
+      }
+      shown.push(text);
+    }
+    expect(text).toBe("Streaming more more");
+    expect(shown.filter((value) => !"Streaming more more".startsWith(value))).toEqual([]);
   });
 
   it("does not surface the skills context-budget notice as an agent error", async () => {
@@ -1445,7 +1492,12 @@ process.stdin.on("data", (chunk) => {
         if (process.env.SAHKARMI_FAKE_TOOL_ITEM && turnCounter === 1) {
           const item = JSON.parse(process.env.SAHKARMI_FAKE_TOOL_ITEM);
           write({ method: "item/started", params: { threadId: message.params.threadId, turnId, item: { ...item, status: "inProgress" } } });
-          setTimeout(() => write({ method: "item/completed", params: { threadId: message.params.threadId, turnId, item: { ...item, status: "completed" } } }), 20);
+          if (process.env.SAHKARMI_FAKE_SECOND_DELTA) {
+            const more = () => write({ method: "item/agentMessage/delta", params: { threadId: message.params.threadId, turnId, itemId: "message-" + turnId, delta: process.env.SAHKARMI_FAKE_SECOND_DELTA } });
+            more();
+            setTimeout(more, 5);
+          }
+          setTimeout(() => write({ method: "item/completed", params: { threadId: message.params.threadId, turnId, item: { ...item, status: "completed" } } }), Number(process.env.SAHKARMI_FAKE_TOOL_ITEM_DELAY || 20));
         }
         if (process.env.SAHKARMI_FAKE_AGENT_TOOL === "1" && turnCounter === 1) {
           setTimeout(() => write({ id: "agent-tool-1", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-1", namespace: "sahkarmi", tool: "send_message", arguments: { recipientBotIds: ["sales-outbound", "inbox-manager"], text: "Please prepare your reports.", paths: JSON.parse(process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS || "[]") } } }), 30);

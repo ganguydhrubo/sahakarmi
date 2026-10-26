@@ -279,6 +279,7 @@ describe("Sahkarmi connected desktop shell", () => {
             .fn()
             .mockImplementation(async (botId) => ({ botId, paused: false, deliveries: [] })),
           cancelQueuedMessage: vi.fn().mockResolvedValue(undefined),
+          sendQueuedNow: vi.fn().mockResolvedValue(undefined),
           setQueuePaused: vi.fn().mockResolvedValue(undefined),
           interrupt: vi.fn().mockResolvedValue(undefined),
           respondToPrompt: vi.fn().mockResolvedValue(undefined),
@@ -1551,6 +1552,32 @@ describe("Sahkarmi connected desktop shell", () => {
       status: "completed",
     });
     await waitFor(() => expect(trigger).toBeEnabled());
+  });
+
+  it("keeps Send next to Stop while working and stops on Esc in the box", async () => {
+    render(() => <App />);
+    await confirmOnboardingModel();
+    emitAgentEvent?.({
+      type: "turn-started",
+      botId: "chief",
+      threadId: "thread-chief",
+      turnId: "turn-esc",
+    });
+    expect(await screen.findByRole("button", { name: "Stop coworker" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send message" })).not.toBeInTheDocument();
+    const composer = screen.getByRole("textbox", { name: "Message Chief" });
+    composer.textContent = "Next, check the invoices";
+    await fireEvent.input(composer);
+    expect(await screen.findByRole("button", { name: "Send message" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop coworker" })).toBeInTheDocument();
+    await fireEvent.keyDown(composer, { key: "Escape" });
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.interrupt).toHaveBeenCalledWith({
+        botId: "chief",
+        turnId: "turn-esc",
+      }),
+    );
+    expect(composer).toHaveTextContent("Next, check the invoices");
   });
 
   it("supports picker keyboard navigation and outside dismissal", async () => {

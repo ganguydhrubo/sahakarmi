@@ -643,6 +643,24 @@ export class MailboxStore {
     await this.#persist();
   }
 
+  /** Moves a queued message ahead of the coworker's other queued messages. */
+  async moveToFront(botId: string, deliveryId: string): Promise<void> {
+    const deliveries = this.#state.deliveries;
+    const index = deliveries.findIndex(
+      (candidate) => candidate.id === deliveryId && candidate.recipientBotId === botId,
+    );
+    const delivery = deliveries[index];
+    if (!delivery) throw new Error("Queued message was not found.");
+    if (delivery.status !== "queued") throw new Error("Only queued messages can be sent now.");
+    const firstQueued = deliveries.findIndex(
+      (candidate) => candidate.recipientBotId === botId && candidate.status === "queued",
+    );
+    if (firstQueued === index) return;
+    deliveries.splice(index, 1);
+    deliveries.splice(firstQueued, 0, delivery);
+    await this.#persist();
+  }
+
   async setPaused(botId: string, paused: boolean): Promise<void> {
     const current = new Set(this.#state.pausedBotIds);
     if (paused) current.add(botId);
