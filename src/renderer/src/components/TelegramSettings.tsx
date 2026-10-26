@@ -38,10 +38,13 @@ export function TelegramSettings(props: { bots: BotProfile[] }) {
     onCleanup(() => window.clearInterval(timer));
   });
 
-  const link = () => {
+  // Telegram turns "?start=<code>" into the "/start <code>" message, so pairing is one tap.
+  const pairLink = () => {
     const name = status()?.botUsername;
-    return name ? `https://t.me/${name}` : null;
+    const code = status()?.pairingCode;
+    return name && code ? `https://t.me/${name}?start=${code}` : null;
   };
+  const open = (href: string) => void window.sahkarmi.openUrl(href).catch(() => undefined);
 
   return (
     <>
@@ -50,13 +53,19 @@ export function TelegramSettings(props: { bots: BotProfile[] }) {
         when={status()?.configured}
         fallback={
           <>
-            <ol>
+            <ol class="telegram-steps">
               <li>{t("telegramStepBotFather")}</li>
               <li>{t("telegramStepPaste")}</li>
             </ol>
+            <div class="settings-buttons">
+              <button type="button" onClick={() => open("https://t.me/BotFather")}>
+                {t("telegramOpenBotFather")}
+              </button>
+            </div>
             <label class="voice-field">
               <span>{t("telegramToken")}</span>
               <input
+                class="telegram-token"
                 type="password"
                 autocomplete="off"
                 value={token()}
@@ -89,23 +98,22 @@ export function TelegramSettings(props: { bots: BotProfile[] }) {
         <Show
           when={status()?.paired}
           fallback={
-            <p>
-              {t("telegramPairStep")}{" "}
-              <Show when={link()}>
+            <>
+              <p>{t("telegramPairStep")}</p>
+              <Show when={pairLink()}>
                 {(href) => (
-                  <a
-                    href={href()}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      void window.sahkarmi.openUrl(href()).catch(() => undefined);
-                    }}
-                  >
-                    {href()}
-                  </a>
+                  <div class="settings-buttons">
+                    <button type="button" onClick={() => open(href())}>
+                      {t("telegramPairButton")}
+                    </button>
+                  </div>
                 )}
-              </Show>{" "}
-              <code>/start {status()?.pairingCode}</code>
-            </p>
+              </Show>
+              <p class="settings-meta">
+                {t("telegramPairManual", { bot: `@${status()?.botUsername ?? ""}` })}{" "}
+                <code>/start {status()?.pairingCode}</code>
+              </p>
+            </>
           }
         >
           <p>{t("telegramPairedWith", { name: status()?.chatName ?? "" })}</p>

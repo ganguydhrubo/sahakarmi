@@ -16,6 +16,7 @@ const POLL_SECONDS = 25;
 const MAX_BACKOFF_MS = 60_000;
 /** A reply that never comes (the app was busy for ages) is forgotten after this long. */
 const PENDING_TTL_MS = 6 * 60 * 60 * 1000;
+const TYPING_REPEAT_MS = 4_500;
 const TERMINAL = new Set(["completed", "failed", "interrupted", "cancelled"]);
 
 interface StoredTelegram {
@@ -106,6 +107,7 @@ export class TelegramBridge {
   #offset = 0;
   #unsubscribe: (() => void) | null = null;
   readonly #pending: PendingReply[] = [];
+  #typingTimer: ReturnType<typeof setInterval> | null = null;
   readonly #notifiedApprovals = new Set<string>();
   /** Approvals asked before the bridge started were already there for the owner to see. */
   #startedAt = new Date().toISOString();
@@ -220,6 +222,8 @@ export class TelegramBridge {
     this.#abort?.abort();
     this.#unsubscribe?.();
     this.#unsubscribe = null;
+    if (this.#typingTimer) clearInterval(this.#typingTimer);
+    this.#typingTimer = null;
     await this.#loop?.catch(() => {});
     this.#loop = null;
   }
@@ -345,9 +349,30 @@ export class TelegramBridge {
     const receipt = await this.#agent.sendMessage({ botId: coworker.id, text });
     const deliveryId = receipt.deliveries[0]?.id;
     if (deliveryId) this.#pending.push({ botId: coworker.id, deliveryId, createdAt: Date.now() });
-    await this.#call(state.token, "sendChatAction", { chat_id: chat.id, action: "typing" }).catch(
-      () => {},
-    );
+    this.#showTyping();
+  }
+
+  /**
+   * Telegram shows "typing..." for only 5 seconds, so it is sent again until every reply is
+   * back: the owner can see the coworker is still working on a long task.
+   */
+  #showTyping(): void {
+    const tick = () => {
+      const state = this.#state;
+      if (!state || state.chatId == null || this.#pending.length === 0) {
+        if (this.#typingTimer) clearInterval(this.#typingTimer);
+        this.#typingTimer = null;
+        return;
+      }
+      void this.#call(state.token, "sendChatAction", {
+        chat_id: state.chatId,
+        action: "typing",
+      }).catch(() => {});
+    };
+    tick();
+    if (!this.#typingTimer && this.#pending.length > 0) {
+      this.#typingTimer = setInterval(tick, TYPING_REPEAT_MS);
+    }
   }
 
   async #onAgentEvent(event: AgentEvent): Promise<void> {

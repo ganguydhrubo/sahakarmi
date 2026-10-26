@@ -7001,6 +7001,16 @@ body {
   font-size: 12.5px;
 }
 
+.telegram-steps {
+  margin: 0;
+  padding-left: 22px;
+  list-style: decimal;
+}
+
+.telegram-token {
+  width: min(420px, 100%);
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

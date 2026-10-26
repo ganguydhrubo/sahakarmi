@@ -56,7 +56,10 @@ describe("TelegramSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(await screen.findByText("/start 482913")).toBeTruthy();
     expect(telegram.setToken).toHaveBeenCalledWith("123:abc");
-    expect(screen.getByText("https://t.me/sahkarmi_test_bot")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Pair in Telegram" }));
+    expect(window.sahkarmi.openUrl).toHaveBeenCalledWith(
+      "https://t.me/sahkarmi_test_bot?start=482913",
+    );
     // The token is cleared from the screen once saved.
     expect(screen.queryByLabelText("Bot token")).toBeNull();
   });
