@@ -64,6 +64,8 @@ export interface BrowserSnapshot {
     name: string;
     disabled: boolean;
   }>;
+  /** Set when the action needs a follow-up, e.g. a click that opened the page's file picker. */
+  notice?: string;
 }
 
 export type BrowserAction =
@@ -310,9 +312,10 @@ export class BrowserHost implements CoworkerBrowser {
       // only its corner pixel inside the window while the coworker acts on it.
       const restore = tab.view.getVisible() ? null : this.#showOutOfSight(tab.view);
       tab.view.webContents.focus();
+      let notice: string | undefined;
       try {
         if (restore) await delay(250);
-        await withTimeout(
+        notice = await withTimeout(
           performAction(tab.view.webContents, action),
           10_000,
           "Browser action timed out.",
@@ -323,7 +326,8 @@ export class BrowserHost implements CoworkerBrowser {
       }
       await delay(250);
       const nextRevision = tab.revision + 1;
-      return this.#readSnapshot(tab, nextRevision);
+      const snapshot = await this.#readSnapshot(tab, nextRevision);
+      return notice ? { ...snapshot, notice } : snapshot;
     });
   }
 
@@ -1048,7 +1052,27 @@ export function snapshotScript(revision: number): string {
   })()`;
 }
 
-async function performAction(contents: WebContents, action: BrowserAction): Promise<void> {
+/** DevTools access to a built-in browser page, while its debugger is attached. */
+function electronCdp(contents: WebContents): UploadCdp {
+  return {
+    send: (method, params = {}) =>
+      contents.debugger.sendCommand(method, params) as Promise<Record<string, unknown>>,
+    subscribe: (listener) => {
+      const handler = (_event: unknown, method: string, params: Record<string, unknown>) =>
+        listener(method, params);
+      contents.debugger.on("message", handler);
+      return () => {
+        contents.debugger.off("message", handler);
+      };
+    },
+  };
+}
+
+/** Returns a notice for the coworker when the action needs a follow-up. */
+async function performAction(
+  contents: WebContents,
+  action: BrowserAction,
+): Promise<string | undefined> {
   switch (action.type) {
     case "click": {
       const point = await contents.executeJavaScript(
@@ -1074,28 +1098,30 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
         );
         return;
       }
-      await withDevToolsDebugger(contents, async () => {
-        await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
-          type: "mouseMoved",
-          x: point.x,
-          y: point.y,
-        });
-        await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
-          type: "mousePressed",
-          x: point.x,
-          y: point.y,
-          button: "left",
-          clickCount: 1,
-        });
-        await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
-          type: "mouseReleased",
-          x: point.x,
-          y: point.y,
-          button: "left",
-          clickCount: 1,
-        });
-      });
-      return;
+      const picker = await withDevToolsDebugger(contents, () =>
+        clickCatchingFilePicker(electronCdp(contents), async () => {
+          await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
+            type: "mouseMoved",
+            x: point.x,
+            y: point.y,
+          });
+          await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
+            type: "mousePressed",
+            x: point.x,
+            y: point.y,
+            button: "left",
+            clickCount: 1,
+          });
+          await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
+            type: "mouseReleased",
+            x: point.x,
+            y: point.y,
+            button: "left",
+            clickCount: 1,
+          });
+        }),
+      );
+      return picker ? filePickerNotice(action.ref) : undefined;
     }
     case "type": {
       await contents.executeJavaScript(
@@ -1137,22 +1163,7 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
     case "upload": {
       const files = checkUploadFiles(action.paths);
       await withDevToolsDebugger(contents, () =>
-        uploadThroughCdp(
-          {
-            send: (method, params = {}) =>
-              contents.debugger.sendCommand(method, params) as Promise<Record<string, unknown>>,
-            subscribe: (listener) => {
-              const handler = (_event: unknown, method: string, params: Record<string, unknown>) =>
-                listener(method, params);
-              contents.debugger.on("message", handler);
-              return () => {
-                contents.debugger.off("message", handler);
-              };
-            },
-          },
-          action.ref,
-          files,
-        ),
+        uploadThroughCdp(electronCdp(contents), action.ref, files),
       );
       return;
     }
@@ -1171,6 +1182,56 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
 export interface UploadCdp {
   send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
   subscribe(listener: (method: string, params: Record<string, unknown>) => void): () => void;
+}
+
+/** How long after a click its file picker can still open; most open within a few ms. */
+const CLICK_FILE_CHOOSER_MS = 150;
+
+/**
+ * Clicks with the page's file picker intercepted, so a coworker's click never opens a Windows
+ * file dialog over the owner's screen. Returns whether a picker opened.
+ */
+export async function clickCatchingFilePicker(
+  cdp: UploadCdp,
+  click: () => Promise<void>,
+): Promise<boolean> {
+  let opened = false;
+  let wake = () => {};
+  let intercepting = false;
+  const unsubscribe = cdp.subscribe((method) => {
+    if (method !== "Page.fileChooserOpened") return;
+    opened = true;
+    wake();
+  });
+  try {
+    try {
+      await cdp.send("Page.enable");
+      await cdp.send("Page.setInterceptFileChooserDialog", { enabled: true });
+      intercepting = true;
+    } catch {
+      // A page that cannot intercept still gets the plain click.
+    }
+    await click();
+    if (intercepting && !opened) {
+      await new Promise<void>((done) => {
+        wake = done;
+        setTimeout(done, CLICK_FILE_CHOOSER_MS);
+      });
+    }
+    return opened;
+  } finally {
+    unsubscribe();
+    if (intercepting) {
+      await cdp
+        .send("Page.setInterceptFileChooserDialog", { enabled: false })
+        .catch(() => undefined);
+    }
+  }
+}
+
+/** Shown to the coworker, whatever tool list its runtime saved, so it knows upload exists. */
+export function filePickerNotice(ref: string): string {
+  return `That click opened the page's file picker. Sahkarmi kept the Windows file dialog closed, so no file is chosen yet. To attach files, call act with action {"type":"upload","ref":${JSON.stringify(ref)},"paths":["<full path of each file>"]} (upload works even if your tool list does not show it). Do not ask the owner to take over for this.`;
 }
 
 export const MAX_UPLOAD_FILES = 10;
@@ -1339,6 +1400,10 @@ function parseAction(value: unknown): BrowserAction {
     throw new Error("Invalid browser action.");
   switch (value.type) {
     case "click":
+      // A coworker whose saved tool list predates upload may send the files with a click.
+      if (Array.isArray(value.paths) && value.paths.length > 0) {
+        return parseAction({ ...value, type: "upload" });
+      }
       return { type: "click", ref: requiredString(value, "ref") };
     case "type":
       return {
