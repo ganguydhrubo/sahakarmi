@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -102,7 +102,7 @@ import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
 import { readSetupState, writeSetupState } from "./setup-store";
 import { handleTrusted } from "./trusted-ipc";
 import { isTrustedRendererUrl } from "./trusted-renderer";
-import { supportsInstalledUpdates, UpdateService } from "./update-service";
+import { runningInstallerName, supportsInstalledUpdates, UpdateService } from "./update-service";
 
 if (!app.isPackaged) {
   // SAHKARMI_DEV_USER_DATA lets a test run use a throwaway profile instead of "Sahkarmi Dev".
@@ -1085,6 +1085,52 @@ function scheduleAiRuntimeChecks(): void {
   firstCheck.unref?.();
 }
 
+/**
+ * Opening Sahkarmi while its update installer runs blocks the installer and starts the update
+ * again. Instead, say so, close, and open again by itself once the installer has finished.
+ */
+async function waitForRunningInstaller(): Promise<boolean> {
+  if (process.platform !== "win32" || !app.isPackaged) return false;
+  const tasks = await new Promise<string>((resolve) => {
+    execFile(
+      "tasklist",
+      ["/FO", "CSV", "/NH"],
+      { windowsHide: true, timeout: 5_000 },
+      (error, stdout) => resolve(error ? "" : stdout),
+    );
+  });
+  const installer = runningInstallerName(tasks);
+  if (!installer) return false;
+  const quote = (text: string) => `'${text.replace(/'/g, "''")}'`;
+  const script = [
+    `Wait-Process -Name ${quote(installer.replace(/\.exe$/i, ""))} -Timeout 900 -ErrorAction SilentlyContinue`,
+    "Start-Sleep -Seconds 2",
+    `Start-Process -FilePath ${quote(process.execPath)}`,
+  ].join("; ");
+  spawn(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script],
+    {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  ).unref();
+  console.info(`[update] ${installer} is still installing; Sahkarmi will open after it finishes`);
+  await dialog
+    .showMessageBox({
+      type: "info",
+      title: "Sahkarmi",
+      message: "Sahkarmi is finishing an update.",
+      detail: "It will open by itself in a minute. You don't need to do anything.",
+      buttons: ["OK"],
+      signal: AbortSignal.timeout(10_000),
+    })
+    .catch(() => undefined);
+  app.quit();
+  return true;
+}
+
 function parseAiToolId(value: unknown): AiToolId {
   if (typeof value !== "string" || !isAiToolId(value)) throw new Error("Unknown AI tool.");
   return value;
@@ -1103,6 +1149,7 @@ if (!hasSingleInstanceLock) {
   void app
     .whenReady()
     .then(async () => {
+      if (await waitForRunningInstaller()) return;
       configureContentSecurityPolicy();
       mainWindow = createWindow();
       await restoreSavedApiKeys();

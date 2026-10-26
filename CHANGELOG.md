@@ -5,6 +5,16 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-10-26
+
+### Fixed
+
+- Updates no longer start again and again with "Retry". Opening Sahkarmi while an update was
+  still installing blocked the installer, threw away the finished download, downloaded it again
+  and kept failing because Windows was still using the file. Now a finished download is kept,
+  a file that is in use is not retried every few seconds, and if an update is installing when
+  you open Sahkarmi, it says so, closes, and opens by itself when the install is done.
+
 ## [0.12.1] - 2026-10-26
 
 ### Fixed
