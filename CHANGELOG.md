@@ -14,6 +14,11 @@ All notable changes to Sahkarmi are documented here. The project follows
   coworkers", where you can open or delete each one.
 - Coworkers can search earlier chats (their own, or the whole team's) to recall what was
   decided, sent or promised, instead of guessing.
+- Chat with your coworkers from Telegram. In Settings > Telegram, paste a bot token from
+  @BotFather and send the 6-digit /start code from your phone; only that one chat is answered.
+  Your message goes into the coworker's normal queue and its finished reply comes back to
+  Telegram. /coworkers lists them and /use switches. New approvals are announced there too (you
+  still allow or deny them in the app). Sahkarmi must be open on the computer.
 
 ### Fixed
 

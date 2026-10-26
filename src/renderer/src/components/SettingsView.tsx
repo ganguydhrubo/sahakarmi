@@ -28,6 +28,7 @@ import { FeaturesSettings } from "./FeaturesSettings";
 import { ModelSuggestions } from "./ModelSuggestions";
 import { PermissionsSettings } from "./PermissionsSettings";
 import { ProviderConnect } from "./ProviderConnect";
+import { TelegramSettings } from "./TelegramSettings";
 import { ThemeSelector } from "./ThemeSelector";
 import { UpdateControl } from "./UpdateControl";
 import { VoiceSettings } from "./VoiceSettings";
@@ -37,6 +38,7 @@ type SettingsSection =
   | "ai"
   | "permissions"
   | "voice"
+  | "telegram"
   | "features"
   | "updates"
   | "data"
@@ -47,6 +49,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
   { id: "ai", label: "setAi" },
   { id: "permissions", label: "setPermissions" },
   { id: "voice", label: "setVoice" },
+  { id: "telegram", label: "setTelegram" },
   { id: "features", label: "setFeatures" },
   { id: "updates", label: "updates" },
   { id: "data", label: "dataPrivacy" },
@@ -275,6 +278,13 @@ export function SettingsView(props: SettingsViewProps) {
               <p class="settings-meta">
                 {featureOn("live-dictation") ? t("voiceDictationOn") : t("voiceDictationOff")}
               </p>
+            </section>
+          ))}
+
+          {panel("telegram", () => (
+            <section class="settings-card">
+              <h2>{t("setTelegram")}</h2>
+              <TelegramSettings bots={props.bots} />
             </section>
           ))}
 
