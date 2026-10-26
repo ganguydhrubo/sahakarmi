@@ -1,4 +1,6 @@
 import { EventEmitter } from "node:events";
+import { readdir, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import {
   type AppUpdater,
   CancellationToken,
@@ -92,8 +94,9 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#updater.autoInstallOnAppQuit = false;
     this.#updater.allowPrerelease = false;
 
-    // Clean up any stale pending update artifacts from earlier crashes/loops
-    void cleanStalePendingUpdates();
+    // Remove half-finished and already-installed update files; a newer finished download stays.
+    const pending = pendingUpdatesDir();
+    if (pending) void cleanPendingUpdates(pending, this.#options.currentVersion);
 
     this.#updater.on("checking-for-update", () => {
       this.#setStatus({ phase: "checking", progress: null, message: null });
@@ -234,6 +237,17 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         await this.#updater.downloadUpdate(token);
       } catch (error) {
         if (this.#stopped) return;
+        if (isFileInUse(error)) {
+          // Windows still holds the update file (usually an install that is still running).
+          // Downloading again cannot help and only fetches the whole installer once more.
+          this.#retryCount = 0;
+          this.#setStatus({
+            phase: "error",
+            message:
+              "Windows is still using the update file, so an update may be installing. Close Sahkarmi, wait a minute, then open it again.",
+          });
+          return;
+        }
         if (this.#retryCount < 2) {
           this.#retryCount += 1;
           this.#updater.disableDifferentialDownload = true;
@@ -344,16 +358,74 @@ function clampProgress(value: number): number {
   return Math.max(0, Math.min(100, Number.isFinite(value) ? Math.round(value) : 0));
 }
 
-async function cleanStalePendingUpdates(): Promise<void> {
-  try {
-    const localAppData = process.env.LOCALAPPDATA;
-    if (process.platform === "win32" && localAppData) {
-      const { join } = await import("node:path");
-      const { rm } = await import("node:fs/promises");
-      const pendingDir = join(localAppData, "sahkarmi-updater", "pending");
-      await rm(pendingDir, { recursive: true, force: true }).catch(() => {});
-    }
-  } catch {
-    // ignore
+/** Where electron-updater keeps downloaded installers on Windows. */
+function pendingUpdatesDir(): string | null {
+  const localAppData = process.env.LOCALAPPDATA;
+  return process.platform === "win32" && localAppData
+    ? join(localAppData, "sahkarmi-updater", "pending")
+    : null;
+}
+
+/** -1, 0 or 1, comparing "0.12.1"-style versions number by number. */
+export function compareVersions(left: string, right: string): number {
+  const a = left.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const b = right.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference < 0 ? -1 : 1;
   }
+  return 0;
+}
+
+const INSTALLER_NAME = /^Sahkarmi-(\d+\.\d+\.\d+)-x64\.exe$/i;
+
+/**
+ * Removes update files that can never be used: half-finished downloads (temp-*) and installers
+ * for this version or older (they would only install the same version again). A finished
+ * download of a newer version, and its update-info.json, are kept so it is not fetched again on
+ * every start. Files Windows still holds (a running installer) are left alone.
+ */
+export async function cleanPendingUpdates(dir: string, currentVersion: string): Promise<void> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+  const isOld = (fileName: string) => {
+    const version = fileName.match(INSTALLER_NAME)?.[1];
+    return version ? compareVersions(version, currentVersion) <= 0 : false;
+  };
+  for (const name of names) {
+    let remove = name.startsWith("temp-") || isOld(name);
+    if (name === "update-info.json") {
+      try {
+        const info = JSON.parse(await readFile(join(dir, name), "utf8")) as { fileName?: unknown };
+        remove = typeof info.fileName !== "string" || isOld(info.fileName);
+      } catch {
+        remove = true;
+      }
+    }
+    if (remove) await rm(join(dir, name), { force: true }).catch(() => {});
+  }
+}
+
+/** True for "the file is in use" errors (a running installer holds its own file). */
+export function isFileInUse(error: unknown): boolean {
+  const text =
+    error instanceof Error ? `${error.message} ${String(error.cause ?? "")}` : String(error);
+  return /\bEPERM\b|\bEBUSY\b|operation not permitted|resource busy or locked/i.test(text);
+}
+
+/**
+ * The name of a Sahkarmi installer that is running right now, from `tasklist /FO CSV /NH`
+ * output. An installer that finds Sahkarmi open waits for it, so opening the app during an
+ * install leaves both stuck.
+ */
+export function runningInstallerName(tasklistCsv: string): string | null {
+  for (const line of tasklistCsv.split(/\r?\n/)) {
+    const name = line.match(/^"([^"]+)"/)?.[1];
+    if (name && INSTALLER_NAME.test(name)) return name;
+  }
+  return null;
 }

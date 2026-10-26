@@ -1,5 +1,8 @@
 # Privacy
 
+The current privacy policy for the Windows app and the website is at
+<https://sahkarmi.site/privacy.html>. The notes below are older and were written for the macOS build.
+
 Sahkarmi is local-first and has no Sahkarmi-operated account, cloud backend, telemetry service, or
 remote conversation store.
 

@@ -5,6 +5,33 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-10-26
+
+### Fixed
+
+- "Update now" for Claude Code and Codex works. It used to run `npm install -g`, which updated a
+  copy Sahkarmi did not use (Claude's own installer puts its `claude.exe` first, so the version
+  never changed) and failed with "a file of the tool is in use" while a coworker was running the
+  tool. Now Sahkarmi downloads its own copy from npm into a new folder for each version, checks
+  npm's checksum and the program's version, and switches to it when your coworkers are not busy.
+  It always uses the newer copy: its own or yours. Your own installs are never changed. With
+  automatic updates allowed, this happens by itself, like the OpenCode runtime.
+- The built-in browser no longer reloads tabs in a loop. When a coworker kept working on a site
+  (for example Google Search Console with many tabs open), the tab you were looking at reloaded
+  after every one of its clicks, and broken links showed a 404 again and again. Now a tab is
+  reloaded only after the coworker has been quiet for 5 seconds, at most once every 30 seconds,
+  never when it shows an error page, and never when a coworker has typed in it and not saved.
+
+## [0.12.2] - 2026-10-26
+
+### Fixed
+
+- Updates no longer start again and again with "Retry". Opening Sahkarmi while an update was
+  still installing blocked the installer, threw away the finished download, downloaded it again
+  and kept failing because Windows was still using the file. Now a finished download is kept,
+  a file that is in use is not retried every few seconds, and if an update is installing when
+  you open Sahkarmi, it says so, closes, and opens by itself when the install is done.
+
 ## [0.12.1] - 2026-10-26
 
 ### Fixed

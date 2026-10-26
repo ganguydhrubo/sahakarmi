@@ -1,9 +1,20 @@
 // @vitest-environment node
 
 import { EventEmitter } from "node:events";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AppUpdater, CancellationToken } from "electron-updater";
 import { describe, expect, it, vi } from "vitest";
-import { reasonOf, supportsInstalledUpdates, UpdateService } from "./update-service";
+import {
+  cleanPendingUpdates,
+  compareVersions,
+  isFileInUse,
+  reasonOf,
+  runningInstallerName,
+  supportsInstalledUpdates,
+  UpdateService,
+} from "./update-service";
 
 class FakeUpdater extends EventEmitter {
   disableDifferentialDownload = false;
@@ -104,6 +115,27 @@ describe("UpdateService", () => {
       });
       await service.downloadUpdate();
       expect(service.getStatus().phase).toBe("ready");
+    } finally {
+      service.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry when Windows still holds the update file", async () => {
+    vi.useFakeTimers();
+    const updater = new FakeUpdater();
+    const service = createService(updater);
+    service.start(false);
+    updater.emit("update-available", { version: "0.1.1" });
+    updater.downloadUpdate.mockRejectedValue(
+      new Error("EPERM: operation not permitted, rename 'temp-Sahkarmi-0.1.1-x64.exe'"),
+    );
+    try {
+      await service.downloadUpdate();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+      expect(service.getStatus()).toMatchObject({ phase: "error" });
+      expect(service.getStatus().message).toContain("Close Sahkarmi");
     } finally {
       service.stop();
       vi.useRealTimers();
@@ -253,5 +285,64 @@ describe("supportsInstalledUpdates", () => {
     ["linux", false],
   ] as const)("returns %s support as %s", (platform, expected) => {
     expect(supportsInstalledUpdates(platform)).toBe(expected);
+  });
+});
+
+describe("pending update files", () => {
+  it("keeps a finished newer download and removes half-finished or old ones", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sahkarmi-pending-"));
+    for (const name of [
+      "Sahkarmi-0.12.1-x64.exe",
+      "Sahkarmi-0.12.0-x64.exe",
+      "Sahkarmi-0.11.4-x64.exe",
+      "temp-Sahkarmi-0.12.1-x64.exe",
+    ]) {
+      writeFileSync(join(dir, name), "x");
+    }
+    writeFileSync(
+      join(dir, "update-info.json"),
+      JSON.stringify({ fileName: "Sahkarmi-0.12.1-x64.exe" }),
+    );
+    await cleanPendingUpdates(dir, "0.12.0");
+    expect(readdirSync(dir).sort()).toEqual(["Sahkarmi-0.12.1-x64.exe", "update-info.json"]);
+
+    await cleanPendingUpdates(dir, "0.12.1");
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("removes an unreadable update-info.json", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sahkarmi-pending-"));
+    writeFileSync(join(dir, "update-info.json"), "{not json");
+    await cleanPendingUpdates(dir, "0.12.0");
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("does nothing when the folder is missing", async () => {
+    await expect(
+      cleanPendingUpdates(join(tmpdir(), "sahkarmi-no-such-dir"), "0.12.0"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("compares versions number by number", () => {
+    expect(compareVersions("0.12.1", "0.12.0")).toBe(1);
+    expect(compareVersions("0.9.0", "0.12.0")).toBe(-1);
+    expect(compareVersions("0.12.0", "0.12.0")).toBe(0);
+  });
+
+  it("knows a file-in-use error from other errors", () => {
+    expect(isFileInUse(new Error("EPERM: operation not permitted, rename"))).toBe(true);
+    expect(isFileInUse(new Error("EBUSY: resource busy or locked"))).toBe(true);
+    expect(isFileInUse(new Error("net::ERR_INTERNET_DISCONNECTED"))).toBe(false);
+  });
+
+  it("finds a running Sahkarmi installer in tasklist output", () => {
+    const tasks = [
+      '"System Idle Process","0","Services","0","8 K"',
+      '"Sahkarmi.exe","2210","Console","1","180,000 K"',
+      '"Sahkarmi-0.12.1-x64.exe","14456","Console","1","6,512 K"',
+    ].join("\r\n");
+    expect(runningInstallerName(tasks)).toBe("Sahkarmi-0.12.1-x64.exe");
+    expect(runningInstallerName('"Sahkarmi.exe","2210","Console","1","180,000 K"')).toBeNull();
+    expect(runningInstallerName("")).toBeNull();
   });
 });

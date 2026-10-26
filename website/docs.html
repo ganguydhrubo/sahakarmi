@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Get started with Sahkarmi — AI coworkers on Windows</title>
+  <meta name="description" content="A short guide to Sahkarmi: install, first launch, connect an AI provider, create a coworker, give it work, approvals, Telegram chat, updates and where data lives." />
+  <link rel="canonical" href="https://sahkarmi.site/docs.html" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0F1220" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta property="og:site_name" content="Sahkarmi" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://sahkarmi.site/docs.html" />
+  <meta property="og:title" content="Get started with Sahkarmi — AI coworkers on Windows" />
+  <meta property="og:description" content="Install Sahkarmi, connect an AI provider, create a coworker and give it work. A short getting-started guide." />
+  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    @font-face { font-family: "Baloo 2"; font-weight: 800; font-display: swap; src: url(/assets/fonts/baloo-2-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 400; font-display: swap; src: url(/assets/fonts/mukta-latin-400-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 700; font-display: swap; src: url(/assets/fonts/mukta-latin-700-normal.woff2) format("woff2"); }
+    :root { --saffron: #e8772e; --saffron-ink: #f0904f; --bg: #0b0d17; --bg-2: #161a2e; --text: #f3efe6; --text-2: #c9c4b8; --muted: #9a9cb3; --line: rgba(255,255,255,0.1); --line-2: rgba(255,255,255,0.18); --leaf: #5ec48a; --turmeric: #f2b705; color-scheme: dark; }
+    @media (prefers-color-scheme: light) { :root { --bg: #fbf7f0; --bg-2: #ffffff; --text: #141829; --text-2: #3a3f55; --muted: #646a85; --line: rgba(20,24,41,0.1); --line-2: rgba(20,24,41,0.2); --saffron-ink: #a84e14; --leaf: #22703f; color-scheme: light; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.65 "Mukta", system-ui, sans-serif; }
+    a { color: var(--saffron-ink); text-underline-offset: 3px; }
+    :focus-visible { outline: 3px solid var(--turmeric); outline-offset: 3px; border-radius: 6px; }
+    .wrap { width: min(860px, 100% - 2 * clamp(16px, 4vw, 40px)); margin-inline: auto; }
+    header { border-bottom: 1px solid var(--line); }
+    header .wrap { display: flex; align-items: center; gap: 14px; min-height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font: 800 20px "Baloo 2", "Mukta", sans-serif; }
+    .brand svg { width: 30px; height: 30px; }
+    header nav { margin-left: auto; display: flex; gap: 14px; font-weight: 700; font-size: 15px; }
+    h1 { font: 800 clamp(32px, 5vw, 46px)/1.1 "Baloo 2", "Mukta", sans-serif; margin: 40px 0 10px; }
+    h2 { font: 800 clamp(24px, 3vw, 30px)/1.15 "Baloo 2", "Mukta", sans-serif; margin: 56px 0 12px; padding-top: 18px; border-top: 1px solid var(--line); scroll-margin-top: 80px; }
+    h3 { font: 700 19px/1.2 "Mukta", sans-serif; margin: 26px 0 8px; }
+    p, li { color: var(--text-2); }
+    .lead { font-size: 19px; }
+    .status { display: inline-block; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+    .tested { background: rgba(94,196,138,0.16); color: var(--leaf); }
+    .built { background: rgba(242,183,5,0.16); color: var(--turmeric); }
+    .none { background: rgba(192,57,43,0.16); color: #e46a5c; }
+    pre { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; color: var(--text); }
+    code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.93em; }
+    .toc { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .toc a { display: inline-block; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 15px; }
+    .box { background: var(--bg-2); border: 1px solid var(--line); border-left: 4px solid var(--saffron); border-radius: 12px; padding: 14px 18px; margin: 18px 0; }
+    .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 10px 22px; border-radius: 999px; background: var(--saffron); color: #0f1220; font-weight: 700; text-decoration: none; }
+    table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 12px 0; display: block; overflow-x: auto; }
+    pre, code { overflow-wrap: anywhere; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+    footer { border-top: 1px solid var(--line); margin-top: 64px; padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+    .foot-nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; font-weight: 700; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Sahkarmi home">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><defs><clipPath id="l"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l)"/></svg>
+        Sahkarmi
+      </a>
+      <nav aria-label="Site"><a href="/">Home</a><a href="/#download">Download</a><a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Get started with Sahkarmi</h1>
+    <p class="lead">Sahkarmi gives you a team of AI coworkers on your own Windows PC. Each coworker has its own workspace, browser, memory and task queue. This short guide takes you from install to your first finished task.</p>
+    <ul class="toc">
+      <li><a href="#install">Install</a></li>
+      <li><a href="#first-launch">First launch</a></li>
+      <li><a href="#provider">Connect an AI provider</a></li>
+      <li><a href="#coworker">Create a coworker</a></li>
+      <li><a href="#work">Give it work</a></li>
+      <li><a href="#browser">Browser and approvals</a></li>
+      <li><a href="#telegram">Telegram</a></li>
+      <li><a href="#updates">Updates</a></li>
+      <li><a href="#data">Where data lives</a></li>
+    </ul>
+
+    <h2 id="install">1. Install</h2>
+    <p>Sahkarmi runs on Windows 10 and 11 (64-bit). macOS and Linux builds come later.</p>
+    <ol>
+      <li>Download the newest <code>Sahkarmi-&lt;version&gt;-x64.exe</code> from the <a href="/#download">download section</a> or <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Releases</a>.</li>
+      <li>Open it. The installer is not code-signed yet, so Windows SmartScreen warns. Click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+      <li>It installs for your user only, without administrator rights, and opens Sahkarmi when done.</li>
+    </ol>
+    <p>The <a href="/install.html">install guide</a> has the full steps, how to check the download's checksum, troubleshooting and uninstall.</p>
+
+    <h2 id="first-launch">2. First launch</h2>
+    <ol>
+      <li><strong>Choose your provider.</strong> On a new PC, <em>OpenCode (free, built in)</em> is ready to use. It needs no account. Click <strong>Continue with OpenCode (free)</strong>.</li>
+      <li>A short <strong>What's New</strong> note explains the release. Click <strong>Got it</strong>.</li>
+      <li>You start with nine coworkers: Mitra (orchestrator), Asha (accounts), Vikram (sales), Meera (support), Arjun (research), Kavya (content), Dev (code), Tara (ops) and Kabir (security). You can rename, edit or delete any of them.</li>
+    </ol>
+    <div class="box"><strong>Free model limits.</strong> OpenCode sets a usage limit on each free model. When one is used up, Sahkarmi moves to the next free model or tells you. You can also connect your own provider.</div>
+
+    <h2 id="provider">3. Connect an AI provider (optional)</h2>
+    <p>Open Settings, then <strong>AI and models</strong>. Each provider has a <strong>Connect</strong> button. Your password is only typed on the provider's own page. Sahkarmi reuses that sign-in and never copies tokens.</p>
+    <ul>
+      <li><strong>Claude:</strong> uses Claude Code and your Claude plan.</li>
+      <li><strong>ChatGPT (Codex):</strong> uses the Codex CLI and your ChatGPT plan.</li>
+      <li><strong>Google Antigravity:</strong> Sahkarmi downloads Google's agent after you accept Google's terms, then opens Log in with Google. A Google AI Studio API key also works.</li>
+      <li><strong>More agents:</strong> GitHub Copilot, Cursor, Kimi Code, Cline, Qwen Code and others. Connect installs the tool when needed and starts its sign-in.</li>
+    </ul>
+    <p>Each coworker can use a different provider and model. Pick them from the model name in the chat header. If a paid provider stops answering or hits its limit, the backup model hands the message to the free model with a note in the chat.</p>
+
+    <h2 id="coworker">4. Create a coworker</h2>
+    <ul>
+      <li>Press <strong>Ctrl+N</strong> to make a new coworker. Give it a name, a role and instructions.</li>
+      <li>Or open <strong>Marketplace</strong> in the sidebar and click <strong>Add</strong> on a ready-made coworker. It arrives with its job already set.</li>
+      <li>Press <strong>Ctrl+1</strong> to <strong>Ctrl+9</strong> to open a coworker, and <strong>Ctrl+K</strong> to search across coworkers and messages.</li>
+    </ul>
+    <p>A deleted coworker can be brought back with Undo for 8 seconds.</p>
+
+    <h2 id="work">5. Give it work</h2>
+    <ol>
+      <li>Open a coworker and type what you want done, in English, Hindi or Bengali. You can also send a voice note.</li>
+      <li>The coworker shows a plan above the message box and ticks off steps as it works.</li>
+      <li>You can send more messages while it works; they go into its queue. Press <strong>Esc</strong> in the message box to stop it.</li>
+      <li>Use the <strong>Tasks</strong> page to send a task to any coworker and see the status of recent tasks for the whole team.</li>
+      <li>For repeat work, set a schedule (once, hourly, daily, weekdays or weekly) or a routine.</li>
+    </ol>
+    <p>Coworkers keep their files in their own folder and can share files with the team in the Shared folder.</p>
+
+    <h2 id="browser">6. The built-in browser and approvals</h2>
+    <p>Each coworker can open web pages in the built-in browser beside the chat. You can watch every open page as a small live picture.</p>
+    <ul>
+      <li><strong>Take over:</strong> for logins, OTPs, CAPTCHAs and payment pages, press <strong>Take over</strong> and type yourself. The coworker's browser tools pause while you are in control.</li>
+      <li><strong>Password and OTP card:</strong> when a site asks for a password, OTP or PIN, the coworker asks for it in a secure card in the chat. What you type goes straight into the page and is never shown to the coworker.</li>
+      <li><strong>Approvals:</strong> coworkers stop and ask before payments, messages to customers, publishing and form submissions. The approval card appears in the chat (Enter approves, Esc rejects) and in the <strong>Approvals</strong> inbox.</li>
+      <li><strong>Permissions:</strong> Settings, Permissions sets how much coworkers may do on their own.</li>
+    </ul>
+    <div class="box"><strong>Important.</strong> Approvals depend on the AI model following its instructions. They are not a hard block. Coworkers can read and change files, run commands and use the internet. Keep backups, and never share card details or OTPs in chat.</div>
+
+    <h2 id="telegram">7. Chat from Telegram</h2>
+    <p>You can talk to your coworkers from Telegram on your phone. Sahkarmi must be open on the computer.</p>
+    <ol>
+      <li>Open Settings, then <strong>Telegram</strong>.</li>
+      <li>Click the button to open <strong>@BotFather</strong> in Telegram and make a new bot. BotFather gives you a bot token.</li>
+      <li>Paste the token in Sahkarmi and click <strong>Connect</strong>.</li>
+      <li>Click <strong>Pair in Telegram</strong> and press <strong>Start</strong> in the bot chat. Only that one chat is answered.</li>
+    </ol>
+    <p>Your message goes into the coworker's normal queue and the reply comes back to Telegram. Use <code>/coworkers</code> to list coworkers and <code>/use</code> to switch. New approvals are announced in Telegram, but you allow or deny them in the app. The <strong>Show me how</strong> guide in Settings walks through every step with pictures.</p>
+
+    <h2 id="updates">8. Updates</h2>
+    <p>Sahkarmi updates itself. It checks GitHub Releases for a new version after launch and then from time to time. In Settings, <strong>Updates</strong>, choose whether updates download by themselves or ask first, or check now. A downloaded update installs when you quit or restart Sahkarmi. Your coworkers, chats and settings are kept. The <a href="/changelog.html">changelog</a> lists what changed in each version.</p>
+
+    <h2 id="data">9. Where your data lives</h2>
+    <p>Everything stays on your computer. App data is in <code>%APPDATA%\Sahkarmi</code>. Coworker folders, Shared files and Downloads are in <code>%USERPROFILE%\Sahkarmi</code>. There is no Sahkarmi account or cloud. The text a coworker works on goes to the AI provider you chose. The <a href="/privacy.html">privacy policy</a> explains what is stored, what is sent and how to delete it.</p>
+
+    <h2 id="help">Need help?</h2>
+    <p>Check <a href="/install.html#troubleshooting">troubleshooting</a>, ask in <a href="https://github.com/ganguydhrubo/sahakarmi/discussions" target="_blank" rel="noopener noreferrer">GitHub Discussions</a>, or <a href="https://github.com/ganguydhrubo/sahakarmi/issues" target="_blank" rel="noopener noreferrer">open an issue</a> with the app version, your Windows version, the provider in use and the steps to repeat the problem.</p>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <nav class="foot-nav" aria-label="Site pages"><a href="/install.html">Install guide</a><a href="/docs.html">Get started</a><a href="/changelog.html">Changelog</a><a href="/privacy.html">Privacy policy</a><a href="/terms.html">Terms of use</a></nav>
+      © 2026 Sahkarmi Team · Apache License 2.0 · <a href="/">sahkarmi.site</a> · <a href="mailto:hi@goliv.online">hi@goliv.online</a> · <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer">WhatsApp +91 82408 01921</a></div>
+  </footer>
+</body>
+</html>

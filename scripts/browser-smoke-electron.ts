@@ -7,6 +7,7 @@ import { BrowserHost } from "../src/backend/browser-host";
 
 let cachedPageVersion = 1;
 let savedDraft = "none";
+const pageLoads = new Map<string, number>();
 
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -76,6 +77,14 @@ const server = createServer((request, response) => {
       <input aria-label="Draft" />
       <button aria-label="Save draft" onclick="fetch('/draft?save=' + encodeURIComponent(document.querySelector('input').value))">Save draft</button>
       <main>draft:${savedDraft}</main>`);
+    return;
+  }
+  if (url.pathname === "/gone" || url.pathname === "/notes") {
+    // Counts loads, so a test can tell whether a tab was reloaded.
+    pageLoads.set(url.pathname, (pageLoads.get(url.pathname) ?? 0) + 1);
+    response.statusCode = url.pathname === "/gone" ? 404 : 200;
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    response.end(`<!doctype html><input aria-label="Notes" /><main>${url.pathname}</main>`);
     return;
   }
   if (url.pathname === "/abort") {
@@ -305,7 +314,10 @@ async function main(): Promise<void> {
     );
     process.stdout.write("BrowserHost: file upload passed.\n");
 
-    // The owner looks at one tab of a site while a coworker saves in another tab of it.
+    // The owner looks at one tab of a site while a coworker saves in another tab of it. Shorter
+    // waits than the app's, so the test is quick; the rules are the same.
+    BrowserHost.STALE_REFRESH_MS = 1_500;
+    BrowserHost.STALE_MIN_GAP_MS = 0;
     const ownerDraft = await browser.open(`${origin}/draft`, null);
     const coworkerDraft = await browser.open(`${origin}/draft`, "smoke-thread");
     await browser.setVisible({ visible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } });
@@ -337,9 +349,35 @@ async function main(): Promise<void> {
     if (!untouched.text.includes("draft:first")) {
       throw new Error(`The owner's tab was reloaded over their typing: ${untouched.text}`);
     }
+
+    // An error page is never reloaded, however often the coworker changes the site.
+    const gone = await browser.open(`${origin}/gone`, null);
+    await waitFor(async () => (pageLoads.get("/gone") ?? 0) === 1);
+    await browser.activate(gone.id);
+    await saveDraft("third");
+    await new Promise((resolve) => setTimeout(resolve, BrowserHost.STALE_REFRESH_MS + 1_000));
+    if (pageLoads.get("/gone") !== 1) throw new Error("An error page was reloaded.");
+
+    // A tab a coworker typed in is not reloaded over its unsaved work.
+    const notes = await browser.open(`${origin}/notes`, "smoke-thread");
+    await waitFor(async () => (pageLoads.get("/notes") ?? 0) === 1);
+    const notesPage = await browser.snapshot(notes.id);
+    const notesField = notesPage.elements.find((element) => element.name === "Notes");
+    if (!notesField) throw new Error("Notes field is missing.");
+    await browser.act(notes.id, notesPage.revision, {
+      type: "type",
+      ref: notesField.ref,
+      text: "half done",
+    });
+    await browser.activate(notes.id);
+    await saveDraft("fourth");
+    await new Promise((resolve) => setTimeout(resolve, BrowserHost.STALE_REFRESH_MS + 1_000));
+    if (pageLoads.get("/notes") !== 1) throw new Error("A coworker's typing was reloaded away.");
+
+    BrowserHost.STALE_REFRESH_MS = 5_000;
+    BrowserHost.STALE_MIN_GAP_MS = 30_000;
     await browser.setVisible({ visible: false });
-    await browser.close(ownerDraft.id);
-    await browser.close(coworkerDraft.id);
+    for (const tab of [ownerDraft, coworkerDraft, gone, notes]) await browser.close(tab.id);
     process.stdout.write("BrowserHost: same-site tab refresh passed.\n");
 
     const toolResult = await browser.handleDynamicTool({

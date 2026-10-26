@@ -19,7 +19,7 @@ function toolNeedsUpdate(tool: AiToolUpdate): boolean {
   // A tool Sahkarmi could not detect is not "out of date": offering npm install for it reinstalled
   // over the owner's own copy. Only the bundled runtime may be installed from nothing.
   if (!tool.installed) return tool.id === "opencode";
-  return tool.latest !== tool.installed;
+  return tool.latest !== tool.installed && !tool.ready;
 }
 
 export function ProviderUpdates(props: {
@@ -143,8 +143,9 @@ export function ProviderUpdates(props: {
           </Show>
         </Show>
         <p>
-          Sahkarmi updates its own OpenCode runtime. Your separately installed tools are only
-          changed when you choose "Update now".
+          Sahkarmi keeps its own copy of OpenCode, Claude Code and Codex, one folder per version,
+          and uses whichever copy is newer: its own or yours. Updating never changes the tools you
+          installed yourself.
         </p>
         <button
           type="button"

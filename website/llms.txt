@@ -17,6 +17,10 @@ Key facts (verified against release 0.7.1 on 24 October 2026):
 
 - [Website](https://sahkarmi.site/): product overview, explainer video, real screenshots, download and FAQ
 - [Install guide](https://sahkarmi.site/install.html): Windows steps (macOS and Linux status), checksum verification, provider setup, updates, troubleshooting, uninstall
+- [Get started](https://sahkarmi.site/docs.html): first launch, connecting an AI provider, creating a coworker, giving it work, the built-in browser and approvals, Telegram chat, updates, where data lives
+- [Changelog](https://sahkarmi.site/changelog.html): release notes for every version, linked to each GitHub release
+- [Privacy policy](https://sahkarmi.site/privacy.html): what the app stores on the computer, what it sends and to whom, what the website collects, how to delete data
+- [Terms of use](https://sahkarmi.site/terms.html): Apache License 2.0 summary, no warranty, owner responsibility for AI coworkers, no affiliation with AI companies
 - [Download (GitHub Releases)](https://github.com/ganguydhrubo/sahakarmi/releases/latest): Windows installer, checksums, SBOM and provenance attestation
 - [Source code](https://github.com/ganguydhrubo/sahakarmi): GitHub repository, issues, contributing guide, security policy, privacy notes
 - [LinkedIn](https://www.linkedin.com/company/sahkarmi/): official company page
