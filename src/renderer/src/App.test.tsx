@@ -9,6 +9,7 @@ import type {
   UsageOverview,
 } from "../../shared/ipc";
 import { App } from "./App";
+import { REVEAL_MESSAGE_EVENT } from "./components/Conversation";
 import { setActivityStyle } from "./preferences";
 
 let emitAgentEvent: ((event: AgentEvent) => void) | undefined;
@@ -1228,6 +1229,36 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(group).toHaveTextContent("bun test");
     expect(document.querySelectorAll(".tool-group-card")).toHaveLength(1);
   });
+
+  it("opens a long chat with its latest messages and shows earlier ones on request", async () => {
+    vi.mocked(window.sahkarmi.agent.readConversation).mockResolvedValueOnce({
+      botId: "chief",
+      threadId: "thread-chief",
+      activeTurnId: null,
+      revision: 1,
+      messages: Array.from({ length: 200 }, (_, index) => ({
+        id: `history-${index}`,
+        author: index % 2 ? ("assistant" as const) : ("user" as const),
+        text: `History message ${index}`,
+        createdAt: "2026-10-26T09:00:00.000Z",
+        status: "completed" as const,
+      })),
+    });
+    render(() => <App />);
+    expect(await screen.findByText("History message 199")).toBeInTheDocument();
+    expect(screen.getByText("History message 120")).toBeInTheDocument();
+    expect(screen.queryByText("History message 119")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 80 earlier messages" }));
+    expect(await screen.findByText("History message 40")).toBeInTheDocument();
+    expect(screen.queryByText("History message 39")).not.toBeInTheDocument();
+
+    // Search jumps to a message above the window: it is brought in.
+    window.dispatchEvent(new CustomEvent(REVEAL_MESSAGE_EVENT, { detail: "history-3" }));
+    expect(await screen.findByText("History message 3")).toBeInTheDocument();
+    expect(screen.queryByText("History message 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /earlier messages/ })).not.toBeInTheDocument();
+  }, 15_000);
 
   it("renders loaded history without replaying entrance animations", async () => {
     vi.mocked(window.sahkarmi.agent.readConversation).mockResolvedValueOnce({
