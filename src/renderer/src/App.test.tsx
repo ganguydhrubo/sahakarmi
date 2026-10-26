@@ -2426,6 +2426,34 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(screen.getByText("I’ll open example.in in the Sahkarmi browser.")).toBeVisible();
   });
 
+  it("shows your message and clears the box at once while a slow send completes", async () => {
+    let finish: (() => void) | undefined;
+    vi.mocked(window.sahkarmi.agent.sendMessage).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              messageId: "m-slow",
+              deliveries: [
+                { id: "d-slow", recipientBotId: "chief", status: "queued", position: 1 },
+              ],
+            });
+        }),
+    );
+    render(() => <App />);
+    await confirmOnboardingModel();
+    const composer = await screen.findByRole("textbox", { name: "Message Chief" });
+    composer.textContent = "Cold provider message";
+    await fireEvent.input(composer);
+    await fireEvent.keyDown(composer, { key: "Enter" });
+    expect(await screen.findByText("Cold provider message")).toBeInTheDocument();
+    expect(screen.getByText("Sending…")).toBeInTheDocument();
+    await waitFor(() => expect(composer).toHaveTextContent(""));
+    expect(composer).not.toHaveAttribute("aria-disabled", "true");
+    finish?.();
+    await waitFor(() => expect(screen.queryByText("Sending…")).not.toBeInTheDocument());
+  });
+
   it("keeps text and attachments when enqueue fails", async () => {
     vi.mocked(window.sahkarmi.agent.sendMessage).mockRejectedValueOnce(
       new Error("Mailbox unavailable"),
@@ -2437,7 +2465,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.input(composer);
     await fireEvent.keyDown(composer, { key: "Enter" });
     expect(await screen.findByText("Mailbox unavailable")).toBeInTheDocument();
-    expect(composer).toHaveTextContent("Retry me");
+    await waitFor(() => expect(composer).toHaveTextContent("Retry me"));
   });
 
   it("supports picker and attachment-only messages", async () => {

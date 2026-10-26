@@ -1849,6 +1849,10 @@ export function Conversation(props: ConversationProps) {
       }
       return;
     }
+    // Like a chat app: the box clears at once and you can type the next message while this
+    // one is sent. If sending fails, the draft comes back unless you have typed something new.
+    if (!override) setDrafts((current) => ({ ...current, [botId]: EMPTY_DRAFT }));
+    jumpToLatest();
     const sent = await props.onSendMessage(
       text,
       attachments.map((item) => item.id),
@@ -1858,8 +1862,13 @@ export function Conversation(props: ConversationProps) {
     if (sent) {
       // Your own message always comes into view, even if you had scrolled up to read.
       jumpToLatest();
-      setDrafts((current) => ({ ...current, [botId]: EMPTY_DRAFT }));
       finishOnboarding(botId);
+    } else if (!override) {
+      setDrafts((current) => {
+        const now = current[botId] ?? EMPTY_DRAFT;
+        if (now.text.trim() || now.attachments.length) return current;
+        return { ...current, [botId]: draft };
+      });
     }
   }
 
@@ -2759,9 +2768,7 @@ export function Conversation(props: ConversationProps) {
               botId={props.bot?.id}
               bots={props.bots}
               value={currentDraft().text}
-              disabled={
-                props.agentPickerOpen || submitting() || !agentReady() || onboardingModelRequired()
-              }
+              disabled={props.agentPickerOpen || !agentReady() || onboardingModelRequired()}
               placeholder={
                 !agentReady()
                   ? "Complete AI provider setup to start"
