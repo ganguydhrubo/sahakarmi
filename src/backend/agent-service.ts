@@ -1227,97 +1227,75 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const startOrder = [...requestedProviders].sort(
       (left, right) => Number(left === "antigravity") - Number(right === "antigravity"),
     );
-    // ...but its process is launched first: most of that minute is the server unpacking itself,
-    // which then runs while the other providers start instead of after them.
-    let early: Promise<StartedClient> | null =
+    // ...but alongside them, not after them: most of that minute is the server unpacking itself
+    // before it reads anything, so it is launched first and its start runs next to the others'.
+    // A message sent while the app was still loading may already be starting it on its own.
+    const startingElsewhere =
+      startOrder.length > 1 ? this.#providerStarts.get("antigravity") : undefined;
+    const startGeminiAlongside =
       startOrder.length > 1 &&
       startOrder.includes("antigravity") &&
-      !this.#clients.has("antigravity")
-        ? this.#launchClient("antigravity")
-        : null;
-    early?.catch(() => undefined);
-    // A coworker that needs Gemini meanwhile waits for this start instead of launching another.
-    let finishEarly: () => void = () => undefined;
-    const earlyStart = early
-      ? new Promise<void>((resolve) => {
-          finishEarly = resolve;
-        })
-      : null;
-    if (earlyStart) this.#providerStarts.set("antigravity", earlyStart);
-    const releaseEarly = () => {
-      // Left early (Sahkarmi is stopping): the process launched ahead must not outlive it.
-      if (early) void early.then(({ client }) => client.stop()).catch(() => undefined);
-      early = null;
-      finishEarly();
-      if (earlyStart && this.#providerStarts.get("antigravity") === earlyStart) {
-        this.#providerStarts.delete("antigravity");
-      }
-    };
+      !this.#clients.has("antigravity") &&
+      !startingElsewhere;
+    let geminiStart: Promise<boolean> | null = null;
+    let finishGemini: () => void = () => undefined;
+    if (startGeminiAlongside) {
+      // A coworker that needs Gemini meanwhile waits for this start instead of launching another.
+      const pending = new Promise<void>((resolve) => {
+        finishGemini = () => {
+          resolve();
+          if (this.#providerStarts.get("antigravity") === pending) {
+            this.#providerStarts.delete("antigravity");
+          }
+        };
+      });
+      this.#providerStarts.set("antigravity", pending);
+      geminiStart = this.#startProvider(
+        "antigravity",
+        this.#launchClient("antigravity"),
+        providerStatuses,
+        failures,
+      ).then((started) => {
+        // Show Gemini's result right away instead of after every provider was tried.
+        this.#setStatus({ providers: this.#mergeProviders(providerStatuses, requestedProviders) });
+        return started;
+      });
+    }
     for (const provider of startOrder) {
+      if (provider === "antigravity" && geminiStart) continue;
+      if (provider === "antigravity" && startingElsewhere) {
+        await startingElsewhere.catch(() => undefined);
+      }
       if (this.#clients.has(provider)) continue;
-      let client: AgentClient | null = null;
-      let cli: CodexCliInfo | ClaudeCliInfo | AcpCliInfo | null = null;
       const finishStart = this.#announceEarlyReady(provider, providerStatuses, requestedProviders);
+      let started: boolean;
       try {
-        const launch = provider === "antigravity" && early ? early : this.#launchClient(provider);
-        if (provider === "antigravity") early = null;
-        const started = await launch;
-        ({ client, cli } = started);
-        await client.request("initialize", {
-          clientInfo: { name: "sahkarmi", title: "Sahkarmi", version: "0.1.0" },
-          capabilities: { experimentalApi: true, mcpServerOpenaiFormElicitation: true },
-        });
-        client.notify("initialized");
-        const account = await client.request<AccountReadResult>("account/read", {
-          refreshToken: false,
-        });
-        if (!account.account) {
-          const message = SIGN_IN_HINTS[provider];
-          setProviderStatus(providerStatuses, provider, {
-            state: "sign-in-required",
-            version: cli.version,
-            message,
-            email: null,
-          });
-          failures.push(message);
-          await client.stop().catch(() => undefined);
-          continue;
-        }
-        if (provider === "codex" && account.account.type !== "chatgpt") {
-          throw new Error("Codex requires a ChatGPT subscription login. Run `codex login`.");
-        }
-        if (this.#stopping) {
-          await client.stop().catch(() => undefined);
-          releaseEarly();
-          return;
-        }
-        this.#cli.set(provider, cli);
-        this.#clients.set(provider, client);
-        this.#dormantClients.delete(provider);
-        this.#accounts.set(provider, account.account);
-        if (provider === "antigravity") {
-          this.emit("log", `antigravity ready ${Date.now() - started.launchedAt} ms after launch`);
-          this.#geminiIdle.touch();
-        }
-        setProviderStatus(providerStatuses, provider, {
-          state: "available",
-          version: cli.version,
-          message: null,
-          email: account.account.email ?? null,
-        });
-      } catch (error) {
-        if (client) await client.stop().catch(() => undefined);
-        const message = error instanceof Error ? error.message : String(error);
-        failures.push(message);
-        setProviderStatus(providerStatuses, provider, providerFailureStatus(error, cli?.version));
-        if (!(error instanceof CodexCliError)) this.#emitError(`${provider}_start_failed`, error);
+        started = await this.#startProvider(provider, null, providerStatuses, failures);
       } finally {
         finishStart();
+      }
+      if (!started) {
+        // Sahkarmi is stopping; Gemini's own start notices that too and stops its process.
+        finishGemini();
+        return;
       }
       // Show this provider's result right away instead of after every provider was tried.
       this.#setStatus({ providers: this.#mergeProviders(providerStatuses, requestedProviders) });
     }
-    releaseEarly();
+    if (geminiStart) {
+      // The quick providers are up: the owner can work while Google's server finishes starting.
+      const finishStart = this.#announceEarlyReady(
+        "antigravity",
+        providerStatuses,
+        requestedProviders,
+      );
+      try {
+        await geminiStart;
+      } finally {
+        finishStart();
+        finishGemini();
+      }
+    }
 
     if (this.#stopping) return;
     if (this.#clients.size === 0) {
@@ -1361,9 +1339,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (this.#mailbox.nextQueued(bot.id)) {
         this.#scheduleDrain(bot.id);
       }
-    }
-    if (requestedProviders.includes("antigravity") && this.#clients.has("antigravity")) {
-      void this.#prewarmGemini();
     }
   }
 
@@ -1427,6 +1402,73 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     } finally {
       if (this.#providerStarts.get(provider) === task) this.#providerStarts.delete(provider);
     }
+  }
+
+  /**
+   * Launches (or takes the already launched) client for one provider, runs the handshake and
+   * records the outcome in `providerStatuses` / `failures`. False when Sahkarmi is stopping.
+   */
+  async #startProvider(
+    provider: AgentProvider,
+    launch: Promise<StartedClient> | null,
+    providerStatuses: AgentProviderStatus[],
+    failures: string[],
+  ): Promise<boolean> {
+    let client: AgentClient | null = null;
+    let cli: CodexCliInfo | ClaudeCliInfo | AcpCliInfo | null = null;
+    try {
+      const started = await (launch ?? this.#launchClient(provider));
+      ({ client, cli } = started);
+      await client.request("initialize", {
+        clientInfo: { name: "sahkarmi", title: "Sahkarmi", version: "0.1.0" },
+        capabilities: { experimentalApi: true, mcpServerOpenaiFormElicitation: true },
+      });
+      client.notify("initialized");
+      const account = await client.request<AccountReadResult>("account/read", {
+        refreshToken: false,
+      });
+      if (!account.account) {
+        const message = SIGN_IN_HINTS[provider];
+        setProviderStatus(providerStatuses, provider, {
+          state: "sign-in-required",
+          version: cli.version,
+          message,
+          email: null,
+        });
+        failures.push(message);
+        await client.stop().catch(() => undefined);
+        return true;
+      }
+      if (provider === "codex" && account.account.type !== "chatgpt") {
+        throw new Error("Codex requires a ChatGPT subscription login. Run `codex login`.");
+      }
+      if (this.#stopping) {
+        await client.stop().catch(() => undefined);
+        return false;
+      }
+      this.#cli.set(provider, cli);
+      this.#clients.set(provider, client);
+      this.#dormantClients.delete(provider);
+      this.#accounts.set(provider, account.account);
+      if (provider === "antigravity") {
+        this.emit("log", `antigravity ready ${Date.now() - started.launchedAt} ms after launch`);
+        this.#geminiIdle.touch();
+        void this.#prewarmGemini();
+      }
+      setProviderStatus(providerStatuses, provider, {
+        state: "available",
+        version: cli.version,
+        message: null,
+        email: account.account.email ?? null,
+      });
+    } catch (error) {
+      if (client) await client.stop().catch(() => undefined);
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(message);
+      setProviderStatus(providerStatuses, provider, providerFailureStatus(error, cli?.version));
+      if (!(error instanceof CodexCliError)) this.#emitError(`${provider}_start_failed`, error);
+    }
+    return true;
   }
 
   /** Finds a provider's program, builds its client and launches the process (no handshake yet). */

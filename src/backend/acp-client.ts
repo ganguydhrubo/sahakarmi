@@ -192,6 +192,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #acceptsImages = false;
   #mcpServer: Server | null = null;
   #mcpPort: number | null = null;
+  /** Sessions being opened right now (a model list can wait for one instead of opening its own). */
+  readonly #sessionOpens = new Set<Promise<unknown>>();
   readonly #instanceId = randomUUID();
 
   constructor(config: AcpAgentConfig) {
@@ -319,7 +321,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       case "plugin/list":
         return { marketplaces: [] } as T;
       case "thread/start":
-        return { thread: { id: (await this.#openSession(params, null)).threadId } } as T;
+        return {
+          thread: { id: (await this.#trackOpen(this.#openSession(params, null))).threadId },
+        } as T;
       case "thread/resume": {
         const threadId = requiredString(params, "threadId");
         const existing = this.#sessions.get(threadId);
@@ -329,7 +333,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
             getString(params, "developerInstructions") ?? existing.instructions;
           existing.instructionsSent = false;
         } else {
-          await this.#openSession(params, threadId);
+          await this.#trackOpen(this.#openSession(params, threadId));
         }
         return { thread: { id: threadId } } as T;
       }
@@ -354,9 +358,19 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  #trackOpen<T>(open: Promise<T>): Promise<T> {
+    this.#sessionOpens.add(open);
+    const done = () => this.#sessionOpens.delete(open);
+    open.then(done, done);
+    return open;
+  }
+
   /** Fills the model catalog; true when the list could not be read (the last one is kept). */
   async #discoverModels(): Promise<boolean> {
     if (this.#config.reuseModelCatalog) {
+      if (!this.#catalogOptions.length && this.#sessionOpens.size) {
+        await Promise.allSettled([...this.#sessionOpens]);
+      }
       if (!this.#catalogOptions.length) {
         const open = [...this.#sessions.values()].find((session) => session.modelOptions.length);
         if (open) this.#catalogOptions = open.modelOptions;

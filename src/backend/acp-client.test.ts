@@ -495,11 +495,19 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     process.env.GEMINI_API_KEY = "test-key";
   });
 
-  it("launches Google's server before the other providers finish starting", async () => {
+  it("starts Google's server alongside the other providers instead of after them", async () => {
     process.env.SAHKARMI_FAKE_SLOW_INIT_MS = "1500";
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
     service = newService(store, mailbox);
+    // OpenCode's state at the moment Gemini first showed as connected.
+    let openCodeWhenGeminiReady: string | null | undefined;
+    service.on("event", (event) => {
+      if (event.type !== "status" || openCodeWhenGeminiReady !== undefined) return;
+      const states = event.status.providers ?? [];
+      if (states.find((p) => p.id === "antigravity")?.state !== "available") return;
+      openCodeWhenGeminiReady = states.find((p) => p.id === "opencode")?.state ?? null;
+    });
     await service.initialize();
     await waitFor(
       () =>
@@ -514,6 +522,22 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     );
     // It used to be launched only after every other provider had answered.
     expect(Number(launched?.at)).toBeLessThan(Number(openCodeReady?.at));
+    // ...and its start no longer waits for a slow provider ahead of it.
+    expect(openCodeWhenGeminiReady).not.toBe("available");
+    expect(await antigravityEntries("started")).toBe(1);
+  });
+
+  it("starts only one Google server when a message needs Gemini while the app is still loading", async () => {
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = newService(store, mailbox);
+    const initialized = service.initialize();
+    const needed = service.ensureProvider("antigravity");
+    await Promise.all([initialized, needed]);
+    await waitFor(
+      () =>
+        service?.getStatus().providers?.find((p) => p.id === "antigravity")?.state === "available",
+    );
     expect(await antigravityEntries("started")).toBe(1);
   });
 
