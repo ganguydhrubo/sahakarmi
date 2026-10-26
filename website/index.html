@@ -8,6 +8,8 @@
   <link rel="canonical" href="https://sahkarmi.site/" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <meta name="theme-color" content="#0F1220" />
+  <meta name="sahkarmi-download-notify" content="" />
+  <script src="/assets/download-notify.js" defer></script>
   <meta name="color-scheme" content="dark light" />
   <meta name="application-name" content="Sahkarmi" />
   <link rel="icon" href="/favicon.ico" sizes="48x48" />
@@ -895,6 +897,7 @@
           <li class="card"><h3 data-i18n="pv5">Open source, verifiable builds</h3><p data-i18n="pv5P">Apache License 2.0. Every release is built by GitHub Actions from a tagged commit, with SHA-256 checksums, an SBOM and a build provenance attestation attached.</p></li>
           <li class="card"><h3 data-i18n="pv6">Report a vulnerability privately</h3><p data-i18n="pv6P">Use GitHub's private vulnerability reporting on the repository (Security, then Report a vulnerability). The security policy explains what to include and the current security model.</p></li>
         </ul>
+        <p class="note" data-i18n="privDl">This website notes each click on a Download button (installer version, browser, operating system, languages and time zone) so the team can see how many people download Sahkarmi. It uses no cookies and stores no IP address, and it sends nothing when your browser asks not to be tracked.</p>
         <p class="note"><a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="privLink">Privacy notes</a> · <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer" data-i18n="secLink">Security policy</a> · <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="licLink">License</a></p>
       </div>
     </section>
@@ -1201,6 +1204,7 @@
         pv6: "Report a vulnerability privately",
         pv6P: "Use GitHub's private vulnerability reporting on the repository (Security, then Report a vulnerability). The security policy explains what to include and the current security model.",
         privLink: "Privacy notes",
+        privDl: "This website notes each click on a Download button (installer version, browser, operating system, languages and time zone) so the team can see how many people download Sahkarmi. It uses no cookies and stores no IP address, and it sends nothing when your browser asks not to be tracked.",
         secLink: "Security policy",
         licLink: "License",
         faqEyebrow: "Questions",
@@ -1462,6 +1466,7 @@
         pv6: "कमज़ोरी की रिपोर्ट निजी तौर पर करें",
         pv6P: "रिपॉज़िटरी पर GitHub की निजी vulnerability रिपोर्टिंग इस्तेमाल करें (Security, फिर Report a vulnerability). सुरक्षा नीति बताती है कि क्या शामिल करें और मौजूदा सुरक्षा मॉडल क्या है.",
         privLink: "गोपनीयता नोट",
+        privDl: "यह वेबसाइट Download बटन के हर क्लिक को दर्ज करती है (इंस्टॉलर का वर्ज़न, ब्राउज़र, ऑपरेटिंग सिस्टम, भाषाएँ और टाइम ज़ोन), ताकि टीम देख सके कि कितने लोग सहकर्मी डाउनलोड करते हैं. इसमें कोई कुकी नहीं है, IP पता सेव नहीं होता, और अगर आपका ब्राउज़र ट्रैक न करने को कहता है तो कुछ नहीं भेजा जाता.",
         secLink: "सुरक्षा नीति",
         licLink: "लाइसेंस",
         faqEyebrow: "सवाल",

@@ -3,7 +3,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["website/**", "scripts/check-website.mjs", "scripts/inject-downloads.mjs", ".github/workflows/pages.yml"]
+    paths: ["website/**", "scripts/check-website.mjs", "scripts/inject-downloads.mjs", "scripts/inject-notify.mjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -38,6 +38,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           EXPECTED_RELEASE_TAG: ${{ inputs.release_tag }}
         run: node scripts/inject-downloads.mjs
+
+      # Optional: mail the owner on each Download click (repository variable, public URL).
+      - name: Turn on download click mail
+        env:
+          DOWNLOAD_NOTIFY_URL: ${{ vars.DOWNLOAD_NOTIFY_URL }}
+        run: node scripts/inject-notify.mjs
 
       - name: Check website files (SEO, structured data, links, translations)
         run: node scripts/check-website.mjs
