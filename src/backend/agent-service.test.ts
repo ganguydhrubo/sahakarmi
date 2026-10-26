@@ -836,6 +836,22 @@ describe.sequential("AgentService", () => {
     });
   });
 
+  it("opens a chat at once when its provider is known to be missing", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await store.getOrCreate("chief");
+    await store.updateBot({ botId: "chief", model: "claude-sonnet-5" });
+    expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
+      "not-installed",
+    );
+    // A start attempt that never ends must not hold the chat back.
+    const ensure = vi.spyOn(service, "ensureProvider").mockReturnValue(new Promise(() => {}));
+    await expect(service.readConversation("chief")).resolves.toMatchObject({ botId: "chief" });
+    expect(ensure).toHaveBeenCalledWith("claude");
+    ensure.mockRestore();
+  });
+
   it("starts the second provider when an agent selects its model", async () => {
     process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root);
     const { store, mailbox } = stores();
