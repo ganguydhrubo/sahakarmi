@@ -1874,6 +1874,29 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(screen.getByRole("complementary", { name: "Browser" })).toBeInTheDocument();
   });
 
+  it("starts an empty browser with the start menu and wires each action", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Show browser" }));
+    expect(await screen.findByRole("button", { name: "Open Browser" })).toBeInTheDocument();
+    expect(window.sahkarmi.browser.open).not.toHaveBeenCalled();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open Agent settings" }));
+    expect(screen.getByRole("complementary", { name: "Agent settings" })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Show browser" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Open Browser" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.browser.open).toHaveBeenCalledWith(
+        expect.objectContaining({ url: "https://www.google.com", ownerBotId: "chief" }),
+      ),
+    );
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open Tasks" }));
+    expect(await screen.findByRole("heading", { name: "Tasks" })).toBeInTheDocument();
+  });
+
   it("queues from the composer and clears only after success", async () => {
     render(() => <App />);
     await confirmOnboardingModel();

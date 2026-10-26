@@ -1349,6 +1349,10 @@ export function App() {
                     }
                     onToggleLeftSidebar={() => setSidebarCollapsed(false)}
                     onOpenAiSettings={openAiSettings}
+                    onOpenView={(next) => {
+                      setAgentPickerOpen(false);
+                      setView(next);
+                    }}
                     onOpenAgentSetup={() => window.sahkarmi.openExternal("agent-setup")}
                     onStop={stopActiveTurn}
                     onDeleteBot={(botId) => void deleteBot(botId)}

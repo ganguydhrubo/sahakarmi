@@ -453,6 +453,12 @@ export class ChromeBrowserHost implements CoworkerBrowser {
     });
   }
 
+  /** Only the page on screen in Chrome: capturing another one would switch Chrome's tab. */
+  async preview(tabId: string): Promise<string | null> {
+    if (tabId !== this.activeTabId) return null;
+    return this.screenshot(tabId).catch(() => null);
+  }
+
   async screenshot(tabId: string): Promise<string> {
     return this.#enqueue(tabId, async (tab) => {
       const pipe = await this.#ensureTab(tab);

@@ -1779,6 +1779,11 @@ textarea {
   padding-right: min(var(--browser-panel-width, 380px), calc(100% - 360px));
 }
 
+/* The page cards sit in their own column; the chat never slides under them. */
+.conversation-panel:has(> .browser-compact) {
+  padding-right: min(328px, calc(100% - 360px));
+}
+
 /* With the browser open the header wraps onto two rows instead of sliding under the panel. */
 .conversation-panel.browser-panel-active .conversation-header,
 .conversation-panel:has(> .browser-panel) .conversation-header {
@@ -11084,28 +11089,119 @@ fieldset.memory-filters {
   z-index: 14;
   top: 48px;
   right: 14px;
+  bottom: 14px;
+  display: flex;
   width: 300px;
+  max-height: calc(100% - 62px);
+  flex-direction: column;
   border: 1px solid var(--sahkarmi-line);
   border-radius: var(--radius-md);
   background: var(--surface-2);
-  padding: 8px 8px 0;
   box-shadow: 0 10px 30px rgb(var(--shade-rgb) / 0.18);
   animation: message-in 180ms ease;
+}
+
+.browser-compact:has(.browser-start-menu) {
+  bottom: auto;
 }
 
 .browser-compact-controlled {
   border-color: rgb(var(--primary-rgb) / 0.72);
 }
 
-.browser-compact-frame {
+.browser-compact-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 8px 6px 10px;
+}
+
+.browser-compact-heading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.browser-compact-action {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.browser-compact-action:hover,
+.browser-compact-action:focus-visible {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.browser-pages {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 8px 10px;
+  list-style: none;
+  scroll-behavior: smooth;
+}
+
+.browser-page-card {
   position: relative;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.browser-page-card-active {
+  border-color: var(--sahkarmi-line);
+  background: var(--surface-1);
+}
+
+.browser-page-open {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  padding: 4px;
+  text-align: center;
+}
+
+.browser-page-frame {
+  position: relative;
+  display: block;
   overflow: hidden;
   aspect-ratio: 16 / 10;
   border-radius: 8px;
   background: var(--surface-1);
+  transition: transform 140ms ease;
 }
 
-.browser-compact-frame img {
+.browser-page-card-controlled .browser-page-frame {
+  box-shadow: 0 0 0 2px rgb(var(--primary-rgb) / 0.72);
+}
+
+.browser-page-open:hover .browser-page-frame,
+.browser-page-open:focus-visible .browser-page-frame {
+  transform: scale(1.015);
+}
+
+.browser-page-frame img {
   display: block;
   width: 100%;
   height: 100%;
@@ -11113,7 +11209,7 @@ fieldset.memory-filters {
   object-position: top;
 }
 
-.browser-compact-empty {
+.browser-page-empty {
   display: grid;
   height: 100%;
   place-items: center;
@@ -11121,54 +11217,81 @@ fieldset.memory-filters {
   font-size: 13px;
 }
 
-.browser-compact-open {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  border-radius: 999px;
-  background: rgb(20 20 24 / 0.86);
-  color: #fff;
-  font-size: 15px;
+.browser-page-title {
+  display: block;
+  overflow: hidden;
+  padding: 7px 4px 3px;
+  color: var(--text-primary);
+  font-size: 13.5px;
   font-weight: 600;
-  padding: 8px 16px;
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  transition: opacity 140ms ease;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.browser-compact-frame:hover .browser-compact-open,
-.browser-compact-open:focus-visible {
-  opacity: 1;
-}
-
-.browser-compact-close {
+.browser-page-close {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border: 0;
   border-radius: 8px;
   background: rgb(20 20 24 / 0.86);
   color: #fff;
+  opacity: 0;
+  transition: opacity 140ms ease;
 }
 
-.browser-compact-title {
-  overflow: hidden;
-  margin: 0;
-  padding: 8px 4px 9px;
+.browser-page-card:hover .browser-page-close,
+.browser-page-card-active .browser-page-close,
+.browser-page-close:focus-visible {
+  opacity: 1;
+}
+
+.browser-start-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.browser-surface > .browser-start-menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(340px, calc(100% - 32px));
+  transform: translate(-50%, -50%);
+}
+
+.browser-start-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-1);
   color: var(--text-primary);
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 11px 16px;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.browser-start-item:hover,
+.browser-start-item:focus-visible {
+  background: var(--surface-3, var(--surface-2));
+  outline: 1px solid var(--sahkarmi-line);
+}
+
+.browser-start-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--text-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

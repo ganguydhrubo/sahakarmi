@@ -136,6 +136,20 @@ export const BROWSER_DYNAMIC_TOOLS = [
   },
 ] as const;
 
+/** A hidden page gets this long, this many times, to paint before its preview is taken. */
+const PREVIEW_PAINT_MS = 120;
+const PREVIEW_PAINT_ATTEMPTS = 12;
+
+/** The page's picture, or null while it has not painted yet. */
+async function captureIfPainted(view: WebContentsView): Promise<string | null> {
+  try {
+    const image = await withTimeout(view.webContents.capturePage(), 5_000, "Preview timed out.");
+    return image.isEmpty() ? null : image.toDataURL();
+  } catch {
+    return null;
+  }
+}
+
 export class BrowserHost implements CoworkerBrowser {
   static readonly CONTROL_IDLE_GRACE_MS = 1_200;
   readonly #window: BrowserWindow;
@@ -321,6 +335,43 @@ export class BrowserHost implements CoworkerBrowser {
       );
       return image.toDataURL();
     });
+  }
+
+  /**
+   * A picture of a page for the page cards. Chromium paints only pages that are on screen, so a
+   * hidden page is shown for a moment with all but its corner pixel outside the window (nothing
+   * covers the app), captured, and hidden again.
+   */
+  async preview(tabId: string): Promise<string | null> {
+    return this.#enqueue(tabId, async (tab) => {
+      const view = tab.view;
+      if (view.getVisible()) return captureIfPainted(view);
+      const [windowWidth, windowHeight] = this.#window.getContentSize();
+      const { width, height } = view.getBounds();
+      view.setBounds({ x: windowWidth - 1, y: windowHeight - 1, width, height });
+      view.setVisible(true);
+      try {
+        view.webContents.invalidate();
+        for (let attempt = 0; attempt < PREVIEW_PAINT_ATTEMPTS; attempt += 1) {
+          await delay(PREVIEW_PAINT_MS);
+          const image = await captureIfPainted(view);
+          if (image) return image;
+        }
+        return null;
+      } finally {
+        this.#settleView(view, { width, height });
+      }
+    });
+  }
+
+  /** Puts a page back where it belongs after a preview: on the panel, or hidden. */
+  #settleView(view: WebContentsView, size: { width: number; height: number }): void {
+    if (this.#attachedView === view && this.#visible && this.#bounds) {
+      this.#syncAttachedView();
+      return;
+    }
+    view.setVisible(false);
+    view.setBounds({ x: 0, y: 0, ...size });
   }
 
   handleDynamicTool(params: DynamicToolCallParams): Promise<DynamicToolResult> {
@@ -590,6 +641,8 @@ export interface CoworkerBrowser extends BrowserToolTarget {
   setVisible(input: BrowserVisibilityInput): Promise<void>;
   handleDynamicTool(params: DynamicToolCallParams): Promise<DynamicToolResult>;
   describeTarget(tabId: string, ref: string | null): { label: string; url: string };
+  /** A picture of a page for the owner's page cards; null when it cannot be taken. */
+  preview(tabId: string): Promise<string | null>;
   destroy(): Promise<void>;
   /** The owner takes over (true) or hands back (false); engines that need it switch modes. */
   setHumanControl?(humanInControl: boolean): Promise<void>;

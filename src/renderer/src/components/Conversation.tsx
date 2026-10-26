@@ -48,6 +48,7 @@ import { ActivityIndicator } from "./ActivityIndicator";
 import { AgentAvatar } from "./AgentAvatar";
 import { ApprovalCard } from "./ApprovalsView";
 import { AvatarAura, statusAura } from "./AvatarAura";
+import { BrowserPageList, type BrowserStartAction, BrowserStartMenu } from "./BrowserPages";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
@@ -137,6 +138,8 @@ interface ConversationProps {
   onToggleLeftSidebar: () => void;
   /** Opens Settings → AI and models, where providers are connected. */
   onOpenAiSettings?: () => void;
+  /** Opens one of the app's own views (the browser start menu's Files and Tasks). */
+  onOpenView?: (view: "files" | "tasks") => void;
   onOpenAgentSetup: () => Promise<void>;
   onStop: () => void;
 }
@@ -165,6 +168,8 @@ const SETTINGS_PANEL_MAX = 1600;
 const BROWSER_PANEL_STORAGE_KEY = "sahkarmi:browser-panel-width";
 const BROWSER_COMPACT_STORAGE_KEY = "sahkarmi:browser-compact";
 const BROWSER_PREVIEW_REFRESH_MS = 2_500;
+/** Pages other than the active one get a fresh picture every this many refreshes. */
+const BROWSER_BACKGROUND_PREVIEW_EVERY = 3;
 const BROWSER_PANEL_DEFAULT = 380;
 const BROWSER_PANEL_MIN = 220;
 const BROWSER_PANEL_MAX = 1600;
@@ -1114,7 +1119,8 @@ export function Conversation(props: ConversationProps) {
   /** Width to go back to after "Expand browser"; null while not expanded. */
   const [browserExpandedFrom, setBrowserExpandedFrom] = createSignal<number | null>(null);
   const [browserSizing, setBrowserSizing] = createSignal(false);
-  const [browserPreview, setBrowserPreview] = createSignal<string | null>(null);
+  const [browserPreviews, setBrowserPreviews] = createSignal<Record<string, string>>({});
+  const [voiceStartRequest, setVoiceStartRequest] = createSignal(0);
   const [browserPanelWidth, setBrowserPanelWidth] = createSignal(
     readPanelWidth(
       BROWSER_PANEL_STORAGE_KEY,
@@ -1693,26 +1699,53 @@ export function Conversation(props: ConversationProps) {
     });
   });
 
+  // The page cards: the active page refreshes often, the others in turn, one per refresh.
   createEffect(() => {
-    const tabId = screenOpen() && browserCompact() ? activeBrowserTab()?.id : undefined;
-    if (!tabId) {
-      setBrowserPreview(null);
-      return;
-    }
+    if (!screenOpen() || !browserCompact()) return;
+    const tabs = browserTabs();
+    const activeId = activeBrowserTab()?.id;
+    if (tabs.length === 0) return;
     let cancelled = false;
-    const refresh = () => {
+    let tick = 0;
+    let nextBackground = 0;
+    const capture = (tabId: string) => {
       void window.sahkarmi.browser
         .preview(tabId)
         .then((image) => {
-          if (!cancelled && image) setBrowserPreview(image);
+          if (cancelled || !image) return;
+          setBrowserPreviews((current) =>
+            current[tabId] === image ? current : { ...current, [tabId]: image },
+          );
         })
         .catch(() => undefined);
+    };
+    const refresh = () => {
+      if (activeId) capture(activeId);
+      const others = tabs.filter((tab) => tab.id !== activeId);
+      if (others.length > 0) {
+        if (tick === 0) {
+          for (const tab of others) capture(tab.id);
+        } else if (tick % BROWSER_BACKGROUND_PREVIEW_EVERY === 0) {
+          capture(others[nextBackground % others.length].id);
+          nextBackground += 1;
+        }
+      }
+      tick += 1;
     };
     refresh();
     const timer = window.setInterval(refresh, BROWSER_PREVIEW_REFRESH_MS);
     onCleanup(() => {
       cancelled = true;
       window.clearInterval(timer);
+    });
+  });
+
+  // Forget pictures of pages that were closed.
+  createEffect(() => {
+    const open = new Set(props.browserTabs.map((tab) => tab.id));
+    setBrowserPreviews((current) => {
+      const kept = Object.entries(current).filter(([tabId]) => open.has(tabId));
+      return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept);
     });
   });
 
@@ -1926,8 +1959,44 @@ export function Conversation(props: ConversationProps) {
   function showBrowserPanel() {
     setBrowserCompact(false);
     setActiveRightPanel("browser");
-    if (browserTabs().length === 0) void openBrowserAddress();
   }
+
+  function openBrowserPage(tabId: string) {
+    props.onActivateBrowserTab(tabId);
+    showBrowserPanel();
+  }
+
+  function openNewBrowserPage() {
+    setBrowserAddress("https://www.google.com");
+    void openBrowserAddress().then(() => setBrowserCompact(false));
+  }
+
+  function runBrowserStartAction(action: BrowserStartAction) {
+    switch (action) {
+      case "browser":
+        openNewBrowserPage();
+        return;
+      case "files":
+      case "tasks":
+        props.onOpenView?.(action);
+        return;
+      case "settings":
+        setActiveRightPanel("settings");
+        return;
+      case "voice":
+        setVoiceStartRequest((request) => request + 1);
+        return;
+    }
+  }
+
+  const controlledBrowserTabIds = createMemo(
+    () =>
+      new Set(
+        browserTabs()
+          .filter((tab) => Boolean(browserControlForTab(tab)))
+          .map((tab) => tab.id),
+      ),
+  );
 
   function hideBrowserPanel() {
     setActiveRightPanel("none");
@@ -2738,6 +2807,7 @@ export function Conversation(props: ConversationProps) {
             </Show>
             <VoiceRecorder
               disabled={!agentReady() || submitting()}
+              startRequest={voiceStartRequest()}
               onAttach={(attachments, transcript) => {
                 addAttachments(attachments);
                 if (transcript) {
@@ -2859,35 +2929,54 @@ export function Conversation(props: ConversationProps) {
         <aside
           class="browser-compact"
           classList={{ "browser-compact-controlled": Boolean(activeBrowserControl()) }}
-          aria-label={t("browser")}
+          aria-label={t("browserPages")}
         >
-          <div class="browser-compact-frame">
-            <Show
-              when={browserPreview()}
-              fallback={
-                <div class="browser-compact-empty">
-                  {browserTabs().length === 0 ? "Open a page" : t("browserPreviewUnavailable")}
-                </div>
-              }
+          <header class="browser-compact-header">
+            <span class="browser-compact-heading">
+              <ComputerIcon />
+              {t("browser")}
+            </span>
+            <button
+              type="button"
+              class="browser-compact-action"
+              aria-label={t("browserNewPage")}
+              title={t("browserNewPage")}
+              onClick={openNewBrowserPage}
             >
-              {(image) => <img src={image()} alt="" />}
-            </Show>
-            <button type="button" class="browser-compact-open" onClick={showBrowserPanel}>
-              <ExpandIcon />
-              {t("browserOpen")}
+              <PlusIcon />
             </button>
             <button
               type="button"
-              class="browser-compact-close"
+              class="browser-compact-action"
+              aria-label={t("browserExpand")}
+              title={t("browserExpand")}
+              onClick={showBrowserPanel}
+            >
+              <ExpandIcon />
+            </button>
+            <button
+              type="button"
+              class="browser-compact-action"
               aria-label={t("hideBrowser")}
+              title={t("hideBrowser")}
               onClick={hideBrowserPanel}
             >
               <CloseIcon />
             </button>
-          </div>
-          <p class="browser-compact-title">
-            {activeBrowserTab()?.title || activeBrowserTab()?.url || t("browser")}
-          </p>
+          </header>
+          <Show
+            when={browserTabs().length > 0}
+            fallback={<BrowserStartMenu onAction={runBrowserStartAction} />}
+          >
+            <BrowserPageList
+              tabs={browserTabs()}
+              activeTabId={activeBrowserTab()?.id ?? null}
+              previews={browserPreviews()}
+              controlledTabIds={controlledBrowserTabIds()}
+              onOpen={openBrowserPage}
+              onClose={props.onCloseBrowserTab}
+            />
+          </Show>
         </aside>
       </Show>
 
@@ -2975,10 +3064,7 @@ export function Conversation(props: ConversationProps) {
                   type="button"
                   class="browser-new-tab"
                   aria-label="New browser tab"
-                  onClick={() => {
-                    setBrowserAddress("https://www.google.com");
-                    void openBrowserAddress();
-                  }}
+                  onClick={openNewBrowserPage}
                 >
                   <PlusIcon />
                 </button>
@@ -3121,10 +3207,7 @@ export function Conversation(props: ConversationProps) {
           </Show>
           <div class="browser-surface" ref={(element) => (browserSurface = element)}>
             <Show when={browserTabs().length === 0}>
-              <div class="browser-empty-state">
-                <strong>Open a page</strong>
-                <span>The agent can browse here while it works.</span>
-              </div>
+              <BrowserStartMenu onAction={runBrowserStartAction} />
             </Show>
           </div>
         </aside>

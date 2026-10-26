@@ -374,7 +374,10 @@ function registerIpcHandlers(
     service.declineBrowserTakeover(typeof note === "string" && note.trim() ? note : null),
   );
   handleTrusted(IPC_CHANNELS.browserPreview, (tabId: unknown) =>
-    browser.screenshot(requireString(tabId, "tabId")).catch(() => null),
+    browser
+      .preview(requireString(tabId, "tabId"))
+      .then((image) => (image ? previewThumbnail(image) : null))
+      .catch(() => null),
   );
   handleTrusted(IPC_CHANNELS.secureInputList, () => service.listSecureInputs());
   handleTrusted(IPC_CHANNELS.secureInputSubmit, (input: unknown) => {
@@ -1709,4 +1712,13 @@ function parseBounds(value: unknown): BrowserBounds {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Page pictures for the browser page cards: small JPEGs, so several pages stay cheap to show. */
+function previewThumbnail(dataUrl: string): string | null {
+  const image = nativeImage.createFromDataURL(dataUrl);
+  if (image.isEmpty()) return null;
+  const { width } = image.getSize();
+  const small = width > 640 ? image.resize({ width: 640, quality: "good" }) : image;
+  return `data:image/jpeg;base64,${small.toJPEG(72).toString("base64")}`;
 }

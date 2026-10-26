@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import type { DraftAttachment } from "../../../shared/ipc";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
@@ -36,6 +36,8 @@ export function VoiceRecorder(props: {
   disabled?: boolean;
   onAttach: (attachments: DraftAttachment[], transcript: string) => void;
   onError: (message: string) => void;
+  /** Changing this number starts a recording, as if the mic button was pressed. */
+  startRequest?: number;
 }) {
   const [state, setState] = createSignal(INITIAL_VOICE_STATE);
   const [open, setOpen] = createSignal(false);
@@ -58,6 +60,16 @@ export function VoiceRecorder(props: {
     setAudioUrl(null);
     blob = null;
   }
+
+  createEffect(
+    on(
+      () => props.startRequest,
+      (request) => {
+        if (request && !open() && !props.disabled) void start();
+      },
+      { defer: true },
+    ),
+  );
 
   onCleanup(() => {
     controller.dispose();
