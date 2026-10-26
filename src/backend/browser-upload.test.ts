@@ -153,3 +153,17 @@ describe("clickCatchingFilePicker", () => {
     expect(filePickerNotice("8:12")).toContain('{"type":"upload","ref":"8:12"');
   });
 });
+
+describe("sameSiteTabIds", () => {
+  it("finds the other tabs of the site a coworker just changed", async () => {
+    const { sameSiteTabIds } = await import("./browser-host");
+    const tabs = [
+      { id: "acted", url: "https://app.taskmagix.com/reports/12" },
+      { id: "owner", url: "https://app.taskmagix.com/reports" },
+      { id: "other-site", url: "https://mail.google.com/" },
+      { id: "blank", url: "about:blank" },
+    ];
+    expect(sameSiteTabIds(tabs, "acted", tabs[0]?.url ?? "")).toEqual(["owner"]);
+    expect(sameSiteTabIds(tabs, "blank", "about:blank")).toEqual([]);
+  });
+});

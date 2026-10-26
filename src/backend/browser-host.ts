@@ -38,6 +38,39 @@ interface InternalTab {
   /** Accessible names from the latest snapshot, by element ref (used by permission checks). */
   labels: Map<string, string>;
   queue: Promise<unknown>;
+  /** A coworker changed this site in another tab, so this page may show old data. */
+  stale: boolean;
+  /** The owner pressed a key or clicked here since it went stale; never reload over their work. */
+  ownerTouched: boolean;
+}
+
+/** Actions that can change what a site stores (a scroll or a back never does). */
+const CHANGING_ACTIONS = new Set<BrowserAction["type"]>(["click", "type", "key", "upload"]);
+const OWNER_INPUT = new Set(["mouseDown", "keyDown", "rawKeyDown", "char"]);
+
+/**
+ * Tabs that show the same site as the tab a coworker just changed. Their page was loaded
+ * before the change, so it is out of date (a draft saved in one tab is not in the other).
+ */
+export function sameSiteTabIds(
+  tabs: Array<{ id: string; url: string }>,
+  actedTabId: string,
+  actedUrl: string,
+): string[] {
+  const origin = webOrigin(actedUrl);
+  if (!origin) return [];
+  return tabs
+    .filter((tab) => tab.id !== actedTabId && webOrigin(tab.url) === origin)
+    .map((tab) => tab.id);
+}
+
+function webOrigin(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.origin : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface StoredBrowserState {
@@ -157,6 +190,8 @@ async function captureIfPainted(view: WebContentsView): Promise<string | null> {
 
 export class BrowserHost implements CoworkerBrowser {
   static readonly CONTROL_IDLE_GRACE_MS = 1_200;
+  /** How long after a coworker's last change the owner's open page of that site reloads. */
+  static readonly STALE_REFRESH_MS = 1_500;
   readonly #window: BrowserWindow;
   readonly #session: Session;
   readonly #downloadsRoot: string;
@@ -171,6 +206,7 @@ export class BrowserHost implements CoworkerBrowser {
   #attachedView: WebContentsView | null = null;
   readonly #mountedViews = new Set<WebContentsView>();
   #persistQueue: Promise<void> = Promise.resolve();
+  #staleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(window: BrowserWindow, downloadsRoot: string, statePath: string) {
     this.#window = window;
@@ -271,6 +307,7 @@ export class BrowserHost implements CoworkerBrowser {
     this.#requireTab(tabId);
     this.#activeTabId = tabId;
     this.#syncAttachedView();
+    this.#refreshShownTabIfStale();
     this.#emitChanged();
     await this.#persistState();
   }
@@ -293,6 +330,44 @@ export class BrowserHost implements CoworkerBrowser {
     this.#visible = input.visible;
     if (input.bounds) this.#bounds = validateBounds(input.bounds);
     this.#syncAttachedView();
+    if (input.visible) this.#refreshShownTabIfStale();
+  }
+
+  /** After a coworker changes a site in one tab, the other tabs of that site go out of date. */
+  #markSameSiteStale(acted: InternalTab): void {
+    acted.stale = false;
+    acted.ownerTouched = false;
+    const ids = sameSiteTabIds(
+      [...this.#tabs.values()].map((tab) => ({ id: tab.id, url: tab.view.webContents.getURL() })),
+      acted.id,
+      acted.view.webContents.getURL(),
+    );
+    if (ids.length === 0) return;
+    for (const id of ids) {
+      const tab = this.#tabs.get(id);
+      if (!tab) continue;
+      if (!tab.stale) tab.ownerTouched = false;
+      tab.stale = true;
+    }
+    // Wait until the coworker stops, so the page is reloaded once with the finished work.
+    if (this.#staleRefreshTimer) clearTimeout(this.#staleRefreshTimer);
+    this.#staleRefreshTimer = setTimeout(() => {
+      this.#staleRefreshTimer = null;
+      this.#refreshShownTabIfStale();
+    }, BrowserHost.STALE_REFRESH_MS);
+  }
+
+  /**
+   * Reloads the page the owner is looking at when a coworker changed its site in another tab.
+   * Hidden pages wait until the owner opens them. A page the owner typed or clicked in since
+   * is left alone, so their own unsaved work is never lost.
+   */
+  #refreshShownTabIfStale(): void {
+    if (!this.#visible || !this.#activeTabId) return;
+    const tab = this.#tabs.get(this.#activeTabId);
+    if (!tab?.stale || tab.ownerTouched) return;
+    tab.stale = false;
+    tab.view.webContents.reload();
   }
 
   async snapshot(tabId: string): Promise<BrowserSnapshot> {
@@ -324,6 +399,7 @@ export class BrowserHost implements CoworkerBrowser {
       } finally {
         restore?.();
       }
+      if (CHANGING_ACTIONS.has(action.type)) this.#markSameSiteStale(tab);
       // A click has already waited for the page while watching for its file picker.
       if (action.type !== "click") await delay(250);
       const nextRevision = tab.revision + 1;
@@ -397,6 +473,7 @@ export class BrowserHost implements CoworkerBrowser {
     try {
       await this.#persistState();
     } finally {
+      if (this.#staleRefreshTimer) clearTimeout(this.#staleRefreshTimer);
       for (const tab of this.#tabs.values()) {
         this.#unmountView(tab.view);
         tab.view.webContents.close();
@@ -424,6 +501,8 @@ export class BrowserHost implements CoworkerBrowser {
       revision: 0,
       labels: new Map(),
       queue: Promise.resolve(),
+      stale: false,
+      ownerTouched: false,
     };
   }
 
@@ -473,7 +552,13 @@ export class BrowserHost implements CoworkerBrowser {
     contents.on("did-start-loading", changed);
     contents.on("did-stop-loading", changed);
     contents.on("page-title-updated", changed);
+    contents.on("input-event", (_event, input) => {
+      if (tab.stale && OWNER_INPUT.has(input.type)) tab.ownerTouched = true;
+    });
     contents.on("did-navigate", (_event, url) => {
+      // A full load reads the site afresh.
+      tab.stale = false;
+      tab.ownerTouched = false;
       if (isPersistableBrowserUrl(url)) tab.requestedUrl = persistentBrowserUrl(url);
       tab.revision += 1;
       changed();

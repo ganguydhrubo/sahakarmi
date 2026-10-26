@@ -2,10 +2,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, webContents } from "electron";
 import { BrowserHost } from "../src/backend/browser-host";
 
 let cachedPageVersion = 1;
+let savedDraft = "none";
 
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -61,6 +62,20 @@ const server = createServer((request, response) => {
       <input aria-label="Attach file" type="file" multiple onchange="document.querySelector('#direct').textContent = [...this.files].map((f) => f.name).join(',')" />
       <button aria-label="Nothing">Nothing</button>
       <output id="picked">none</output><output id="direct">none</output>`);
+    return;
+  }
+  if (url.pathname === "/draft") {
+    // Like a report site: what one tab saves, another tab only shows after a reload.
+    if (url.searchParams.has("save")) {
+      savedDraft = url.searchParams.get("save") ?? "";
+      response.end("saved");
+      return;
+    }
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    response.end(`<!doctype html>
+      <input aria-label="Draft" />
+      <button aria-label="Save draft" onclick="fetch('/draft?save=' + encodeURIComponent(document.querySelector('input').value))">Save draft</button>
+      <main>draft:${savedDraft}</main>`);
     return;
   }
   if (url.pathname === "/abort") {
@@ -289,6 +304,43 @@ async function main(): Promise<void> {
       }),
     );
     process.stdout.write("BrowserHost: file upload passed.\n");
+
+    // The owner looks at one tab of a site while a coworker saves in another tab of it.
+    const ownerDraft = await browser.open(`${origin}/draft`, null);
+    const coworkerDraft = await browser.open(`${origin}/draft`, "smoke-thread");
+    await browser.setVisible({ visible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } });
+    await browser.activate(ownerDraft.id);
+    const saveDraft = async (text: string) => {
+      const page = await browser.snapshot(coworkerDraft.id);
+      const field = page.elements.find((element) => element.name === "Draft");
+      if (!field) throw new Error("Draft field is missing.");
+      const typedDraft = await browser.act(coworkerDraft.id, page.revision, {
+        type: "type",
+        ref: field.ref,
+        text,
+      });
+      const button = typedDraft.elements.find((element) => element.name === "Save draft");
+      if (!button) throw new Error("Save draft button is missing.");
+      await browser.act(coworkerDraft.id, typedDraft.revision, { type: "click", ref: button.ref });
+    };
+    await saveDraft("first");
+    await waitFor(async () => (await browser.snapshot(ownerDraft.id)).text.includes("draft:first"));
+    // Once the owner types in their tab, it is never reloaded over their work.
+    await saveDraft("second");
+    const ownerContents = webContents
+      .getAllWebContents()
+      .filter((contents) => contents.getURL() === `${origin}/draft`)
+      .sort((left, right) => left.id - right.id)[0];
+    ownerContents?.sendInputEvent({ type: "keyDown", keyCode: "a" });
+    await new Promise((resolve) => setTimeout(resolve, BrowserHost.STALE_REFRESH_MS + 1_000));
+    const untouched = await browser.snapshot(ownerDraft.id);
+    if (!untouched.text.includes("draft:first")) {
+      throw new Error(`The owner's tab was reloaded over their typing: ${untouched.text}`);
+    }
+    await browser.setVisible({ visible: false });
+    await browser.close(ownerDraft.id);
+    await browser.close(coworkerDraft.id);
+    process.stdout.write("BrowserHost: same-site tab refresh passed.\n");
 
     const toolResult = await browser.handleDynamicTool({
       threadId: "smoke-thread",

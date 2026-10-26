@@ -15,6 +15,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 - Coworkers can search earlier chats (their own, or the whole team's) to recall what was
   decided, sent or promised, instead of guessing.
 
+### Fixed
+
+- When a coworker changes a site in one browser tab, your other tabs of the same site no
+  longer show old data: the tab you are looking at reloads a moment after the coworker
+  finishes, and hidden tabs reload when you open them. A tab you typed or clicked in is never
+  reloaded over your work.
+
 ## [0.11.4] - 2026-10-26
 
 ### Added
