@@ -20,6 +20,11 @@ import type { AgentProvider } from "./agent-client";
 import { ACT_DESCRIPTION } from "./browser-act";
 import type { ClaudeCliInfo } from "./cli";
 import {
+  LIST_SKILLS_DESCRIPTION,
+  SAVE_SKILL_DESCRIPTION,
+  SEARCH_PAST_CHATS_DESCRIPTION,
+} from "./learning-tools";
+import {
   type AppServerNotification,
   type AppServerRequest,
   getString,
@@ -817,6 +822,36 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
               category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
             },
             (args) => call("sahkarmi", "list_memories", args),
+          ),
+          tool(
+            "search_past_chats",
+            SEARCH_PAST_CHATS_DESCRIPTION,
+            {
+              query: z.string().min(2).max(200),
+              scope: z.enum(["mine", "team"]).optional(),
+              limit: z.number().int().min(1).max(20).optional(),
+            },
+            (args) => call("sahkarmi", "search_past_chats", args),
+          ),
+          tool("list_skills", LIST_SKILLS_DESCRIPTION, {}, (args) =>
+            call("sahkarmi", "list_skills", args),
+          ),
+          tool(
+            "read_skill",
+            "Read one learned skill's full playbook by its id (from list_skills).",
+            { id: z.string().min(1).max(80) },
+            (args) => call("sahkarmi", "read_skill", args),
+          ),
+          tool(
+            "save_skill",
+            SAVE_SKILL_DESCRIPTION,
+            {
+              name: z.string().min(2).max(120),
+              whenToUse: z.string().min(2).max(300),
+              steps: z.string().min(2).max(20_000),
+              changeNote: z.string().max(300).optional(),
+            },
+            (args) => call("sahkarmi", "save_skill", args),
           ),
         ],
       }),

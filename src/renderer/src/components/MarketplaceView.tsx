@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import {
   AGENT_CATEGORIES,
   type AgentCapability,
@@ -7,6 +7,7 @@ import {
   agentSearchText,
   briefHash,
 } from "../../../shared/agent-catalog";
+import type { LearnedSkillSummary } from "../../../shared/ipc";
 import {
   MARKETPLACE_AGENTS,
   MARKETPLACE_SKILLS,
@@ -102,6 +103,17 @@ export function MarketplaceView(props: {
   const [installed, setInstalled] = createSignal<string[]>([]);
   const [busy, setBusy] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
+  const [learned, setLearned] = createSignal<LearnedSkillSummary[]>([]);
+  const [confirmLearnedId, setConfirmLearnedId] = createSignal<string | null>(null);
+
+  // Coworkers add skills while they work, so the list is read each time the tab opens.
+  createEffect(() => {
+    if (tab() !== "skills") return;
+    void window.sahkarmi.marketplace
+      .learnedSkills()
+      .then(setLearned)
+      .catch(() => undefined);
+  });
 
   onMount(() => {
     void window.sahkarmi.marketplace
@@ -141,6 +153,12 @@ export function MarketplaceView(props: {
   const skills = createMemo(() =>
     MARKETPLACE_SKILLS.filter((skill) => {
       const text = `${skill.name} ${skill.summary}`.toLowerCase();
+      return terms().every((word) => text.includes(word));
+    }),
+  );
+  const learnedShown = createMemo(() =>
+    learned().filter((skill) => {
+      const text = `${skill.name} ${skill.whenToUse} ${skill.author}`.toLowerCase();
       return terms().every((word) => text.includes(word));
     }),
   );
@@ -491,6 +509,89 @@ export function MarketplaceView(props: {
               </For>
             </ul>
           </Show>
+          <section class="marketplace-section" aria-labelledby="marketplace-learned-heading">
+            <header class="marketplace-section-head">
+              <h2 id="marketplace-learned-heading">{t("marketLearnedSkills")}</h2>
+            </header>
+            <Show
+              when={learnedShown().length > 0}
+              fallback={<p class="center-view-empty">{t("marketLearnedEmpty")}</p>}
+            >
+              <ul class="marketplace-grid">
+                <For each={learnedShown()}>
+                  {(skill) => (
+                    <li class="marketplace-card">
+                      <div class="marketplace-card-head">
+                        <div class="marketplace-card-title">
+                          <h3>{skill.name}</h3>
+                          <small>
+                            {t("marketLearnedMeta", {
+                              version: String(skill.version),
+                              author: skill.author,
+                              date: new Date(skill.updatedAt).toLocaleDateString("en-GB"),
+                            })}
+                          </small>
+                        </div>
+                        <button
+                          type="button"
+                          class="marketplace-action"
+                          aria-label={`${t("marketOpen")} ${skill.name}`}
+                          onClick={() =>
+                            void run(skill.id, () =>
+                              window.sahkarmi.files.open({
+                                path: skill.sharedPath,
+                                action: "open",
+                              }),
+                            )
+                          }
+                        >
+                          {t("marketOpen")}
+                        </button>
+                        <button
+                          type="button"
+                          class="marketplace-action"
+                          disabled={busy() !== null}
+                          aria-label={`${t("marketDelete")} ${skill.name}`}
+                          onClick={() => setConfirmLearnedId(skill.id)}
+                        >
+                          {t("marketDelete")}
+                        </button>
+                      </div>
+                      <p>{skill.whenToUse}</p>
+                      <Show when={confirmLearnedId() === skill.id}>
+                        <div class="marketplace-confirm" role="alert">
+                          <span>{t("marketDeleteLearnedConfirm", { name: skill.name })}</span>
+                          <div class="marketplace-actions">
+                            <button
+                              type="button"
+                              class="marketplace-action"
+                              onClick={() => setConfirmLearnedId(null)}
+                            >
+                              {t("cancel")}
+                            </button>
+                            <button
+                              type="button"
+                              class="marketplace-action marketplace-action-primary"
+                              onClick={() =>
+                                void run(skill.id, async () => {
+                                  setConfirmLearnedId(null);
+                                  setLearned(
+                                    await window.sahkarmi.marketplace.removeLearnedSkill(skill.id),
+                                  );
+                                })
+                              }
+                            >
+                              {t("marketDelete")}
+                            </button>
+                          </div>
+                        </div>
+                      </Show>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </section>
         </Show>
       </div>
 

@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MARKETPLACE_AGENTS, MARKETPLACE_SKILLS } from "../shared/marketplace";
-import { installedSkillNames, SkillLibrary } from "./skill-library";
+import {
+  installedSkillNames,
+  LearnedSkills,
+  learnedSkillId,
+  learnedSkillNames,
+  SkillLibrary,
+} from "./skill-library";
 
 let shared: string;
 
@@ -60,5 +66,62 @@ describe("SkillLibrary", () => {
   it("rejects ids that are not in the catalog", async () => {
     const library = new SkillLibrary(shared);
     await expect(library.install("../../etc/passwd")).rejects.toThrow("Unknown skill.");
+  });
+});
+
+describe("LearnedSkills", () => {
+  it("saves a coworker's playbook and improves it under the same name", async () => {
+    const skills = new LearnedSkills(shared);
+    const first = await skills.save({
+      name: "GST invoice (B2B)",
+      whenToUse: "Making a B2B tax invoice",
+      steps: "1. Check the buyer GSTIN.\n2. Add HSN codes.",
+      author: "Asha",
+    });
+    expect(first).toMatchObject({ id: "gst-invoice-b2b", version: 1, author: "Asha" });
+    expect(first.sharedPath).toBe("Skills/Learned/gst-invoice-b2b.md");
+    const second = await skills.save({
+      name: "GST invoice (B2B)",
+      whenToUse: "Making a B2B tax invoice",
+      steps: "1. Check the buyer GSTIN.\n2. Add HSN codes.\n3. Round to the rupee.",
+      changeNote: "Owner asked for rounding.",
+      author: "Ravi",
+    });
+    expect(second.version).toBe(2);
+    const text = (await skills.read("gst-invoice-b2b")) ?? "";
+    expect(text).toContain("3. Round to the rupee.");
+    expect(text).toMatch(/v2 \(.+, Ravi\): Owner asked for rounding\.\n- v1 \(.+, Asha\): First/);
+    expect((await skills.list()).map((skill) => skill.id)).toEqual(["gst-invoice-b2b"]);
+    expect(learnedSkillNames(shared)).toEqual(["GST invoice (B2B) (Learned/gst-invoice-b2b.md)"]);
+    expect(await skills.remove("gst-invoice-b2b")).toEqual([]);
+  });
+
+  it("keeps secrets out and never touches files a coworker did not write", async () => {
+    const skills = new LearnedSkills(shared);
+    await expect(
+      skills.save({ name: "Bank", whenToUse: "x", steps: "password: hunter2", author: "A" }),
+    ).rejects.toThrow(/passwords/);
+    await expect(
+      skills.save({
+        name: "Card",
+        whenToUse: "x",
+        steps: "Pay with 4111 1111 1111 1111",
+        author: "A",
+      }),
+    ).rejects.toThrow(/card numbers/);
+    await mkdir(join(shared, "Skills", "Learned"), { recursive: true });
+    const own = join(shared, "Skills", "Learned", "my-notes.md");
+    await writeFile(own, "# Mine\n");
+    await expect(
+      skills.save({ name: "My notes", whenToUse: "x", steps: "1. a", author: "A" }),
+    ).rejects.toThrow(/did not write/);
+    await skills.remove("my-notes");
+    expect(await readFile(own, "utf8")).toBe("# Mine\n");
+    expect(await skills.read("../../etc/passwd")).toBeNull();
+  });
+
+  it("makes safe file names", () => {
+    expect(learnedSkillId("../../Secret Plan!")).toBe("secret-plan");
+    expect(() => learnedSkillId("!!!")).toThrow(/name/);
   });
 });

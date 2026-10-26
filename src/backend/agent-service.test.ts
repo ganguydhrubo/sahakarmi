@@ -651,6 +651,85 @@ describe.sequential("AgentService", () => {
     );
   });
 
+  it("saves a skill a coworker learned, in Shared/Skills/Learned", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "save_skill",
+      arguments: {
+        name: "Bank reconciliation",
+        whenToUse: "Matching bank entries with the ledger",
+        steps: "1. Export the statement.\n2. Match by amount and date.",
+      },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Reconcile the bank" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(JSON.stringify(reply?.result)).toContain('\\"version\\":1');
+    const text = await readFile(
+      join(store.sharedRoot, "Skills", "Learned", "bank-reconciliation.md"),
+      "utf8",
+    );
+    expect(text).toContain("2. Match by amount and date.");
+    expect(text).toMatch(/^By: .+$/m);
+  });
+
+  it("hands a refused skill back to the coworker instead of showing the owner an error", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "save_skill",
+      arguments: { name: "Net banking", whenToUse: "Paying", steps: "password: hunter2" },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const errors: AgentEvent[] = [];
+    service.on("event", (event) => {
+      if (event.type === "error") errors.push(event);
+    });
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Pay the vendor" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(reply?.result).toMatchObject({ success: false });
+    expect(JSON.stringify(reply?.result)).toContain("passwords");
+    expect(errors.filter((event) => JSON.stringify(event).includes("server_request"))).toEqual([]);
+  });
+
+  it("lets a coworker recall its own earlier chats with every word matching", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "search_past_chats",
+      arguments: { query: "GSTR-1 march" },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "File GSTR-1 for March by Friday" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    const payload = JSON.parse(
+      (reply?.result as { contentItems?: Array<{ text: string }> } | undefined)?.contentItems?.[0]
+        ?.text ?? "{}",
+    ) as { count: number; results: Array<{ excerpt: string; author: string }> };
+    expect(payload.count).toBe(1);
+    expect(payload.results[0]).toMatchObject({ author: "user" });
+    expect(payload.results[0]?.excerpt).toContain("GSTR-1 for March");
+  });
+
   it("never sends streamed text again after a snapshot that already holds it", async () => {
     process.env.SAHKARMI_TEST_DELTA_BATCH = "1";
     process.env.SAHKARMI_FAKE_SECOND_DELTA = " more";
