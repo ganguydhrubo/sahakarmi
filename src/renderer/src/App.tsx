@@ -157,6 +157,9 @@ export function App() {
   const [activeBotId, setActiveBotId] = createSignal("");
   const [liveMessages, setLiveMessages] = createSignal<Record<string, BotMessage[]>>({});
   const [uiErrors, setUiErrors] = createSignal<Record<string, BotMessage[]>>({});
+  /** Messages on screen from the moment you press Send until the coworker's queue has them. */
+  const [pendingSends, setPendingSends] = createSignal<Record<string, BotMessage[]>>({});
+  let sendSequence = 0;
   const [conversationLoaded, setConversationLoaded] = createSignal<Record<string, boolean>>({});
   const [conversationRevisions, setConversationRevisions] = createSignal<Record<string, number>>(
     {},
@@ -236,7 +239,13 @@ export function App() {
   );
   const activeMessages = createMemo(() => {
     const bot = activeBot();
-    return bot ? [...(liveMessages()[bot.id] ?? []), ...(uiErrors()[bot.id] ?? [])] : [];
+    return bot
+      ? [
+          ...(liveMessages()[bot.id] ?? []),
+          ...(pendingSends()[bot.id] ?? []),
+          ...(uiErrors()[bot.id] ?? []),
+        ]
+      : [];
   });
 
   onMount(() => {
@@ -846,6 +855,32 @@ export function App() {
     attachmentDraftIds: string[],
     replyToMessageId: string | null = null,
   ): Promise<boolean> {
+    const text = body.trim();
+    const pendingId = text ? `sending:${++sendSequence}` : null;
+    const removePending = () => {
+      if (!pendingId) return;
+      setPendingSends((current) => ({
+        ...current,
+        [botId]: (current[botId] ?? []).filter((message) => message.id !== pendingId),
+      }));
+    };
+    if (pendingId) {
+      setPendingSends((current) => ({
+        ...current,
+        [botId]: [
+          ...(current[botId] ?? []),
+          {
+            id: pendingId,
+            author: "you",
+            body: text,
+            time: formatTime(new Date().toISOString()),
+            kind: "text",
+            status: t("sending"),
+            animate: true,
+          },
+        ],
+      }));
+    }
     try {
       await window.sahkarmi.agent.sendMessage({
         botId,
@@ -854,8 +889,11 @@ export function App() {
         ...(replyToMessageId ? { replyToMessageId } : {}),
       });
       setUiErrors((current) => ({ ...current, [botId]: [] }));
+      // The queued message arrives in a snapshot applied on the next frame: swap in that frame.
+      scheduleConversationChange(botId, Number.POSITIVE_INFINITY, removePending);
       return true;
     } catch (error) {
+      removePending();
       appendUiError(botId, error, vocab().ERROR_TITLES.send);
       return false;
     }
