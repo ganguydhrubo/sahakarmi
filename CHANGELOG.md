@@ -38,6 +38,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 - Gemini no longer starts twice at launch, and model checks no longer leave helper processes
   running in the background.
 - The voice note preview shows its real length instead of 0:00.
+- A page a coworker was working on in the background could appear on top of the app, outside
+  the browser panel. Background pages now stay out of sight while coworkers use them.
 
 ## [0.10.0] - 2026-10-25
 

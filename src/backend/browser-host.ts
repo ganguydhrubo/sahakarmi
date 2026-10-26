@@ -303,14 +303,12 @@ export class BrowserHost implements CoworkerBrowser {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
 
-      const wasVisible = tab.view.getVisible();
-      if (!wasVisible) {
-        tab.view.setVisible(true);
-        tab.view.webContents.invalidate();
-      }
+      // A hidden page must be painted to take input, but never over the app: it is shown with
+      // only its corner pixel inside the window while the coworker acts on it.
+      const restore = tab.view.getVisible() ? null : this.#showOutOfSight(tab.view);
       tab.view.webContents.focus();
       try {
-        if (!wasVisible) await delay(250);
+        if (restore) await delay(250);
         await withTimeout(
           performAction(tab.view.webContents, action),
           10_000,
@@ -318,7 +316,7 @@ export class BrowserHost implements CoworkerBrowser {
         );
         await delay(50);
       } finally {
-        if (!wasVisible) tab.view.setVisible(false);
+        restore?.();
       }
       await delay(250);
       const nextRevision = tab.revision + 1;
@@ -346,12 +344,8 @@ export class BrowserHost implements CoworkerBrowser {
     return this.#enqueue(tabId, async (tab) => {
       const view = tab.view;
       if (view.getVisible()) return captureIfPainted(view);
-      const [windowWidth, windowHeight] = this.#window.getContentSize();
-      const { width, height } = view.getBounds();
-      view.setBounds({ x: windowWidth - 1, y: windowHeight - 1, width, height });
-      view.setVisible(true);
+      const restore = this.#showOutOfSight(view);
       try {
-        view.webContents.invalidate();
         for (let attempt = 0; attempt < PREVIEW_PAINT_ATTEMPTS; attempt += 1) {
           await delay(PREVIEW_PAINT_MS);
           const image = await captureIfPainted(view);
@@ -359,12 +353,25 @@ export class BrowserHost implements CoworkerBrowser {
         }
         return null;
       } finally {
-        this.#settleView(view, { width, height });
+        restore();
       }
     });
   }
 
-  /** Puts a page back where it belongs after a preview: on the panel, or hidden. */
+  /**
+   * Shows a hidden page so Chromium paints it, with all but its bottom-right corner pixel
+   * outside the window, so it never covers the app. Returns a function that puts it back.
+   */
+  #showOutOfSight(view: WebContentsView): () => void {
+    const [windowWidth, windowHeight] = this.#window.getContentSize();
+    const { width, height } = view.getBounds();
+    view.setBounds({ x: windowWidth - 1, y: windowHeight - 1, width, height });
+    view.setVisible(true);
+    view.webContents.invalidate();
+    return () => this.#settleView(view, { width, height });
+  }
+
+  /** Puts a page back where it belongs after a preview or action: on the panel, or hidden. */
   #settleView(view: WebContentsView, size: { width: number; height: number }): void {
     if (this.#attachedView === view && this.#visible && this.#bounds) {
       this.#syncAttachedView();
