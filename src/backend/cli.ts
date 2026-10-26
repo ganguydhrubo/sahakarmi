@@ -165,14 +165,31 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
   );
 }
 
+/**
+ * The Claude SDK starts the CLI directly, without a shell, and Windows refuses to start a
+ * .cmd or .bat that way ("spawn EINVAL"). `where claude` lists the npm claude.cmd before
+ * claude.exe, so real executables and the bundled binary go first and scripts go last.
+ */
+export function orderClaudeCandidates(
+  found: string[],
+  bundled: string[],
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform !== "win32") return [...found, ...bundled];
+  const isScript = (path: string) => [".cmd", ".bat"].includes(extname(path).toLowerCase());
+  return [
+    ...new Set([...found.filter((path) => !isScript(path)), ...bundled, ...found.filter(isScript)]),
+  ];
+}
+
 export async function resolveClaudeCli(
   bundled: string[] = bundledClaudePaths(),
 ): Promise<ClaudeCliInfo> {
   const override = process.env.SAHKARMI_CLAUDE_PATH;
-  const candidates = [
-    ...(await collectCandidates("claude", override)),
-    ...(override?.trim() ? [] : bundled),
-  ];
+  const candidates = orderClaudeCandidates(
+    await collectCandidates("claude", override),
+    override?.trim() ? [] : bundled,
+  );
   let foundCandidate = false;
 
   for (const candidate of candidates) {
