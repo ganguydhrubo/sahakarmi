@@ -523,6 +523,64 @@
       .marquee-track li[aria-hidden="true"] { display: none; }
       .marquee { -webkit-mask-image: none; mask-image: none; }
     }
+    /* Telegram */
+    .tg-announce { display: inline-flex; align-items: center; gap: 8px; margin: 0 8px 12px 0; padding: 5px 14px 5px 5px; border-radius: 999px; border: 1px solid rgba(38, 165, 228, 0.45); background: rgba(38, 165, 228, 0.12); color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .tg-announce:hover { background: rgba(38, 165, 228, 0.22); }
+    .tg-announce svg { width: 24px; height: 24px; flex: none; }
+    .tg-announce b { color: #26a5e4; }
+    .tg-band { position: relative; overflow: hidden; --tg: #26a5e4; }
+    .tg-glow { position: absolute; inset: -20% -10% auto auto; width: 620px; height: 620px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--tg) 28%, transparent), transparent 65%); pointer-events: none; }
+    .tg-grid { position: relative; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
+    .tg-eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--tg); }
+    .tg-eyebrow .tg-logo { width: 28px; height: 28px; }
+    .tg-copy h2 { margin-bottom: 14px; }
+    .tg-steps { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 12px; }
+    .tg-steps li { display: flex; gap: 14px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+    .tg-steps h3 { font-size: 18px; margin-bottom: 4px; }
+    .tg-steps p { color: var(--text-2); font-size: 16px; margin: 0; }
+    .tg-num { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--tg); color: #fff; font: 800 16px var(--font-display); }
+    .tg-facts { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .tg-facts li { border: 1px solid color-mix(in srgb, var(--tg) 45%, transparent); background: color-mix(in srgb, var(--tg) 10%, transparent); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; }
+    .tg-note { color: var(--muted); font-size: 15px; margin-top: 14px; }
+    .tg-stage { display: grid; place-items: center; }
+    .tg-phone { width: min(360px, 100%); border-radius: 36px; padding: 12px; background: #0e1621; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: var(--shadow), 0 0 0 8px rgba(255, 255, 255, 0.03); color: #e9eef3; transform: rotate(-2deg); }
+    .tg-top { display: flex; align-items: center; gap: 12px; padding: 10px 12px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+    .tg-top .tg-logo { width: 40px; height: 40px; }
+    .tg-top b { display: block; font-size: 16px; }
+    .tg-top small { color: #7f91a4; font-size: 13px; }
+    .tg-chat { list-style: none; margin: 0; padding: 16px 6px; display: flex; flex-direction: column; gap: 10px; min-height: 360px; background: radial-gradient(circle at 30% 20%, rgba(38, 165, 228, 0.08), transparent 60%); }
+    .tg-msg { max-width: 84%; padding: 9px 12px 18px; border-radius: 16px; font-size: 14.5px; line-height: 1.4; position: relative; }
+    .tg-msg time { position: absolute; right: 10px; bottom: 4px; font-size: 11px; color: rgba(233, 238, 243, 0.55); }
+    .tg-msg.out { align-self: flex-end; background: #2b5278; border-bottom-right-radius: 4px; }
+    .tg-msg.in { align-self: flex-start; background: #182533; border-bottom-left-radius: 4px; }
+    .tg-msg.alert { border-left: 3px solid var(--turmeric); }
+    .tg-typing { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; color: #7f91a4; font-size: 13px; padding: 4px 8px; }
+    .tg-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--tg); animation: tg-dot 1.2s infinite; }
+    .tg-typing i:nth-child(2) { animation-delay: 0.15s; }
+    .tg-typing i:nth-child(3) { animation-delay: 0.3s; }
+    .tg-typing span { margin-left: 6px; }
+    @keyframes tg-dot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+    .tg-input { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; padding: 10px 10px 10px 16px; border-radius: 999px; background: #17212b; color: #7f91a4; font-size: 14px; }
+    .tg-input b { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--tg); color: #fff; }
+    .tg-input svg { width: 18px; height: 18px; }
+    .js .tg-stage .tg-chat > li { opacity: 0; transform: translateY(10px); }
+    .js .tg-stage.in .tg-chat > li { animation: tg-pop 0.5s var(--ease) forwards; }
+    .js .tg-stage.in .m2 { animation-delay: 0.6s; }
+    .js .tg-stage.in .m3 { animation-delay: 1.4s; }
+    .js .tg-stage.in .m4 { animation-delay: 2.2s; }
+    .js .tg-stage.in .m5 { animation-delay: 3s; }
+    @keyframes tg-pop { to { opacity: 1; transform: none; } }
+    .ln-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+    .ln-card { position: relative; }
+    .ln-icon { display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; margin-bottom: 12px; font-size: 20px; color: #0f1220; background: linear-gradient(135deg, var(--saffron), var(--turmeric)); }
+    @media (max-width: 900px) {
+      .tg-grid { grid-template-columns: 1fr; }
+      .tg-phone { transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .js .tg-stage .tg-chat > li { opacity: 1; transform: none; animation: none; }
+      .tg-typing i { animation: none; }
+    }
   </style>
 </head>
 <body>
@@ -568,6 +626,7 @@
       <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="wrap hero-grid">
         <div class="hero-copy">
+          <a class="tg-announce" href="#telegram"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><span data-i18n="tgAnnounce">New: give your team work from Telegram</span><b aria-hidden="true">→</b></a>
           <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Free · Open source · Version</span> <span data-release-version>latest</span></p>
           <h1><span data-i18n="h1a">Hire an AI team.</span> <span class="accent" data-i18n="h1b">Pay ₹0.</span></h1>
           <p class="rotator"><span data-i18n="rotPre">They</span> <span class="rot-words"><span data-i18n="rot1" class="on">chase your invoices.</span><span data-i18n="rot2">answer your customers.</span><span data-i18n="rot3">write your posts.</span><span data-i18n="rot4">research your market.</span><span data-i18n="rot5">fix your code.</span><span data-i18n="rot6">work while you sleep.</span></span></p>
@@ -652,6 +711,46 @@
           <li class="tile"><span class="tile-icon" aria-hidden="true">✓</span><h3 data-i18n="b7T">You approve the big moves</h3><p data-i18n="b7P">Payments, customer messages, posts and forms wait in your Approvals inbox.</p></li>
           <li class="tile tile-wide tile-lang"><span class="tile-big" aria-hidden="true">अ · A · অ</span><h3 data-i18n="b8T">Speaks your language</h3><p data-i18n="b8P">English, हिन्दी and বাংলা. INR with lakh and crore, GST and IST built in.</p></li>
         </ul>
+      </div>
+    </section>
+
+    <!-- Telegram -->
+    <section id="telegram" class="tg-band" aria-labelledby="tg-h">
+      <div class="tg-glow" aria-hidden="true"></div>
+      <div class="wrap tg-grid">
+        <div class="tg-copy reveal">
+          <p class="eyebrow tg-eyebrow"><svg class="tg-logo" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><span data-i18n="tgEyebrow">New: Telegram</span></p>
+          <h2 id="tg-h" data-i18n="tgH2">Your AI team, now in your pocket</h2>
+          <p class="lead" data-i18n="tgLead">Send a message on Telegram from your phone. Your coworker on your PC does the work and replies in the same chat. Set it up once, in about 2 minutes.</p>
+          <ol class="tg-steps"><li><span class="tg-num" aria-hidden="true">1</span><div><h3 data-i18n="tgS1T">Make your bot</h3><p data-i18n="tgS1P">In Telegram, open @BotFather and send /newbot. Pick any name. It gives you a long code called a token.</p></div></li><li><span class="tg-num" aria-hidden="true">2</span><div><h3 data-i18n="tgS2T">Paste it in Sahkarmi</h3><p data-i18n="tgS2P">Open Settings &gt; Telegram and paste the token. Not sure? Press Show me how and follow the picture for each step.</p></div></li><li><span class="tg-num" aria-hidden="true">3</span><div><h3 data-i18n="tgS3T">Pair and start chatting</h3><p data-i18n="tgS3P">Press Pair in Telegram, then Start. From now on, only your chat gets answers. Send work from anywhere.</p></div></li></ol>
+          <ul class="tg-facts"><li><span data-i18n="tgF1">Only your chat is answered</span></li><li><span data-i18n="tgF2">/coworkers shows your team, /use switches</span></li><li><span data-i18n="tgF3">Approvals reach your phone</span></li><li><span data-i18n="tgF4">Free: Telegram and the bot cost ₹0</span></li></ul>
+          <p class="tg-note" data-i18n="tgNote">Keep Sahkarmi open on your PC. Payments and messages to customers still wait for your OK in the app.</p>
+        </div>
+        <div class="tg-stage reveal" aria-hidden="true">
+          <div class="tg-phone">
+            <div class="tg-top"><svg class="tg-logo" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><div><b data-i18n="tgBot">Your Sahkarmi bot</b><small data-i18n="tgOnline">bot · only you</small></div></div>
+            <ul class="tg-chat">
+              <li class="tg-msg out m1"><span data-i18n="tgM1">Asha, make the GST invoice for Sharma Traders, ₹45,000</span><time>9:41</time></li>
+              <li class="tg-typing m2"><i></i><i></i><i></i><span data-i18n="tgTyping">Asha is typing</span></li>
+              <li class="tg-msg in m3"><span data-i18n="tgM2">Done. Invoice INV-0142 for ₹45,000 + 18% GST is saved in Shared/Invoices.</span><time>9:42</time></li>
+              <li class="tg-msg in alert m4"><span data-i18n="tgM3">Vikram needs your approval: send the quote to Sharma Traders. Open Sahkarmi to allow or deny it.</span><time>9:43</time></li>
+              <li class="tg-msg out m5"><span data-i18n="tgM4">/use Vikram</span><time>9:43</time></li>
+            </ul>
+            <div class="tg-input"><span data-i18n="tgInput">Message</span><b><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.4 11.2 19.6 5c.8-.3 1.4.2 1.2 1.3l-2.7 12.9c-.2.9-.8 1.1-1.5.7l-4.2-3.1-2 2c-.2.2-.4.4-.9.4l.3-4.3 7.8-7c.3-.3-.1-.5-.5-.2l-9.6 6-4.1-1.3c-.9-.3-.9-.9.1-1.3z"/></svg></b></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Learns -->
+    <section id="learns" aria-labelledby="ln-h">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow" data-i18n="lnEyebrow">Gets better every week</p>
+          <h2 id="ln-h" data-i18n="lnH2">A team that learns how you work</h2>
+          <p class="lead" data-i18n="lnLead">Most AI tools forget you when the chat ends. Sahkarmi coworkers keep what they learn, on your own PC, and get faster at your work.</p>
+        </div>
+        <ul class="grid ln-grid reveal"><li class="card ln-card"><span class="ln-icon" aria-hidden="true">✦</span><h3 data-i18n="ln1T">Learns new skills by itself</h3><p data-i18n="ln1P">After a long task, a fix or a correction from you, the coworker writes the steps down as a skill. Next time it follows them, and improves them.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">⌕</span><h3 data-i18n="ln2T">Remembers what was decided</h3><p data-i18n="ln2P">Coworkers search earlier chats, their own or the whole team's, to recall what was sent or promised, instead of guessing.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">☾</span><h3 data-i18n="ln3T">Works while you sleep</h3><p data-i18n="ln3P">Routines run hourly, daily or weekly on their own. The results are waiting for you in the morning.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">✈</span><h3 data-i18n="ln4T">Reach it from anywhere</h3><p data-i18n="ln4P">Telegram on your phone talks to the same team, with the same memory, as the app on your PC.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">⌂</span><h3 data-i18n="ln5T">Your PC, your data</h3><p data-i18n="ln5P">Skills, memory and chats are plain files on your computer. Open, edit or delete any of them. Skills never keep passwords, OTPs or card numbers.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">↑</span><h3 data-i18n="ln6T">Always the newest AI</h3><p data-i18n="ln6P">Sahkarmi keeps its own copy of OpenCode, Claude Code and Codex up to date, and switches to the new one when your coworkers are free.</p></li></ul>
       </div>
     </section>
 
@@ -1036,6 +1135,44 @@
         navPrivacy: "Privacy",
         navFaq: "FAQ",
         navCommunity: "Community",
+        tgAnnounce: "New: give your team work from Telegram",
+        tgEyebrow: "New: Telegram",
+        tgH2: "Your AI team, now in your pocket",
+        tgLead: "Send a message on Telegram from your phone. Your coworker on your PC does the work and replies in the same chat. Set it up once, in about 2 minutes.",
+        tgS1T: "Make your bot",
+        tgS1P: "In Telegram, open @BotFather and send /newbot. Pick any name. It gives you a long code called a token.",
+        tgS2T: "Paste it in Sahkarmi",
+        tgS2P: "Open Settings > Telegram and paste the token. Not sure? Press Show me how and follow the picture for each step.",
+        tgS3T: "Pair and start chatting",
+        tgS3P: "Press Pair in Telegram, then Start. From now on, only your chat gets answers. Send work from anywhere.",
+        tgF1: "Only your chat is answered",
+        tgF2: "/coworkers shows your team, /use switches",
+        tgF3: "Approvals reach your phone",
+        tgF4: "Free: Telegram and the bot cost ₹0",
+        tgNote: "Keep Sahkarmi open on your PC. Payments and messages to customers still wait for your OK in the app.",
+        tgBot: "Your Sahkarmi bot",
+        tgOnline: "bot · only you",
+        tgM1: "Asha, make the GST invoice for Sharma Traders, ₹45,000",
+        tgTyping: "Asha is typing",
+        tgM2: "Done. Invoice INV-0142 for ₹45,000 + 18% GST is saved in Shared/Invoices.",
+        tgM3: "Vikram needs your approval: send the quote to Sharma Traders. Open Sahkarmi to allow or deny it.",
+        tgM4: "/use Vikram",
+        tgInput: "Message",
+        lnEyebrow: "Gets better every week",
+        lnH2: "A team that learns how you work",
+        lnLead: "Most AI tools forget you when the chat ends. Sahkarmi coworkers keep what they learn, on your own PC, and get faster at your work.",
+        ln1T: "Learns new skills by itself",
+        ln1P: "After a long task, a fix or a correction from you, the coworker writes the steps down as a skill. Next time it follows them, and improves them.",
+        ln2T: "Remembers what was decided",
+        ln2P: "Coworkers search earlier chats, their own or the whole team's, to recall what was sent or promised, instead of guessing.",
+        ln3T: "Works while you sleep",
+        ln3P: "Routines run hourly, daily or weekly on their own. The results are waiting for you in the morning.",
+        ln4T: "Reach it from anywhere",
+        ln4P: "Telegram on your phone talks to the same team, with the same memory, as the app on your PC.",
+        ln5T: "Your PC, your data",
+        ln5P: "Skills, memory and chats are plain files on your computer. Open, edit or delete any of them. Skills never keep passwords, OTPs or card numbers.",
+        ln6T: "Always the newest AI",
+        ln6P: "Sahkarmi keeps its own copy of OpenCode, Claude Code and Codex up to date, and switches to the new one when your coworkers are free.",
         mini: "Download",
         chip: "Free · Open source · Version",
         h1a: "Hire an AI team.",
@@ -1303,6 +1440,44 @@
         navPrivacy: "गोपनीयता",
         navFaq: "सवाल",
         navCommunity: "समुदाय",
+        tgAnnounce: "नया: टेलीग्राम से अपनी टीम को काम दीजिए",
+        tgEyebrow: "नया: टेलीग्राम",
+        tgH2: "आपकी AI टीम, अब आपकी जेब में",
+        tgLead: "फ़ोन से टेलीग्राम पर मैसेज भेजिए. आपके PC पर आपका सहकर्मी काम करता है और उसी चैट में जवाब देता है. बस एक बार सेट करें, लगभग 2 मिनट में.",
+        tgS1T: "अपना बॉट बनाइए",
+        tgS1P: "टेलीग्राम में @BotFather खोलें और /newbot भेजें. कोई भी नाम चुनें. वह आपको एक लंबा कोड देगा, जिसे टोकन कहते हैं.",
+        tgS2T: "सहकर्मी में पेस्ट करें",
+        tgS2P: "Settings > Telegram खोलें और टोकन पेस्ट करें. पक्का नहीं? Show me how दबाएँ और हर कदम की तस्वीर देखकर चलें.",
+        tgS3T: "जोड़ें और चैट शुरू करें",
+        tgS3P: "Pair in Telegram दबाएँ, फिर Start. अब सिर्फ़ आपकी चैट को जवाब मिलेगा. कहीं से भी काम भेजिए.",
+        tgF1: "सिर्फ़ आपकी चैट को जवाब",
+        tgF2: "/coworkers से टीम देखें, /use से बदलें",
+        tgF3: "मंज़ूरी की सूचना फ़ोन पर",
+        tgF4: "मुफ़्त: टेलीग्राम और बॉट ₹0",
+        tgNote: "अपने PC पर सहकर्मी खुला रखें. पेमेंट और ग्राहकों को मैसेज अब भी ऐप में आपकी मंज़ूरी का इंतज़ार करते हैं.",
+        tgBot: "आपका सहकर्मी बॉट",
+        tgOnline: "बॉट · सिर्फ़ आप",
+        tgM1: "आशा, शर्मा ट्रेडर्स का GST इनवॉइस बनाओ, ₹45,000",
+        tgTyping: "आशा लिख रही है",
+        tgM2: "हो गया. ₹45,000 + 18% GST का इनवॉइस INV-0142, Shared/Invoices में सेव है.",
+        tgM3: "विक्रम को आपकी मंज़ूरी चाहिए: शर्मा ट्रेडर्स को कोटेशन भेजना. मंज़ूरी देने या मना करने के लिए सहकर्मी खोलें.",
+        tgM4: "/use Vikram",
+        tgInput: "मैसेज",
+        lnEyebrow: "हर हफ़्ते बेहतर",
+        lnH2: "एक टीम जो आपके काम का तरीका सीखती है",
+        lnLead: "ज़्यादातर AI टूल चैट ख़त्म होते ही सब भूल जाते हैं. सहकर्मी जो सीखते हैं, वह आपके अपने PC पर रखते हैं, और आपके काम में तेज़ होते जाते हैं.",
+        ln1T: "ख़ुद नई स्किल सीखता है",
+        ln1P: "लंबे काम, किसी सुधार या आपकी टोका-टाकी के बाद, सहकर्मी उन कदमों को एक स्किल की तरह लिख लेता है. अगली बार वही कदम अपनाता है, और उन्हें और बेहतर बनाता है.",
+        ln2T: "याद रखता है क्या तय हुआ था",
+        ln2P: "सहकर्मी पुरानी चैट खोजते हैं, अपनी या पूरी टीम की, ताकि अंदाज़ा लगाने की जगह याद रहे कि क्या भेजा या क्या वादा किया गया था.",
+        ln3T: "आप सोएँ, यह काम करे",
+        ln3P: "रूटीन हर घंटे, हर दिन या हर हफ़्ते अपने आप चलते हैं. सुबह नतीजे आपका इंतज़ार कर रहे होते हैं.",
+        ln4T: "कहीं से भी बात करें",
+        ln4P: "फ़ोन का टेलीग्राम उसी टीम से, उसी याददाश्त के साथ बात करता है, जो आपके PC के ऐप में है.",
+        ln5T: "आपका PC, आपका डेटा",
+        ln5P: "स्किल, याददाश्त और चैट आपके कंप्यूटर पर साधारण फ़ाइलें हैं. किसी को भी खोलें, बदलें या हटाएँ. स्किल में कभी पासवर्ड, OTP या कार्ड नंबर नहीं रहते.",
+        ln6T: "हमेशा सबसे नया AI",
+        ln6P: "सहकर्मी OpenCode, Claude Code और Codex की अपनी कॉपी अपडेट रखता है, और सहकर्मी खाली होने पर नई कॉपी पर चला जाता है.",
         mini: "डाउनलोड",
         chip: "मुफ़्त · ओपन सोर्स · वर्ज़न",
         h1a: "AI टीम रखिए.",
