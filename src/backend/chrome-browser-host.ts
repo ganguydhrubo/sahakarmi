@@ -17,6 +17,7 @@ import {
   type BrowserHostEvents,
   type BrowserSnapshot,
   type CoworkerBrowser,
+  checkUploadFiles,
   delay,
   isInputPoint,
   isPersistableBrowserUrl,
@@ -26,6 +27,7 @@ import {
   runBrowserTool,
   type StoredBrowserState,
   snapshotScript,
+  uploadThroughCdp,
   validateBounds,
   withTimeout,
 } from "./browser-host";
@@ -204,6 +206,10 @@ class CdpPipe {
 
   on(listener: CdpListener): void {
     this.#listeners.add(listener);
+  }
+
+  off(listener: CdpListener): void {
+    this.#listeners.delete(listener);
   }
 
   send<T = Record<string, unknown>>(
@@ -1311,6 +1317,24 @@ async function performCdpAction(
     }
     case "reload":
       await pipe.send("Page.reload", {}, sessionId);
+      return;
+    case "upload": {
+      const files = checkUploadFiles(action.paths);
+      await uploadThroughCdp(
+        {
+          send: (method, params = {}) => pipe.send(method, params, sessionId),
+          subscribe: (listener) => {
+            const handler: CdpListener = (method, params, eventSession) => {
+              if (eventSession === sessionId) listener(method, params);
+            };
+            pipe.on(handler);
+            return () => pipe.off(handler);
+          },
+        },
+        action.ref,
+        files,
+      );
+    }
   }
 }
 

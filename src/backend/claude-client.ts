@@ -17,6 +17,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
+import { ACT_DESCRIPTION } from "./browser-act";
 import type { ClaudeCliInfo } from "./cli";
 import {
   type AppServerNotification,
@@ -595,13 +596,23 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "act",
-            "Click, type, press a key, scroll, navigate, or reload in Sahkarmi's browser.",
+            ACT_DESCRIPTION,
             {
               tabId: z.string(),
               revision: z.number().int(),
               action: z.object({
-                type: z.enum(["click", "type", "key", "scroll", "back", "forward", "reload"]),
+                type: z.enum([
+                  "click",
+                  "type",
+                  "key",
+                  "scroll",
+                  "upload",
+                  "back",
+                  "forward",
+                  "reload",
+                ]),
                 ref: z.string().optional(),
+                paths: z.array(z.string()).max(10).optional(),
                 text: z.string().optional(),
                 submit: z.boolean().optional(),
                 key: z.string().optional(),

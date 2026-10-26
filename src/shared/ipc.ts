@@ -1402,6 +1402,7 @@ export type BrowserControlAction =
   | "type"
   | "key"
   | "scroll"
+  | "upload"
   | "back"
   | "forward"
   | "reload"

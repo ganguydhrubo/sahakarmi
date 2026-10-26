@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type {
   AccountUsage,
   AccountUsageLimit,
@@ -2153,6 +2153,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!this.#permissions || (params.tool !== "act" && params.tool !== "open")) return null;
     const args = isRecord(params.arguments) ? params.arguments : {};
     let category: PermissionRequest["category"] = "browser_navigation";
+    let paths: string[] = [];
     let action: string;
     if (params.tool === "open") {
       action = `Open ${getString(args, "url") ?? "a page"}`;
@@ -2170,8 +2171,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         target.url,
         browserAction.submit === true,
       );
+      if (type === "upload") {
+        // Uploading reads local files and hands them to the page: it follows the file-reading
+        // permission for those paths. Publishing afterwards is still a separate, gated click.
+        category = "file_read";
+        paths = Array.isArray(browserAction.paths)
+          ? browserAction.paths.filter((item): item is string => typeof item === "string")
+          : [];
+      }
       action = [
-        type,
+        type === "upload" ? `upload ${paths.map((path) => basename(path)).join(", ")} via` : type,
         target.label ? `"${target.label.slice(0, 80)}"` : null,
         target.url ? `on ${target.url.slice(0, 120)}` : null,
       ]
@@ -2180,7 +2189,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
     const verdict = await this.#authorize(provider, params.threadId, {
       category,
-      paths: [],
+      paths,
       action,
     });
     return verdict.allowed
@@ -4150,6 +4159,7 @@ function developerInstructions(bot: BotSummary, sharedRoot: string): string {
     "You have local computer, filesystem, command, and network access as requested by the owner.",
     `For every browser task, use ${SAHKARMI_BROWSER_NAMESPACE} directly. It is Sahkarmi's embedded browser, visible to the owner beside your thread. Never use another browser plugin inside Sahkarmi.`,
     "Approvals are mandatory: call sahkarmi.request_approval and then STOP before any payment or money movement, sending a message/email/WhatsApp to a customer or vendor, publishing content, submitting a government, tax, bank or marketplace form, deleting data, or sharing personal data. Never work around a rejection.",
+    `To attach a local file to a web page (a photo for a post, a document for a form), use ${SAHKARMI_BROWSER_NAMESPACE}.act with type "upload", the ref of the page's Upload / Add photo / Attach button or file input, and the file's full path in paths. Do not ask the owner to take over just to pick a file.`,
     "Never type passwords, OTPs or card details yourself. When a page asks for a password, OTP or PIN, take a snapshot and call sahkarmi.request_secure_input with that field's ref, then end your turn. For CAPTCHA, payment pages or anything else only a human should do, call sahkarmi.request_browser_takeover with a short reason and end your turn.",
     "Use sahkarmi.list_agents to discover other coworkers and sahkarmi.send_message to send them asynchronous messages or local files. Always set replyToMessageId when answering a coworker. Replies are never forwarded automatically.",
     "Use sahkarmi.create_coworker when the owner asks you to create, recruit, or assemble new coworkers or specialist software dev/business roles on the team.",
