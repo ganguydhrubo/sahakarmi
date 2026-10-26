@@ -717,6 +717,26 @@ function MessageBody(props: {
   );
 }
 
+/**
+ * The run of consecutive tool calls shown by the tool row at `index`, or null when that row
+ * continues the run of the row above it (the first row of a run shows the whole run).
+ */
+export function toolRunAt(messages: BotMessage[], index: number): ToolCallSummary[] | null {
+  const isTool = (message: BotMessage | undefined) => message?.kind === "tool" && !!message.tool;
+  if (!isTool(messages[index]) || isTool(messages[index - 1])) return null;
+  const tools: ToolCallSummary[] = [];
+  for (let next = index; isTool(messages[next]); next++) {
+    tools.push(messages[next]?.tool as ToolCallSummary);
+  }
+  return tools;
+}
+
+function sameTools(left: ToolCallSummary[] | null, right: ToolCallSummary[] | null): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((tool, index) => tool === right[index]);
+}
+
 /** Notes the app sends a coworker for the owner (approval results, browser hand-back). */
 const SYSTEM_NOTE =
   /^\[(Approval (APPROVED|REJECTED)|Browser handed back|Browser takeover declined|Secure input (entered|declined))\]/;
@@ -1155,9 +1175,12 @@ export function Conversation(props: ConversationProps) {
     const id = props.bot?.id;
     return id ? (drafts()[id] ?? EMPTY_DRAFT) : EMPTY_DRAFT;
   });
+  const messagesById = createMemo(
+    () => new Map(props.messages.map((message) => [message.id, message] as const)),
+  );
   const replyTarget = createMemo(() => {
     const id = currentDraft().replyToMessageId;
-    return id ? props.messages.find((message) => message.id === id) : undefined;
+    return id ? messagesById().get(id) : undefined;
   });
   const filteredPickerBots = createMemo(() => {
     const query = pickerQuery().trim().toLowerCase();
@@ -2187,7 +2210,7 @@ export function Conversation(props: ConversationProps) {
                             agentStatus={props.agentStatus}
                             modelOptions={props.modelOptions}
                             disabled={agentActivity() === "Working"}
-                            disabledReason="Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein."
+                            disabledReason={t("modelLockedWhileWorking")}
                             onChange={(model) => void selectAndConfirmModel(model)}
                           />
                           <label class="header-model-reasoning">
@@ -2334,13 +2357,10 @@ export function Conversation(props: ConversationProps) {
                 <strong>
                   {props.agentStatus.phase === "starting" ||
                   props.agentStatus.phase === "restarting"
-                    ? "AI tools se connection ho raha hai…"
-                    : "Agent CLI setup required"}
+                    ? t("agentConnecting")
+                    : t("agentSetupRequired")}
                 </strong>
-                <p>
-                  {props.agentStatus.message ??
-                    "Install and sign in to Codex CLI or Claude CLI, then restart Sahkarmi."}
-                </p>
+                <p>{props.agentStatus.message ?? t("agentSetupHint")}</p>
               </div>
               <Show
                 when={
@@ -2357,7 +2377,7 @@ export function Conversation(props: ConversationProps) {
                       )
                   }
                 >
-                  Setup guide
+                  {t("agentSetupGuide")}
                 </button>
               </Show>
             </section>
@@ -2445,34 +2465,23 @@ export function Conversation(props: ConversationProps) {
             {(message, index) => {
               const animateEntrance = message.animate === true && markMessageSeen(message.id);
               if (message.kind === "tool" && message.tool) {
-                const i = index();
-                const prevIsTool =
-                  i > 0 &&
-                  props.messages[i - 1]?.kind === "tool" &&
-                  Boolean(props.messages[i - 1]?.tool);
-                if (prevIsTool) {
-                  return null;
-                }
-                const tools: ToolCallSummary[] = [message.tool];
-                for (let next = i + 1; next < props.messages.length; next++) {
-                  const nextMsg = props.messages[next];
-                  if (nextMsg?.kind === "tool" && nextMsg.tool) {
-                    tools.push(nextMsg.tool);
-                  } else {
-                    break;
-                  }
-                }
-                if (tools.length === 1) {
-                  return (
-                    <div classList={{ "thinking-entry-animated": animateEntrance }}>
-                      <ToolCallCard tool={message.tool} />
-                    </div>
-                  );
-                }
+                // Recomputed as tool calls stream in: <For> maps each row only once.
+                const run = createMemo(() => toolRunAt(props.messages, index()), undefined, {
+                  equals: sameTools,
+                });
                 return (
-                  <div classList={{ "thinking-entry-animated": animateEntrance }}>
-                    <ToolGroupCard tools={tools} />
-                  </div>
+                  <Show when={run()}>
+                    {(tools) => (
+                      <div classList={{ "thinking-entry-animated": animateEntrance }}>
+                        <Show
+                          when={tools().length > 1}
+                          fallback={<ToolCallCard tool={tools()[0] as ToolCallSummary} />}
+                        >
+                          <ToolGroupCard tools={tools()} />
+                        </Show>
+                      </div>
+                    )}
+                  </Show>
                 );
               }
               return (
@@ -2499,9 +2508,11 @@ export function Conversation(props: ConversationProps) {
                             >
                               <MessageBody
                                 message={message}
-                                referencedMessage={props.messages.find(
-                                  (candidate) => candidate.id === message.replyToMessageId,
-                                )}
+                                referencedMessage={
+                                  message.replyToMessageId
+                                    ? messagesById().get(message.replyToMessageId)
+                                    : undefined
+                                }
                                 bots={props.bots}
                                 onSelectAgent={props.onSelectAgent}
                                 onOpenLink={(url) => void openMessageLink(url)}
@@ -2791,7 +2802,7 @@ export function Conversation(props: ConversationProps) {
                 disabled={!agentReady() || agentActivity() === "Working"}
                 disabledReason={
                   agentActivity() === "Working"
-                    ? "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein."
+                    ? t("modelLockedWhileWorking")
                     : t("modelConnectHint")
                 }
                 onChange={(model) => void selectAndConfirmModel(model)}
@@ -3355,8 +3366,8 @@ export function Conversation(props: ConversationProps) {
                     disabled={!agentReady() || agentActivity() === "Working"}
                     disabledReason={
                       agentActivity() === "Working"
-                        ? "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein."
-                        : "Models are available after an agent CLI connects."
+                        ? t("modelLockedWhileWorking")
+                        : t("modelConnectHint")
                     }
                     onChange={(model) => void selectAndConfirmModel(model)}
                   />
