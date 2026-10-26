@@ -5,6 +5,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-26
+
+### Changed
+
+- Settings > About: the founder's "D" now glows, floats and shifts colour gently (still when
+  Windows is set to reduce motion).
+
 ## [0.11.0] - 2026-10-26
 
 ### Added
