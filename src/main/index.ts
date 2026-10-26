@@ -1089,8 +1089,12 @@ function scheduleAiRuntimeChecks(): void {
  * Opening Sahkarmi while its update installer runs blocks the installer and starts the update
  * again. Instead, say so, close, and open again by itself once the installer has finished.
  */
+/** Passed when the app is opened again after waiting for an installer, so it never waits twice. */
+const AFTER_INSTALL_WAIT = "--after-install-wait";
+
 async function waitForRunningInstaller(): Promise<boolean> {
   if (process.platform !== "win32" || !app.isPackaged) return false;
+  if (process.argv.includes(AFTER_INSTALL_WAIT)) return false;
   const tasks = await new Promise<string>((resolve) => {
     execFile(
       "tasklist",
@@ -1099,13 +1103,13 @@ async function waitForRunningInstaller(): Promise<boolean> {
       (error, stdout) => resolve(error ? "" : stdout),
     );
   });
-  const installer = runningInstallerName(tasks);
+  const installer = runningInstallerName(tasks, app.getVersion());
   if (!installer) return false;
   const quote = (text: string) => `'${text.replace(/'/g, "''")}'`;
   const script = [
-    `Wait-Process -Name ${quote(installer.replace(/\.exe$/i, ""))} -Timeout 900 -ErrorAction SilentlyContinue`,
+    `Wait-Process -Name ${quote(installer.replace(/\.exe$/i, ""))} -Timeout 300 -ErrorAction SilentlyContinue`,
     "Start-Sleep -Seconds 2",
-    `Start-Process -FilePath ${quote(process.execPath)}`,
+    `Start-Process -FilePath ${quote(process.execPath)} -ArgumentList ${quote(AFTER_INSTALL_WAIT)}`,
   ].join("; ");
   spawn(
     "powershell.exe",
