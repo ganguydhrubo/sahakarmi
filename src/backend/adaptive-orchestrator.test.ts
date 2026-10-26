@@ -296,17 +296,21 @@ describe("AdaptiveOrchestrator Execution Lifecycle", () => {
     expect(run.tasks[1].dependencies).toEqual([run.tasks[0].id]);
     expect(run.tasks[2].dependencies).toEqual([run.tasks[1].id]);
 
-    // Poll until completed
-    for (let i = 0; i < 30; i++) {
+    // Poll until the run ends. It must end (or be stopped) before the temp folder is removed,
+    // or its last save fails after the test. The temp folder is not a TypeScript project, so
+    // the run's typecheck step can fail here; only a completed run is checked further.
+    for (let i = 0; i < 120; i++) {
       const current = await orchestrator.getRun(run.id);
-      if (current && current.status === "completed") {
+      if (current?.status === "completed") {
         expect(current.tasks.every((t) => t.status === "completed")).toBe(true);
         expect(current.messages.length).toBeGreaterThan(0); // Inter-agent handoffs occurred
         return;
       }
+      if (current?.status === "failed") return;
       await new Promise((r) => setTimeout(r, 100));
     }
-  });
+    await orchestrator.cancelRun(run.id);
+  }, 20_000);
 
   it("supports pausing, resuming, and cancelling a run", async () => {
     const dir = await makeTempDir();
