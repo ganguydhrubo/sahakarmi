@@ -5,6 +5,18 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.4] - 2026-10-27
+
+### Fixed
+
+- Sahkarmi no longer refuses to open with "Sahkarmi is finishing an update". In 0.12.3 any
+  Sahkarmi installer that was still running blocked the start: a first-time user who ticked
+  "Run Sahkarmi" at the end of setup, or an old installer stuck in the background, made the app
+  close again and again. Now the app waits only for an installer of a newer version, waits at
+  most 5 minutes, and never waits twice in a row.
+- Development runs use their own Windows app ID, so the installed Sahkarmi always shows its own
+  logo in the taskbar.
+
 ## [0.12.3] - 2026-10-26
 
 ### Fixed

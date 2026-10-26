@@ -341,8 +341,17 @@ describe("pending update files", () => {
       '"Sahkarmi.exe","2210","Console","1","180,000 K"',
       '"Sahkarmi-0.12.1-x64.exe","14456","Console","1","6,512 K"',
     ].join("\r\n");
-    expect(runningInstallerName(tasks)).toBe("Sahkarmi-0.12.1-x64.exe");
-    expect(runningInstallerName('"Sahkarmi.exe","2210","Console","1","180,000 K"')).toBeNull();
-    expect(runningInstallerName("")).toBeNull();
+    expect(runningInstallerName(tasks, "0.12.0")).toBe("Sahkarmi-0.12.1-x64.exe");
+    expect(
+      runningInstallerName('"Sahkarmi.exe","2210","Console","1","180,000 K"', "0.12.0"),
+    ).toBeNull();
+    expect(runningInstallerName("", "0.12.0")).toBeNull();
+  });
+
+  it("ignores a leftover installer for this version or an older one", () => {
+    const stuck = '"Sahkarmi-0.8.0-x64.exe","31176","Console","1","6,512 K"';
+    expect(runningInstallerName(stuck, "0.12.3")).toBeNull();
+    const same = '"Sahkarmi-0.12.3-x64.exe","31176","Console","1","6,512 K"';
+    expect(runningInstallerName(same, "0.12.3")).toBeNull();
   });
 });

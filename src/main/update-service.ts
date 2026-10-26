@@ -422,10 +422,13 @@ export function isFileInUse(error: unknown): boolean {
  * output. An installer that finds Sahkarmi open waits for it, so opening the app during an
  * install leaves both stuck.
  */
-export function runningInstallerName(tasklistCsv: string): string | null {
+export function runningInstallerName(tasklistCsv: string, currentVersion: string): string | null {
   for (const line of tasklistCsv.split(/\r?\n/)) {
     const name = line.match(/^"([^"]+)"/)?.[1];
-    if (name && INSTALLER_NAME.test(name)) return name;
+    const version = name?.match(INSTALLER_NAME)?.[1];
+    // An installer for this version or an older one can only be a leftover (seen: a 0.8.0
+    // installer stuck for a day), never an update this app should wait for.
+    if (name && version && compareVersions(version, currentVersion) > 0) return name;
   }
   return null;
 }
