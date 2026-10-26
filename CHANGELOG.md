@@ -5,6 +5,15 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-26
+
+### Fixed
+
+- Coworkers can now attach files from this computer to web pages themselves (a photo for a
+  Facebook or LinkedIn post, a document for a form). The browser tool gained an upload action
+  that fills the page's file picker without opening a system dialog, so an upload no longer
+  needs Take over. It follows the file-reading permission; publishing still asks you first.
+
 ## [0.11.1] - 2026-10-26
 
 ### Changed

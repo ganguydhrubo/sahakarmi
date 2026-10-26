@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import {
   app,
   type BrowserWindow,
@@ -18,6 +18,7 @@ import type {
   BrowserTab,
   BrowserVisibilityInput,
 } from "../shared/ipc";
+import { ACT_DESCRIPTION } from "./browser-act";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
@@ -70,6 +71,7 @@ export type BrowserAction =
   | { type: "type"; ref: string; text: string; submit?: boolean }
   | { type: "key"; key: string }
   | { type: "scroll"; deltaY: number }
+  | { type: "upload"; ref: string; paths: string[] }
   | { type: "back" }
   | { type: "forward" }
   | { type: "reload" };
@@ -95,7 +97,7 @@ export const BROWSER_DYNAMIC_TOOLS = [
         required: ["tabId"],
         additionalProperties: false,
       }),
-      functionTool("act", "Click, type, press a key, scroll, navigate back/forward, or reload.", {
+      functionTool("act", ACT_DESCRIPTION, {
         type: "object",
         properties: {
           tabId: { type: "string" },
@@ -105,9 +107,10 @@ export const BROWSER_DYNAMIC_TOOLS = [
             properties: {
               type: {
                 type: "string",
-                enum: ["click", "type", "key", "scroll", "back", "forward", "reload"],
+                enum: ["click", "type", "key", "scroll", "upload", "back", "forward", "reload"],
               },
               ref: { type: "string" },
+              paths: { type: "array", items: { type: "string" } },
               text: { type: "string" },
               submit: { type: "boolean" },
               key: { type: "string" },
@@ -822,6 +825,7 @@ function browserControlAction(tool: string, args: Record<string, unknown>): Brow
         action === "type" ||
         action === "key" ||
         action === "scroll" ||
+        action === "upload" ||
         action === "back" ||
         action === "forward" ||
         action === "reload"
@@ -1130,6 +1134,28 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
         true,
       );
       return;
+    case "upload": {
+      const files = checkUploadFiles(action.paths);
+      await withDevToolsDebugger(contents, () =>
+        uploadThroughCdp(
+          {
+            send: (method, params = {}) =>
+              contents.debugger.sendCommand(method, params) as Promise<Record<string, unknown>>,
+            subscribe: (listener) => {
+              const handler = (_event: unknown, method: string, params: Record<string, unknown>) =>
+                listener(method, params);
+              contents.debugger.on("message", handler);
+              return () => {
+                contents.debugger.off("message", handler);
+              };
+            },
+          },
+          action.ref,
+          files,
+        ),
+      );
+      return;
+    }
     case "back":
       if (contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
       return;
@@ -1139,6 +1165,144 @@ async function performAction(contents: WebContents, action: BrowserAction): Prom
     case "reload":
       contents.reload();
   }
+}
+
+/** DevTools access an upload needs; both the built-in and the Chrome browser provide it. */
+export interface UploadCdp {
+  send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  subscribe(listener: (method: string, params: Record<string, unknown>) => void): () => void;
+}
+
+export const MAX_UPLOAD_FILES = 10;
+const MAX_UPLOAD_BYTES = 200_000_000;
+/** How long a click may take to open the page's file picker. */
+const FILE_CHOOSER_WAIT_MS = 4_000;
+
+/** Full paths of existing files, at most 10 and 200 MB each. */
+export function checkUploadFiles(paths: readonly string[]): string[] {
+  if (paths.length === 0) throw new Error("paths needs at least one file.");
+  if (paths.length > MAX_UPLOAD_FILES) {
+    throw new Error(`Upload at most ${MAX_UPLOAD_FILES} files at a time.`);
+  }
+  return paths.map((raw) => {
+    const path = raw.trim();
+    if (!isAbsolute(path)) throw new Error(`Use the full path of the file: ${path}`);
+    let info: ReturnType<typeof statSync>;
+    try {
+      info = statSync(path);
+    } catch {
+      throw new Error(`File not found: ${path}`);
+    }
+    if (!info.isFile()) throw new Error(`Not a file: ${path}`);
+    if (info.size > MAX_UPLOAD_BYTES) throw new Error(`File is larger than 200 MB: ${path}`);
+    return resolve(path);
+  });
+}
+
+/**
+ * Attaches local files to a page. When the reference is (or wraps) a file input, the files are
+ * set on it directly. Otherwise the element is clicked with the page's file picker intercepted,
+ * so no system dialog opens, and the files go into the input that picker belongs to. Setting
+ * the files fires the input's change event, as a person choosing them would.
+ */
+export async function uploadThroughCdp(
+  cdp: UploadCdp,
+  ref: string,
+  files: readonly string[],
+): Promise<number> {
+  const selector = JSON.stringify(`[data-sahkarmi-ref=${JSON.stringify(ref)}]`);
+  const found = await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const node = document.querySelector(${selector});
+      if (!(node instanceof HTMLElement)) throw new Error('Element reference is no longer available.');
+      const isFile = (el) => el instanceof HTMLInputElement && el.type === 'file';
+      if (isFile(node)) return node;
+      const label = node.closest('label');
+      const candidates = [node.querySelector('input[type=file]'), label && label.control, label && label.querySelector('input[type=file]')];
+      return candidates.find(isFile) || null;
+    })()`,
+    returnByValue: false,
+  });
+  throwIfException(found);
+  const objectId = isRecord(found.result) ? found.result.objectId : undefined;
+  if (typeof objectId === "string") {
+    const multiple = await cdp.send("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: "function () { return this.multiple; }",
+      returnByValue: true,
+    });
+    const chosen =
+      isRecord(multiple.result) && multiple.result.value === true ? files : files.slice(0, 1);
+    await cdp.send("DOM.setFileInputFiles", { files: [...chosen], objectId });
+    await cdp.send("Runtime.releaseObject", { objectId }).catch(() => undefined);
+    return chosen.length;
+  }
+
+  await cdp.send("Page.enable");
+  await cdp.send("Page.setInterceptFileChooserDialog", { enabled: true });
+  let unsubscribe = () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const opened = new Promise<Record<string, unknown>>((done, fail) => {
+      timer = setTimeout(
+        () =>
+          fail(
+            new Error(
+              "Clicking that element did not open a file picker. Take a fresh snapshot and use the page's Upload, Add photo or Attach button (or its file input) as ref.",
+            ),
+          ),
+        FILE_CHOOSER_WAIT_MS,
+      );
+      unsubscribe = cdp.subscribe((method, params) => {
+        if (method === "Page.fileChooserOpened") done(params);
+      });
+    });
+    opened.catch(() => undefined);
+    const pointResult = await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const node = document.querySelector(${selector});
+        if (!(node instanceof HTMLElement)) throw new Error('Element reference is no longer available.');
+        node.scrollIntoView({ block: 'center', inline: 'center' });
+        const rect = node.getBoundingClientRect();
+        return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+      })()`,
+      returnByValue: true,
+    });
+    throwIfException(pointResult);
+    const point = isRecord(pointResult.result) ? pointResult.result.value : null;
+    if (!isInputPoint(point)) throw new Error("Element does not have a clickable position.");
+    for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+      await cdp.send(
+        "Input.dispatchMouseEvent",
+        type === "mouseMoved"
+          ? { type, x: point.x, y: point.y }
+          : { type, x: point.x, y: point.y, button: "left", clickCount: 1 },
+      );
+    }
+    const chooser = await opened;
+    const backendNodeId = chooser.backendNodeId;
+    if (typeof backendNodeId !== "number") {
+      throw new Error(
+        "The page opened a file picker Sahkarmi cannot fill. Ask the owner to take over.",
+      );
+    }
+    const chosen = chooser.mode === "selectMultiple" ? files : files.slice(0, 1);
+    await cdp.send("DOM.setFileInputFiles", { files: [...chosen], backendNodeId });
+    return chosen.length;
+  } finally {
+    if (timer) clearTimeout(timer);
+    unsubscribe();
+    await cdp.send("Page.setInterceptFileChooserDialog", { enabled: false }).catch(() => undefined);
+  }
+}
+
+function throwIfException(response: Record<string, unknown>): void {
+  const details = response.exceptionDetails;
+  if (!isRecord(details)) return;
+  const exception = isRecord(details.exception) ? details.exception.description : undefined;
+  throw new Error(
+    String(exception ?? details.text ?? "Page script failed.").replace(/^Error: /, ""),
+  );
 }
 
 export function isInputPoint(value: unknown): value is { x: number; y: number; direct?: boolean } {
@@ -1187,6 +1351,18 @@ function parseAction(value: unknown): BrowserAction {
       return { type: "key", key: requiredString(value, "key") };
     case "scroll":
       return { type: "scroll", deltaY: requiredNumber(value, "deltaY") };
+    case "upload": {
+      const raw = Array.isArray(value.paths)
+        ? value.paths
+        : typeof value.path === "string"
+          ? [value.path]
+          : [];
+      const paths = raw.filter((item): item is string => typeof item === "string" && !!item.trim());
+      if (paths.length === 0) {
+        throw new Error("paths is required: full paths of the files to upload.");
+      }
+      return { type: "upload", ref: requiredString(value, "ref"), paths };
+    }
     case "back":
     case "forward":
     case "reload":

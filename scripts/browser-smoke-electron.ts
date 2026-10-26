@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,6 +43,26 @@ const server = createServer((request, response) => {
     </script>`);
     return;
   }
+  if (url.pathname === "/upload") {
+    // Like Facebook's "Photo/video": the button makes a hidden file input and clicks it.
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    response.end(`<!doctype html>
+      <button aria-label="Add photo" onclick="
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.style.display = 'none';
+        input.onchange = async () => {
+          const file = input.files[0];
+          document.querySelector('#picked').textContent = file.name + ':' + (await file.text());
+        };
+        document.body.append(input);
+        input.click();
+      ">Add photo</button>
+      <input aria-label="Attach file" type="file" multiple onchange="document.querySelector('#direct').textContent = [...this.files].map((f) => f.name).join(',')" />
+      <button aria-label="Nothing">Nothing</button>
+      <output id="picked">none</output><output id="direct">none</output>`);
+    return;
+  }
   if (url.pathname === "/abort") {
     response.destroy();
     return;
@@ -68,7 +88,7 @@ async function main(): Promise<void> {
   const hardTimeout = setTimeout(() => {
     process.stderr.write("BrowserHost smoke test timed out.\n");
     app.exit(1);
-  }, 20_000);
+  }, 40_000);
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -215,6 +235,49 @@ async function main(): Promise<void> {
         "local download",
     );
     process.stdout.write("BrowserHost: download passed.\n");
+
+    const uploadFile = join(temporaryRoot, "smoke-photo.txt");
+    const uploadSecond = join(temporaryRoot, "smoke-second.txt");
+    await writeFile(uploadFile, "photo bytes");
+    await writeFile(uploadSecond, "second");
+    const uploadPage = await browser.open(`${origin}/upload`, "smoke-thread");
+    const uploadSnapshot = await browser.snapshot(uploadPage.id);
+    const addPhoto = uploadSnapshot.elements.find((element) => element.name === "Add photo");
+    if (!addPhoto) throw new Error("Add photo button is missing.");
+    const afterPicker = await browser.act(uploadPage.id, uploadSnapshot.revision, {
+      type: "upload",
+      ref: addPhoto.ref,
+      paths: [uploadFile],
+    });
+    await waitForValue(() =>
+      afterPicker.text.includes("smoke-photo.txt:photo bytes") ? true : undefined,
+    ).catch(async () => {
+      const latest = await browser.snapshot(uploadPage.id);
+      if (!latest.text.includes("smoke-photo.txt:photo bytes")) {
+        throw new Error(`Upload through a file picker failed: ${latest.text}`);
+      }
+    });
+    const attachSnapshot = await browser.snapshot(uploadPage.id);
+    const attach = attachSnapshot.elements.find((element) => element.name === "Attach file");
+    if (!attach) throw new Error("File input is missing.");
+    const afterDirect = await browser.act(uploadPage.id, attachSnapshot.revision, {
+      type: "upload",
+      ref: attach.ref,
+      paths: [uploadFile, uploadSecond],
+    });
+    if (!afterDirect.text.includes("smoke-photo.txt,smoke-second.txt")) {
+      throw new Error(`Upload into a file input failed: ${afterDirect.text}`);
+    }
+    const nothing = afterDirect.elements.find((element) => element.name === "Nothing");
+    if (!nothing) throw new Error("Plain button is missing.");
+    await expectFailure(() =>
+      browser.act(uploadPage.id, afterDirect.revision, {
+        type: "upload",
+        ref: nothing.ref,
+        paths: [uploadFile],
+      }),
+    );
+    process.stdout.write("BrowserHost: file upload passed.\n");
 
     const toolResult = await browser.handleDynamicTool({
       threadId: "smoke-thread",
