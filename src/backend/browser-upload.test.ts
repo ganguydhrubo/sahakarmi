@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getName: () => "Sahkarmi" } }));
 
-const { checkUploadFiles, uploadThroughCdp } = await import("./browser-host");
+const { checkUploadFiles, clickCatchingFilePicker, filePickerNotice, uploadThroughCdp } =
+  await import("./browser-host");
 
 const dir = mkdtempSync(join(tmpdir(), "sahkarmi-upload-"));
 const photo = join(dir, "banner.png");
@@ -111,5 +112,44 @@ describe("uploadThroughCdp", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("clickCatchingFilePicker", () => {
+  const click = (cdp: ReturnType<typeof fakeCdp>["cdp"]) => async () => {
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased" });
+  };
+
+  it("keeps the system dialog closed and reports a picker the click opened", async () => {
+    const { cdp, calls, listeners } = fakeCdp({ directInput: false, chooser: true });
+    await expect(clickCatchingFilePicker(cdp, click(cdp))).resolves.toBe(true);
+    const intercepts = calls.filter((call) => call.method === "Page.setInterceptFileChooserDialog");
+    expect(intercepts.map((call) => call.params.enabled)).toEqual([true, false]);
+    expect(listeners.size).toBe(0);
+  });
+
+  it("returns false for an ordinary click and turns interception off", async () => {
+    const { cdp, calls } = fakeCdp({ directInput: false, chooser: false });
+    await expect(clickCatchingFilePicker(cdp, click(cdp))).resolves.toBe(false);
+    const last = calls
+      .filter((call) => call.method === "Page.setInterceptFileChooserDialog")
+      .at(-1);
+    expect(last?.params.enabled).toBe(false);
+  });
+
+  it("still clicks when the page cannot intercept the picker", async () => {
+    const clicked = vi.fn(async () => {});
+    const cdp = {
+      send: async () => {
+        throw new Error("not supported");
+      },
+      subscribe: () => () => {},
+    };
+    await expect(clickCatchingFilePicker(cdp, clicked)).resolves.toBe(false);
+    expect(clicked).toHaveBeenCalledOnce();
+  });
+
+  it("tells the coworker how to upload to the same element", () => {
+    expect(filePickerNotice("8:12")).toContain('{"type":"upload","ref":"8:12"');
   });
 });

@@ -5,6 +5,18 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-10-26
+
+### Fixed
+
+- Coworkers made before 0.11.2 can upload too. Their AI runtime kept the old tool list, so they
+  did not know about upload and asked for Take over. Now, when a coworker clicks an Upload or
+  Add photo button, Sahkarmi keeps the Windows file dialog closed and tells the coworker to use
+  upload on the same button.
+- A coworker's click no longer opens a Windows "Open" file dialog over the app.
+- An AI tool update that failed no longer says "npm is not available" when npm is installed; it
+  shows npm's real reason (for example, a file in use).
+
 ## [0.11.2] - 2026-10-26
 
 ### Fixed

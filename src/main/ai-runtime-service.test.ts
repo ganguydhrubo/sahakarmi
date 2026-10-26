@@ -11,6 +11,7 @@ import {
   openCodeBinaryName,
   openCodePlatformPackage,
   parseIntegrity,
+  reasonOf,
   verifyFileIntegrity,
 } from "./ai-runtime-service";
 
@@ -30,6 +31,28 @@ describe("OpenCode runtime naming", () => {
   it("names the binary per platform", () => {
     expect(openCodeBinaryName("win32")).toBe("opencode.exe");
     expect(openCodeBinaryName("linux")).toBe("opencode");
+  });
+});
+
+describe("update failure reasons", () => {
+  it("says npm is missing only when it is", () => {
+    expect(reasonOf(new Error("spawn npm.cmd ENOENT"))).toBe(
+      "npm is not available on this computer",
+    );
+    expect(
+      reasonOf(
+        new Error(
+          "Command failed: npm.cmd install -g @openai/codex@latest\nnpm error code EBUSY\nnpm error syscall rename",
+        ),
+      ),
+    ).toMatch(/in use/);
+    expect(
+      reasonOf(
+        new Error(
+          "Command failed: npm.cmd install -g x\nnpm error code E403\nnpm error 403 Forbidden - GET https://registry.npmjs.org/x",
+        ),
+      ),
+    ).toBe("403 Forbidden - GET https://registry.npmjs.org/x");
   });
 });
 

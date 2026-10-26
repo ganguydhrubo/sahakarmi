@@ -18,7 +18,9 @@ import {
   type BrowserSnapshot,
   type CoworkerBrowser,
   checkUploadFiles,
+  clickCatchingFilePicker,
   delay,
+  filePickerNotice,
   isInputPoint,
   isPersistableBrowserUrl,
   isSnapshotElement,
@@ -27,6 +29,7 @@ import {
   runBrowserTool,
   type StoredBrowserState,
   snapshotScript,
+  type UploadCdp,
   uploadThroughCdp,
   validateBounds,
   withTimeout,
@@ -453,9 +456,14 @@ export class ChromeBrowserHost implements CoworkerBrowser {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
       const pipe = await this.#ensureTab(tab);
-      await withTimeout(performCdpAction(pipe, tab, action), 10_000, "Browser action timed out.");
+      const notice = await withTimeout(
+        performCdpAction(pipe, tab, action),
+        10_000,
+        "Browser action timed out.",
+      );
       await delay(300);
-      return this.#readSnapshot(tab, tab.revision + 1);
+      const snapshot = await this.#readSnapshot(tab, tab.revision + 1);
+      return notice ? { ...snapshot, notice } : snapshot;
     });
   }
 
@@ -1220,11 +1228,26 @@ async function evaluate(
   return result.result?.value;
 }
 
+/** DevTools access to one Chrome tab. */
+function tabCdp(pipe: CdpPipe, sessionId: string | null): UploadCdp {
+  return {
+    send: (method, params = {}) => pipe.send(method, params, sessionId),
+    subscribe: (listener) => {
+      const handler: CdpListener = (method, params, eventSession) => {
+        if (eventSession === sessionId) listener(method, params);
+      };
+      pipe.on(handler);
+      return () => pipe.off(handler);
+    },
+  };
+}
+
+/** Returns a notice for the coworker when the action needs a follow-up. */
 async function performCdpAction(
   pipe: CdpPipe,
   tab: ChromeTab,
   action: BrowserAction,
-): Promise<void> {
+): Promise<string | undefined> {
   const sessionId = tab.sessionId;
   switch (action.type) {
     case "click": {
@@ -1255,16 +1278,18 @@ async function performCdpAction(
         );
         return;
       }
-      for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
-        await pipe.send(
-          "Input.dispatchMouseEvent",
-          type === "mouseMoved"
-            ? { type, x: point.x, y: point.y }
-            : { type, x: point.x, y: point.y, button: "left", clickCount: 1 },
-          sessionId,
-        );
-      }
-      return;
+      const picker = await clickCatchingFilePicker(tabCdp(pipe, sessionId), async () => {
+        for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+          await pipe.send(
+            "Input.dispatchMouseEvent",
+            type === "mouseMoved"
+              ? { type, x: point.x, y: point.y }
+              : { type, x: point.x, y: point.y, button: "left", clickCount: 1 },
+            sessionId,
+          );
+        }
+      });
+      return picker ? filePickerNotice(action.ref) : undefined;
     }
     case "type": {
       await evaluate(
@@ -1320,20 +1345,7 @@ async function performCdpAction(
       return;
     case "upload": {
       const files = checkUploadFiles(action.paths);
-      await uploadThroughCdp(
-        {
-          send: (method, params = {}) => pipe.send(method, params, sessionId),
-          subscribe: (listener) => {
-            const handler: CdpListener = (method, params, eventSession) => {
-              if (eventSession === sessionId) listener(method, params);
-            };
-            pipe.on(handler);
-            return () => pipe.off(handler);
-          },
-        },
-        action.ref,
-        files,
-      );
+      await uploadThroughCdp(tabCdp(pipe, sessionId), action.ref, files);
     }
   }
 }

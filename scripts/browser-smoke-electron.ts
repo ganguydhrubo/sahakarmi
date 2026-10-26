@@ -244,9 +244,20 @@ async function main(): Promise<void> {
     const uploadSnapshot = await browser.snapshot(uploadPage.id);
     const addPhoto = uploadSnapshot.elements.find((element) => element.name === "Add photo");
     if (!addPhoto) throw new Error("Add photo button is missing.");
-    const afterPicker = await browser.act(uploadPage.id, uploadSnapshot.revision, {
-      type: "upload",
+    // A plain click on it must not open the Windows dialog; the coworker is told to upload.
+    const afterClick = await browser.act(uploadPage.id, uploadSnapshot.revision, {
+      type: "click",
       ref: addPhoto.ref,
+    });
+    if (!afterClick.notice?.includes('"type":"upload"')) {
+      throw new Error("A click that opens the file picker gave no upload notice.");
+    }
+    const pickerSnapshot = await browser.snapshot(uploadPage.id);
+    const addPhotoAgain = pickerSnapshot.elements.find((element) => element.name === "Add photo");
+    if (!addPhotoAgain) throw new Error("Add photo button is missing.");
+    const afterPicker = await browser.act(uploadPage.id, pickerSnapshot.revision, {
+      type: "upload",
+      ref: addPhotoAgain.ref,
       paths: [uploadFile],
     });
     await waitForValue(() =>

@@ -479,6 +479,11 @@ export function reasonOf(error: unknown): string {
   if (/ECONNRESET|ERR_CONNECTION|socket hang up/i.test(text))
     return "the connection was interrupted";
   if (/checksum|integrity/i.test(text)) return "the downloaded file did not match its checksum";
-  if (/npm|ENOENT/i.test(text)) return "npm is not available on this computer";
-  return text || "unexpected error";
+  // Only a missing npm is "not available"; any other npm failure keeps npm's own reason.
+  if (/ENOENT|is not recognized as an internal or external command/i.test(text))
+    return "npm is not available on this computer";
+  if (/EBUSY|EPERM/i.test(text))
+    return "a file of the tool is in use; close its windows and click Update now again";
+  const npmError = text.match(/npm (?:ERR!|error) (?!code\b)(.+)/i)?.[1]?.trim();
+  return npmError || text || "unexpected error";
 }
