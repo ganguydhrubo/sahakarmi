@@ -145,7 +145,9 @@ export function AboutCard(props: { version: string | null }) {
           onClick={() => open(FOUNDER_LINKEDIN)}
         >
           <span class="about-avatar-ring" aria-hidden="true" />
-          <span class="about-avatar-face">D</span>
+          <span class="about-avatar-face">
+            <span class="about-avatar-letter">D</span>
+          </span>
           <span class="about-avatar-badge">
             <LinkedInIcon />
           </span>

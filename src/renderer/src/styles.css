@@ -7233,11 +7233,51 @@ body {
   place-items: center;
   border: 3px solid var(--surface-1);
   border-radius: 50%;
-  background: linear-gradient(135deg, #e8772e, #b5451b);
+  background: linear-gradient(135deg, #e8772e, #b5451b, #7c5cff, #e8772e);
+  background-size: 300% 300%;
   color: #fff;
   font-family: var(--font-heading);
   font-size: 32px;
   font-weight: 800;
+  text-shadow: 0 0 12px rgb(255 255 255 / 0.45);
+  animation:
+    about-face-shift 7s ease-in-out infinite,
+    about-face-breathe 3.2s ease-in-out infinite;
+}
+
+.about-avatar-letter {
+  display: inline-block;
+  animation: about-letter-float 3.2s ease-in-out infinite;
+}
+
+@keyframes about-face-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes about-face-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--primary-rgb) / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgb(var(--primary-rgb) / 0);
+  }
+}
+
+@keyframes about-letter-float {
+  0%,
+  100% {
+    transform: translateY(1px) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.08);
+  }
 }
 
 .about-card .about-avatar-badge {
@@ -7552,7 +7592,9 @@ body {
   .about-made li,
   .about-glow,
   .about-card .about-avatar-ring,
-  .about-name {
+  .about-name,
+  .about-card .about-avatar-face,
+  .about-avatar-letter {
     animation: none;
   }
 
