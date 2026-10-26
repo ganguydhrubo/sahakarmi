@@ -23,6 +23,8 @@ export function isToolItem(item: ThreadItem): boolean {
  * Maps an App Server (or Claude adapter) thread item to the compact card shown in the thread.
  * Returns null for items that are not tool calls.
  */
+const PLAN_TOOL = /(^|[_.])update_plan$|^(TodoWrite|TaskCreate|TaskUpdate|TaskList|TaskGet)$/;
+
 export function toolCallFromItem(item: ThreadItem, completed: boolean): ToolCallSummary | null {
   if (!isToolItem(item)) return null;
   const status = toolStatus(item, completed);
@@ -56,6 +58,8 @@ export function toolCallFromItem(item: ThreadItem, completed: boolean): ToolCall
     default: {
       const namespace = stringField(item.namespace) ?? stringField(item.server);
       const tool = stringField(item.tool) ?? stringField(item.name) ?? "tool";
+      // Task-list tools show as the live plan card, not as tool rows.
+      if (PLAN_TOOL.test(tool)) return null;
       return {
         name: friendlyToolName(namespace, tool),
         kind: toolKind(namespace, tool),

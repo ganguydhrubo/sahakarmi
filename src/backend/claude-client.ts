@@ -61,6 +61,8 @@ interface ThreadRuntime {
   query: Query;
   activeTurn: ActiveTurn | null;
   consume: Promise<void>;
+  /** Claude Code's TaskCreate / TaskUpdate list for this thread, by task id. */
+  tasks?: Map<string, { text: string; status: string }>;
 }
 
 interface PendingServerRequest {
@@ -479,6 +481,28 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     completed: boolean,
     result: { text: string; isError: boolean } | null,
   ): void {
+    // Claude keeps its task list in TodoWrite (older CLIs) or TaskCreate / TaskUpdate (newer
+    // ones): either is shown as the turn's live plan, like Codex's.
+    const todos = use.name === "TodoWrite" && isRecord(use.input) ? use.input.todos : null;
+    if (!completed && Array.isArray(todos)) {
+      this.#emitPlan(
+        runtime,
+        turnId,
+        todos.filter(isRecord).map((todo) => ({
+          step: typeof todo.content === "string" ? todo.content : "",
+          status: typeof todo.status === "string" ? todo.status : "pending",
+        })),
+      );
+    } else if (this.#trackTask(runtime, use, completed, result)) {
+      this.#emitPlan(
+        runtime,
+        turnId,
+        [...(runtime.tasks?.values() ?? [])].map((task) => ({
+          step: task.text,
+          status: task.status,
+        })),
+      );
+    }
     this.emit("notification", {
       method: completed ? "item/completed" : "item/started",
       params: {
@@ -493,6 +517,50 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           output: result?.text ?? null,
         },
       },
+    });
+  }
+
+  /** Updates the thread's TaskCreate / TaskUpdate list; true when it changed. */
+  #trackTask(
+    runtime: ThreadRuntime,
+    use: { name: string; input: unknown },
+    completed: boolean,
+    result: { text: string; isError: boolean } | null,
+  ): boolean {
+    const input = isRecord(use.input) ? use.input : {};
+    if (use.name === "TaskCreate" && completed && result && !result.isError) {
+      // The id only arrives in the result: "Task #3 created successfully: …".
+      const id = /#(\d+)/.exec(result.text)?.[1];
+      const text = typeof input.subject === "string" ? input.subject.trim() : "";
+      if (!id || !text) return false;
+      runtime.tasks ??= new Map();
+      runtime.tasks.set(id, { text, status: "pending" });
+      return true;
+    }
+    if (use.name === "TaskUpdate" && !completed) {
+      const id = typeof input.taskId === "string" ? input.taskId.replace(/^#/, "") : null;
+      const task = id ? runtime.tasks?.get(id) : undefined;
+      if (!id || !task) return false;
+      if (input.status === "deleted") runtime.tasks?.delete(id);
+      else {
+        if (typeof input.status === "string") task.status = input.status;
+        if (typeof input.subject === "string" && input.subject.trim()) {
+          task.text = input.subject.trim();
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  #emitPlan(
+    runtime: ThreadRuntime,
+    turnId: string,
+    plan: Array<{ step: string; status: string }>,
+  ): void {
+    this.emit("notification", {
+      method: "turn/plan/updated",
+      params: { threadId: runtime.id, turnId, explanation: null, plan },
     });
   }
 
@@ -704,6 +772,23 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
                 .optional(),
             },
             (args) => call("sahkarmi", "create_coworker", args),
+          ),
+          tool(
+            "update_plan",
+            "Show the owner your task list for work with three or more steps. Send the whole list each time; mark one step in_progress while you work on it and completed when done.",
+            {
+              explanation: z.string().max(300).optional(),
+              steps: z
+                .array(
+                  z.object({
+                    step: z.string().min(1).max(200),
+                    status: z.enum(["pending", "in_progress", "completed"]),
+                  }),
+                )
+                .min(1)
+                .max(30),
+            },
+            (args) => call("sahkarmi", "update_plan", args),
           ),
           tool(
             "save_memory",

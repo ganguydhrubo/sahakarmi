@@ -4,6 +4,10 @@ import { toolCallFromItem } from "./tool-calls";
 describe("toolCallFromItem", () => {
   it("ignores normal messages", () => {
     expect(toolCallFromItem({ type: "agentMessage", id: "a", text: "hi" }, true)).toBeNull();
+    // Task-list tools are shown as the plan card instead of tool rows.
+    for (const tool of ["update_plan", "mcp__sahkarmi__update_plan", "TodoWrite", "TaskUpdate"]) {
+      expect(toolCallFromItem({ type: "toolUse", id: "p", tool, arguments: {} }, false)).toBeNull();
+    }
   });
 
   it("labels browser and approval tools for the cards", () => {

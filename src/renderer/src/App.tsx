@@ -38,6 +38,7 @@ import type {
   ScheduleCadence,
   ScheduledTask,
   SecureInputRequest,
+  TurnPlan,
   UpdateBotInput,
   UpdateStatus,
   WorkspaceState,
@@ -159,6 +160,7 @@ export function App() {
   const [uiErrors, setUiErrors] = createSignal<Record<string, BotMessage[]>>({});
   /** Messages on screen from the moment you press Send until the coworker's queue has them. */
   const [pendingSends, setPendingSends] = createSignal<Record<string, BotMessage[]>>({});
+  const [plans, setPlans] = createSignal<Record<string, TurnPlan | null>>({});
   let sendSequence = 0;
   const [conversationLoaded, setConversationLoaded] = createSignal<Record<string, boolean>>({});
   const [conversationRevisions, setConversationRevisions] = createSignal<Record<string, number>>(
@@ -590,6 +592,11 @@ export function App() {
     if (snapshot.revision < (conversationRevisions()[botId] ?? -1)) return;
     const initialLoad = conversationLoaded()[botId] !== true;
     setConversationRevisions((current) => ({ ...current, [botId]: snapshot.revision }));
+    setPlans((current) =>
+      JSON.stringify(current[botId] ?? null) === JSON.stringify(snapshot.plan ?? null)
+        ? current
+        : { ...current, [botId]: snapshot.plan ?? null },
+    );
     setLiveMessages((current) => {
       const previous = current[botId] ?? [];
       const previousById = new Map(previous.map((message) => [message.id, message]));
@@ -1356,6 +1363,7 @@ export function App() {
                     )}
                     onDecideApproval={decideApproval}
                     activeTurnId={activeBot() ? activeTurns()[activeBot()?.id ?? ""] : null}
+                    plan={plans()[activeBot()?.id ?? ""] ?? null}
                     agentPickerOpen={agentPickerOpen()}
                     creatingAgent={creatingAgent()}
                     settingsRequest={settingsRequest()}

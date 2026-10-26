@@ -838,6 +838,23 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       case "agent_thought_chunk":
         turn.thought += contentText(update.content);
         return;
+      case "plan": {
+        // ACP agents send their whole task list each time it changes.
+        const entries = Array.isArray(update.entries) ? update.entries : [];
+        this.emit("notification", {
+          method: "turn/plan/updated",
+          params: {
+            threadId: session.threadId,
+            turnId: turn.id,
+            explanation: null,
+            plan: entries.map((entry) => ({
+              step: getString(entry, "content") ?? "",
+              status: getString(entry, "status") ?? "pending",
+            })),
+          },
+        });
+        return;
+      }
       case "tool_call":
       case "tool_call_update": {
         const toolCallId = getString(update, "toolCallId");

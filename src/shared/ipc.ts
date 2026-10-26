@@ -1134,12 +1134,27 @@ export interface AgentExchangeSummary {
   deliveries: Array<Pick<QueueDelivery, "id" | "recipientBotId" | "status" | "position" | "error">>;
 }
 
+export type TurnPlanStepStatus = "pending" | "in_progress" | "completed";
+
+export interface TurnPlanStep {
+  text: string;
+  status: TurnPlanStepStatus;
+}
+
+/** The coworker's own task list for a turn (Codex plan, Claude to-dos, ACP plan). */
+export interface TurnPlan {
+  turnId: string;
+  explanation: string | null;
+  steps: TurnPlanStep[];
+}
+
 export interface ConversationSnapshot {
   botId: string;
   threadId: string | null;
   activeTurnId: string | null;
   revision: number;
   messages: ConversationMessage[];
+  plan?: TurnPlan | null;
 }
 
 export interface SearchMessagesInput {
