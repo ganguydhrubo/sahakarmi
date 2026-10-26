@@ -200,11 +200,20 @@ export function AboutCard(props: { version: string | null }) {
       </div>
 
       <div class="about-rise" style="--rise: 4">
-        <ul class="settings-taglines">
-          <li lang="en">Your AI team. Made in India.</li>
-          <li lang="hi">आपकी AI टीम. भारत में बनी.</li>
-          <li lang="bn">আপনার AI টিম. ভারতে তৈরি.</li>
-        </ul>
+        <div class="about-made">
+          <span class="about-made-flag" aria-hidden="true" />
+          <ul>
+            <li lang="en">
+              <span class="about-made-tag">EN</span>Your AI team. Made in India.
+            </li>
+            <li lang="hi">
+              <span class="about-made-tag">हि</span>आपकी AI टीम. भारत में बनी.
+            </li>
+            <li lang="bn">
+              <span class="about-made-tag">বা</span>আপনার AI টিম. ভারতে তৈরি.
+            </li>
+          </ul>
+        </div>
         <p>{t("aboutBody")}</p>
         <p class="settings-meta">{t("attribution")}</p>
       </div>
