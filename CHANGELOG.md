@@ -5,6 +5,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-26
+
 ### Fixed
 
 - Codex coworkers whose chat started before an update now get the new tools by themselves.
