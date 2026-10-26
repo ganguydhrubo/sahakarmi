@@ -1185,6 +1185,49 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(window.localStorage.getItem("sahkarmi:settings-section")).toBe("ai");
   });
 
+  it("grows the tool row as more tool calls stream into a live turn", async () => {
+    render(() => <App />);
+    await screen.findByRole("heading", { name: "Chief" });
+    const tool = (id: string, name: string, status: "running" | "completed") => ({
+      id,
+      turnId: "turn-live",
+      author: "assistant" as const,
+      text: "",
+      createdAt: "2026-10-26T12:00:00.000Z",
+      status: "completed" as const,
+      itemType: "toolCall",
+      tool: {
+        name,
+        kind: "command" as const,
+        status,
+        input: `{"command":"${name}"}`,
+        output: null,
+      },
+    });
+    const snapshot = (revision: number, messages: ReturnType<typeof tool>[]) => ({
+      type: "conversation" as const,
+      snapshot: {
+        botId: "chief",
+        threadId: "thread-chief",
+        activeTurnId: "turn-live",
+        revision,
+        messages,
+      },
+    });
+    emitAgentEvent?.(snapshot(5, [tool("t1", "git status", "running")]));
+    expect(await screen.findByText("git status")).toBeInTheDocument();
+    emitAgentEvent?.(
+      snapshot(6, [tool("t1", "git status", "completed"), tool("t2", "bun test", "running")]),
+    );
+    const group = await waitFor(() => {
+      const element = document.querySelector(".tool-group-card");
+      if (!element) throw new Error("tool group not shown");
+      return element as HTMLElement;
+    });
+    expect(group).toHaveTextContent("bun test");
+    expect(document.querySelectorAll(".tool-group-card")).toHaveLength(1);
+  });
+
   it("renders loaded history without replaying entrance animations", async () => {
     vi.mocked(window.sahkarmi.agent.readConversation).mockResolvedValueOnce({
       botId: "chief",
@@ -1274,7 +1317,7 @@ describe("Sahkarmi connected desktop shell", () => {
       });
 
     render(() => <App />);
-    await screen.findByText("AI tools se connection ho raha hai…");
+    await screen.findByText("Connecting to your AI tools…");
     emitAgentEvent?.({
       type: "status",
       status: {
@@ -1497,7 +1540,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await waitFor(() => expect(trigger).toBeDisabled());
     expect(trigger).toHaveAttribute(
       "title",
-      "Abhi kaam chal raha hai. Kaam khatam hone ke baad model badlein.",
+      "Work is in progress. Change the model after it finishes.",
     );
 
     emitAgentEvent?.({
