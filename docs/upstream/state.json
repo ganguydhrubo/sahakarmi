@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastProcessedTag": "v0.50.0",
+  "lastProcessedTag": "v0.51.1",
   "processed": {
     "v0.49.0": {
       "at": "2026-10-24T11:46:17.562Z",
@@ -10,6 +10,18 @@
     },
     "v0.50.0": {
       "at": "2026-10-25T14:50:25.476Z",
+      "licence": "polyform-nc",
+      "critical": true,
+      "issueUrl": null
+    },
+    "v0.51.0": {
+      "at": "2026-10-26T20:35:05.555Z",
+      "licence": "polyform-nc",
+      "critical": true,
+      "issueUrl": null
+    },
+    "v0.51.1": {
+      "at": "2026-10-26T20:35:07.721Z",
       "licence": "polyform-nc",
       "critical": true,
       "issueUrl": null
