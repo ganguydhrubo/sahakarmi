@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
@@ -15,6 +15,7 @@ import {
   type OpenDialogOptions,
   powerMonitor,
   protocol,
+  type SaveDialogOptions,
   screen,
   session,
   shell,
@@ -54,6 +55,15 @@ import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { TelegramBridge } from "../backend/telegram-bridge";
 import { UsageService } from "../backend/usage-service";
 import { VoiceService } from "../backend/voice/voice-service";
+import {
+  chatWorkflow,
+  parseWorkflowJson,
+  renderWorkflow,
+  routineWorkflow,
+  suggestAssignments,
+  teamRunWorkflow,
+  workflowFileName,
+} from "../backend/workflow-export";
 import {
   type AgentEvent,
   type AgentProviderId,
@@ -96,6 +106,7 @@ import {
   type StartOrchestratorRunInput,
   type TargetPeriod,
   type UpdateBotInput,
+  type WorkflowDoc,
 } from "../shared/ipc";
 import { AgentInitializationGate } from "./agent-initialization";
 import { notificationForAgentEvent } from "./agent-notifications";
@@ -608,6 +619,66 @@ function registerIpcHandlers(
   );
 
   handleTrusted(IPC_CHANNELS.routinesList, () => routines.state());
+  handleTrusted(IPC_CHANNELS.workflowExport, async (input: unknown) => {
+    if (!isObject(input) || !isObject(input.source)) throw new Error("Invalid export.");
+    const format = input.format === "txt" || input.format === "json" ? input.format : "md";
+    const source = input.source;
+    const bots = service.listBots();
+    let doc: WorkflowDoc;
+    if (source.kind === "chat") {
+      const botId = requireString(source.botId, "botId");
+      const bot = bots.find((candidate) => candidate.id === botId);
+      if (!bot) throw new Error("Unknown coworker.");
+      const snapshot = await service.readConversation(botId);
+      doc = chatWorkflow(bot, snapshot.messages, source.scope === "all" ? "all" : "last", bots);
+    } else if (source.kind === "team-run") {
+      const run = await orchestrator.getRun(requireString(source.runId, "runId"));
+      if (!run) throw new Error("That team run no longer exists.");
+      doc = teamRunWorkflow(run, bots);
+    } else if (source.kind === "routine") {
+      const state = await routines.state();
+      const routine = state.routines.find((candidate) => candidate.id === source.routineId);
+      if (!routine) throw new Error("That routine no longer exists.");
+      doc = routineWorkflow(routine, state, bots);
+    } else {
+      throw new Error("Invalid export.");
+    }
+    const folder = join(store.sharedRoot, "Exports");
+    await mkdir(folder, { recursive: true });
+    const options: SaveDialogOptions = {
+      title: "Export workflow",
+      defaultPath: join(folder, workflowFileName(doc, format)),
+      filters: [
+        format === "md"
+          ? { name: "Markdown", extensions: ["md"] }
+          : format === "txt"
+            ? { name: "Text", extensions: ["txt"] }
+            : { name: "Sahkarmi workflow (JSON)", extensions: ["json"] },
+      ],
+    };
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, renderWorkflow(doc, format), "utf8");
+    return { path: result.filePath };
+  });
+  handleTrusted(IPC_CHANNELS.workflowReadImport, async () => {
+    const options: OpenDialogOptions = {
+      title: "Import workflow",
+      properties: ["openFile"],
+      filters: [{ name: "Sahkarmi workflow (JSON)", extensions: ["json"] }],
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    const path = result.filePaths[0];
+    if (result.canceled || !path) return null;
+    if ((await stat(path)).size > 2_000_000)
+      throw new Error("That file is too large for a workflow.");
+    const doc = parseWorkflowJson(await readFile(path, "utf8"));
+    return { doc, suggestions: suggestAssignments(doc, service.listBots()) };
+  });
   handleTrusted(IPC_CHANNELS.routinesSave, (input: unknown) => {
     if (!isObject(input) || !Array.isArray(input.steps)) throw new Error("Invalid routine.");
     const known = new Set(service.listBots().map((bot) => bot.id));

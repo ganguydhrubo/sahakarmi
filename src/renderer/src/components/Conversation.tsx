@@ -70,6 +70,7 @@ import { StatusDot, statusLabel } from "./StatusDot";
 import { TaskQueueStrip } from "./TaskQueueStrip";
 import { ToolCallCard, type ToolCallSummary, ToolGroupCard } from "./ToolCallCard";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { WorkflowExportMenu } from "./WorkflowExportMenu";
 
 interface ConversationProps {
   agentStatus: AgentStatus;
@@ -2302,6 +2303,23 @@ export function Conversation(props: ConversationProps) {
                       </div>
                     </Show>
                   </div>
+                </Show>
+                <Show when={props.bot}>
+                  {(bot) => (
+                    <WorkflowExportMenu
+                      class="header-model-button workflow-export-header"
+                      options={[
+                        {
+                          label: "exportThisTask",
+                          source: { kind: "chat", botId: bot().id, scope: "last" },
+                        },
+                        {
+                          label: "exportWholeChat",
+                          source: { kind: "chat", botId: bot().id, scope: "all" },
+                        },
+                      ]}
+                    />
+                  )}
                 </Show>
                 <button
                   type="button"

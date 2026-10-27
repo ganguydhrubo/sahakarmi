@@ -12287,3 +12287,97 @@ fieldset.memory-filters {
 .extension-settings .feature-switch[aria-checked="true"] {
   background: var(--success-fill);
 }
+
+/* ---------- Workflow export / import ---------- */
+.workflow-export {
+  position: relative;
+  display: inline-flex;
+}
+
+.workflow-export > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.workflow-export-popover {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  width: 260px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+  color: var(--text-primary);
+  padding: 10px;
+  text-align: left;
+}
+
+.workflow-export-popover .segmented {
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
+.workflow-export-popover .segmented button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  padding: 4px 12px;
+}
+
+.workflow-export-popover .segmented button.segmented-active {
+  background: var(--brand-indigo);
+  color: #fbf7f0;
+}
+
+.workflow-export-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workflow-export-popover .workflow-export-format {
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.workflow-export-popover .workflow-export-format:hover:not(:disabled) {
+  background: var(--sahkarmi-hover);
+}
+
+.workflow-export-popover small {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.workflow-export-popover .workflow-export-message {
+  color: var(--text-primary);
+}
+
+.workflow-import {
+  margin-bottom: 16px;
+}
+
+.workflow-import-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

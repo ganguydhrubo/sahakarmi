@@ -141,6 +141,8 @@ export const IPC_CHANNELS = {
   mcpGithubJson: "mcp:github-json",
   mcpSetEnabled: "mcp:set-enabled",
   mcpRemove: "mcp:remove",
+  workflowExport: "workflow:export",
+  workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
   voiceInstall: "voice:install",
   voiceCancel: "voice:cancel",
@@ -1679,7 +1681,63 @@ export interface SahkarmiDesktopApi {
   telegram: TelegramDesktopApi;
   customSkills: CustomSkillsDesktopApi;
   mcp: McpDesktopApi;
+  workflow: WorkflowDesktopApi;
   voice: VoiceDesktopApi;
+}
+
+export type WorkflowFormat = "md" | "txt" | "json";
+
+/** What to export: one coworker's chat (its last task or all), a team run, or a routine. */
+export type WorkflowExportSource =
+  | { kind: "chat"; botId: string; scope: "last" | "all" }
+  | { kind: "team-run"; runId: string }
+  | { kind: "routine"; routineId: string };
+
+export interface WorkflowTimelineEntry {
+  at?: string;
+  by: string;
+  kind: "asked" | "said" | "note" | "step" | "message" | "task";
+  text: string;
+  detail?: string;
+  status?: string;
+}
+
+/** An exported workflow ("sahkarmi.workflow/v1"); the .json export is exactly this. */
+export interface WorkflowDoc {
+  format: "sahkarmi.workflow/v1";
+  name: string;
+  exportedAt: string;
+  source: "chat" | "team-run" | "routine";
+  goal?: string;
+  coworkers: Array<{ name: string; role?: string; model?: string }>;
+  /** The reusable recipe: what each coworker is asked to do, in order. */
+  steps: Array<{ by: string; do: string }>;
+  schedule?: RoutineCadence;
+  /** What actually happened, oldest first. */
+  timeline: WorkflowTimelineEntry[];
+  result?: { status: string; summary?: string; files: string[] };
+  run?: {
+    startedAt: string | null;
+    finishedAt: string | null;
+    durationMs: number | null;
+    toolCalls: number | null;
+  };
+}
+
+export interface WorkflowImportPreview {
+  doc: WorkflowDoc;
+  /** Coworker name in the file → the owner's coworker id that best matches it. */
+  suggestions: Record<string, string>;
+}
+
+export interface WorkflowDesktopApi {
+  /** Asks where to save; null when the owner cancels. */
+  export: (
+    source: WorkflowExportSource,
+    format: WorkflowFormat,
+  ) => Promise<{ path: string } | null>;
+  /** Asks for a .json workflow and reads it; null when the owner cancels. */
+  readImport: () => Promise<WorkflowImportPreview | null>;
 }
 
 /** A skill the owner added (pasted or from a GitHub repo), kept in Shared/Skills/Custom/<id>/. */

@@ -295,6 +295,10 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, { id, enabled }),
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRemove, { id }),
   },
+  workflow: {
+    export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),
+    readImport: () => ipcRenderer.invoke(IPC_CHANNELS.workflowReadImport),
+  },
   voice: {
     getState: () => ipcRenderer.invoke(IPC_CHANNELS.voiceGetState),
     install: (modelId) => ipcRenderer.invoke(IPC_CHANNELS.voiceInstall, modelId),

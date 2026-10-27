@@ -7,6 +7,7 @@ import type {
   RoutineStepStatus,
   RoutinesState,
   SaveRoutineInput,
+  WorkflowImportPreview,
 } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
@@ -19,6 +20,7 @@ import {
   describeCadence,
   localeTag,
 } from "./ScheduleControls";
+import { WorkflowExportMenu } from "./WorkflowExportMenu";
 
 const RUN_STATUS: Record<RoutineRun["status"], MessageKey> = {
   running: "routineStatusRunning",
@@ -104,6 +106,33 @@ export function RoutinesView(props: {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
+  const [importing, setImporting] = createSignal<WorkflowImportPreview | null>(null);
+  const [assign, setAssign] = createSignal<Record<string, string>>({});
+  const [notice, setNotice] = createSignal<string | null>(null);
+
+  function startImport() {
+    setNotice(null);
+    void act(async () => {
+      const preview = await window.sahkarmi.workflow.readImport();
+      if (!preview) return;
+      setAssign(preview.suggestions);
+      setImporting(preview);
+    });
+  }
+
+  function finishImport(preview: WorkflowImportPreview) {
+    void act(async () => {
+      const ids = new Set(props.bots.map((bot) => bot.id));
+      const steps = preview.doc.steps.map((step) => {
+        const botId = assign()[step.by];
+        if (!botId || !ids.has(botId)) throw new Error(t("importAssign"));
+        return { botId, instruction: step.do };
+      });
+      await props.onSave({ name: preview.doc.name, steps, cadence: null, enabled: true });
+      setImporting(null);
+      setNotice(t("importDone", { name: preview.doc.name }));
+    });
+  }
 
   const selected = createMemo(
     () =>
@@ -184,6 +213,9 @@ export function RoutinesView(props: {
       <header class="center-view-header window-drag">
         <h1 id="routines-heading">{t("navRoutines")}</h1>
         <div class="center-view-actions">
+          <button type="button" disabled={props.bots.length === 0 || busy()} onClick={startImport}>
+            {t("importWorkflow")}
+          </button>
           <button
             type="button"
             class="button-primary"
@@ -196,6 +228,62 @@ export function RoutinesView(props: {
       </header>
       <div class="center-view-body">
         <p class="center-view-intro">{t("routinesIntro")}</p>
+        <Show when={notice()}>
+          <p class="settings-meta" role="status">
+            {notice()}
+          </p>
+        </Show>
+        <Show when={importing()}>
+          {(preview) => (
+            <section class="workflow-import settings-card" aria-label={t("importWorkflow")}>
+              <h2>{t("importTitle", { name: preview().doc.name })}</h2>
+              <p class="settings-meta">
+                {t("importSteps", { count: String(preview().doc.steps.length) })}
+              </p>
+              <ol class="workflow-import-steps">
+                <For each={preview().doc.steps}>
+                  {(step) => (
+                    <li>
+                      <strong>{step.by || "—"}:</strong> {step.do.split(/\r?\n/)[0]}
+                    </li>
+                  )}
+                </For>
+              </ol>
+              <h3>{t("importAssign")}</h3>
+              <For each={[...new Set(preview().doc.steps.map((step) => step.by))]}>
+                {(name) => (
+                  <label class="voice-field">
+                    <span>{name || "—"}</span>
+                    <select
+                      value={assign()[name] ?? ""}
+                      onChange={(event) => {
+                        const botId = event.currentTarget.value;
+                        setAssign((current) => ({ ...current, [name]: botId }));
+                      }}
+                    >
+                      <For each={props.bots}>
+                        {(bot) => <option value={bot.id}>{bot.name}</option>}
+                      </For>
+                    </select>
+                  </label>
+                )}
+              </For>
+              <div class="settings-buttons">
+                <button
+                  type="button"
+                  class="button-primary"
+                  disabled={busy()}
+                  onClick={() => finishImport(preview())}
+                >
+                  {t("importCreate")}
+                </button>
+                <button type="button" disabled={busy()} onClick={() => setImporting(null)}>
+                  {t("importCancel")}
+                </button>
+              </div>
+            </section>
+          )}
+        </Show>
         <Show when={error()}>
           <p class="center-view-error" role="alert">
             {error()}
@@ -334,6 +422,14 @@ export function RoutinesView(props: {
                               </p>
                             </div>
                             <div class="routine-actions">
+                              <WorkflowExportMenu
+                                options={[
+                                  {
+                                    label: "exportButton",
+                                    source: { kind: "routine", routineId: routine().id },
+                                  },
+                                ]}
+                              />
                               <button
                                 type="button"
                                 class="button-primary"
