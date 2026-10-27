@@ -283,6 +283,8 @@ export function classifyBrowserAction(
   pageUrl: string,
   submit: boolean,
 ): PermissionCategory {
+  // Pasting puts text in a field like typing does; it never submits by itself.
+  if (actionType === "paste") return "browser_interaction";
   if (!["click", "type", "key"].includes(actionType)) return "browser_navigation";
   if (actionType === "type" && !submit) return "browser_interaction";
   const text = `${label} ${actionType === "key" ? "" : ""}`.trim();

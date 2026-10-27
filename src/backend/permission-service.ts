@@ -43,7 +43,14 @@ const MAX_GRANT_HOURS = 24 * 7;
 export type PermissionAsker = (
   request: PermissionRequest,
   decision: PermissionDecision,
-) => Promise<"approved" | "rejected" | "timed-out">;
+) => Promise<"approved" | "rejected" | "timed-out" | "deferred">;
+
+/**
+ * Said to a coworker whose runtime cannot wait for the owner: the request stays in the inbox and
+ * the coworker hears the decision later.
+ */
+export const DEFERRED_APPROVAL_REASON =
+  "Waiting for the owner's approval. Do not retry now: end your turn. You will get a message when the owner decides; if they approve, repeat exactly the same action and it will go through without asking again.";
 
 export interface AuthorizeResult {
   allowed: boolean;
@@ -191,12 +198,14 @@ export class PermissionService {
       await this.#record(safeRequest, decision, "denied");
       return { allowed: false, reason: "No one is available to approve this action." };
     }
-    let outcome: "approved" | "rejected" | "timed-out";
+    let outcome: "approved" | "rejected" | "timed-out" | "deferred";
     try {
       outcome = await this.#asker(safeRequest, decision);
     } catch {
       outcome = "rejected";
     }
+    // Still undecided: recorded once the owner decides and the coworker repeats the action.
+    if (outcome === "deferred") return { allowed: false, reason: DEFERRED_APPROVAL_REASON };
     await this.#record(safeRequest, decision, outcome);
     if (outcome === "approved") return { allowed: true, reason: "Approved by the owner." };
     return {

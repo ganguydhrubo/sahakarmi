@@ -2,15 +2,76 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { app, BrowserWindow, webContents } from "electron";
+import { app, BrowserWindow, clipboard, webContents } from "electron";
 import { BrowserHost } from "../src/backend/browser-host";
 
 let cachedPageVersion = 1;
 let savedDraft = "none";
 const pageLoads = new Map<string, number>();
 
+/**
+ * A grid that takes input the way Google Sheets does: keys go to a hidden editable frame, a cell
+ * starts editing only on a real key press (inserted text alone is thrown away), Tab and Enter
+ * save the cell and move, and a paste of tab-separated lines fills rows and columns.
+ */
+const SHEET_PAGE = `<!doctype html>
+  <style>td { border: 1px solid #999; width: 60px; height: 20px }</style>
+  <table><tbody id="grid"></tbody></table>
+  <iframe id="sink" style="position:absolute; left:-1000px; width:10px; height:10px"
+    srcdoc="<body contenteditable='true'></body>"></iframe>
+  <svg role="button" aria-label="Menu" width="20" height="20"
+    onclick="cells.MENU = 'open'; show()"><rect width="20" height="20"></rect></svg>
+  <output id="cells">{}</output>
+  <script>
+    const cells = {};
+    let row = 0, col = 0, startCol = 0, editing = false;
+    const frame = document.getElementById('sink');
+    const sink = () => frame.contentDocument.body;
+    const name = (r, c) => String.fromCharCode(65 + c) + (r + 1);
+    const show = () => { document.getElementById('cells').textContent = JSON.stringify(cells); };
+    const focusSink = () => { frame.contentWindow.focus(); sink().focus(); };
+    const commit = () => {
+      if (editing) { cells[name(row, col)] = sink().textContent; editing = false; show(); }
+      sink().textContent = '';
+    };
+    for (let r = 0; r < 6; r += 1) {
+      const tr = document.getElementById('grid').insertRow();
+      for (let c = 0; c < 4; c += 1) {
+        const td = tr.insertCell();
+        td.setAttribute('role', 'gridcell');
+        td.setAttribute('aria-label', 'Cell ' + name(r, c));
+        td.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          row = r; col = c; startCol = c; editing = false;
+          focusSink();
+        });
+      }
+    }
+    frame.addEventListener('load', () => {
+      const doc = frame.contentDocument;
+      doc.addEventListener('keydown', (event) => {
+        if (event.key === 'Tab') { event.preventDefault(); commit(); col += 1; return; }
+        if (event.key === 'Enter') { event.preventDefault(); commit(); row += 1; col = startCol; return; }
+        if (event.key.length === 1 && !event.ctrlKey && !editing) { editing = true; sink().textContent = ''; }
+      });
+      doc.addEventListener('input', () => { if (!editing) sink().textContent = ''; });
+      doc.addEventListener('paste', (event) => {
+        event.preventDefault();
+        event.clipboardData.getData('text/plain').split(/\\r?\\n/).forEach((line, i) =>
+          line.split('\\t').forEach((value, j) => { cells[name(row + i, col + j)] = value; }));
+        show();
+      });
+      focusSink();
+    });
+  </script>`;
+
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  if (url.pathname === "/sheet") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(SHEET_PAGE);
+    return;
+  }
   if (url.pathname === "/cached") {
     response.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
@@ -112,7 +173,7 @@ async function main(): Promise<void> {
   const hardTimeout = setTimeout(() => {
     process.stderr.write("BrowserHost smoke test timed out.\n");
     app.exit(1);
-  }, 40_000);
+  }, 90_000);
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -189,7 +250,10 @@ async function main(): Promise<void> {
 
     const child = result.elements.find((element) => element.name === "Child");
     if (!child) throw new Error("Child-tab control is missing.");
-    await browser.act(tab.id, result.revision, { type: "click", ref: child.ref });
+    const childClick = await browser.act(tab.id, result.revision, {
+      type: "click",
+      ref: child.ref,
+    });
     await waitForValue(() =>
       browser
         .listTabs()
@@ -200,6 +264,10 @@ async function main(): Promise<void> {
       .find((candidate) => candidate.id !== tab.id && candidate.url.includes("/child"));
     if (childTab?.ownerThreadId !== "smoke-thread" || childTab.ownerBotId !== "smoke-bot") {
       throw new Error("A target=_blank tab did not preserve agent ownership.");
+    }
+    // Naukri job titles open like this: the coworker must be told which tab to read.
+    if (!childClick.notice?.includes(childTab.id)) {
+      throw new Error(`A click that opened a tab did not say so: ${childClick.notice ?? "none"}`);
     }
     process.stdout.write("BrowserHost: child-tab ownership passed.\n");
 
@@ -380,6 +448,79 @@ async function main(): Promise<void> {
     for (const tab of [ownerDraft, coworkerDraft, gone, notes]) await browser.close(tab.id);
     process.stdout.write("BrowserHost: same-site tab refresh passed.\n");
 
+    // A spreadsheet on a hidden panel, as when a coworker fills Google Sheets, while the owner
+    // types in the app's own chat box: the coworker's page must never take the keyboard.
+    const sheet = await browser.open(`${origin}/sheet`, "smoke-thread");
+    const sheetCells = async (): Promise<Record<string, string>> => {
+      const page = await browser.snapshot(sheet.id);
+      return JSON.parse(/\{.*\}/.exec(page.text)?.[0] ?? "{}") as Record<string, string>;
+    };
+    const clickCell = async (cell: string): Promise<number> => {
+      const page = await browser.snapshot(sheet.id);
+      const target = page.elements.find((element) => element.name === `Cell ${cell}`);
+      if (!target) throw new Error(`Sheet cell ${cell} was not in the snapshot.`);
+      return (await browser.act(sheet.id, page.revision, { type: "click", ref: target.ref }))
+        .revision;
+    };
+    await browser.act(sheet.id, await clickCell("A1"), {
+      type: "type",
+      text: "17-Oct\tFri\n19-Oct\tSun",
+      // Like a person in Google Sheets: Enter saves the last cell.
+      submit: true,
+    });
+    const typedCells = await sheetCells();
+    if (
+      typedCells.A1 !== "17-Oct" ||
+      typedCells.B1 !== "Fri" ||
+      typedCells.A2 !== "19-Oct" ||
+      typedCells.B2 !== "Sun"
+    ) {
+      throw new Error(
+        `Typing into the sheet did not fill its cells: ${JSON.stringify(typedCells)}`,
+      );
+    }
+    const ownerClipboard = `owner clipboard ${Date.now()}`;
+    clipboard.writeText(ownerClipboard);
+    await browser.act(sheet.id, await clickCell("A3"), {
+      type: "paste",
+      text: "23-Oct\tThu\tपूरा\n24-Oct\tFri\tdone",
+    });
+    const pastedCells = await sheetCells();
+    if (pastedCells.A3 !== "23-Oct" || pastedCells.C3 !== "पूरा" || pastedCells.C4 !== "done") {
+      throw new Error(
+        `Pasting into the sheet did not fill its cells: ${JSON.stringify(pastedCells)}`,
+      );
+    }
+    if (clipboard.readText() !== ownerClipboard) {
+      throw new Error("Pasting did not give the owner's clipboard back.");
+    }
+    await browser.act(sheet.id, await clickCell("D1"), { type: "type", text: "x" });
+    await browser.act(sheet.id, (await browser.snapshot(sheet.id)).revision, {
+      type: "key",
+      key: "Shift+Tab",
+    });
+    if ((await sheetCells()).D1 !== "x") throw new Error("A key combo did not reach the sheet.");
+    if (
+      webContents
+        .getAllWebContents()
+        .some((page) => page.getURL().includes("/sheet") && page.isFocused())
+    ) {
+      throw new Error("A coworker's browser action took keyboard focus from the owner's chat box.");
+    }
+    // An icon button drawn as SVG (Instagram's menu, X's Post) is clickable.
+    const menuPage = await browser.snapshot(sheet.id);
+    const menu = menuPage.elements.find((element) => element.name === "Menu");
+    if (!menu) throw new Error("The SVG menu button was not in the snapshot.");
+    await browser.act(sheet.id, menuPage.revision, { type: "click", ref: menu.ref });
+    if ((await sheetCells()).MENU !== "open")
+      throw new Error("An SVG icon button could not be clicked.");
+    const hiddenShot = await browser.screenshot(sheet.id);
+    if (!hiddenShot.startsWith("data:image/png;base64,") || hiddenShot.length < 1_000) {
+      throw new Error("A hidden tab could not be captured.");
+    }
+    await browser.close(sheet.id);
+    process.stdout.write("BrowserHost: spreadsheet typing, paste and hidden screenshot passed.\n");
+
     const toolResult = await browser.handleDynamicTool({
       threadId: "smoke-thread",
       turnId: "browser-smoke-turn",
@@ -406,18 +547,53 @@ async function main(): Promise<void> {
       "persisted-thread",
       "persisted-bot",
     );
+    for (const path of ["/notes", "/draft", "/headers"]) {
+      await browser.open(`${origin}${path}`, "other-thread");
+    }
+    const sleeper = await browser.open(`${origin}/cookie?later=1`, "sleep-thread");
     await browser.activate(persistedTab.id);
+    const savedTabCount = browser.listTabs().length;
     await browser.destroy();
     const restoredWindow = new BrowserWindow({ show: false });
     window.destroy();
+    BrowserHost.IDLE_SLEEP_MS = 2_000;
+    BrowserHost.SLEEP_CHECK_MS = 250;
     const restoredBrowser = new BrowserHost(restoredWindow, downloadsRoot, statePath);
     await restoredBrowser.restore();
+    const restoredActiveTabId = restoredBrowser.activeTabId;
+    const liveTabs = (): number => restoredBrowser.liveTabCount;
+
+    // Lazy restore: every saved tab is listed, but none loads until it is used.
+    if (restoredBrowser.listTabs().length !== savedTabCount || liveTabs() !== 0) {
+      throw new Error(`Restore loaded ${liveTabs()} of ${savedTabCount} tabs at start-up.`);
+    }
+    // A sleeping tab wakes for a coworker, still signed in (the shared cookie is sent).
+    const woken = await restoredBrowser.snapshot(sleeper.id);
+    if (!woken.text.includes("cookie:sahkarmi=shared") || liveTabs() !== 1) {
+      throw new Error(`A restored tab did not wake signed in: ${woken.text.slice(0, 120)}`);
+    }
+    // Opening the same page again gives the coworker its tab back, not a duplicate.
+    const again = await restoredBrowser.open(`${origin}/cookie?later=1`, "sleep-thread");
+    if (again.id !== sleeper.id || restoredBrowser.listTabs().length !== savedTabCount) {
+      throw new Error("Opening an open page made a duplicate tab.");
+    }
+    // An idle hidden tab sleeps: its page is freed, the tab and its address stay.
+    await waitFor(async () => liveTabs() === 0);
+    const asleep = restoredBrowser.listTabs().find((candidate) => candidate.id === sleeper.id);
+    if (!asleep?.url.includes("/cookie?later=1") || asleep.loading) {
+      throw new Error("A sleeping tab lost its address.");
+    }
+    const rewoken = await restoredBrowser.snapshot(sleeper.id);
+    if (!rewoken.text.includes("cookie:sahkarmi=shared")) {
+      throw new Error("A tab woken from sleep was signed out.");
+    }
+    process.stdout.write("BrowserHost: lazy restore, tab reuse and idle sleep passed.\n");
     const restoredTabs = restoredBrowser.listTabs();
     const restoredTab = restoredTabs.find((candidate) => candidate.id === persistedTab.id);
     if (
       restoredTab?.ownerThreadId !== "persisted-thread" ||
       restoredTab?.ownerBotId !== "persisted-bot" ||
-      restoredBrowser.activeTabId !== persistedTab.id
+      restoredActiveTabId !== persistedTab.id
     ) {
       throw new Error("Browser tabs did not survive a BrowserHost restart.");
     }

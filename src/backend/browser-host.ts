@@ -5,6 +5,7 @@ import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import {
   app,
   type BrowserWindow,
+  clipboard,
   type Session,
   session,
   type WebContents,
@@ -18,7 +19,8 @@ import type {
   BrowserTab,
   BrowserVisibilityInput,
 } from "../shared/ipc";
-import { ACT_DESCRIPTION } from "./browser-act";
+import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
+import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
@@ -30,8 +32,25 @@ export interface BrowserHostEvents {
 
 interface InternalTab {
   id: string;
-  view: WebContentsView;
+  /**
+   * The live page, or null while the tab sleeps. A sleeping tab keeps its address and title and
+   * loads again when it is shown or a coworker uses it. Sign-ins live in the shared session, not
+   * in the page, so sleeping never signs anyone out.
+   */
+  view: WebContentsView | null;
   requestedUrl: string;
+  /** Last known title, shown while the tab sleeps. */
+  title: string;
+  /** When the owner or a coworker last used this tab (ms). Idle tabs go to sleep. */
+  lastUsed: number;
+  /** When the live page was created (ms); a coworker waits for a page that is still loading. */
+  liveSince: number;
+  /** The owner typed here since the page loaded; the tab never sleeps over their unsaved work. */
+  ownerTyped: boolean;
+  /** Tabs opened by links in this tab during the current coworker action (target="_blank"). */
+  openedTabs: string[];
+  /** Coworker operations running on this tab; a busy tab never sleeps. */
+  busy: number;
   ownerThreadId: string | null;
   ownerBotId: string | null;
   revision: number;
@@ -51,10 +70,16 @@ interface InternalTab {
 }
 
 /** Actions that can change what a site stores (a scroll or a back never does). */
-const CHANGING_ACTIONS = new Set<BrowserAction["type"]>(["click", "type", "key", "upload"]);
+const CHANGING_ACTIONS = new Set<BrowserAction["type"]>([
+  "click",
+  "type",
+  "key",
+  "paste",
+  "upload",
+]);
 const OWNER_INPUT = new Set(["mouseDown", "keyDown", "rawKeyDown", "char"]);
 /** Actions that leave unsaved input in the page. */
-const TYPING_ACTIONS = new Set<BrowserAction["type"]>(["type", "key", "upload"]);
+const TYPING_ACTIONS = new Set<BrowserAction["type"]>(["type", "key", "paste", "upload"]);
 
 /**
  * How long to wait before reloading an out-of-date tab: null when it must not be reloaded at
@@ -131,8 +156,11 @@ export interface BrowserSnapshot {
 
 export type BrowserAction =
   | { type: "click"; ref: string }
-  | { type: "type"; ref: string; text: string; submit?: boolean }
+  /** Without a ref, types into whatever has focus (e.g. a spreadsheet cell). */
+  | { type: "type"; ref?: string; text: string; submit?: boolean }
   | { type: "key"; key: string }
+  /** Pastes text (or what is already on the clipboard) into whatever has focus. */
+  | { type: "paste"; text?: string }
   | { type: "scroll"; deltaY: number }
   | { type: "upload"; ref: string; paths: string[] }
   | { type: "back" }
@@ -154,9 +182,9 @@ export const BROWSER_DYNAMIC_TOOLS = [
         additionalProperties: false,
       }),
       functionTool("list_tabs", "List the browser tabs.", emptySchema()),
-      functionTool("snapshot", "Read a page and obtain current element references.", {
+      functionTool("snapshot", SNAPSHOT_DESCRIPTION, {
         type: "object",
-        properties: { tabId: { type: "string" } },
+        properties: { tabId: { type: "string" }, offset: { type: "integer", minimum: 0 } },
         required: ["tabId"],
         additionalProperties: false,
       }),
@@ -170,7 +198,17 @@ export const BROWSER_DYNAMIC_TOOLS = [
             properties: {
               type: {
                 type: "string",
-                enum: ["click", "type", "key", "scroll", "upload", "back", "forward", "reload"],
+                enum: [
+                  "click",
+                  "type",
+                  "key",
+                  "paste",
+                  "scroll",
+                  "upload",
+                  "back",
+                  "forward",
+                  "reload",
+                ],
               },
               ref: { type: "string" },
               paths: { type: "array", items: { type: "string" } },
@@ -205,6 +243,8 @@ export const BROWSER_DYNAMIC_TOOLS = [
 /** A hidden page gets this long, this many times, to paint before its preview is taken. */
 const PREVIEW_PAINT_MS = 120;
 const PREVIEW_PAINT_ATTEMPTS = 12;
+/** A coworker waits at most this long for a page that just woke up or opened to load. */
+const FIRST_LOAD_WAIT_MS = 15_000;
 
 /** The page's picture, or null while it has not painted yet. */
 async function captureIfPainted(view: WebContentsView): Promise<string | null> {
@@ -223,6 +263,11 @@ export class BrowserHost implements CoworkerBrowser {
   static STALE_REFRESH_MS = 5_000;
   /** A tab is reloaded by itself at most this often, however busy the coworker is. */
   static STALE_MIN_GAP_MS = 30_000;
+  /** A hidden tab nobody used for this long sleeps: its page is freed, the tab stays listed. */
+  static IDLE_SLEEP_MS = 30 * 60_000;
+  /** How often idle tabs are looked for. */
+  static SLEEP_CHECK_MS = 60_000;
+  readonly takeoverHoldsShownTabOnly = true;
   readonly #window: BrowserWindow;
   readonly #session: Session;
   readonly #downloadsRoot: string;
@@ -232,12 +277,15 @@ export class BrowserHost implements CoworkerBrowser {
   readonly #control = new BrowserControlTracker();
   readonly #reservedDownloadPaths = new Set<string>();
   #activeTabId: string | null = null;
+  /** The owner has taken over: coworkers' new tabs open behind the tab the owner is using. */
+  #ownerHolding = false;
   #visible = false;
   #bounds: BrowserBounds | null = null;
   #attachedView: WebContentsView | null = null;
   readonly #mountedViews = new Set<WebContentsView>();
   #persistQueue: Promise<void> = Promise.resolve();
   #staleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly #sleepTimer: ReturnType<typeof setInterval>;
 
   constructor(window: BrowserWindow, downloadsRoot: string, statePath: string) {
     this.#window = window;
@@ -245,8 +293,14 @@ export class BrowserHost implements CoworkerBrowser {
     this.#statePath = statePath;
     this.#session = session.fromPartition("persist:sahkarmi-browser", { cache: true });
     this.#configureSession();
+    this.#sleepTimer = setInterval(() => this.#sleepIdleTabs(), BrowserHost.SLEEP_CHECK_MS);
+    this.#sleepTimer.unref?.();
   }
 
+  /**
+   * Brings back the saved tabs asleep: only the tab on screen loads now, the rest when they are
+   * opened or a coworker uses them. Loading every saved tab at once used gigabytes of memory.
+   */
   async restore(): Promise<void> {
     const state = await readBrowserState(this.#statePath);
     if (state.tabs.length === 0) return;
@@ -254,7 +308,6 @@ export class BrowserHost implements CoworkerBrowser {
     const tabs = state.tabs.map((stored) => {
       const tab = this.#createTab(stored.id, stored.url, stored.ownerThreadId, stored.ownerBotId);
       this.#tabs.set(tab.id, tab);
-      this.#bindTabEvents(tab);
       return tab;
     });
     this.#activeTabId = this.#tabs.has(state.activeTabId ?? "")
@@ -262,12 +315,128 @@ export class BrowserHost implements CoworkerBrowser {
       : (tabs[0]?.id ?? null);
     this.#syncAttachedView();
     this.#emitChanged();
+  }
 
-    for (const tab of tabs) {
-      void tab.view.webContents
-        .loadURL(tab.requestedUrl, browserLoadOptions())
-        .catch(() => undefined);
+  /** During a takeover the panel keeps showing the owner's tab, whatever coworkers open. */
+  async setHumanControl(humanInControl: boolean): Promise<void> {
+    this.#ownerHolding = humanInControl;
+  }
+
+  /** Number of tabs with a live page (for tests and diagnostics). */
+  get liveTabCount(): number {
+    return [...this.#tabs.values()].filter((tab) => tab.view).length;
+  }
+
+  /** Gives a sleeping tab its live page again; the page starts loading its saved address. */
+  #wake(tab: InternalTab): WebContentsView {
+    if (tab.view) {
+      tab.lastUsed = Date.now();
+      return tab.view;
     }
+    const view = this.#attachLiveView(tab);
+    void view.webContents.loadURL(tab.requestedUrl, browserLoadOptions()).catch(() => undefined);
+    this.#emitChanged();
+    return view;
+  }
+
+  /** The tab's live page, created (but not loaded) if the tab sleeps. */
+  #attachLiveView(tab: InternalTab): WebContentsView {
+    tab.lastUsed = Date.now();
+    if (tab.view) return tab.view;
+    const view = this.#createView();
+    tab.view = view;
+    tab.liveSince = Date.now();
+    this.#mountView(view);
+    this.#bindTabEvents(tab);
+    // Only once a page is loaded: switched on before the first load, the setting never applies.
+    view.webContents.on("dom-ready", () => keepPageFocused(view.webContents));
+    return view;
+  }
+
+  /** A coworker chat's own tab already showing this address, unless the owner typed in it. */
+  #reusableTab(url: string, ownerThreadId: string | null): InternalTab | null {
+    if (!ownerThreadId) return null;
+    for (const tab of this.#tabs.values()) {
+      if (tab.ownerThreadId !== ownerThreadId || tab.ownerTyped || tab.busy > 0) continue;
+      if (sameAddress(currentTabUrl(tab), url)) return tab;
+    }
+    return null;
+  }
+
+  /** Like #wake, and waits for a page that has only just started to finish its first load. */
+  async #wakeLoaded(tab: InternalTab): Promise<WebContentsView> {
+    const view = this.#wake(tab);
+    const contents = view.webContents;
+    // A hidden page's timers are slowed down; a coworker's call runs it at full speed until it ends.
+    if (tab.busy > 0) contents.setBackgroundThrottling(false);
+    if (contents.isLoading() && Date.now() - tab.liveSince < FIRST_LOAD_WAIT_MS) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(done, FIRST_LOAD_WAIT_MS);
+        function done(): void {
+          clearTimeout(timer);
+          contents.off("did-stop-loading", done);
+          resolve();
+        }
+        contents.once("did-stop-loading", done);
+      });
+    }
+    return view;
+  }
+
+  /** Frees a tab's page; the tab stays in the list with its address and title. */
+  #sleep(tab: InternalTab): void {
+    const view = tab.view;
+    if (!view) return;
+    tab.requestedUrl = persistentBrowserUrl(currentTabUrl(tab));
+    tab.title = view.webContents.getTitle() || tab.title;
+    tab.view = null;
+    // Element refs from the old page are gone: the coworker is told to take a fresh snapshot.
+    tab.revision += 1;
+    tab.stale = false;
+    tab.ownerTouched = false;
+    this.#unmountView(view);
+    view.webContents.close();
+  }
+
+  /**
+   * Puts tabs to sleep that nobody used for a while. Never the tab on screen, a tab a coworker
+   * is using, one with unsaved typing (owner's or coworker's), or one playing sound.
+   */
+  #sleepIdleTabs(): void {
+    const now = Date.now();
+    let slept = false;
+    for (const tab of this.#tabs.values()) {
+      const view = tab.view;
+      if (!view) continue;
+      if (this.#visible && this.#attachedView === view) continue;
+      if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) continue;
+      if (now - tab.lastUsed < BrowserHost.IDLE_SLEEP_MS) continue;
+      if (view.webContents.isCurrentlyAudible()) continue;
+      this.#sleep(tab);
+      slept = true;
+    }
+    if (slept) {
+      this.#emitChanged();
+      this.#schedulePersist();
+    }
+  }
+
+  /**
+   * Tells the coworker about tabs its action opened (a target="_blank" link, like a job title on
+   * Naukri), after they load, so it can read them instead of the page it clicked on.
+   */
+  async #openedTabsNotice(tab: InternalTab): Promise<string | undefined> {
+    const opened = tab.openedTabs.splice(0);
+    const tabs = opened.flatMap((id) => {
+      const child = this.#tabs.get(id);
+      return child ? [child] : [];
+    });
+    if (tabs.length === 0) return undefined;
+    await Promise.all(tabs.map((child) => this.#wakeLoaded(child)));
+    const list = tabs
+      .map((child) => `tabId ${JSON.stringify(child.id)} (${currentTabUrl(child).slice(0, 200)})`)
+      .join(", ");
+    return `That action opened a new tab: ${list}. Call snapshot with that tabId to read it; this snapshot is still the tab you acted in.`;
   }
 
   onChanged(listener: (...args: BrowserHostEvents["changed"]) => void): () => void {
@@ -299,28 +468,44 @@ export class BrowserHost implements CoworkerBrowser {
     return this.#activeTabId;
   }
 
+  /**
+   * Opens a page in a tab. A coworker opening a page it already has open gets that tab back,
+   * loaded afresh, instead of a duplicate. `id` (a link's new tab) always makes a new tab.
+   */
   async open(
     url: string,
     ownerThreadId: string | null = null,
     ownerBotId: string | null = null,
+    id?: string,
   ): Promise<BrowserTab> {
     const normalizedUrl = normalizeBrowserUrl(url);
-    const tab = this.#createTab(randomUUID(), normalizedUrl, ownerThreadId, ownerBotId);
+    const reused = id === undefined ? this.#reusableTab(normalizedUrl, ownerThreadId) : null;
+    if (reused) {
+      if (!this.#ownerHolding) this.#activeTabId = reused.id;
+      const view = this.#attachLiveView(reused);
+      this.#syncAttachedView();
+      this.#emitChanged();
+      await view.webContents.loadURL(normalizedUrl, browserLoadOptions()).catch(() => undefined);
+      await this.#persistState();
+      return toPublicTab(reused);
+    }
+    const tab = this.#createTab(id ?? randomUUID(), normalizedUrl, ownerThreadId, ownerBotId);
 
     this.#tabs.set(tab.id, tab);
-    this.#bindTabEvents(tab);
-    this.#activeTabId = tab.id;
+    const view = this.#attachLiveView(tab);
+    if (!this.#ownerHolding || !this.#activeTabId) this.#activeTabId = tab.id;
     this.#syncAttachedView();
     this.#emitChanged();
     await this.#persistState();
 
     try {
-      await tab.view.webContents.loadURL(normalizedUrl, browserLoadOptions());
+      await view.webContents.loadURL(normalizedUrl, browserLoadOptions());
     } catch (error) {
       if (this.#tabs.get(tab.id) === tab) {
-        this.#unmountView(tab.view);
+        this.#unmountView(view);
         this.#tabs.delete(tab.id);
-        tab.view.webContents.close();
+        tab.view = null;
+        view.webContents.close();
         if (this.#activeTabId === tab.id) {
           this.#activeTabId = this.#tabs.keys().next().value ?? null;
         }
@@ -345,9 +530,12 @@ export class BrowserHost implements CoworkerBrowser {
 
   async close(tabId: string): Promise<void> {
     const tab = this.#requireTab(tabId);
-    this.#unmountView(tab.view);
     this.#tabs.delete(tabId);
-    tab.view.webContents.close();
+    if (tab.view) {
+      this.#unmountView(tab.view);
+      tab.view.webContents.close();
+      tab.view = null;
+    }
 
     if (this.#activeTabId === tabId) {
       this.#activeTabId = this.#tabs.keys().next().value ?? null;
@@ -369,9 +557,9 @@ export class BrowserHost implements CoworkerBrowser {
     acted.stale = false;
     acted.ownerTouched = false;
     const ids = sameSiteTabIds(
-      [...this.#tabs.values()].map((tab) => ({ id: tab.id, url: tab.view.webContents.getURL() })),
+      [...this.#tabs.values()].map((tab) => ({ id: tab.id, url: currentTabUrl(tab) })),
       acted.id,
-      acted.view.webContents.getURL(),
+      currentTabUrl(acted),
     );
     if (ids.length === 0) return;
     for (const id of ids) {
@@ -408,6 +596,7 @@ export class BrowserHost implements CoworkerBrowser {
       this.#scheduleStaleRefresh(wait);
       return;
     }
+    if (!tab.view) return;
     tab.stale = false;
     tab.lastAutoReload = Date.now();
     tab.view.webContents.reload();
@@ -422,19 +611,22 @@ export class BrowserHost implements CoworkerBrowser {
 
   async act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot> {
     return this.#enqueue(tabId, async (tab) => {
-      if (revision !== tab.revision) {
+      if (revision !== ANY_REVISION && revision !== tab.revision) {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
 
+      const view = await this.#wakeLoaded(tab);
       // A hidden page must be painted to take input, but never over the app: it is shown with
       // only its corner pixel inside the window while the coworker acts on it.
-      const restore = tab.view.getVisible() ? null : this.#showOutOfSight(tab.view);
-      tab.view.webContents.focus();
+      const restore = view.getVisible() ? null : this.#showOutOfSight(view);
+      // Never take keyboard focus: the owner may be typing in the chat while a coworker works.
+      // Keys reach the page through DevTools with focus emulation instead.
       let notice: string | undefined;
+      tab.openedTabs = [];
       try {
         if (restore) await delay(250);
         notice = await withTimeout(
-          performAction(tab.view.webContents, action),
+          performAction(view.webContents, action),
           10_000,
           "Browser action timed out.",
         );
@@ -442,6 +634,8 @@ export class BrowserHost implements CoworkerBrowser {
       } finally {
         restore?.();
       }
+      const opened = await this.#openedTabsNotice(tab);
+      if (opened) notice = notice ? `${notice} ${opened}` : opened;
       // Typing that submitted and loaded a new page left nothing unsaved behind.
       if (TYPING_ACTIONS.has(action.type) && tab.revision === revision) tab.coworkerTyped = true;
       if (CHANGING_ACTIONS.has(action.type)) this.#markSameSiteStale(tab);
@@ -455,12 +649,21 @@ export class BrowserHost implements CoworkerBrowser {
 
   async screenshot(tabId: string): Promise<string> {
     return this.#enqueue(tabId, async (tab) => {
-      const image = await withTimeout(
-        tab.view.webContents.capturePage(),
-        10_000,
-        "Browser screenshot timed out.",
-      );
-      return image.toDataURL();
+      // Chromium cannot capture a hidden page ("display surface not available"): paint it
+      // out of sight first, as previews do.
+      const view = await this.#wakeLoaded(tab);
+      const restore = view.getVisible() ? null : this.#showOutOfSight(view);
+      try {
+        if (restore) await delay(PREVIEW_PAINT_MS);
+        const image = await withTimeout(
+          view.webContents.capturePage(),
+          10_000,
+          "Browser screenshot timed out.",
+        );
+        return image.toDataURL();
+      } finally {
+        restore?.();
+      }
     });
   }
 
@@ -472,6 +675,8 @@ export class BrowserHost implements CoworkerBrowser {
   async preview(tabId: string): Promise<string | null> {
     return this.#enqueue(tabId, async (tab) => {
       const view = tab.view;
+      // A sleeping tab has no picture, and a page card is no reason to wake it.
+      if (!view) return null;
       if (view.getVisible()) return captureIfPainted(view);
       const restore = this.#showOutOfSight(view);
       try {
@@ -519,9 +724,12 @@ export class BrowserHost implements CoworkerBrowser {
       await this.#persistState();
     } finally {
       if (this.#staleRefreshTimer) clearTimeout(this.#staleRefreshTimer);
+      clearInterval(this.#sleepTimer);
       for (const tab of this.#tabs.values()) {
+        if (!tab.view) continue;
         this.#unmountView(tab.view);
         tab.view.webContents.close();
+        tab.view = null;
       }
       this.#tabs.clear();
       this.#listeners.clear();
@@ -535,12 +743,16 @@ export class BrowserHost implements CoworkerBrowser {
     ownerThreadId: string | null,
     ownerBotId: string | null,
   ): InternalTab {
-    const view = this.#createView();
-    this.#mountView(view);
     return {
       id,
-      view,
+      view: null,
       requestedUrl,
+      title: "",
+      lastUsed: Date.now(),
+      liveSince: 0,
+      ownerTyped: false,
+      openedTabs: [],
+      busy: 0,
       ownerThreadId,
       ownerBotId,
       revision: 0,
@@ -595,17 +807,32 @@ export class BrowserHost implements CoworkerBrowser {
   }
 
   #bindTabEvents(tab: InternalTab): void {
-    const contents = tab.view.webContents;
-    const changed = () => this.#emitChanged();
+    const view = tab.view;
+    if (!view) return;
+    const contents = view.webContents;
+    // Events from a page that was put to sleep no longer describe the tab.
+    const current = () => tab.view === view;
+    const changed = () => {
+      if (current()) this.#emitChanged();
+    };
     contents.on("did-start-loading", changed);
     contents.on("did-stop-loading", changed);
-    contents.on("page-title-updated", changed);
+    contents.on("page-title-updated", (_event, title) => {
+      if (current()) tab.title = title;
+      changed();
+    });
     contents.on("input-event", (_event, input) => {
-      if (tab.stale && OWNER_INPUT.has(input.type)) tab.ownerTouched = true;
+      if (!current() || !OWNER_INPUT.has(input.type)) return;
+      tab.lastUsed = Date.now();
+      if (tab.stale) tab.ownerTouched = true;
+      // Keys typed outside a coworker action are the owner's own unsaved work.
+      if (input.type !== "mouseDown" && tab.busy === 0) tab.ownerTyped = true;
     });
     contents.on("did-navigate", (_event, url, httpResponseCode) => {
+      if (!current()) return;
       // A full load reads the site afresh.
       tab.stale = false;
+      tab.ownerTyped = false;
       tab.ownerTouched = false;
       tab.coworkerTyped = false;
       tab.loadFailed = httpResponseCode >= 400;
@@ -616,9 +843,10 @@ export class BrowserHost implements CoworkerBrowser {
     });
     contents.on("did-fail-load", (_event, errorCode, _description, _url, isMainFrame) => {
       // -3 is a load the page itself cancelled (a redirect or a new navigation), not an error.
-      if (isMainFrame && errorCode !== -3) tab.loadFailed = true;
+      if (current() && isMainFrame && errorCode !== -3) tab.loadFailed = true;
     });
     contents.on("did-navigate-in-page", (_event, url) => {
+      if (!current()) return;
       if (isPersistableBrowserUrl(url)) tab.requestedUrl = persistentBrowserUrl(url);
       tab.revision += 1;
       changed();
@@ -634,7 +862,10 @@ export class BrowserHost implements CoworkerBrowser {
       if (!isAllowedMainUrl(url)) return { action: "deny" };
       const popup = disposition === "new-window" || /popup|width=|height=/i.test(features);
       if (!popup) {
-        void this.open(url, tab.ownerThreadId, tab.ownerBotId);
+        // A coworker's action is told about this tab, so it can read the page it opened.
+        const childId = randomUUID();
+        if (tab.busy > 0) tab.openedTabs.push(childId);
+        void this.open(url, tab.ownerThreadId, tab.ownerBotId, childId).catch(() => undefined);
         return { action: "deny" };
       }
       return {
@@ -657,9 +888,12 @@ export class BrowserHost implements CoworkerBrowser {
     });
   }
 
-  async #readSnapshot(tab: InternalTab, revision: number): Promise<BrowserSnapshot> {
+  async #readSnapshot(tab: InternalTab, requested: number): Promise<BrowserSnapshot> {
+    const view = await this.#wakeLoaded(tab);
+    // Waking the tab may have counted its first load as a navigation.
+    const revision = Math.max(requested, tab.revision + 1);
     const raw = await withTimeout(
-      tab.view.webContents.executeJavaScript(snapshotScript(revision), true),
+      view.webContents.executeJavaScript(snapshotScript(revision), true),
       10_000,
       "Browser snapshot timed out.",
     );
@@ -669,7 +903,7 @@ export class BrowserHost implements CoworkerBrowser {
       tabId: tab.id,
       revision,
       title: typeof raw.title === "string" ? raw.title.slice(0, 500) : "",
-      url: typeof raw.url === "string" ? raw.url : tab.view.webContents.getURL(),
+      url: typeof raw.url === "string" ? raw.url : currentTabUrl(tab),
       text: typeof raw.text === "string" ? raw.text.slice(0, 100_000) : "",
       elements: Array.isArray(raw.elements)
         ? raw.elements.filter(isSnapshotElement).slice(0, 500)
@@ -690,7 +924,7 @@ export class BrowserHost implements CoworkerBrowser {
     if (!tab) return { label: "", url: "" };
     return {
       label: ref ? (tab.labels.get(ref) ?? "") : "",
-      url: tab.view.webContents.getURL(),
+      url: currentTabUrl(tab),
     };
   }
 
@@ -701,14 +935,15 @@ export class BrowserHost implements CoworkerBrowser {
       return;
     }
 
-    if (this.#attachedView !== tab.view) {
+    const view = this.#wake(tab);
+    if (this.#attachedView !== view) {
       this.#attachedView?.setVisible(false);
-      this.#mountView(tab.view);
-      this.#attachedView = tab.view;
+      this.#mountView(view);
+      this.#attachedView = view;
     }
-    tab.view.setBounds(this.#bounds);
-    tab.view.setVisible(true);
-    tab.view.webContents.invalidate();
+    view.setBounds(this.#bounds);
+    view.setVisible(true);
+    view.webContents.invalidate();
   }
 
   #mountView(view: WebContentsView): void {
@@ -733,9 +968,17 @@ export class BrowserHost implements CoworkerBrowser {
 
   #enqueue<T>(tabId: string, operation: (tab: InternalTab) => Promise<T>): Promise<T> {
     const tab = this.#requireTab(tabId);
+    tab.busy += 1;
     const result = tab.queue.then(() => operation(tab));
-    tab.queue = result.catch(() => undefined);
-    return result;
+    const settled = result.finally(() => {
+      tab.busy -= 1;
+      tab.lastUsed = Date.now();
+      if (tab.busy === 0 && tab.view && !tab.view.webContents.isDestroyed()) {
+        tab.view.webContents.setBackgroundThrottling(true);
+      }
+    });
+    tab.queue = settled.catch(() => undefined);
+    return settled;
   }
 
   #emitChanged(): void {
@@ -800,6 +1043,11 @@ export interface CoworkerBrowser extends BrowserToolTarget {
   destroy(): Promise<void>;
   /** The owner takes over (true) or hands back (false); engines that need it switch modes. */
   setHumanControl?(humanInControl: boolean): Promise<void>;
+  /**
+   * True when a takeover holds only the tab the owner is working in, so other coworkers keep
+   * using their own tabs. False or missing: the whole browser is the owner's during a takeover.
+   */
+  readonly takeoverHoldsShownTabOnly?: boolean;
   /** A site refused to sign in inside the controlled browser; the owner should take over. */
   onSignInBlocked?(listener: (url: string) => void): () => void;
   /** The owner closed the browser window they were using during a takeover. */
@@ -897,6 +1145,68 @@ export class BrowserControlTracker {
   }
 }
 
+/** An act without a revision and without a ref: no element refs to go stale. */
+export const ANY_REVISION = -1;
+
+function revisionFromRef(action: BrowserAction): number {
+  const ref = "ref" in action ? action.ref : undefined;
+  if (!ref) return ANY_REVISION;
+  const revision = Number(ref.split(":")[0]);
+  if (!Number.isInteger(revision)) throw new Error("revision must be a number.");
+  return revision;
+}
+
+/** Characters of a snapshot sent to a coworker: well inside every runtime's tool-result limit. */
+export const SNAPSHOT_BUDGET = 60_000;
+const MIN_SNAPSHOT_TEXT = 8_000;
+const ELEMENT_NAME_CHARS = 120;
+const MIN_ELEMENT_NAME_CHARS = 24;
+
+function textOffset(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+/**
+ * Shortens a snapshot for a coworker. Every element stays (they are what it acts on), with
+ * shorter names; the page text gets what is left and can be read on with offset.
+ */
+export function fitSnapshot(
+  snapshot: BrowserSnapshot,
+  offset: number,
+): BrowserSnapshot & { textOffset?: number; textLength?: number; nextOffset?: number } {
+  // Names get shorter only on a crowded page (hundreds of buttons), never below a readable label.
+  const unnamed = JSON.stringify(snapshot.elements.map((element) => ({ ...element, name: "" })));
+  const perName = Math.floor(
+    (SNAPSHOT_BUDGET - MIN_SNAPSHOT_TEXT - unnamed.length) / Math.max(1, snapshot.elements.length),
+  );
+  const nameChars = Math.min(ELEMENT_NAME_CHARS, Math.max(MIN_ELEMENT_NAME_CHARS, perName));
+  const elements = snapshot.elements.map((element) =>
+    element.name.length > nameChars
+      ? { ...element, name: `${element.name.slice(0, nameChars)}…` }
+      : element,
+  );
+  const room = Math.max(MIN_SNAPSHOT_TEXT, SNAPSHOT_BUDGET - JSON.stringify(elements).length);
+  const start = Math.min(offset, snapshot.text.length);
+  const text = snapshot.text.slice(start, start + room);
+  const end = start + text.length;
+  if (start === 0 && end === snapshot.text.length) return { ...snapshot, elements };
+  return {
+    ...snapshot,
+    text,
+    elements,
+    textOffset: start,
+    textLength: snapshot.text.length,
+    ...(end < snapshot.text.length ? { nextOffset: end } : {}),
+  };
+}
+
+/** The tab a call names; some runtimes call it pageId. */
+function browserTabId(args: Record<string, unknown>): string {
+  const pageId = args.pageId;
+  if (typeof args.tabId !== "string" && typeof pageId === "string" && pageId.trim()) return pageId;
+  return requiredString(args, "tabId");
+}
+
 /** Runs one sahkarmi_browser tool call against a browser engine. */
 export async function runBrowserTool(
   browser: BrowserToolTarget,
@@ -916,21 +1226,24 @@ export async function runBrowserTool(
       case "list_tabs":
         return textResult({ tabs: browser.listTabs(), activeTabId: browser.activeTabId });
       case "snapshot": {
-        const snapshot = await browser.snapshot(requiredString(args, "tabId"));
-        return textResult(snapshot);
+        const snapshot = await browser.snapshot(browserTabId(args));
+        return textResult(fitSnapshot(snapshot, textOffset(args.offset)));
       }
       case "act": {
-        const tabId = requiredString(args, "tabId");
-        const revision = requiredNumber(args, "revision");
+        const tabId = browserTabId(args);
         const action = parseAction(args.action);
-        return textResult(await browser.act(tabId, revision, action));
+        // Some runtimes leave revision out: a ref ("3:17") carries its own, and an action
+        // without a ref (a key, a scroll) does not depend on it.
+        const revision =
+          typeof args.revision === "number" ? args.revision : revisionFromRef(action);
+        return textResult(fitSnapshot(await browser.act(tabId, revision, action), 0));
       }
       case "screenshot": {
-        const imageUrl = await browser.screenshot(requiredString(args, "tabId"));
+        const imageUrl = await browser.screenshot(browserTabId(args));
         return { success: true, contentItems: [{ type: "inputImage", imageUrl }] };
       }
       case "close_tab": {
-        await browser.close(requiredString(args, "tabId"));
+        await browser.close(browserTabId(args));
         return textResult({ closed: true });
       }
       default:
@@ -968,6 +1281,7 @@ function browserControlAction(tool: string, args: Record<string, unknown>): Brow
         action === "click" ||
         action === "type" ||
         action === "key" ||
+        action === "paste" ||
         action === "scroll" ||
         action === "upload" ||
         action === "back" ||
@@ -1146,29 +1460,38 @@ export function validateBounds(bounds: BrowserBounds): BrowserBounds {
 function toPublicTab(tab: InternalTab): BrowserTab {
   return {
     id: tab.id,
-    title: tab.view.webContents.getTitle() || "New tab",
+    title: tab.view?.webContents.getTitle() || tab.title || "New tab",
     url: currentTabUrl(tab),
-    loading: tab.view.webContents.isLoading(),
+    loading: tab.view?.webContents.isLoading() ?? false,
     ownerThreadId: tab.ownerThreadId,
     ownerBotId: tab.ownerBotId,
   };
 }
 
 function currentTabUrl(tab: InternalTab): string {
-  const currentUrl = tab.view.webContents.getURL();
+  const currentUrl = tab.view?.webContents.getURL() ?? "";
   return isPersistableBrowserUrl(currentUrl) ? currentUrl : tab.requestedUrl;
+}
+
+/** The same page, ignoring a trailing slash and the #part. */
+export function sameAddress(left: string, right: string): boolean {
+  const clean = (url: string) => url.replace(/#.*$/, "").replace(/\/+$/, "");
+  return clean(left) === clean(right);
 }
 
 export function snapshotScript(revision: number): string {
   return `(() => {
     const revision = ${revision};
-    const nodes = [...document.querySelectorAll('a,button,input,textarea,select,[role],[contenteditable="true"],[tabindex]')]
-      .filter((node) => {
-        const style = getComputedStyle(node);
-        const rect = node.getBoundingClientRect();
-        return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
-      })
-      .slice(0, 500);
+    // Stops at 500 visible elements: big pages (Instagram, Sheets) have thousands.
+    const nodes = [];
+    for (const node of document.querySelectorAll('a,button,input,textarea,select,[role],[contenteditable="true"],[tabindex]')) {
+      const visible = typeof node.checkVisibility === 'function'
+        ? node.checkVisibility({ visibilityProperty: true })
+        : getComputedStyle(node).visibility !== 'hidden' && getComputedStyle(node).display !== 'none';
+      if (!visible) continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0 && nodes.push(node) >= 500) break;
+    }
     document.querySelectorAll('[data-sahkarmi-ref]').forEach((node) => node.removeAttribute('data-sahkarmi-ref'));
     const elements = nodes.map((node, index) => {
       const ref = revision + ':' + index;
@@ -1218,9 +1541,9 @@ async function performAction(
       const point = await contents.executeJavaScript(
         `(() => {
           const node = document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]');
-          if (!(node instanceof HTMLElement)) throw new Error('Element reference is no longer available.');
+          if (!(node instanceof Element)) return { error: 'That element is no longer on the page (it changed). Take a fresh snapshot and use the new ref.' };
           node.scrollIntoView({ block: 'center', inline: 'center' });
-          node.focus();
+          if (typeof node.focus === 'function') node.focus();
           const rect = node.getBoundingClientRect();
           return {
             x: Math.round(rect.left + rect.width / 2),
@@ -1230,6 +1553,7 @@ async function performAction(
         })()`,
         true,
       );
+      if (isRecord(point) && typeof point.error === "string") throw new Error(point.error);
       if (!isInputPoint(point)) throw new Error("Element does not have a clickable position.");
       if (point.direct === true) {
         await contents.executeJavaScript(
@@ -1265,9 +1589,21 @@ async function performAction(
       return picker ? filePickerNotice(action.ref) : undefined;
     }
     case "type": {
-      await contents.executeJavaScript(
-        `(() => {
-          const node = document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]');
+      const text = action.text.slice(0, 50_000);
+      if (action.ref === undefined) {
+        await withFocusedPage(contents, async (send) => {
+          await typeIntoFocus(send, text);
+          if (action.submit) await pressCdpKey(send, "Enter");
+        });
+        return;
+      }
+      const ref = action.ref;
+      // Focus emulation goes on before the field is focused, so the page treats it as the
+      // focused field without the owner's chat box losing the keyboard.
+      await withFocusedPage(contents, async (send) => {
+        await contents.executeJavaScript(
+          `(() => {
+          const node = document.querySelector('[data-sahkarmi-ref=${JSON.stringify(ref)}]');
           if (!(node instanceof HTMLElement)) throw new Error('Element reference is no longer available.');
           node.focus();
           if ('value' in node) {
@@ -1279,21 +1615,21 @@ async function performAction(
             selection?.removeAllRanges();
             selection?.addRange(range);
           } else {
-            throw new Error('Element does not accept text.');
+            throw new Error('Element does not accept text. To type into a spreadsheet cell or another focused part of the page, click it, then send type without ref.');
           }
         })()`,
-        true,
-      );
-      await withDevToolsDebugger(contents, () =>
-        contents.debugger.sendCommand("Input.insertText", {
-          text: action.text.slice(0, 50_000),
-        }),
-      );
-      if (action.submit) pressKey(contents, "Enter");
+          true,
+        );
+        await send("Input.insertText", { text });
+        if (action.submit) await pressCdpKey(send, "Enter");
+      });
       return;
     }
     case "key":
-      pressKey(contents, action.key);
+      await withFocusedPage(contents, (send) => pressCdpKey(send, action.key));
+      return;
+    case "paste":
+      await pasteIntoFocus(contents, action.text);
       return;
     case "scroll":
       await contents.executeJavaScript(
@@ -1533,10 +1869,52 @@ async function withDevToolsDebugger<T>(
   }
 }
 
-function pressKey(contents: WebContents, key: string): void {
-  if (!/^[a-zA-Z0-9+_-]{1,32}$/.test(key)) throw new Error("Invalid browser key.");
-  contents.sendInputEvent({ type: "keyDown", keyCode: key });
-  contents.sendInputEvent({ type: "keyUp", keyCode: key });
+/**
+ * Lets a coworker's page behave as if it had keyboard focus for its whole life, without taking
+ * the keyboard from the owner. Switching it on only for each action made the page lose and
+ * regain focus between a click and the typing after it, which can end a spreadsheet cell edit.
+ * The DevTools connection stays attached; the actions below reuse it.
+ */
+function keepPageFocused(contents: WebContents): void {
+  try {
+    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
+    void contents.debugger
+      .sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true })
+      .catch(() => undefined);
+  } catch {
+    // DevTools is open on this page; actions turn focus emulation on themselves.
+  }
+}
+
+/**
+ * Runs keyboard input with the page treated as focused. The owner is usually typing in the chat,
+ * not the page, and sites like Google Sheets ignore keys while their page has no focus.
+ */
+async function withFocusedPage(
+  contents: WebContents,
+  operation: (send: CdpSend) => Promise<void>,
+): Promise<void> {
+  await withDevToolsDebugger(contents, async () => {
+    const send: CdpSend = (method, params) => contents.debugger.sendCommand(method, params);
+    await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await operation(send);
+  });
+}
+
+/**
+ * Pastes into whatever has focus. Spreadsheets turn tab-separated lines into rows and columns.
+ * The text goes to the page directly, never through the system clipboard: the owner's clipboard
+ * is left alone, and the page needs no keyboard focus (the owner may be typing in the chat).
+ * Without text, what the owner copied is pasted.
+ */
+async function pasteIntoFocus(contents: WebContents, text: string | undefined): Promise<void> {
+  const pasted = (text ?? clipboard.readText()).slice(0, 500_000);
+  if (!pasted) throw new Error("Nothing to paste: give the text to paste.");
+  await withFocusedPage(contents, async (send) => {
+    const outcome = await contents.executeJavaScript(pasteEventScript(pasted), true);
+    // A plain field ignores a paste event it did not get from the keyboard: type the text in.
+    if (outcome !== "handled") await send("Input.insertText", { text: pasted });
+  });
 }
 
 function parseAction(value: unknown): BrowserAction {
@@ -1549,15 +1927,21 @@ function parseAction(value: unknown): BrowserAction {
         return parseAction({ ...value, type: "upload" });
       }
       return { type: "click", ref: requiredString(value, "ref") };
-    case "type":
+    case "type": {
+      const ref = typeof value.ref === "string" && value.ref.trim() ? value.ref : undefined;
       return {
         type: "type",
-        ref: requiredString(value, "ref"),
+        ...(ref ? { ref } : {}),
         text: requiredString(value, "text"),
         submit: value.submit === true,
       };
+    }
     case "key":
       return { type: "key", key: requiredString(value, "key") };
+    case "paste":
+      return typeof value.text === "string" && value.text
+        ? { type: "paste", text: value.text }
+        : { type: "paste" };
     case "scroll":
       return { type: "scroll", deltaY: requiredNumber(value, "deltaY") };
     case "upload": {

@@ -10,6 +10,7 @@ import {
   isNoisyDiagnostic,
   previewText,
   quotaNotice,
+  SHORT_TOOL_WAIT_MS,
   searchExcerpt,
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
@@ -313,6 +314,59 @@ describe.sequential("AgentService", () => {
     expect(permissions.audit()[0]).toMatchObject({ category: "shell", decision: "rejected" });
   });
 
+  it("tells a coworker whose runtime cannot wait, and lets its repeat through once approved", async () => {
+    const { store, mailbox } = stores();
+    await store.initialize();
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    const permissions = new PermissionService(join(root, "user-data"));
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      approvals,
+      permissions,
+    );
+    await service.initialize();
+    const saved = SHORT_TOOL_WAIT_MS.antigravity;
+    SHORT_TOOL_WAIT_MS.antigravity = 50;
+    try {
+      const request = {
+        botId: "arjun-research",
+        provider: "antigravity",
+        category: "shell" as const,
+        action: "npm install left-pad",
+        paths: [],
+      };
+      // Antigravity gives up on a tool call after 3 minutes: it is answered before that.
+      const first = await permissions.authorize(request, []);
+      expect(first.allowed).toBe(false);
+      expect(first.reason).toContain("end your turn");
+      const [approval] = service.listApprovals();
+      expect(approval?.status).toBe("pending");
+
+      await service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" });
+      const told = service.listQueue("arjun-research").deliveries.at(-1);
+      expect(told?.text).toContain("[Approval APPROVED]");
+      expect(told?.text).toContain("Repeat exactly the same action");
+
+      // The repeat goes through without a new question, once.
+      expect((await permissions.authorize(request, [])).allowed).toBe(true);
+      expect(service.listApprovals().filter((item) => item.status === "pending")).toHaveLength(0);
+      expect(permissions.audit()[0]).toMatchObject({ category: "shell", decision: "approved" });
+      const again = permissions.authorize(request, []);
+      await waitFor(
+        () =>
+          (service?.listApprovals().filter((item) => item.status === "pending").length ?? 0) === 1,
+      );
+      expect((await again).allowed).toBe(false);
+    } finally {
+      SHORT_TOOL_WAIT_MS.antigravity = saved;
+    }
+  });
+
   it("allows Codex file changes inside the coworker folder without asking", async () => {
     const { store, mailbox } = stores();
     await store.initialize();
@@ -466,6 +520,69 @@ describe.sequential("AgentService", () => {
     expect(JSON.stringify(reply?.result)).toContain("taken over the browser");
     expect(browserCalls).toBe(0);
     expect((await service.handBackBrowser()).humanInControl).toBe(false);
+  });
+
+  it("keeps other coworkers working in their own tabs while the owner has taken over", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi_browser",
+      tool: "list_tabs",
+      arguments: {},
+    });
+    const { store, mailbox } = stores();
+    let browserCalls = 0;
+    const browser = {
+      ...fakeBrowser(),
+      takeoverHoldsShownTabOnly: true,
+      activeTabId: "owner-tab",
+      handleDynamicTool: async () => {
+        browserCalls += 1;
+        return { success: true, contentItems: [] };
+      },
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    service.takeOverBrowser();
+    await service.sendMessage({ botId: "vikram-sales", text: "Check the CRM" });
+
+    await waitFor(() => browserCalls === 1);
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(JSON.stringify(reply?.result ?? "")).not.toContain("taken over the browser");
+    await service.handBackBrowser();
+  });
+
+  it("keeps coworkers off the owner's tab during a takeover and tells them on hand-back", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi_browser",
+      tool: "act",
+      arguments: { tabId: "owner-tab", revision: 1, action: { type: "click", ref: "1:2" } },
+    });
+    const { store, mailbox } = stores();
+    let browserCalls = 0;
+    const browser = {
+      ...fakeBrowser(),
+      takeoverHoldsShownTabOnly: true,
+      activeTabId: "owner-tab",
+      handleDynamicTool: async () => {
+        browserCalls += 1;
+        return { success: true, contentItems: [] };
+      },
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    service.takeOverBrowser();
+    await service.sendMessage({ botId: "vikram-sales", text: "Update the lead" });
+
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(JSON.stringify(reply?.result)).toContain("The owner is working in this tab");
+    expect(browserCalls).toBe(0);
+    await service.handBackBrowser();
+    const told = service.listQueue("vikram-sales").deliveries.at(-1);
+    expect(told?.text).toContain("[Browser handed back]");
   });
 
   it("lets a coworker ask the owner to take over and resumes it on hand-back", async () => {

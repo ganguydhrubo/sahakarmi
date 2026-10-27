@@ -17,7 +17,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
-import { ACT_DESCRIPTION } from "./browser-act";
+import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import type { ClaudeCliInfo } from "./cli";
 import {
   LIST_SKILLS_DESCRIPTION,
@@ -663,8 +663,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "snapshot",
-            "Read a browser page and get element references.",
-            { tabId: z.string() },
+            SNAPSHOT_DESCRIPTION,
+            { tabId: z.string(), offset: z.number().int().min(0).optional() },
             (args) => call("sahkarmi_browser", "snapshot", args),
           ),
           tool(
@@ -678,6 +678,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
                   "click",
                   "type",
                   "key",
+                  "paste",
                   "scroll",
                   "upload",
                   "back",
@@ -723,7 +724,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           tool(
             "request_browser_takeover",
             "Ask the owner to take over the browser for login, OTP/2FA, CAPTCHA or a payment page. Returns immediately; you are messaged when control is handed back.",
-            { reason: z.string().min(1).max(300) },
+            { reason: z.string().min(1).max(4_000) },
             (args) => call("sahkarmi", "request_browser_takeover", args),
           ),
           tool(

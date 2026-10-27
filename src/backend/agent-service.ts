@@ -288,10 +288,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #approvals: ApprovalStore | null;
   readonly #permissions: PermissionService | null;
   readonly #permissionWaiters = new Map<string, (outcome: "approved" | "rejected") => void>();
+  /** Approvals a coworker stopped waiting for (its runtime's tool time limit), by approval id. */
+  readonly #deferredPermissions = new Map<string, { botId: string; key: string }>();
+  /** Actions the owner approved after the coworker stopped waiting: key -> expiry (ms). */
+  readonly #approvedLater = new Map<string, number>();
   readonly #fileChangePaths = new Map<string, string[]>();
   readonly #permissionTimeoutMs: number;
   #usage: UsageService | null = null;
   #takeover: BrowserTakeoverState = { humanInControl: false, requests: [] };
+  /** Coworkers refused the browser during a takeover; told when the owner hands it back. */
+  readonly #refusedDuringTakeover = new Set<string>();
   /** Password/OTP cards waiting in the chat, with the page field each one fills. */
   readonly #secureInputs = new Map<string, PendingSecureInput>();
   readonly #computerUsePrerequisites: (() => ComputerUsePrerequisites) | null;
@@ -686,6 +692,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const waiter = this.#permissionWaiters.get(approval.id);
       this.#permissionWaiters.delete(approval.id);
       waiter?.(approval.status === "approved" ? "approved" : "rejected");
+      const deferred = this.#deferredPermissions.get(approval.id);
+      if (deferred) {
+        // The coworker stopped waiting: tell it, and let the same action through once.
+        this.#deferredPermissions.delete(approval.id);
+        const approved = approval.status === "approved";
+        if (approved) this.#approvedLater.set(deferred.key, Date.now() + APPROVED_LATER_MS);
+        await this.#notifyBot(
+          deferred.botId,
+          [
+            `[Approval ${approved ? "APPROVED" : "REJECTED"}] "${approval.title}".`,
+            approval.note ? `Owner's note: ${approval.note}` : null,
+            approved
+              ? "Repeat exactly the same action now; it goes through without asking again. Take a fresh snapshot first if the page may have changed."
+              : "Do not perform that action. Tell the owner what you will do instead.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      }
       return approval;
     }
     const verdict = approval.status === "approved" ? "APPROVED" : "REJECTED";
@@ -714,10 +739,52 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return this.getTakeover();
   }
 
+  /**
+   * Why a browser call must wait during a takeover, or null when it may go ahead. With the
+   * built-in browser only the coworkers that asked for help wait, and nobody may touch the tab the
+   * owner is working in; everyone else carries on in their own tabs.
+   */
+  #takeoverRefusal(params: DynamicToolCallParams): string | null {
+    if (!this.#takeover.humanInControl) return null;
+    const botId = this.#threadToBot.get(params.threadId) ?? null;
+    const waiting =
+      "The owner has taken over the browser (for example to log in or complete 2FA). Do not use the browser now. Continue other work or end your turn; you will be told when control is handed back.";
+    const refuse = (text: string) => {
+      if (botId) this.#refusedDuringTakeover.add(botId);
+      return text;
+    };
+    if (!this.#browser.takeoverHoldsShownTabOnly) return refuse(waiting);
+    if (botId && this.#takeover.requests.some((request) => request.botId === botId)) {
+      return refuse(waiting);
+    }
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    const tabId = getString(args, "tabId");
+    const changesTab = params.tool === "act" || params.tool === "close_tab";
+    if (changesTab && tabId && tabId === this.#browser.activeTabId) {
+      return refuse(
+        "The owner is working in this tab right now. Do not act on it. Use your own tabs (open a new one if needed) or wait; you will be told when the owner hands the browser back.",
+      );
+    }
+    return null;
+  }
+
+  /** Tells coworkers that were refused the browser during the takeover that it is free again. */
+  async #notifyRefusedCoworkers(alreadyTold: Set<string>): Promise<void> {
+    const refused = [...this.#refusedDuringTakeover].filter((botId) => !alreadyTold.has(botId));
+    this.#refusedDuringTakeover.clear();
+    for (const botId of refused) {
+      await this.#notifyBot(
+        botId,
+        "[Browser handed back] The owner finished in the browser, so you can use it again. Take a fresh snapshot of your page before continuing your task.",
+      );
+    }
+  }
+
   async handBackBrowser(note: string | null = null): Promise<BrowserTakeoverState> {
     const requests = this.#takeover.requests;
     this.#takeover = { humanInControl: false, requests: [] };
     this.#emitTakeover();
+    const told = new Set(requests.map((request) => request.botId));
     for (const botId of new Set(requests.map((request) => request.botId))) {
       const reasons = requests.filter((request) => request.botId === botId).map((r) => r.reason);
       await this.#notifyBot(
@@ -731,6 +798,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           .join("\n"),
       );
     }
+    await this.#notifyRefusedCoworkers(told);
     return this.getTakeover();
   }
 
@@ -751,6 +819,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           .join("\n"),
       );
     }
+    await this.#notifyRefusedCoworkers(new Set(requests.map((request) => request.botId)));
     return this.getTakeover();
   }
 
@@ -2107,8 +2176,21 @@ ${carryOver}`
   }
 
   /** Files an inbox request for a paused tool call and waits for the owner (or the timeout). */
-  async #askOwner(request: PermissionRequest): Promise<"approved" | "rejected" | "timed-out"> {
+  async #askOwner(
+    request: PermissionRequest,
+  ): Promise<"approved" | "rejected" | "timed-out" | "deferred"> {
     if (!this.#approvals || !request.botId) return "rejected";
+    const key = permissionKey(request);
+    const approvedUntil = this.#approvedLater.get(key);
+    if (approvedUntil !== undefined) {
+      this.#approvedLater.delete(key);
+      if (approvedUntil > Date.now()) return "approved";
+    }
+    // A runtime that gives up on a tool call after a few minutes is answered before that; the
+    // request stays in the inbox and the coworker hears the owner's decision as a message.
+    const shortWait = SHORT_TOOL_WAIT_MS[request.provider];
+    const defer = shortWait !== undefined && shortWait < this.#permissionTimeoutMs;
+    const waitMs = defer ? shortWait : this.#permissionTimeoutMs;
     const bot = this.#store.list().find((candidate) => candidate.id === request.botId);
     const wording = describePermissionRequest(request, bot?.name ?? "Your coworker", {
       shared: this.#store.sharedRoot,
@@ -2124,9 +2206,15 @@ ${carryOver}`
       permissionCategory: request.category,
     });
     this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+    const botId = request.botId;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.#permissionWaiters.delete(approval.id);
+        if (defer) {
+          this.#deferredPermissions.set(approval.id, { botId, key });
+          resolve("deferred");
+          return;
+        }
         resolve("timed-out");
         void this.#approvals
           ?.decide({
@@ -2140,7 +2228,7 @@ ${carryOver}`
             }
           })
           .catch(() => undefined);
-      }, this.#permissionTimeoutMs);
+      }, waitMs);
       timer.unref?.();
       this.#permissionWaiters.set(approval.id, (outcome) => {
         clearTimeout(timer);
@@ -2244,15 +2332,11 @@ ${carryOver}`
         case "item/tool/call": {
           if (!isDynamicToolCall(request.params)) throw new Error("Invalid dynamic tool request.");
           if (request.params.namespace === SAHKARMI_BROWSER_NAMESPACE) {
-            if (this.#takeover.humanInControl) {
+            const refusal = this.#takeoverRefusal(request.params);
+            if (refusal) {
               client.respond(request.id, {
                 success: false,
-                contentItems: [
-                  {
-                    type: "inputText",
-                    text: "The owner has taken over the browser (for example to log in or complete 2FA). Do not use the browser now. Continue other work or end your turn; you will be told when control is handed back.",
-                  },
-                ],
+                contentItems: [{ type: "inputText", text: refusal }],
               });
               return;
             }
@@ -2516,7 +2600,8 @@ ${carryOver}`
       const args = isRecord(params.arguments) ? params.arguments : {};
       const reason =
         typeof args.reason === "string" && args.reason.trim()
-          ? args.reason.trim().slice(0, 300)
+          ? // The banner shows 300 characters; a longer reason is shortened, never refused.
+            shortenReason(args.reason.trim())
           : "Needs your help in the browser";
       this.#takeover = {
         ...this.#takeover,
@@ -4262,7 +4347,7 @@ const SAHKARMI_DYNAMIC_TOOLS = {
         "Ask the owner to take over the browser for something only a human should do: logging in, OTP/2FA, CAPTCHA, or a payment page. Returns immediately; you are messaged when control is handed back.",
       inputSchema: {
         type: "object",
-        properties: { reason: { type: "string", minLength: 1, maxLength: 300 } },
+        properties: { reason: { type: "string", minLength: 1, maxLength: 4_000 } },
         required: ["reason"],
         additionalProperties: false,
       },
@@ -4548,6 +4633,7 @@ function developerInstructions(bot: BotSummary, sharedRoot: string): string {
     `For every browser task, use ${SAHKARMI_BROWSER_NAMESPACE} directly. It is Sahkarmi's embedded browser, visible to the owner beside your thread. Never use another browser plugin inside Sahkarmi.`,
     "Approvals are mandatory: call sahkarmi.request_approval and then STOP before any payment or money movement, sending a message/email/WhatsApp to a customer or vendor, publishing content, submitting a government, tax, bank or marketplace form, deleting data, or sharing personal data. Never work around a rejection.",
     `To attach a local file to a web page (a photo for a post, a document for a form), use ${SAHKARMI_BROWSER_NAMESPACE}.act with type "upload", the ref of the page's Upload / Add photo / Attach button or file input, and the file's full path in paths. Do not ask the owner to take over just to pick a file.`,
+    `To fill Google Sheets or another grid, select the cell (click it, or type its address in the Name box with submit), then use ${SAHKARMI_BROWSER_NAMESPACE}.act with type "paste" and tab-separated rows in text, or type "type" without ref (a tab moves to the next cell, a new line to the next row). Take a screenshot to check it landed. Do not ask the owner to take over just to type or paste.`,
     "Never type passwords, OTPs or card details yourself. When a page asks for a password, OTP or PIN, take a snapshot and call sahkarmi.request_secure_input with that field's ref, then end your turn. For CAPTCHA, payment pages or anything else only a human should do, call sahkarmi.request_browser_takeover with a short reason and end your turn.",
     "Use sahkarmi.list_agents to discover other coworkers and sahkarmi.send_message to send them asynchronous messages or local files. Always set replyToMessageId when answering a coworker. Replies are never forwarded automatically.",
     "For work with three or more steps, call sahkarmi.update_plan first with the steps, then again as each step starts and finishes, so the owner sees your progress.",
@@ -4802,4 +4888,22 @@ function planStepStatus(status: string | null): TurnPlanStepStatus {
   if (status === "completed") return "completed";
   if (status === "inProgress" || status === "in_progress") return "in_progress";
   return "pending";
+}
+
+/** A takeover reason fits the banner: 300 characters at most. */
+function shortenReason(reason: string): string {
+  return reason.length <= 300 ? reason : `${reason.slice(0, 299).trimEnd()}…`;
+}
+
+/**
+ * How long a runtime's tool call may wait for the owner's approval. Google Antigravity gives up
+ * on a tool call after 3 minutes and then fails its other running calls too.
+ */
+export const SHORT_TOOL_WAIT_MS: Partial<Record<string, number>> = { antigravity: 150_000 };
+/** An approval given after the coworker stopped waiting stays usable this long. */
+const APPROVED_LATER_MS = 30 * 60_000;
+
+/** The same action by the same coworker, so a later approval matches its repeat. */
+function permissionKey(request: PermissionRequest): string {
+  return [request.botId ?? "", request.category, request.action].join("\n");
 }

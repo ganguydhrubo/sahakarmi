@@ -5,6 +5,38 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.6] - 2026-10-27
+
+### Fixed
+
+- Sahkarmi is much lighter. Saved browser tabs no longer all load when the app starts: only the
+  tab on screen loads, the others when you open them or a coworker uses them. A tab nobody used
+  for 30 minutes sleeps (its page is freed; the tab, its address and your sign-ins stay). A
+  coworker opening a page it already has open reuses that tab instead of making a duplicate.
+- Your cursor stays in the chat box while coworkers work. Before, every coworker click or key
+  press took the keyboard into the browser, so you had to click the message box again.
+- Taking over the browser for one coworker no longer stops all the others. Only the coworker that
+  asked you waits; the others carry on in their own tabs and cannot touch the tab you are using.
+  A coworker that was asked to wait is told when you hand the browser back.
+- Coworkers can fill Google Sheets and other spreadsheets themselves: type into the selected cell
+  (Tab moves to the next cell, a new line to the next row) or paste whole rows. Pasting never
+  touches your clipboard.
+- Key combos such as Ctrl+A and Shift+Tab work in the built-in browser.
+- Coworkers can click icon buttons drawn as pictures (Instagram's menu, X's Post button). When an
+  element is gone, the coworker gets a clear "take a fresh snapshot" message instead of "Script
+  failed to execute".
+- When a click opens a new tab (job titles on Naukri), the coworker is told which tab to read.
+- Screenshots of a browser tab work when the browser panel is closed.
+- A coworker asking you to take over is never refused for a long reason; it is shortened instead.
+- Coworkers on Google Antigravity no longer fail browser calls for a missing tab or revision.
+- Coworkers on Google Antigravity no longer fail while you take time to approve something. After
+  about 2.5 minutes the coworker is told to wait; when you approve, it is told and its repeat of
+  the same action goes through without asking you again.
+- Reading a very big page (Instagram, a large sheet) no longer goes over Claude's limit: every
+  button and link is kept, and long page text is read in parts.
+- Reading a page in a hidden tab is faster and no longer times out: the page runs at full speed
+  while a coworker works in it, and slows down again afterwards to save battery.
+
 ## [0.12.4] - 2026-10-27
 
 ### Fixed
