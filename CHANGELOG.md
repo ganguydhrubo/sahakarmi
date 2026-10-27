@@ -5,6 +5,22 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-27
+
+### Added
+
+- Settings > Skills: add skills the way Claude Code does. Paste a GitHub link (for example
+  anthropics/skills) to see every skill (SKILL.md) in that open-source repo and install the ones
+  you pick, or paste a SKILL.md yourself. Every coworker gets them, whichever AI it runs on
+  (Claude, Codex, Gemini, Antigravity), and reads a skill before a task that matches it.
+- Settings > MCP servers: give coworkers new tools with MCP servers, the same ones Claude Code uses.
+  Paste the MCP JSON from a README, Claude Desktop or a .mcp.json file, load a repo's .mcp.json,
+  or add a server by hand (a program on this PC or a web address). Servers can be switched off,
+  edited or removed. Keys you enter are kept in a file only you can read and are never shown
+  again. On Windows, npx-based servers start correctly without extra setup.
+- New or changed MCP servers reach coworkers the next time Sahkarmi starts. Their tools still go
+  through your approvals.
+
 ## [0.12.7] - 2026-10-27
 
 ### Fixed

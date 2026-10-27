@@ -36,10 +36,12 @@ import {
   setRuntimeDirectory,
   setToolsDirectory,
 } from "../backend/cli";
+import { CustomSkills } from "../backend/custom-skills";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
 import { MailboxStore } from "../backend/mailbox-store";
+import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
@@ -80,6 +82,7 @@ import {
   isReasoningEffort,
   type MacPermissionId,
   type MacPermissionsState,
+  type McpServerInput,
   type OpenAttachmentInput,
   type OpenSharedFileInput,
   PERMISSION_CATEGORIES,
@@ -181,6 +184,47 @@ function configureContentSecurityPolicy(): void {
       },
     });
   });
+}
+
+function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void {
+  const text = (input: unknown, key: string) =>
+    isObject(input) && typeof input[key] === "string" ? (input[key] as string) : "";
+  handleTrusted(IPC_CHANNELS.customSkillsList, () => skills.list());
+  handleTrusted(IPC_CHANNELS.customSkillsAdd, (input: unknown) =>
+    skills.addFromText(text(input, "text")),
+  );
+  handleTrusted(IPC_CHANNELS.customSkillsPreviewGithub, (input: unknown) =>
+    skills.previewGithub(text(input, "url")),
+  );
+  handleTrusted(IPC_CHANNELS.customSkillsInstallGithub, (input: unknown) =>
+    skills.installGithub(
+      text(input, "url"),
+      isObject(input) && Array.isArray(input.paths)
+        ? input.paths.filter((path): path is string => typeof path === "string")
+        : [],
+    ),
+  );
+  handleTrusted(IPC_CHANNELS.customSkillsRemove, (input: unknown) =>
+    skills.remove(requireString(isObject(input) ? input.id : null, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpList, () => mcp.list());
+  handleTrusted(IPC_CHANNELS.mcpSave, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid MCP server.");
+    return mcp.save(input as unknown as McpServerInput);
+  });
+  handleTrusted(IPC_CHANNELS.mcpImportJson, (input: unknown) =>
+    mcp.importJson(text(input, "text")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpGithubJson, (input: unknown) => mcp.githubJson(text(input, "url")));
+  handleTrusted(IPC_CHANNELS.mcpSetEnabled, (input: unknown) =>
+    mcp.setEnabled(
+      requireString(isObject(input) ? input.id : null, "id"),
+      isObject(input) && input.enabled === true,
+    ),
+  );
+  handleTrusted(IPC_CHANNELS.mcpRemove, (input: unknown) =>
+    mcp.remove(requireString(isObject(input) ? input.id : null, "id")),
+  );
 }
 
 function registerTelegramIpc(telegram: TelegramBridge): void {
@@ -1204,6 +1248,12 @@ if (!hasSingleInstanceLock) {
       const composioClient = new ComposioClient({ userDataPath: app.getPath("userData") });
       service.setUsageService(usage);
       service.setComposioClient(composioClient);
+      const mcpServers = new McpServerStore(app.getPath("userData"));
+      await mcpServers.load().catch((error) => {
+        appLog.write("error", "MCP server list unreadable; starting with none", String(error));
+      });
+      service.setMcpServers(mcpServers);
+      registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       await features.initialize().catch((error) => {

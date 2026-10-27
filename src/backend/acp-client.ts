@@ -9,6 +9,7 @@ import { basename, dirname, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
+import { acpMcpServers, readCustomMcpServers } from "./mcp-servers";
 import {
   type AccountReadResult,
   type AppServerNotification,
@@ -453,7 +454,14 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const mcpToken = randomBytes(24).toString("hex");
     const route: McpRoute = { threadId: existingThreadId, namespaces: readNamespaces(params) };
     this.#mcpRoutes.set(mcpToken, route);
-    const mcpServers = await this.#mcpServersFor(mcpToken, route);
+    const mcpServers = [
+      ...(await this.#mcpServersFor(mcpToken, route)),
+      ...acpMcpServers(
+        readCustomMcpServers(params),
+        isRecord(this.#agentCapabilities.mcpCapabilities) &&
+          this.#agentCapabilities.mcpCapabilities.http === true,
+      ),
+    ];
 
     let result: Record<string, unknown> | null = null;
     let acpSessionId = existingThreadId;

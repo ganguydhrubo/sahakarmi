@@ -12133,3 +12133,157 @@ fieldset.memory-filters {
   opacity: 0.6;
   text-align: right;
 }
+
+/* ---------- Settings > Skills and MCP servers ---------- */
+.extension-settings {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.extension-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.extension-field > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.extension-field input,
+.extension-field textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 7px 10px;
+}
+
+.extension-field textarea {
+  font-family: var(--font-mono, ui-monospace, Consolas, monospace);
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+.extension-row {
+  display: flex;
+  gap: 8px;
+}
+
+.extension-row input {
+  flex: 1;
+}
+
+.extension-row button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.settings-card .extension-link {
+  border: 0;
+  background: none;
+  color: var(--primary-ink);
+  padding: 0 6px 0 0;
+  text-decoration: underline;
+}
+
+.extension-preview,
+.extension-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.extension-list {
+  display: flex;
+  max-height: 360px;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  overflow-y: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.extension-item,
+.extension-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 8px 10px;
+}
+
+.extension-pick {
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.extension-pick input {
+  margin-top: 3px;
+}
+
+.extension-item-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.extension-item-text strong {
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+
+.extension-item-text small {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.extension-item-text .extension-source {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extension-badge {
+  align-self: flex-start;
+  border-radius: 999px;
+  background: var(--success-soft, rgb(var(--success-rgb) / 0.15));
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+}
+
+.extension-badge-warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+/* The generic settings-card button style must not flatten the switch. */
+.extension-settings .feature-switch {
+  border: 0;
+  background: var(--surface-4);
+  padding: 0;
+}
+
+.extension-settings .feature-switch[aria-checked="true"] {
+  background: var(--success-fill);
+}

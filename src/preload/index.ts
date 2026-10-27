@@ -277,6 +277,24 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     setCoworker: (botId: string) => ipcRenderer.invoke(IPC_CHANNELS.telegramSetCoworker, { botId }),
     unpair: () => ipcRenderer.invoke(IPC_CHANNELS.telegramUnpair),
   },
+  customSkills: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.customSkillsList),
+    add: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsAdd, { text }),
+    previewGithub: (url: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.customSkillsPreviewGithub, { url }),
+    installGithub: (url: string, paths: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.customSkillsInstallGithub, { url, paths }),
+    remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsRemove, { id }),
+  },
+  mcp: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
+    save: (input) => ipcRenderer.invoke(IPC_CHANNELS.mcpSave, input),
+    importJson: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpImportJson, { text }),
+    githubJson: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpGithubJson, { url }),
+    setEnabled: (id: string, enabled: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, { id, enabled }),
+    remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRemove, { id }),
+  },
   voice: {
     getState: () => ipcRenderer.invoke(IPC_CHANNELS.voiceGetState),
     install: (modelId) => ipcRenderer.invoke(IPC_CHANNELS.voiceInstall, modelId),

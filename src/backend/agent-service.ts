@@ -98,6 +98,7 @@ import {
   snapshotFromThread,
   sortConversationMessages,
 } from "./conversation-snapshots";
+import { CustomSkills, customSkillLines } from "./custom-skills";
 import type { GeminiAccountSource } from "./gemini-accounts";
 import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
@@ -108,6 +109,7 @@ import {
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
+import { codexMcpConfig, type McpServerStore } from "./mcp-servers";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
   classifyAcpTool,
@@ -377,6 +379,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #memoryStore: AgentMemoryStore;
   #routineHost: RoutineHost | null = null;
   #composioClient: ComposioClient | null = null;
+  #mcpServers: McpServerStore | null = null;
   #composioSecurity: ComposioSecurityGuard | null = null;
 
   constructor(
@@ -540,6 +543,19 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Lets coworkers create and change routines when the owner asks them to in chat. */
   setRoutineHost(host: RoutineHost): void {
     this.#routineHost = host;
+  }
+
+  /** MCP servers the owner added in Settings; handed to each coworker chat when it starts. */
+  setMcpServers(store: McpServerStore): void {
+    this.#mcpServers = store;
+  }
+
+  /** `customMcpServers` for Claude and ACP runtimes, plus a `config` override for Codex. */
+  #mcpParams(client: AgentClient): Record<string, unknown> {
+    const servers = this.#mcpServers?.enabled() ?? [];
+    if (servers.length === 0) return {};
+    const config = client.provider === "codex" ? codexMcpConfig(servers) : undefined;
+    return { customMcpServers: servers, ...(config ? { config } : {}) };
   }
 
   setComposioClient(client: ComposioClient): void {
@@ -2061,6 +2077,7 @@ ${carryOver}`
       ephemeral: false,
       serviceName: "sahkarmi",
       dynamicTools: await this.#buildDynamicTools(bot.id),
+      ...this.#mcpParams(client),
     });
     const threadId = response.thread.id;
     if (client.provider === "codex") {
@@ -2094,6 +2111,7 @@ ${carryOver}`
       sandbox: "danger-full-access",
       developerInstructions: developerInstructions(bot, this.#store.sharedRoot),
       dynamicTools: await this.#buildDynamicTools(bot.id),
+      ...this.#mcpParams(client),
     };
 
     try {
@@ -2513,6 +2531,12 @@ ${carryOver}`
             text: JSON.stringify({
               folder: join(this.#store.sharedRoot, "Skills"),
               installed: installedSkillNames(this.#store.sharedRoot),
+              custom: (await new CustomSkills(this.#store.sharedRoot).list()).map((skill) => ({
+                id: skill.id,
+                name: skill.name,
+                whenToUse: skill.description,
+                path: join(this.#store.sharedRoot, skill.sharedPath),
+              })),
               learned: learned.map((skill) => ({
                 id: skill.id,
                 name: skill.name,
@@ -2529,8 +2553,10 @@ ${carryOver}`
     if (params.tool === "read_skill") {
       const args = isRecord(params.arguments) ? params.arguments : {};
       const id = typeof args.id === "string" ? args.id : "";
-      const text = await new LearnedSkills(this.#store.sharedRoot).read(id);
-      if (text === null) throw new Error(`No learned skill with id "${id}". Call list_skills.`);
+      const text =
+        (await new LearnedSkills(this.#store.sharedRoot).read(id)) ??
+        (await new CustomSkills(this.#store.sharedRoot).read(id));
+      if (text === null) throw new Error(`No skill with id "${id}". Call list_skills.`);
       return { success: true, contentItems: [{ type: "inputText", text }] };
     }
 
@@ -4593,7 +4619,7 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "read_skill",
-      description: "Read one learned skill's full playbook by its id (from list_skills).",
+      description: "Read one learned or custom skill's full playbook by its id (from list_skills).",
       inputSchema: {
         type: "object",
         properties: { id: { type: "string", minLength: 1, maxLength: 80 } },
@@ -4662,7 +4688,11 @@ function developerInstructions(bot: BotSummary, sharedRoot: string): string {
  * playbooks in Shared/Skills.
  */
 function skillInstructions(sharedRoot: string): string[] {
-  const skills = [...installedSkillNames(sharedRoot), ...learnedSkillNames(sharedRoot)];
+  const skills = [
+    ...installedSkillNames(sharedRoot),
+    ...learnedSkillNames(sharedRoot),
+    ...customSkillLines(sharedRoot),
+  ];
   return [
     ...(skills.length > 0
       ? [

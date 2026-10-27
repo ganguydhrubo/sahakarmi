@@ -11,6 +11,7 @@ import {
   query,
   type SDKMessage,
   type SDKUserMessage,
+  type McpServerConfig as SdkMcpServerConfig,
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -24,6 +25,7 @@ import {
   SAVE_SKILL_DESCRIPTION,
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
+import { claudeMcpServers, type McpServerWire, readCustomMcpServers } from "./mcp-servers";
 import {
   type AppServerNotification,
   type AppServerRequest,
@@ -49,6 +51,8 @@ interface ThreadConfig {
   effort?: string;
   developerInstructions: string;
   additionalDirectories: string[];
+  /** MCP servers the owner added in Settings. */
+  customMcpServers: McpServerWire[];
 }
 
 interface ActiveTurn {
@@ -265,7 +269,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       }
       return this.#authorizeTool(threadId, toolName, toolInput);
     };
-    const mcpServers = this.#createSahkarmiServers(threadId);
+    // The owner's own servers first, so Sahkarmi's tools always keep their names.
+    const mcpServers = {
+      ...claudeMcpServers(config.customMcpServers),
+      ...this.#createSahkarmiServers(threadId),
+    } as Record<string, SdkMcpServerConfig>;
     const claudeQuery = this.#createQuery({
       prompt: input,
       options: {
@@ -864,7 +872,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "read_skill",
-            "Read one learned skill's full playbook by its id (from list_skills).",
+            "Read one learned or custom skill's full playbook by its id (from list_skills).",
             { id: z.string().min(1).max(80) },
             (args) => call("sahkarmi", "read_skill", args),
           ),
@@ -1048,6 +1056,7 @@ function readThreadConfig(params: unknown): ThreadConfig {
     effort: getString(params, "effort") ?? undefined,
     developerInstructions: getString(params, "developerInstructions") ?? "",
     additionalDirectories: [...new Set([cwd, ...roots])],
+    customMcpServers: readCustomMcpServers(params),
   };
 }
 

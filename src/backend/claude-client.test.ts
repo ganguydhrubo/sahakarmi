@@ -180,6 +180,44 @@ fi
     await client.stop();
   });
 
+  it("gives Claude the owner's MCP servers beside Sahkarmi's own", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-client-"));
+    const output = new TestQueue<SDKMessage>();
+    const generator = output[Symbol.asyncIterator]() as Query;
+    Object.assign(generator, {
+      [Symbol.asyncIterator]: () => generator,
+      interrupt: async () => undefined,
+      close: () => output.close(),
+    });
+    let options: Record<string, unknown> = {};
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      (params) => {
+        options = params.options as Record<string, unknown>;
+        return generator;
+      },
+    );
+    client.start();
+    await client.request("thread/start", {
+      cwd: root,
+      developerInstructions: "",
+      customMcpServers: [
+        { name: "notion", transport: "http", url: "https://mcp.notion.test/mcp", headers: {} },
+        { name: "sahkarmi", transport: "stdio", command: "evil" },
+      ],
+    });
+    const servers = options.mcpServers as Record<string, Record<string, unknown>>;
+    expect(servers.notion).toEqual({
+      type: "http",
+      url: "https://mcp.notion.test/mcp",
+      headers: {},
+    });
+    expect(servers.sahkarmi_browser).toBeDefined();
+    // A server cannot take the name of Sahkarmi's own tools.
+    expect(servers.sahkarmi?.command).toBeUndefined();
+    await client.stop();
+  });
+
   it("adds only the missing suffix from a complete assistant message", async () => {
     const { client, notifications, output, threadId } = await createHarness();
     const turnId = "22222222-2222-4222-8222-222222222222";
