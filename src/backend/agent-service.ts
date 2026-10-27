@@ -193,6 +193,26 @@ const CONTEXT_COMPACTION_THRESHOLD = 0.8;
 const CONTEXT_COMPACTION_TIMEOUT_MS = 120_000;
 /** Recently finished turn ids, kept to ignore out-of-order start events and responses. */
 const MAX_REMEMBERED_FINISHED_TURNS = 500;
+/** AI programs checked at the same time while Sahkarmi starts. */
+const PARALLEL_PROVIDER_STARTS = 3;
+/** Opening a chat waits this long for its AI to connect, then shows the saved chat. */
+const CHAT_OPEN_WAIT_MS = 4_000;
+
+/** Runs `work` for every item, at most `limit` at a time. */
+export async function runWithLimit<T>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next++] as T;
+      await work(item);
+    }
+  });
+  await Promise.all(lanes);
+}
 
 const INITIAL_STATUS: AgentStatus = {
   phase: "idle",
@@ -1213,7 +1233,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // Already known to be missing or signed out: show the saved chat now and check again
       // in the background, instead of making every open of this chat wait for a start attempt.
       const known = this.#status.providers?.find((candidate) => candidate.id === provider)?.state;
-      if (known !== "not-installed" && known !== "sign-in-required") await start;
+      if (known !== "not-installed" && known !== "sign-in-required") {
+        // Never hold the chat for a whole AI start (Google's can take a minute): after a short
+        // wait the saved chat shows, and the window reads it again once this AI is connected.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          start,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, CHAT_OPEN_WAIT_MS);
+          }),
+        ]);
+        clearTimeout(timer);
+      }
     }
     if (provider === "antigravity" && this.#clients.has(provider)) this.#geminiIdle.touch();
     const client = this.#clientForBot(bot) ?? dormant ?? null;
@@ -1565,26 +1596,44 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         return started;
       });
     }
-    for (const provider of startOrder) {
-      if (provider === "antigravity" && geminiStart) continue;
+    let stopping = false;
+    const startOne = async (provider: AgentProvider): Promise<void> => {
+      if (stopping) return;
       if (provider === "antigravity" && startingElsewhere) {
         await startingElsewhere.catch(() => undefined);
       }
-      if (this.#clients.has(provider)) continue;
+      if (this.#clients.has(provider)) return;
+      // A coworker that needs this provider meanwhile waits for this start instead of
+      // launching a second copy of it.
+      const finishPending = startOrder.length > 1 ? this.#registerStart(provider) : () => undefined;
       const finishStart = this.#announceEarlyReady(provider, providerStatuses, requestedProviders);
       let started: boolean;
       try {
         started = await this.#startProvider(provider, null, providerStatuses, failures);
       } finally {
         finishStart();
+        finishPending();
       }
       if (!started) {
-        // Sahkarmi is stopping; Gemini's own start notices that too and stops its process.
-        finishGemini();
+        stopping = true;
         return;
       }
-      // Show this provider's result right away instead of after every provider was tried.
+      // Show this provider's result right away instead of after every provider was tried, and
+      // let the owner chat as soon as one AI is connected.
       this.#setStatus({ providers: this.#mergeProviders(providerStatuses, requestedProviders) });
+      this.#markChatReady(providerStatuses, requestedProviders);
+    };
+    // The quick providers start side by side (a few at a time, so a low-memory PC is not
+    // swamped): one after another, ten CLI checks kept the chat waiting for about a minute.
+    const quick = startOrder.filter((provider) => provider !== "antigravity");
+    await runWithLimit(quick, PARALLEL_PROVIDER_STARTS, startOne);
+    if (!stopping && startOrder.includes("antigravity") && !geminiStart) {
+      await startOne("antigravity");
+    }
+    if (stopping) {
+      // Sahkarmi is stopping; Gemini's own start notices that too and stops its process.
+      finishGemini();
+      return;
     }
     if (geminiStart) {
       // The quick providers are up: the owner can work while Google's server finishes starting.
@@ -1814,6 +1863,37 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    * the app is marked ready so the owner can work while it starts; its start is registered so
    * a coworker that needs it meanwhile waits for this start instead of spawning a second one.
    */
+  /** Records an in-flight start so ensureProvider waits for it; returns the "finished" call. */
+  #registerStart(provider: AgentProvider): () => void {
+    if (this.#providerStarts.has(provider)) return () => undefined;
+    let finish: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.#providerStarts.set(provider, pending);
+    return () => {
+      finish();
+      if (this.#providerStarts.get(provider) === pending) this.#providerStarts.delete(provider);
+    };
+  }
+
+  /** The first connected AI makes chat usable; the others keep connecting in the background. */
+  #markChatReady(
+    providerStatuses: AgentProviderStatus[],
+    requestedProviders: readonly AgentProvider[],
+  ): void {
+    if (this.#clients.size === 0 || this.#status.phase === "ready" || this.#stopping) return;
+    const primaryProvider = this.#defaultProvider();
+    this.#setStatus({
+      phase: "ready",
+      cliVersion: this.#cli.get(primaryProvider)?.version ?? null,
+      auth: authFor(primaryProvider, this.#accounts.get(primaryProvider)?.email ?? null),
+      providers: this.#mergeProviders(providerStatuses, requestedProviders),
+      capabilities: { ...this.#status.capabilities, chat: "ready", browser: "ready" },
+      message: null,
+    });
+  }
+
   #announceEarlyReady(
     provider: AgentProvider,
     providerStatuses: AgentProviderStatus[],

@@ -20,6 +20,18 @@ All notable changes to Sahkarmi are documented here. The project follows
   again. On Windows, npx-based servers start correctly without extra setup.
 - New or changed MCP servers reach coworkers the next time Sahkarmi starts. Their tools still go
   through your approvals.
+- Export what a coworker or a team did as a neat Markdown (.md), plain text (.txt) or JSON file:
+  the task, every step with timing, what was said and the result. Use the Export button in a
+  chat (this task or the whole chat), on a team run, or on a routine. Passwords, keys, OTPs and
+  card numbers are hidden in the file.
+- Routines > Import workflow: open an exported JSON file, pick which of your coworkers does each
+  step, and it becomes a routine you can run again.
+
+### Fixed
+
+- The app no longer freezes while the AIs connect after it opens. AIs now connect side by side
+  instead of one after another, so chat is ready in about a second instead of four or five, and
+  opening a chat no longer waits for a slow AI to finish starting.
 
 ## [0.12.7] - 2026-10-27
 

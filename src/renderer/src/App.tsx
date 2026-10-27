@@ -365,10 +365,18 @@ export function App() {
   });
 
   const isAgentReady = createMemo(() => agentStatus().phase === "ready");
+  // AIs connect one by one after start-up; a chat opened before its AI was up is read again.
+  const connectedProviders = createMemo(() =>
+    (agentStatus().providers ?? [])
+      .filter((provider) => provider.state === "available")
+      .map((provider) => provider.id)
+      .join(","),
+  );
 
   createEffect(() => {
     const botId = activeBotId();
     isAgentReady();
+    connectedProviders();
     if (!botId) return;
     void Promise.all([
       window.sahkarmi.agent.readConversation(botId),
@@ -395,17 +403,28 @@ export function App() {
       case "models-changed":
         setModelOptions(event.models);
         return;
-      case "status":
+      case "status": {
+        const previous = agentStatus();
         setAgentStatus(event.status);
-        // Provider rows in Settings → Features depend on this status; keep them current.
-        void loadFeatures();
-        if (event.status.phase === "ready") {
+        // Start-up sends many status updates; refresh features and models only when the
+        // providers or the phase actually changed, not on every update.
+        const providerKey = (status: typeof previous) =>
+          (status.providers ?? []).map((provider) => `${provider.id}:${provider.state}`).join(",");
+        if (providerKey(previous) !== providerKey(event.status)) {
+          // Provider rows in Settings → Features depend on this status; keep them current.
+          void loadFeatures();
+        }
+        if (
+          event.status.phase === "ready" &&
+          (previous.phase !== "ready" || providerKey(previous) !== providerKey(event.status))
+        ) {
           void window.sahkarmi.agent
             .listModels()
             .then(setModelOptions)
             .catch(() => undefined);
         }
         return;
+      }
       case "usage-changed":
         setAccountUsage(event.usage);
         return;
