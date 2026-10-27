@@ -678,6 +678,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
                   "click",
                   "type",
                   "key",
+                  "paste",
                   "scroll",
                   "upload",
                   "back",

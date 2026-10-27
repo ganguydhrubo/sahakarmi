@@ -5,6 +5,19 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.5] - 2026-10-27
+
+### Fixed
+
+- Coworkers can now fill Google Sheets and other spreadsheets themselves. Before, the built-in
+  browser could type only into a named field, so typing into a selected cell failed ("ref is
+  required"), the text never reached the cell, and the coworker asked you to take over and paste.
+  Now a coworker can type into whatever is selected (Tab moves to the next cell, a new line to the
+  next row) or paste whole rows at once. Your own clipboard text is put back after the paste.
+- Key combos such as Ctrl+V, Ctrl+A and Shift+Tab now work in the built-in browser.
+- A coworker's screenshot of a browser tab works when the browser panel is closed. Before, it failed
+  with "display surface not available" and the coworker worked blind.
+
 ## [0.12.4] - 2026-10-27
 
 ### Fixed

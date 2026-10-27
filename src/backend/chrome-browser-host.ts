@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
-import { type BrowserWindow, WebContentsView } from "electron";
+import { type BrowserWindow, clipboard, WebContentsView } from "electron";
 import type {
   BrowserBounds,
   BrowserControlState,
@@ -35,6 +35,7 @@ import {
   validateBounds,
   withTimeout,
 } from "./browser-host";
+import { type CdpSend, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
@@ -1295,6 +1296,14 @@ async function performCdpAction(
       return picker ? filePickerNotice(action.ref) : undefined;
     }
     case "type": {
+      const send = tabSend(pipe, sessionId);
+      const text = action.text.slice(0, 50_000);
+      await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+      if (action.ref === undefined) {
+        await typeIntoFocus(send, text);
+        if (action.submit) await pressCdpKey(send, "Enter");
+        return;
+      }
       await evaluate(
         pipe,
         tab,
@@ -1311,18 +1320,27 @@ async function performCdpAction(
             selection?.removeAllRanges();
             selection?.addRange(range);
           } else {
-            throw new Error('Element does not accept text.');
+            throw new Error('Element does not accept text. To type into a spreadsheet cell or another focused part of the page, click it, then send type without ref.');
           }
         })()`,
         10_000,
       );
-      await pipe.send("Input.insertText", { text: action.text.slice(0, 50_000) }, sessionId);
-      if (action.submit) await pressCdpKey(pipe, sessionId, "Enter");
+      await send("Input.insertText", { text });
+      if (action.submit) await pressCdpKey(send, "Enter");
       return;
     }
-    case "key":
-      await pressCdpKey(pipe, sessionId, action.key);
+    case "key": {
+      const send = tabSend(pipe, sessionId);
+      await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+      await pressCdpKey(send, action.key);
       return;
+    }
+    case "paste": {
+      const send = tabSend(pipe, sessionId);
+      await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+      await pasteWithKeys(send, action.text);
+      return;
+    }
     case "scroll":
       await evaluate(
         pipe,
@@ -1353,103 +1371,25 @@ async function performCdpAction(
   }
 }
 
-const NAMED_KEYS: Record<string, { key: string; code: string; keyCode: number; text?: string }> = {
-  enter: { key: "Enter", code: "Enter", keyCode: 13, text: "\r" },
-  return: { key: "Enter", code: "Enter", keyCode: 13, text: "\r" },
-  tab: { key: "Tab", code: "Tab", keyCode: 9 },
-  escape: { key: "Escape", code: "Escape", keyCode: 27 },
-  esc: { key: "Escape", code: "Escape", keyCode: 27 },
-  backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
-  delete: { key: "Delete", code: "Delete", keyCode: 46 },
-  space: { key: " ", code: "Space", keyCode: 32, text: " " },
-  arrowup: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
-  up: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
-  arrowdown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
-  down: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
-  arrowleft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
-  left: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
-  arrowright: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
-  right: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
-  pageup: { key: "PageUp", code: "PageUp", keyCode: 33 },
-  pagedown: { key: "PageDown", code: "PageDown", keyCode: 34 },
-  home: { key: "Home", code: "Home", keyCode: 36 },
-  end: { key: "End", code: "End", keyCode: 35 },
-};
-
-const MODIFIERS: Record<string, number> = {
-  alt: 1,
-  option: 1,
-  ctrl: 2,
-  control: 2,
-  commandorcontrol: 2,
-  cmdorctrl: 2,
-  meta: 4,
-  cmd: 4,
-  command: 4,
-  shift: 8,
-};
-
-/** The DevTools key event for a key name like "Enter", "a", "Tab" or "Ctrl+A". */
-export function cdpKeyEvent(input: string): {
-  key: string;
-  code: string;
-  windowsVirtualKeyCode: number;
-  modifiers: number;
-  text?: string;
-} {
-  if (!/^[a-zA-Z0-9+_-]{1,32}$/.test(input)) throw new Error("Invalid browser key.");
-  const parts = input.split("+").filter(Boolean);
-  const name = parts.pop() ?? "";
-  let modifiers = 0;
-  for (const part of parts) {
-    const bit = MODIFIERS[part.toLowerCase()];
-    if (bit === undefined) throw new Error("Invalid browser key.");
-    modifiers |= bit;
+/**
+ * Pastes with Ctrl+V into whatever has focus. With text, it goes on the clipboard just for the
+ * paste; the owner's own clipboard text comes back afterwards.
+ */
+async function pasteWithKeys(send: CdpSend, text: string | undefined): Promise<void> {
+  const pasted = text?.slice(0, 500_000);
+  const ownerText = pasted === undefined ? null : clipboard.readText();
+  if (pasted !== undefined) clipboard.writeText(pasted);
+  try {
+    await pressCdpKey(send, "Ctrl+v");
+    await delay(500);
+  } finally {
+    if (ownerText && clipboard.readText() === pasted) clipboard.writeText(ownerText);
   }
-  const named = NAMED_KEYS[name.toLowerCase()];
-  if (named) {
-    return {
-      key: named.key,
-      code: named.code,
-      windowsVirtualKeyCode: named.keyCode,
-      modifiers,
-      ...(named.text && modifiers === 0 ? { text: named.text } : {}),
-    };
-  }
-  if (name.length === 1) {
-    const upper = name.toUpperCase();
-    const code = /[0-9]/.test(name) ? `Digit${name}` : `Key${upper}`;
-    const text = modifiers & ~8 ? undefined : modifiers & 8 ? upper : name;
-    return {
-      key: modifiers & 8 ? upper : name,
-      code,
-      windowsVirtualKeyCode: upper.charCodeAt(0),
-      modifiers,
-      ...(text ? { text } : {}),
-    };
-  }
-  const functionKey = /^F([1-9]|1[0-2])$/i.exec(name);
-  if (functionKey) {
-    const number = Number(functionKey[1]);
-    return {
-      key: `F${number}`,
-      code: `F${number}`,
-      windowsVirtualKeyCode: 111 + number,
-      modifiers,
-    };
-  }
-  throw new Error("Invalid browser key.");
 }
 
-async function pressCdpKey(pipe: CdpPipe, sessionId: string | null, input: string): Promise<void> {
-  const event = cdpKeyEvent(input);
-  await pipe.send(
-    "Input.dispatchKeyEvent",
-    { type: event.text ? "keyDown" : "rawKeyDown", ...event },
-    sessionId,
-  );
-  const { text: _text, ...up } = event;
-  await pipe.send("Input.dispatchKeyEvent", { type: "keyUp", ...up }, sessionId);
+/** DevTools commands for one Chrome tab, in the shape the shared keyboard code takes. */
+function tabSend(pipe: CdpPipe, sessionId: string | null): CdpSend {
+  return (method, params) => pipe.send(method, params, sessionId);
 }
 
 /** Asks a browser to close its windows normally, then forces it after a grace period. */

@@ -1425,6 +1425,7 @@ export type BrowserControlAction =
   | "click"
   | "type"
   | "key"
+  | "paste"
   | "scroll"
   | "upload"
   | "back"

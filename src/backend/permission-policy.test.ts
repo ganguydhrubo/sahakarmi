@@ -143,6 +143,7 @@ describe("permission policy", () => {
     expect(classifyBrowserAction("click", "Send message", "", false)).toBe("external_messages");
     expect(classifyBrowserAction("click", "Next page", "", false)).toBe("browser_interaction");
     expect(classifyBrowserAction("type", "Search", "", false)).toBe("browser_interaction");
+    expect(classifyBrowserAction("paste", "", "", false)).toBe("browser_interaction");
     expect(classifyBrowserAction("type", "PAN", "https://www.incometax.gov.in/x", true)).toBe(
       "official_forms",
     );

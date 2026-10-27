@@ -5,6 +5,7 @@ import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import {
   app,
   type BrowserWindow,
+  clipboard,
   type Session,
   session,
   type WebContents,
@@ -19,6 +20,7 @@ import type {
   BrowserVisibilityInput,
 } from "../shared/ipc";
 import { ACT_DESCRIPTION } from "./browser-act";
+import { type CdpSend, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
@@ -51,10 +53,16 @@ interface InternalTab {
 }
 
 /** Actions that can change what a site stores (a scroll or a back never does). */
-const CHANGING_ACTIONS = new Set<BrowserAction["type"]>(["click", "type", "key", "upload"]);
+const CHANGING_ACTIONS = new Set<BrowserAction["type"]>([
+  "click",
+  "type",
+  "key",
+  "paste",
+  "upload",
+]);
 const OWNER_INPUT = new Set(["mouseDown", "keyDown", "rawKeyDown", "char"]);
 /** Actions that leave unsaved input in the page. */
-const TYPING_ACTIONS = new Set<BrowserAction["type"]>(["type", "key", "upload"]);
+const TYPING_ACTIONS = new Set<BrowserAction["type"]>(["type", "key", "paste", "upload"]);
 
 /**
  * How long to wait before reloading an out-of-date tab: null when it must not be reloaded at
@@ -131,8 +139,11 @@ export interface BrowserSnapshot {
 
 export type BrowserAction =
   | { type: "click"; ref: string }
-  | { type: "type"; ref: string; text: string; submit?: boolean }
+  /** Without a ref, types into whatever has focus (e.g. a spreadsheet cell). */
+  | { type: "type"; ref?: string; text: string; submit?: boolean }
   | { type: "key"; key: string }
+  /** Pastes text (or what is already on the clipboard) into whatever has focus. */
+  | { type: "paste"; text?: string }
   | { type: "scroll"; deltaY: number }
   | { type: "upload"; ref: string; paths: string[] }
   | { type: "back" }
@@ -170,7 +181,17 @@ export const BROWSER_DYNAMIC_TOOLS = [
             properties: {
               type: {
                 type: "string",
-                enum: ["click", "type", "key", "scroll", "upload", "back", "forward", "reload"],
+                enum: [
+                  "click",
+                  "type",
+                  "key",
+                  "paste",
+                  "scroll",
+                  "upload",
+                  "back",
+                  "forward",
+                  "reload",
+                ],
               },
               ref: { type: "string" },
               paths: { type: "array", items: { type: "string" } },
@@ -455,12 +476,20 @@ export class BrowserHost implements CoworkerBrowser {
 
   async screenshot(tabId: string): Promise<string> {
     return this.#enqueue(tabId, async (tab) => {
-      const image = await withTimeout(
-        tab.view.webContents.capturePage(),
-        10_000,
-        "Browser screenshot timed out.",
-      );
-      return image.toDataURL();
+      // Chromium cannot capture a hidden page ("display surface not available"): paint it
+      // out of sight first, as previews do.
+      const restore = tab.view.getVisible() ? null : this.#showOutOfSight(tab.view);
+      try {
+        if (restore) await delay(PREVIEW_PAINT_MS);
+        const image = await withTimeout(
+          tab.view.webContents.capturePage(),
+          10_000,
+          "Browser screenshot timed out.",
+        );
+        return image.toDataURL();
+      } finally {
+        restore?.();
+      }
     });
   }
 
@@ -968,6 +997,7 @@ function browserControlAction(tool: string, args: Record<string, unknown>): Brow
         action === "click" ||
         action === "type" ||
         action === "key" ||
+        action === "paste" ||
         action === "scroll" ||
         action === "upload" ||
         action === "back" ||
@@ -1265,6 +1295,14 @@ async function performAction(
       return picker ? filePickerNotice(action.ref) : undefined;
     }
     case "type": {
+      const text = action.text.slice(0, 50_000);
+      if (action.ref === undefined) {
+        await withFocusedPage(contents, async (send) => {
+          await typeIntoFocus(send, text);
+          if (action.submit) await pressCdpKey(send, "Enter");
+        });
+        return;
+      }
       await contents.executeJavaScript(
         `(() => {
           const node = document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]');
@@ -1279,21 +1317,22 @@ async function performAction(
             selection?.removeAllRanges();
             selection?.addRange(range);
           } else {
-            throw new Error('Element does not accept text.');
+            throw new Error('Element does not accept text. To type into a spreadsheet cell or another focused part of the page, click it, then send type without ref.');
           }
         })()`,
         true,
       );
-      await withDevToolsDebugger(contents, () =>
-        contents.debugger.sendCommand("Input.insertText", {
-          text: action.text.slice(0, 50_000),
-        }),
-      );
-      if (action.submit) pressKey(contents, "Enter");
+      await withFocusedPage(contents, async (send) => {
+        await send("Input.insertText", { text });
+        if (action.submit) await pressCdpKey(send, "Enter");
+      });
       return;
     }
     case "key":
-      pressKey(contents, action.key);
+      await withFocusedPage(contents, (send) => pressCdpKey(send, action.key));
+      return;
+    case "paste":
+      await pasteIntoFocus(contents, action.text);
       return;
     case "scroll":
       await contents.executeJavaScript(
@@ -1533,10 +1572,42 @@ async function withDevToolsDebugger<T>(
   }
 }
 
-function pressKey(contents: WebContents, key: string): void {
-  if (!/^[a-zA-Z0-9+_-]{1,32}$/.test(key)) throw new Error("Invalid browser key.");
-  contents.sendInputEvent({ type: "keyDown", keyCode: key });
-  contents.sendInputEvent({ type: "keyUp", keyCode: key });
+/**
+ * Runs keyboard input with the page treated as focused. The owner is usually typing in the chat,
+ * not the page, and sites like Google Sheets ignore keys while their page has no focus.
+ */
+async function withFocusedPage(
+  contents: WebContents,
+  operation: (send: CdpSend) => Promise<void>,
+): Promise<void> {
+  await withDevToolsDebugger(contents, async () => {
+    const send: CdpSend = (method, params) => contents.debugger.sendCommand(method, params);
+    await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await operation(send);
+  });
+}
+
+/** How long a page gets to read the clipboard before the owner's own clipboard text is put back. */
+const PASTE_SETTLE_MS = 500;
+
+/**
+ * Pastes like Ctrl+V into whatever has focus. Spreadsheets turn tab-separated lines into rows and
+ * columns. With text, it goes on the clipboard just for the paste; the owner's text comes back.
+ */
+async function pasteIntoFocus(contents: WebContents, text: string | undefined): Promise<void> {
+  const pasted = text?.slice(0, 500_000);
+  const ownerText = pasted === undefined ? null : clipboard.readText();
+  if (pasted !== undefined) clipboard.writeText(pasted);
+  try {
+    await withDevToolsDebugger(contents, async () => {
+      await contents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
+      contents.paste();
+      await delay(PASTE_SETTLE_MS);
+    });
+  } finally {
+    // Only plain text is put back, and never over something the owner copied meanwhile.
+    if (ownerText && clipboard.readText() === pasted) clipboard.writeText(ownerText);
+  }
 }
 
 function parseAction(value: unknown): BrowserAction {
@@ -1549,15 +1620,21 @@ function parseAction(value: unknown): BrowserAction {
         return parseAction({ ...value, type: "upload" });
       }
       return { type: "click", ref: requiredString(value, "ref") };
-    case "type":
+    case "type": {
+      const ref = typeof value.ref === "string" && value.ref.trim() ? value.ref : undefined;
       return {
         type: "type",
-        ref: requiredString(value, "ref"),
+        ...(ref ? { ref } : {}),
         text: requiredString(value, "text"),
         submit: value.submit === true,
       };
+    }
     case "key":
       return { type: "key", key: requiredString(value, "key") };
+    case "paste":
+      return typeof value.text === "string" && value.text
+        ? { type: "paste", text: value.text }
+        : { type: "paste" };
     case "scroll":
       return { type: "scroll", deltaY: requiredNumber(value, "deltaY") };
     case "upload": {

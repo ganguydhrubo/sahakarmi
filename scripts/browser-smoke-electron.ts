@@ -2,15 +2,74 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { app, BrowserWindow, webContents } from "electron";
+import { app, BrowserWindow, clipboard, webContents } from "electron";
 import { BrowserHost } from "../src/backend/browser-host";
 
 let cachedPageVersion = 1;
 let savedDraft = "none";
 const pageLoads = new Map<string, number>();
 
+/**
+ * A grid that takes input the way Google Sheets does: keys go to a hidden editable frame, a cell
+ * starts editing only on a real key press (inserted text alone is thrown away), Tab and Enter
+ * save the cell and move, and a paste of tab-separated lines fills rows and columns.
+ */
+const SHEET_PAGE = `<!doctype html>
+  <style>td { border: 1px solid #999; width: 60px; height: 20px }</style>
+  <table><tbody id="grid"></tbody></table>
+  <iframe id="sink" style="position:absolute; left:-1000px; width:10px; height:10px"
+    srcdoc="<body contenteditable='true'></body>"></iframe>
+  <output id="cells">{}</output>
+  <script>
+    const cells = {};
+    let row = 0, col = 0, startCol = 0, editing = false;
+    const frame = document.getElementById('sink');
+    const sink = () => frame.contentDocument.body;
+    const name = (r, c) => String.fromCharCode(65 + c) + (r + 1);
+    const show = () => { document.getElementById('cells').textContent = JSON.stringify(cells); };
+    const focusSink = () => { frame.contentWindow.focus(); sink().focus(); };
+    const commit = () => {
+      if (editing) { cells[name(row, col)] = sink().textContent; editing = false; show(); }
+      sink().textContent = '';
+    };
+    for (let r = 0; r < 6; r += 1) {
+      const tr = document.getElementById('grid').insertRow();
+      for (let c = 0; c < 4; c += 1) {
+        const td = tr.insertCell();
+        td.setAttribute('role', 'gridcell');
+        td.setAttribute('aria-label', 'Cell ' + name(r, c));
+        td.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          row = r; col = c; startCol = c; editing = false;
+          focusSink();
+        });
+      }
+    }
+    frame.addEventListener('load', () => {
+      const doc = frame.contentDocument;
+      doc.addEventListener('keydown', (event) => {
+        if (event.key === 'Tab') { event.preventDefault(); commit(); col += 1; return; }
+        if (event.key === 'Enter') { event.preventDefault(); commit(); row += 1; col = startCol; return; }
+        if (event.key.length === 1 && !event.ctrlKey && !editing) { editing = true; sink().textContent = ''; }
+      });
+      doc.addEventListener('input', () => { if (!editing) sink().textContent = ''; });
+      doc.addEventListener('paste', (event) => {
+        event.preventDefault();
+        event.clipboardData.getData('text/plain').split(/\\r?\\n/).forEach((line, i) =>
+          line.split('\\t').forEach((value, j) => { cells[name(row + i, col + j)] = value; }));
+        show();
+      });
+      focusSink();
+    });
+  </script>`;
+
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  if (url.pathname === "/sheet") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(SHEET_PAGE);
+    return;
+  }
   if (url.pathname === "/cached") {
     response.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
@@ -112,7 +171,7 @@ async function main(): Promise<void> {
   const hardTimeout = setTimeout(() => {
     process.stderr.write("BrowserHost smoke test timed out.\n");
     app.exit(1);
-  }, 40_000);
+  }, 90_000);
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -379,6 +438,64 @@ async function main(): Promise<void> {
     await browser.setVisible({ visible: false });
     for (const tab of [ownerDraft, coworkerDraft, gone, notes]) await browser.close(tab.id);
     process.stdout.write("BrowserHost: same-site tab refresh passed.\n");
+
+    // A spreadsheet on a hidden panel, as when a coworker fills Google Sheets.
+    const sheet = await browser.open(`${origin}/sheet`, "smoke-thread");
+    const sheetCells = async (): Promise<Record<string, string>> => {
+      const page = await browser.snapshot(sheet.id);
+      return JSON.parse(/\{.*\}/.exec(page.text)?.[0] ?? "{}") as Record<string, string>;
+    };
+    const clickCell = async (cell: string): Promise<number> => {
+      const page = await browser.snapshot(sheet.id);
+      const target = page.elements.find((element) => element.name === `Cell ${cell}`);
+      if (!target) throw new Error(`Sheet cell ${cell} was not in the snapshot.`);
+      return (await browser.act(sheet.id, page.revision, { type: "click", ref: target.ref }))
+        .revision;
+    };
+    await browser.act(sheet.id, await clickCell("A1"), {
+      type: "type",
+      text: "17-Oct\tFri\n19-Oct\tSun",
+      // Like a person in Google Sheets: Enter saves the last cell.
+      submit: true,
+    });
+    const typedCells = await sheetCells();
+    if (
+      typedCells.A1 !== "17-Oct" ||
+      typedCells.B1 !== "Fri" ||
+      typedCells.A2 !== "19-Oct" ||
+      typedCells.B2 !== "Sun"
+    ) {
+      throw new Error(
+        `Typing into the sheet did not fill its cells: ${JSON.stringify(typedCells)}`,
+      );
+    }
+    const ownerClipboard = `owner clipboard ${Date.now()}`;
+    clipboard.writeText(ownerClipboard);
+    await browser.act(sheet.id, await clickCell("A3"), {
+      type: "paste",
+      text: "23-Oct\tThu\tपूरा\n24-Oct\tFri\tdone",
+    });
+    const pastedCells = await sheetCells();
+    if (pastedCells.A3 !== "23-Oct" || pastedCells.C3 !== "पूरा" || pastedCells.C4 !== "done") {
+      throw new Error(
+        `Pasting into the sheet did not fill its cells: ${JSON.stringify(pastedCells)}`,
+      );
+    }
+    if (clipboard.readText() !== ownerClipboard) {
+      throw new Error("Pasting did not give the owner's clipboard back.");
+    }
+    await browser.act(sheet.id, await clickCell("D1"), { type: "type", text: "x" });
+    await browser.act(sheet.id, (await browser.snapshot(sheet.id)).revision, {
+      type: "key",
+      key: "Shift+Tab",
+    });
+    if ((await sheetCells()).D1 !== "x") throw new Error("A key combo did not reach the sheet.");
+    const hiddenShot = await browser.screenshot(sheet.id);
+    if (!hiddenShot.startsWith("data:image/png;base64,") || hiddenShot.length < 1_000) {
+      throw new Error("A hidden tab could not be captured.");
+    }
+    await browser.close(sheet.id);
+    process.stdout.write("BrowserHost: spreadsheet typing, paste and hidden screenshot passed.\n");
 
     const toolResult = await browser.handleDynamicTool({
       threadId: "smoke-thread",

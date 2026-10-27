@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { cdpKeyEvent } from "./browser-keys";
 
 vi.mock("electron", () => ({ app: { getName: () => "Sahkarmi" }, WebContentsView: class {} }));
 
 const {
   agentBrowserArguments,
-  cdpKeyEvent,
   findInstalledBrowser,
   humanBrowserArguments,
   isBlockedSignInUrl,
