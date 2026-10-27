@@ -25,9 +25,11 @@ import {
 import { SETTINGS_SECTION_KEY } from "../settings-section";
 import { AboutCard } from "./AboutCard";
 import { FeaturesSettings } from "./FeaturesSettings";
+import { McpSettings } from "./McpSettings";
 import { ModelSuggestions } from "./ModelSuggestions";
 import { PermissionsSettings } from "./PermissionsSettings";
 import { ProviderConnect } from "./ProviderConnect";
+import { SkillsSettings } from "./SkillsSettings";
 import { TelegramSettings } from "./TelegramSettings";
 import { ThemeSelector } from "./ThemeSelector";
 import { UpdateControl } from "./UpdateControl";
@@ -37,6 +39,8 @@ type SettingsSection =
   | "general"
   | "ai"
   | "permissions"
+  | "skills"
+  | "mcp"
   | "voice"
   | "telegram"
   | "features"
@@ -48,6 +52,8 @@ const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
   { id: "general", label: "setGeneral" },
   { id: "ai", label: "setAi" },
   { id: "permissions", label: "setPermissions" },
+  { id: "skills", label: "setSkills" },
+  { id: "mcp", label: "setMcp" },
   { id: "voice", label: "setVoice" },
   { id: "telegram", label: "setTelegram" },
   { id: "features", label: "setFeatures" },
@@ -278,6 +284,20 @@ export function SettingsView(props: SettingsViewProps) {
               <p class="settings-meta">
                 {featureOn("live-dictation") ? t("voiceDictationOn") : t("voiceDictationOff")}
               </p>
+            </section>
+          ))}
+
+          {panel("skills", () => (
+            <section class="settings-card">
+              <h2>{t("setSkills")}</h2>
+              <SkillsSettings />
+            </section>
+          ))}
+
+          {panel("mcp", () => (
+            <section class="settings-card">
+              <h2>{t("setMcp")}</h2>
+              <McpSettings />
             </section>
           ))}
 

@@ -12133,3 +12133,251 @@ fieldset.memory-filters {
   opacity: 0.6;
   text-align: right;
 }
+
+/* ---------- Settings > Skills and MCP servers ---------- */
+.extension-settings {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.extension-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.extension-field > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.extension-field input,
+.extension-field textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 7px 10px;
+}
+
+.extension-field textarea {
+  font-family: var(--font-mono, ui-monospace, Consolas, monospace);
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+.extension-row {
+  display: flex;
+  gap: 8px;
+}
+
+.extension-row input {
+  flex: 1;
+}
+
+.extension-row button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.settings-card .extension-link {
+  border: 0;
+  background: none;
+  color: var(--primary-ink);
+  padding: 0 6px 0 0;
+  text-decoration: underline;
+}
+
+.extension-preview,
+.extension-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.extension-list {
+  display: flex;
+  max-height: 360px;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  overflow-y: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.extension-item,
+.extension-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 8px 10px;
+}
+
+.extension-pick {
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.extension-pick input {
+  margin-top: 3px;
+}
+
+.extension-item-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.extension-item-text strong {
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+
+.extension-item-text small {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.extension-item-text .extension-source {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extension-badge {
+  align-self: flex-start;
+  border-radius: 999px;
+  background: var(--success-soft, rgb(var(--success-rgb) / 0.15));
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+}
+
+.extension-badge-warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+/* The generic settings-card button style must not flatten the switch. */
+.extension-settings .feature-switch {
+  border: 0;
+  background: var(--surface-4);
+  padding: 0;
+}
+
+.extension-settings .feature-switch[aria-checked="true"] {
+  background: var(--success-fill);
+}
+
+/* ---------- Workflow export / import ---------- */
+.workflow-export {
+  position: relative;
+  display: inline-flex;
+}
+
+.workflow-export > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.workflow-export-popover {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  width: 260px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+  color: var(--text-primary);
+  padding: 10px;
+  text-align: left;
+}
+
+.workflow-export-popover .segmented {
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
+.workflow-export-popover .segmented button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  padding: 4px 12px;
+}
+
+.workflow-export-popover .segmented button.segmented-active {
+  background: var(--brand-indigo);
+  color: #fbf7f0;
+}
+
+.workflow-export-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workflow-export-popover .workflow-export-format {
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.workflow-export-popover .workflow-export-format:hover:not(:disabled) {
+  background: var(--sahkarmi-hover);
+}
+
+.workflow-export-popover small {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.workflow-export-popover .workflow-export-message {
+  color: var(--text-primary);
+}
+
+.workflow-import {
+  margin-bottom: 16px;
+}
+
+.workflow-import-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

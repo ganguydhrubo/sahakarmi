@@ -130,6 +130,19 @@ export const IPC_CHANNELS = {
   telegramSetToken: "telegram:set-token",
   telegramSetCoworker: "telegram:set-coworker",
   telegramUnpair: "telegram:unpair",
+  customSkillsList: "custom-skills:list",
+  customSkillsAdd: "custom-skills:add",
+  customSkillsPreviewGithub: "custom-skills:preview-github",
+  customSkillsInstallGithub: "custom-skills:install-github",
+  customSkillsRemove: "custom-skills:remove",
+  mcpList: "mcp:list",
+  mcpSave: "mcp:save",
+  mcpImportJson: "mcp:import-json",
+  mcpGithubJson: "mcp:github-json",
+  mcpSetEnabled: "mcp:set-enabled",
+  mcpRemove: "mcp:remove",
+  workflowExport: "workflow:export",
+  workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
   voiceInstall: "voice:install",
   voiceCancel: "voice:cancel",
@@ -1666,7 +1679,148 @@ export interface SahkarmiDesktopApi {
   memory: MemoryDesktopApi;
   composio: ComposioDesktopApi;
   telegram: TelegramDesktopApi;
+  customSkills: CustomSkillsDesktopApi;
+  mcp: McpDesktopApi;
+  workflow: WorkflowDesktopApi;
   voice: VoiceDesktopApi;
+}
+
+export type WorkflowFormat = "md" | "txt" | "json";
+
+/** What to export: one coworker's chat (its last task or all), a team run, or a routine. */
+export type WorkflowExportSource =
+  | { kind: "chat"; botId: string; scope: "last" | "all" }
+  | { kind: "team-run"; runId: string }
+  | { kind: "routine"; routineId: string };
+
+export interface WorkflowTimelineEntry {
+  at?: string;
+  by: string;
+  kind: "asked" | "said" | "note" | "step" | "message" | "task";
+  text: string;
+  detail?: string;
+  status?: string;
+}
+
+/** An exported workflow ("sahkarmi.workflow/v1"); the .json export is exactly this. */
+export interface WorkflowDoc {
+  format: "sahkarmi.workflow/v1";
+  name: string;
+  exportedAt: string;
+  source: "chat" | "team-run" | "routine";
+  goal?: string;
+  coworkers: Array<{ name: string; role?: string; model?: string }>;
+  /** The reusable recipe: what each coworker is asked to do, in order. */
+  steps: Array<{ by: string; do: string }>;
+  schedule?: RoutineCadence;
+  /** What actually happened, oldest first. */
+  timeline: WorkflowTimelineEntry[];
+  result?: { status: string; summary?: string; files: string[] };
+  run?: {
+    startedAt: string | null;
+    finishedAt: string | null;
+    durationMs: number | null;
+    toolCalls: number | null;
+  };
+}
+
+export interface WorkflowImportPreview {
+  doc: WorkflowDoc;
+  /** Coworker name in the file → the owner's coworker id that best matches it. */
+  suggestions: Record<string, string>;
+}
+
+export interface WorkflowDesktopApi {
+  /** Asks where to save; null when the owner cancels. */
+  export: (
+    source: WorkflowExportSource,
+    format: WorkflowFormat,
+  ) => Promise<{ path: string } | null>;
+  /** Asks for a .json workflow and reads it; null when the owner cancels. */
+  readImport: () => Promise<WorkflowImportPreview | null>;
+}
+
+/** A skill the owner added (pasted or from a GitHub repo), kept in Shared/Skills/Custom/<id>/. */
+export interface CustomSkill {
+  id: string;
+  name: string;
+  description: string;
+  /** "pasted" or "github.com/owner/repo/folder". */
+  source: string;
+  installedAt: string;
+  /** Path inside the Shared folder, e.g. "Skills/Custom/frontend-design/SKILL.md". */
+  sharedPath: string;
+}
+
+/** One skill folder (with a SKILL.md) found in a GitHub repo. */
+export interface GithubSkillCandidate {
+  /** Folder inside the repo ("" for the repo root). */
+  path: string;
+  name: string;
+  description: string;
+  files: number;
+  bytes: number;
+  tooBig: boolean;
+  installed: boolean;
+}
+
+export interface GithubSkillPreview {
+  repo: string;
+  ref: string;
+  url: string;
+  truncated: boolean;
+  skills: GithubSkillCandidate[];
+}
+
+export interface CustomSkillsDesktopApi {
+  list: () => Promise<CustomSkill[]>;
+  add: (text: string) => Promise<CustomSkill[]>;
+  previewGithub: (url: string) => Promise<GithubSkillPreview>;
+  installGithub: (url: string, paths: string[]) => Promise<CustomSkill[]>;
+  remove: (id: string) => Promise<CustomSkill[]>;
+}
+
+/** An MCP server as Settings shows it: secret values (env, headers) are never sent here. */
+export interface McpServerSummary {
+  id: string;
+  name: string;
+  enabled: boolean;
+  transport: "stdio" | "http";
+  command: string;
+  args: string[];
+  url: string;
+  envKeys: string[];
+  headerKeys: string[];
+  source: string;
+}
+
+export interface McpServerInput {
+  /** Set when editing; a blank env or header value then keeps the saved one. */
+  id?: string;
+  name: string;
+  transport: "stdio" | "http";
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface McpImportResult {
+  servers: McpServerSummary[];
+  added: string[];
+  skipped: string[];
+}
+
+export interface McpDesktopApi {
+  list: () => Promise<McpServerSummary[]>;
+  save: (input: McpServerInput) => Promise<McpServerSummary[]>;
+  importJson: (text: string) => Promise<McpImportResult>;
+  /** The .mcp.json files of a GitHub repo, merged, for the owner to review before importing. */
+  githubJson: (url: string) => Promise<string>;
+  setEnabled: (id: string, enabled: boolean) => Promise<McpServerSummary[]>;
+  remove: (id: string) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */

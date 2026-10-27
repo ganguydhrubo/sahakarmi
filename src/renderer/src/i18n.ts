@@ -1,3 +1,4 @@
+import { extensionsBn, extensionsEn, extensionsHi } from "./i18n-extensions";
 import { as, gu, kn, ml, mr, or, pa, ta, te } from "./i18n-indic";
 import { marketplaceBn, marketplaceEn, marketplaceHi } from "./i18n-marketplace";
 import { workspaceBn, workspaceEn, workspaceHi } from "./i18n-workspace";
@@ -229,6 +230,7 @@ const en = {
   close: "Close",
   ...workspaceEn,
   ...marketplaceEn,
+  ...extensionsEn,
 };
 
 type Dictionary = typeof en;
@@ -458,6 +460,7 @@ const hi: Dictionary = {
   close: "बंद करें",
   ...workspaceHi,
   ...marketplaceHi,
+  ...extensionsHi,
 };
 
 const bn: Dictionary = {
@@ -684,6 +687,7 @@ const bn: Dictionary = {
   close: "বন্ধ",
   ...workspaceBn,
   ...marketplaceBn,
+  ...extensionsBn,
 };
 
 const DICTIONARIES: Record<LanguageCode, Partial<Dictionary>> = {

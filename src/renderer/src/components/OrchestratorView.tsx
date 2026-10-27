@@ -3,6 +3,7 @@ import type { AgentEvent, OrchestratorRun, TaskExecutionStrategy } from "../../.
 import type { BotProfile } from "../data";
 import { t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
+import { WorkflowExportMenu } from "./WorkflowExportMenu";
 
 export function OrchestratorView(props: {
   bots: BotProfile[];
@@ -428,6 +429,11 @@ export function OrchestratorView(props: {
 
                   {/* Run Controls */}
                   <div style={{ display: "flex", gap: "8px" }}>
+                    <WorkflowExportMenu
+                      options={[
+                        { label: "exportButton", source: { kind: "team-run", runId: run().id } },
+                      ]}
+                    />
                     <Show when={run().status === "running"}>
                       <button
                         type="button"
