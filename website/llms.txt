@@ -29,7 +29,7 @@ Key facts (verified against release 0.7.1 on 24 October 2026):
 
 ## Contact
 
-- Email: hi@goliv.online
+- Email: dhrubo@sahkarmi.site
 - WhatsApp: +91 82408 01921
 - Bug reports: https://github.com/ganguydhrubo/sahakarmi/issues
 - Security reports: private vulnerability reporting on the GitHub repository (see SECURITY.md)
