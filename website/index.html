@@ -581,6 +581,109 @@
       .js .tg-stage .tg-chat > li { opacity: 1; transform: none; animation: none; }
       .tg-typing i { animation: none; }
     }
+    .plug-band { position: relative; overflow: hidden; --plug: #8b7cf6; }
+    .plug-glow i { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(10px); }
+    .plug-glow i:first-child { left: -180px; top: 10%; width: 560px; height: 560px; background: radial-gradient(circle, color-mix(in srgb, var(--plug) 26%, transparent), transparent 65%); }
+    .plug-glow i:last-child { right: -200px; bottom: -10%; width: 620px; height: 620px; background: radial-gradient(circle, rgba(232, 119, 46, 0.2), transparent 65%); }
+    .plug-band .wrap { position: relative; }
+    .plug-eyebrow { display: inline-flex; align-items: center; gap: 10px; }
+    .plug-spark { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: #fff; background: linear-gradient(135deg, var(--plug), var(--saffron)); font-size: 14px; letter-spacing: 0; }
+    .plug-grid { display: grid; grid-template-columns: 1.15fr 1fr; grid-template-rows: auto auto; gap: 20px; margin-top: 8px; }
+    .plug-mcp { grid-row: span 2; }
+    .plug-grid > * { min-width: 0; }
+    .plug-steps { list-style: none; margin: auto 0 0; padding: 16px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; border-top: 1px solid var(--line); }
+    .plug-steps li { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--text-2); }
+    .plug-steps b { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; font: 800 14px var(--font-display); background: linear-gradient(135deg, var(--plug), var(--saffron)); }
+    .plug-card { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 26px; border-radius: 24px; border: 1px solid var(--line); background: var(--card); overflow: hidden; transition: transform 0.35s var(--ease), border-color 0.3s; }
+    .plug-card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; background: linear-gradient(140deg, color-mix(in srgb, var(--plug) 60%, transparent), transparent 35%, transparent 65%, rgba(232, 119, 46, 0.5)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; opacity: 0.7; }
+    .plug-card:hover { transform: translateY(-4px); border-color: var(--line-2); }
+    .plug-card h3 { font-size: 24px; }
+    .plug-card > p { color: var(--text-2); font-size: 16px; margin: 0; }
+    .plug-tag { display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--plug); background: color-mix(in srgb, var(--plug) 14%, transparent); border: 1px solid color-mix(in srgb, var(--plug) 40%, transparent); }
+    .plug-export .plug-tag { color: var(--saffron-ink); background: rgba(232, 119, 46, 0.12); border-color: rgba(232, 119, 46, 0.4); }
+    .plug-win { margin-top: 8px; border-radius: 16px; background: #0d1020; border: 1px solid rgba(255, 255, 255, 0.1); color: #e6e8f2; box-shadow: var(--shadow); overflow: hidden; }
+    .plug-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); font-size: 13px; color: #9aa0bd; }
+    .plug-bar i { width: 10px; height: 10px; border-radius: 50%; background: #f26b5b; }
+    .plug-bar i:nth-child(2) { background: #f2b705; }
+    .plug-bar i:nth-child(3) { background: #3fbf6f; margin-right: 8px; }
+    .plug-paste { padding: 12px 14px 4px; }
+    .plug-label { display: block; font-size: 12px; color: #9aa0bd; margin-bottom: 6px; }
+    .plug-json { margin: 0; padding: 12px; border-radius: 10px; background: #070912; border: 1px dashed rgba(139, 124, 246, 0.45); font: 12.5px/1.6 ui-monospace, Consolas, monospace; color: #c9cce0; white-space: pre; overflow-x: auto; }
+    .j-k { color: #a99cff; } .j-s { color: #f0b37e; } .j-p { color: #7c82a3; }
+    .plug-arrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 12.5px; font-weight: 700; color: #3fbf6f; }
+    .plug-arrow i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(63, 191, 111, 0.6), transparent); }
+    .plug-servers { list-style: none; margin: 0; padding: 0 14px 14px; display: grid; gap: 8px; }
+    .plug-srv { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #151a30; border: 1px solid rgba(255, 255, 255, 0.07); font-size: 14px; }
+    .plug-srv small { color: #7c82a3; font-size: 12px; margin-right: auto; }
+    .plug-dot { width: 8px; height: 8px; border-radius: 50%; background: #3fbf6f; box-shadow: 0 0 0 4px rgba(63, 191, 111, 0.15); }
+    .plug-switch { width: 34px; height: 20px; border-radius: 999px; background: #3fbf6f; position: relative; }
+    .plug-switch i { position: absolute; top: 3px; left: 17px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.35s var(--ease); }
+    .plug-on { font-size: 12px; color: #3fbf6f; font-weight: 700; min-width: 34px; }
+    .plug-facts { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .plug-facts li { border: 1px solid color-mix(in srgb, var(--plug) 40%, transparent); background: color-mix(in srgb, var(--plug) 9%, transparent); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; }
+    .plug-win-sm { padding: 14px; display: grid; gap: 10px; }
+    .plug-url { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 10px; background: #070912; border: 1px solid rgba(255, 255, 255, 0.1); }
+    .plug-url code { flex: 1; font-size: 13px; color: #c9cce0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .plug-url b { padding: 5px 12px; border-radius: 8px; background: var(--plug); color: #fff; font-size: 13px; }
+    .plug-found { color: #9aa0bd; font-size: 12.5px; }
+    .plug-skill-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .plug-skill { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #151a30; border: 1px solid rgba(255, 255, 255, 0.07); font-size: 13px; }
+    .plug-skill code { color: #e6e8f2; }
+    .plug-check { flex: none; width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #4a5075; display: grid; place-items: center; font-size: 11px; color: #fff; }
+    .plug-skill.on { border-color: color-mix(in srgb, var(--plug) 55%, transparent); }
+    .plug-skill.on .plug-check { background: var(--plug); border-color: var(--plug); }
+    .plug-skill.on .plug-check::after { content: "✓"; }
+    .plug-install { justify-self: end; padding: 7px 14px; border-radius: 999px; background: linear-gradient(135deg, var(--plug), var(--saffron)); color: #fff; font-size: 13px; }
+    .plug-file-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-top: 8px; align-items: stretch; }
+    .plug-file { position: relative; padding: 14px 16px; border-radius: 14px; background: #fffdf8; color: #2a2e44; border: 1px solid rgba(20, 24, 41, 0.12); box-shadow: var(--shadow); transform: rotate(-1.5deg); font-size: 13px; }
+    .plug-file p { margin: 0 0 4px; }
+    .plug-file-name { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(20, 24, 41, 0.1); }
+    .plug-file-name code { font-size: 12px; color: #646a85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .plug-ext { flex: none; padding: 2px 6px; border-radius: 6px; background: #e8772e; color: #fff; font-size: 10px; font-weight: 800; }
+    .plug-md-h { font: 800 16px var(--font-display); color: #141829; }
+    .plug-file .f1 { color: #646a85; }
+    .plug-file .f4 { color: #1e7a45; font-weight: 700; }
+    .plug-lock { margin-top: 8px !important; font-size: 11.5px; color: #a84e14; }
+    .plug-side { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+    .plug-formats { display: flex; gap: 6px; }
+    .plug-formats span { flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg-3); font: 700 13px ui-monospace, Consolas, monospace; }
+    .plug-formats span.on { background: var(--saffron); border-color: var(--saffron); color: #0f1220; }
+    .plug-import { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 13px; }
+    .plug-import b { padding: 7px 10px; border-radius: 10px; border: 1px dashed var(--line-2); background: var(--bg-3); }
+    .plug-import i { font-style: normal; color: var(--saffron-ink); font-weight: 800; padding-left: 14px; transform: rotate(90deg); }
+    .plug-cost { color: var(--muted); font-size: 13px; }
+    .js .plug-mcp .plug-srv, .js .plug-skills .plug-skill, .js .plug-export .plug-file > p, .js .plug-export .plug-file-name { opacity: 0; transform: translateY(8px); }
+    .js .plug-card.in .plug-srv, .js .plug-card.in .plug-skill, .js .plug-card.in .plug-file > p, .js .plug-card.in .plug-file-name { animation: tg-pop 0.5s var(--ease) forwards; }
+    .js .plug-card.in .s1 { animation-delay: 0.5s; } .js .plug-card.in .s2 { animation-delay: 0.8s; } .js .plug-card.in .s3 { animation-delay: 1.1s; }
+    .js .plug-card.in .k1 { animation-delay: 0.3s; } .js .plug-card.in .k2 { animation-delay: 0.5s; } .js .plug-card.in .k3 { animation-delay: 0.7s; } .js .plug-card.in .k4 { animation-delay: 0.9s; }
+    .js .plug-card.in .plug-file > p:nth-of-type(2) { animation-delay: 0.3s; } .js .plug-card.in .plug-file > p:nth-of-type(3) { animation-delay: 0.5s; } .js .plug-card.in .plug-file > p:nth-of-type(4) { animation-delay: 0.7s; } .js .plug-card.in .plug-file > p:nth-of-type(5) { animation-delay: 0.9s; } .js .plug-card.in .plug-file > p:nth-of-type(6) { animation-delay: 1.1s; }
+    .js .plug-mcp .plug-switch { background: #3a3f5c; transition: background 0.35s; }
+    .js .plug-mcp .plug-switch i { left: 3px; }
+    .js .plug-mcp.in .plug-switch { background: #3fbf6f; transition-delay: 1.4s; }
+    .js .plug-mcp.in .plug-switch i { left: 17px; transition-delay: 1.4s; }
+    .plug-announce { border-color: rgba(139, 124, 246, 0.45); background: rgba(139, 124, 246, 0.12); }
+    .plug-announce:hover { background: rgba(139, 124, 246, 0.22); }
+    .plug-announce .plug-spark { width: 24px; height: 24px; font-size: 12px; }
+    .plug-announce b { color: #8b7cf6; }
+    @media (max-width: 960px) {
+      .plug-grid { grid-template-columns: 1fr; }
+      .plug-mcp { grid-row: auto; }
+    }
+    @media (max-width: 560px) {
+      .plug-card { padding: 20px; }
+      .plug-file-row { grid-template-columns: 1fr; }
+      .plug-file { transform: none; }
+      .plug-skill-list { grid-template-columns: 1fr; }
+      .plug-steps { grid-template-columns: 1fr; }
+      .plug-import { flex-direction: row; align-items: center; }
+      .plug-import i { transform: none; padding-left: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .js .plug-mcp .plug-srv, .js .plug-skills .plug-skill, .js .plug-export .plug-file > p, .js .plug-export .plug-file-name { opacity: 1; transform: none; animation: none !important; }
+      .js .plug-mcp .plug-switch { background: #3fbf6f; }
+      .js .plug-mcp .plug-switch i { left: 17px; transition: none; }
+      .plug-card:hover { transform: none; }
+    }
   </style>
 </head>
 <body>
@@ -627,6 +730,7 @@
       <div class="wrap hero-grid">
         <div class="hero-copy">
           <a class="tg-announce" href="#telegram"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><span data-i18n="tgAnnounce">New: give your team work from Telegram</span><b aria-hidden="true">→</b></a>
+          <a class="tg-announce plug-announce" href="#plug"><span class="plug-spark" aria-hidden="true">✦</span><span data-i18n="plugAnnounce">New: Skills, MCP servers and workflow export</span><b aria-hidden="true">→</b></a>
           <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Free · Open source · Version</span> <span data-release-version>latest</span></p>
           <h1><span data-i18n="h1a">Hire an AI team.</span> <span class="accent" data-i18n="h1b">Pay ₹0.</span></h1>
           <p class="rotator"><span data-i18n="rotPre">They</span> <span class="rot-words"><span data-i18n="rot1" class="on">chase your invoices.</span><span data-i18n="rot2">answer your customers.</span><span data-i18n="rot3">write your posts.</span><span data-i18n="rot4">research your market.</span><span data-i18n="rot5">fix your code.</span><span data-i18n="rot6">work while you sleep.</span></span></p>
@@ -738,6 +842,70 @@
             </ul>
             <div class="tg-input"><span data-i18n="tgInput">Message</span><b><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.4 11.2 19.6 5c.8-.3 1.4.2 1.2 1.3l-2.7 12.9c-.2.9-.8 1.1-1.5.7l-4.2-3.1-2 2c-.2.2-.4.4-.9.4l.3-4.3 7.8-7c.3-.3-.1-.5-.5-.2l-9.6 6-4.1-1.3c-.9-.3-.9-.9.1-1.3z"/></svg></b></div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Skills, MCP and workflow export -->
+    <section id="plug" class="plug-band" aria-labelledby="plug-h">
+      <div class="plug-glow" aria-hidden="true"><i></i><i></i></div>
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow plug-eyebrow"><span class="plug-spark" aria-hidden="true">✦</span><span data-i18n="plugEyebrow">New: Skills · MCP · Export</span></p>
+          <h2 id="plug-h" data-i18n="plugH2">Plug in any tool. Take your workflow anywhere.</h2>
+          <p class="lead" data-i18n="plugLead">Give your coworkers the same skills and MCP tools Claude Code uses, straight from open-source GitHub repos. Then save what they did as a clean file you can share or run again.</p>
+        </div>
+        <div class="plug-grid">
+          <article class="plug-card plug-mcp reveal">
+            <p class="plug-tag"><span aria-hidden="true">⌁</span><span data-i18n="plugMcpTag">MCP servers</span></p>
+            <h3 data-i18n="plugMcpT">New tools in one paste</h3>
+            <p data-i18n="plugMcpP">Copy the MCP JSON from any README, Claude Desktop or a .mcp.json file, and paste it in Settings &gt; MCP servers. Or load a repo's .mcp.json from its GitHub link.</p>
+            <div class="plug-win" aria-hidden="true">
+              <div class="plug-bar"><i></i><i></i><i></i><span data-i18n="plugMcpWin">Settings › MCP servers</span></div>
+              <div class="plug-paste"><span class="plug-label" data-i18n="plugMcpPaste">Paste MCP JSON</span><pre class="plug-json"><span class="j-p">{</span>
+  <span class="j-k">"mcpServers"</span>: <span class="j-p">{</span>
+    <span class="j-k">"github"</span>: { <span class="j-k">"command"</span>: <span class="j-s">"npx"</span>,
+      <span class="j-k">"args"</span>: [<span class="j-s">"-y"</span>, <span class="j-s">"@modelcontextprotocol/server-github"</span>] },
+    <span class="j-k">"filesystem"</span>: { <span class="j-k">"command"</span>: <span class="j-s">"npx"</span>,
+      <span class="j-k">"args"</span>: [<span class="j-s">"-y"</span>, <span class="j-s">"@modelcontextprotocol/server-filesystem"</span>] },
+    <span class="j-k">"notion"</span>: { <span class="j-k">"url"</span>: <span class="j-s">"https://mcp.notion.com/mcp"</span> }
+  <span class="j-p">}</span>
+<span class="j-p">}</span></pre></div>
+              <div class="plug-arrow"><i></i><span data-i18n="plugMcpAdded">3 servers added</span><i></i></div>
+              <ul class="plug-servers"><li class="plug-srv s1"><span class="plug-dot" aria-hidden="true"></span><b>github</b><small>npx</small><span class="plug-switch"><i></i></span><span class="plug-on" data-i18n="plugMcpOn">On</span></li><li class="plug-srv s2"><span class="plug-dot" aria-hidden="true"></span><b>filesystem</b><small>npx</small><span class="plug-switch"><i></i></span><span class="plug-on" data-i18n="plugMcpOn">On</span></li><li class="plug-srv s3"><span class="plug-dot" aria-hidden="true"></span><b>notion</b><small>https</small><span class="plug-switch"><i></i></span><span class="plug-on" data-i18n="plugMcpOn">On</span></li></ul>
+            </div>
+            <ul class="plug-facts"><li><span data-i18n="plugMcpF1">Works with Claude, Codex, Gemini and more</span></li><li><span data-i18n="plugMcpF2">Keys stay on your PC, never shown again</span></li><li><span data-i18n="plugMcpF3">npx servers just work on Windows</span></li><li><span data-i18n="plugMcpF4">Every tool still asks your approval</span></li></ul>
+            <ol class="plug-steps"><li><b>1</b><span data-i18n="plugMcpS1">Paste or load the JSON</span></li><li><b>2</b><span data-i18n="plugMcpS2">Restart Sahkarmi</span></li><li><b>3</b><span data-i18n="plugMcpS3">Coworkers use the new tools</span></li></ol>
+          </article>
+          <article class="plug-card plug-skills reveal">
+            <p class="plug-tag"><span aria-hidden="true">✦</span><span data-i18n="plugSkTag">Skills</span></p>
+            <h3 data-i18n="plugSkT">Skills from any GitHub repo</h3>
+            <p data-i18n="plugSkP">Paste a repo link, see every SKILL.md inside, and install the ones you pick. Design, documents, research, reverse engineering: every coworker reads the right skill before the task.</p>
+            <div class="plug-win plug-win-sm" aria-hidden="true">
+              <div class="plug-url"><code>github.com/anthropics/skills</code><b data-i18n="plugSkPreview">Preview</b></div>
+              <small class="plug-found" data-i18n="plugSkFound">20 skills found</small>
+              <ul class="plug-skill-list"><li class="plug-skill on k1"><span class="plug-check" aria-hidden="true"></span><code>frontend-design</code></li><li class="plug-skill on k2"><span class="plug-check" aria-hidden="true"></span><code>pdf</code></li><li class="plug-skill on k3"><span class="plug-check" aria-hidden="true"></span><code>canvas-design</code></li><li class="plug-skill k4"><span class="plug-check" aria-hidden="true"></span><code>xlsx</code></li></ul>
+              <b class="plug-install" data-i18n="plugSkInstall">Install 3 skills</b>
+            </div>
+          </article>
+          <article class="plug-card plug-export reveal">
+            <p class="plug-tag"><span aria-hidden="true">⤓</span><span data-i18n="plugExTag">Workflow export</span></p>
+            <h3 data-i18n="plugExT">Save the work. Share it. Run it again.</h3>
+            <p data-i18n="plugExP">Export a chat, a team run or a routine as Markdown, plain text or JSON: the task, every step with timing and the result. Import the JSON and it becomes a routine for your own coworkers.</p>
+            <div class="plug-file-row" aria-hidden="true">
+              <div class="plug-file">
+                <div class="plug-file-name"><span class="plug-ext">MD</span><code>morning-report-2026-10-27.md</code></div>
+                <p class="plug-md-h"># Morning report</p>
+                <p class="f1" data-i18n="plugExL1">Took: 3 min 16 s · 12 steps</p><p class="f2" data-i18n="plugExL2">1. Collect today's numbers</p><p class="f3" data-i18n="plugExL3">2. Write the summary</p><p class="f4" data-i18n="plugExL4">Result: report saved, 5 rows</p>
+                <p class="plug-lock">🔒 <span data-i18n="plugExHidden">Passwords, keys and OTPs hidden</span></p>
+              </div>
+              <div class="plug-side">
+                <div class="plug-formats"><span class="on">.md</span><span>.txt</span><span>.json</span></div>
+                <div class="plug-import"><b data-i18n="plugExImport">Import JSON</b><i>→</i><b data-i18n="plugExRoutine">New routine</b></div>
+                <small class="plug-cost" data-i18n="plugExCost">Made on your PC: no AI cost</small>
+              </div>
+            </div>
+          </article>
         </div>
       </div>
     </section>
@@ -1158,6 +1326,41 @@
         tgM3: "Vikram needs your approval: send the quote to Sharma Traders. Open Sahkarmi to allow or deny it.",
         tgM4: "/use Vikram",
         tgInput: "Message",
+        plugAnnounce: "New: Skills, MCP servers and workflow export",
+        plugEyebrow: "New: Skills · MCP · Export",
+        plugH2: "Plug in any tool. Take your workflow anywhere.",
+        plugLead: "Give your coworkers the same skills and MCP tools Claude Code uses, straight from open-source GitHub repos. Then save what they did as a clean file you can share or run again.",
+        plugMcpTag: "MCP servers",
+        plugMcpT: "New tools in one paste",
+        plugMcpP: "Copy the MCP JSON from any README, Claude Desktop or a .mcp.json file, and paste it in Settings > MCP servers. Or load a repo's .mcp.json from its GitHub link.",
+        plugMcpWin: "Settings › MCP servers",
+        plugMcpPaste: "Paste MCP JSON",
+        plugMcpAdded: "3 servers added",
+        plugMcpOn: "On",
+        plugMcpF1: "Works with Claude, Codex, Gemini and more",
+        plugMcpF2: "Keys stay on your PC, never shown again",
+        plugMcpF3: "npx servers just work on Windows",
+        plugMcpF4: "Every tool still asks your approval",
+        plugMcpS1: "Paste or load the JSON",
+        plugMcpS2: "Restart Sahkarmi",
+        plugMcpS3: "Coworkers use the new tools",
+        plugSkTag: "Skills",
+        plugSkT: "Skills from any GitHub repo",
+        plugSkP: "Paste a repo link, see every SKILL.md inside, and install the ones you pick. Design, documents, research, reverse engineering: every coworker reads the right skill before the task.",
+        plugSkPreview: "Preview",
+        plugSkFound: "20 skills found",
+        plugSkInstall: "Install 3 skills",
+        plugExTag: "Workflow export",
+        plugExT: "Save the work. Share it. Run it again.",
+        plugExP: "Export a chat, a team run or a routine as Markdown, plain text or JSON: the task, every step with timing and the result. Import the JSON and it becomes a routine for your own coworkers.",
+        plugExL1: "Took: 3 min 16 s · 12 steps",
+        plugExL2: "1. Collect today's numbers",
+        plugExL3: "2. Write the summary",
+        plugExL4: "Result: report saved, 5 rows",
+        plugExHidden: "Passwords, keys and OTPs hidden",
+        plugExImport: "Import JSON",
+        plugExRoutine: "New routine",
+        plugExCost: "Made on your PC: no AI cost",
         lnEyebrow: "Gets better every week",
         lnH2: "A team that learns how you work",
         lnLead: "Most AI tools forget you when the chat ends. Sahkarmi coworkers keep what they learn, on your own PC, and get faster at your work.",
@@ -1463,6 +1666,41 @@
         tgM3: "विक्रम को आपकी मंज़ूरी चाहिए: शर्मा ट्रेडर्स को कोटेशन भेजना. मंज़ूरी देने या मना करने के लिए सहकर्मी खोलें.",
         tgM4: "/use Vikram",
         tgInput: "मैसेज",
+        plugAnnounce: "नया: स्किल्स, MCP सर्वर और वर्कफ़्लो एक्सपोर्ट",
+        plugEyebrow: "नया: स्किल्स · MCP · एक्सपोर्ट",
+        plugH2: "कोई भी टूल जोड़ें। अपना वर्कफ़्लो कहीं भी ले जाएँ।",
+        plugLead: "अपने सहकर्मियों को वही स्किल्स और MCP टूल दें जो Claude Code इस्तेमाल करता है, सीधे ओपन-सोर्स GitHub रिपो से। फिर उन्होंने जो किया उसे एक साफ़ फ़ाइल में सेव करें, जिसे आप शेयर करें या दोबारा चलाएँ।",
+        plugMcpTag: "MCP सर्वर",
+        plugMcpT: "एक पेस्ट में नए टूल",
+        plugMcpP: "किसी भी README, Claude Desktop या .mcp.json फ़ाइल से MCP JSON कॉपी करें और Settings > MCP servers में पेस्ट करें। या किसी रिपो का .mcp.json उसके GitHub लिंक से लोड करें।",
+        plugMcpWin: "Settings › MCP servers",
+        plugMcpPaste: "MCP JSON पेस्ट करें",
+        plugMcpAdded: "3 सर्वर जुड़ गए",
+        plugMcpOn: "चालू",
+        plugMcpF1: "Claude, Codex, Gemini और बाकी के साथ चलता है",
+        plugMcpF2: "चाबियाँ आपके PC पर रहती हैं, दोबारा कभी नहीं दिखतीं",
+        plugMcpF3: "npx सर्वर Windows पर सीधे चलते हैं",
+        plugMcpF4: "हर टूल अब भी आपकी मंज़ूरी माँगता है",
+        plugMcpS1: "JSON पेस्ट या लोड करें",
+        plugMcpS2: "Sahkarmi दोबारा खोलें",
+        plugMcpS3: "सहकर्मी नए टूल इस्तेमाल करें",
+        plugSkTag: "स्किल्स",
+        plugSkT: "किसी भी GitHub रिपो से स्किल्स",
+        plugSkP: "रिपो का लिंक पेस्ट करें, उसके अंदर की हर SKILL.md देखें और जो चाहें वो इंस्टॉल करें। डिज़ाइन, दस्तावेज़, रिसर्च, रिवर्स इंजीनियरिंग: हर सहकर्मी काम से पहले सही स्किल पढ़ता है।",
+        plugSkPreview: "देखें",
+        plugSkFound: "20 स्किल्स मिलीं",
+        plugSkInstall: "3 स्किल्स इंस्टॉल करें",
+        plugExTag: "वर्कफ़्लो एक्सपोर्ट",
+        plugExT: "काम सेव करें। शेयर करें। दोबारा चलाएँ।",
+        plugExP: "किसी चैट, टीम रन या रूटीन को Markdown, सादे टेक्स्ट या JSON में एक्सपोर्ट करें: काम, समय के साथ हर कदम और नतीजा। JSON इंपोर्ट करें और वह आपके अपने सहकर्मियों के लिए रूटीन बन जाता है।",
+        plugExL1: "लगा: 3 मिनट 16 सेकंड · 12 कदम",
+        plugExL2: "1. आज के आँकड़े जुटाएँ",
+        plugExL3: "2. सारांश लिखें",
+        plugExL4: "नतीजा: रिपोर्ट सेव, 5 पंक्तियाँ",
+        plugExHidden: "पासवर्ड, चाबियाँ और OTP छिपे रहते हैं",
+        plugExImport: "JSON इंपोर्ट",
+        plugExRoutine: "नया रूटीन",
+        plugExCost: "आपके PC पर बनता है: AI का कोई ख़र्च नहीं",
         lnEyebrow: "हर हफ़्ते बेहतर",
         lnH2: "एक टीम जो आपके काम का तरीका सीखती है",
         lnLead: "ज़्यादातर AI टूल चैट ख़त्म होते ही सब भूल जाते हैं. सहकर्मी जो सीखते हैं, वह आपके अपने PC पर रखते हैं, और आपके काम में तेज़ होते जाते हैं.",
