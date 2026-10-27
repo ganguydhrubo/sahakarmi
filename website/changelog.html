@@ -76,9 +76,13 @@
 
   <main class="wrap">
     <h1>Sahkarmi changelog</h1>
-    <p class="lead">Every released version of the Sahkarmi desktop app, newest first. Version 0.12.3 is the latest. Each version links to its GitHub release, where the installer, checksums and build attestation are attached.</p>
+    <p class="lead">Every released version of the Sahkarmi desktop app, newest first. Version 0.13.0 is the latest. Each version links to its GitHub release, where the installer, checksums and build attestation are attached.</p>
     <p>The same list is kept in <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">CHANGELOG.md</a> in the repository. The project follows <a href="https://semver.org/" target="_blank" rel="noopener noreferrer">Semantic Versioning</a>. Some early versions were tagged but not published, so a few numbers are missing.</p>
     <ul class="toc">
+      <li><a href="#v0-13-0">0.13.0</a></li>
+      <li><a href="#v0-12-7">0.12.7</a></li>
+      <li><a href="#v0-12-6">0.12.6</a></li>
+      <li><a href="#v0-12-4">0.12.4</a></li>
       <li><a href="#v0-12-3">0.12.3</a></li>
       <li><a href="#v0-12-2">0.12.2</a></li>
       <li><a href="#v0-12-1">0.12.1</a></li>
@@ -130,6 +134,49 @@
       <li><a href="#v0-2-0">0.2.0</a></li>
     </ul>
 
+    <h2 id="v0-13-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.13.0" target="_blank" rel="noopener noreferrer">Version 0.13.0</a> <span class="date">27 October 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Settings &gt; Skills: add skills the way Claude Code does. Paste a GitHub link (for example anthropics/skills) to see every skill (SKILL.md) in that open-source repo and install the ones you pick, or paste a SKILL.md yourself. Every coworker gets them, whichever AI it runs on (Claude, Codex, Gemini, Antigravity), and reads a skill before a task that matches it.</li>
+      <li>Settings &gt; MCP servers: give coworkers new tools with MCP servers, the same ones Claude Code uses. Paste the MCP JSON from a README, Claude Desktop or a .mcp.json file, load a repo's .mcp.json, or add a server by hand (a program on this PC or a web address). Servers can be switched off, edited or removed. Keys you enter are kept in a file only you can read and are never shown again. On Windows, npx-based servers start correctly without extra setup.</li>
+      <li>New or changed MCP servers reach coworkers the next time Sahkarmi starts. Their tools still go through your approvals.</li>
+      <li>Export what a coworker or a team did as a neat Markdown (.md), plain text (.txt) or JSON file: the task, every step with timing, what was said and the result. Use the Export button in a chat (this task or the whole chat), on a team run, or on a routine. Passwords, keys, OTPs and card numbers are hidden in the file.</li>
+      <li>Routines &gt; Import workflow: open an exported JSON file, pick which of your coworkers does each step, and it becomes a routine you can run again.</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>The app no longer freezes while the AIs connect after it opens. AIs now connect side by side instead of one after another, so chat is ready in about a second instead of four or five, and opening a chat no longer waits for a slow AI to finish starting.</li>
+    </ul>
+    <h2 id="v0-12-7"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.12.7" target="_blank" rel="noopener noreferrer">Version 0.12.7</a> <span class="date">27 October 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Claude coworkers' messages are easier to follow, like Claude Code. What the coworker says between steps now shows as separate paragraphs, each next to the steps it ran, instead of one long paragraph with sentences joined together ("fields.Fields") under "Ran N steps".</li>
+      <li>A coworker asking another coworker still gets the whole reply.</li>
+      <li>The task strip above the chat no longer cuts off chips: "Send now" stays on one line, and a waiting message shows more of its text.</li>
+    </ul>
+    <h2 id="v0-12-6"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.12.6" target="_blank" rel="noopener noreferrer">Version 0.12.6</a> <span class="date">27 October 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Sahkarmi is much lighter. Saved browser tabs no longer all load when the app starts: only the tab on screen loads, the others when you open them or a coworker uses them. A tab nobody used for 30 minutes sleeps (its page is freed; the tab, its address and your sign-ins stay). A coworker opening a page it already has open reuses that tab instead of making a duplicate.</li>
+      <li>Your cursor stays in the chat box while coworkers work. Before, every coworker click or key press took the keyboard into the browser, so you had to click the message box again.</li>
+      <li>Taking over the browser for one coworker no longer stops all the others. Only the coworker that asked you waits; the others carry on in their own tabs and cannot touch the tab you are using. A coworker that was asked to wait is told when you hand the browser back.</li>
+      <li>Coworkers can fill Google Sheets and other spreadsheets themselves: type into the selected cell (Tab moves to the next cell, a new line to the next row) or paste whole rows. Pasting never touches your clipboard.</li>
+      <li>Key combos such as Ctrl+A and Shift+Tab work in the built-in browser.</li>
+      <li>Coworkers can click icon buttons drawn as pictures (Instagram's menu, X's Post button). When an element is gone, the coworker gets a clear "take a fresh snapshot" message instead of "Script failed to execute".</li>
+      <li>When a click opens a new tab (job titles on Naukri), the coworker is told which tab to read.</li>
+      <li>Screenshots of a browser tab work when the browser panel is closed.</li>
+      <li>A coworker asking you to take over is never refused for a long reason; it is shortened instead.</li>
+      <li>Coworkers on Google Antigravity no longer fail browser calls for a missing tab or revision.</li>
+      <li>Coworkers on Google Antigravity no longer fail while you take time to approve something. After about 2.5 minutes the coworker is told to wait; when you approve, it is told and its repeat of the same action goes through without asking you again.</li>
+      <li>Reading a very big page (Instagram, a large sheet) no longer goes over Claude's limit: every button and link is kept, and long page text is read in parts.</li>
+      <li>Reading a page in a hidden tab is faster and no longer times out: the page runs at full speed while a coworker works in it, and slows down again afterwards to save battery.</li>
+    </ul>
+    <h2 id="v0-12-4"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.12.4" target="_blank" rel="noopener noreferrer">Version 0.12.4</a> <span class="date">27 October 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Sahkarmi no longer refuses to open with "Sahkarmi is finishing an update". In 0.12.3 any Sahkarmi installer that was still running blocked the start: a first-time user who ticked "Run Sahkarmi" at the end of setup, or an old installer stuck in the background, made the app close again and again. Now the app waits only for an installer of a newer version, waits at most 5 minutes, and never waits twice in a row.</li>
+      <li>Development runs use their own Windows app ID, so the installed Sahkarmi always shows its own logo in the taskbar.</li>
+    </ul>
     <h2 id="v0-12-3"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.12.3" target="_blank" rel="noopener noreferrer">Version 0.12.3</a> <span class="date">26 October 2026</span></h2>
     <h3>Fixed</h3>
     <ul>
