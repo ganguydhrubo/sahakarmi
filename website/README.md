@@ -27,7 +27,7 @@ privacy/security/permissions, FAQ, community and feedback, footer with contact.
 - **Social profiles and contact (do not change without the owner):** Instagram
   https://www.instagram.com/sahkarmiai, LinkedIn https://www.linkedin.com/company/sahkarmi/,
   Facebook https://www.facebook.com/sahakarmi, GitHub https://github.com/ganguydhrubo/sahakarmi,
-  email hi@goliv.online, WhatsApp +91 82408 01921.
+  email dhrubo@sahkarmi.site, WhatsApp +91 82408 01921.
 
 ## Crawling
 
