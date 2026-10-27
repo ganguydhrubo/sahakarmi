@@ -5,6 +5,17 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.12.7] - 2026-10-27
+
+### Fixed
+
+- Claude coworkers' messages are easier to follow, like Claude Code. What the coworker says
+  between steps now shows as separate paragraphs, each next to the steps it ran, instead of one
+  long paragraph with sentences joined together ("fields.Fields") under "Ran N steps".
+- A coworker asking another coworker still gets the whole reply.
+- The task strip above the chat no longer cuts off chips: "Send now" stays on one line, and a
+  waiting message shows more of its text.
+
 ## [0.12.6] - 2026-10-27
 
 ### Fixed
