@@ -12,6 +12,7 @@ import type {
   BrowserVisibilityInput,
 } from "../shared/ipc";
 import {
+  ANY_REVISION,
   type BrowserAction,
   BrowserControlTracker,
   type BrowserHostEvents,
@@ -35,7 +36,7 @@ import {
   validateBounds,
   withTimeout,
 } from "./browser-host";
-import { type CdpSend, pressCdpKey, typeIntoFocus } from "./browser-keys";
+import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
@@ -454,7 +455,7 @@ export class ChromeBrowserHost implements CoworkerBrowser {
 
   async act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot> {
     return this.#enqueue(tabId, async (tab) => {
-      if (revision !== tab.revision) {
+      if (revision !== ANY_REVISION && revision !== tab.revision) {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
       const pipe = await this.#ensureTab(tab);
@@ -1259,9 +1260,9 @@ async function performCdpAction(
         tab,
         `(() => {
           const node = document.querySelector('[data-sahkarmi-ref=${JSON.stringify(action.ref)}]');
-          if (!(node instanceof HTMLElement)) throw new Error('Element reference is no longer available.');
+          if (!(node instanceof Element)) return { error: 'That element is no longer on the page (it changed). Take a fresh snapshot and use the new ref.' };
           node.scrollIntoView({ block: 'center', inline: 'center' });
-          node.focus();
+          if (typeof node.focus === 'function') node.focus();
           const rect = node.getBoundingClientRect();
           return {
             x: Math.round(rect.left + rect.width / 2),
@@ -1271,6 +1272,7 @@ async function performCdpAction(
         })()`,
         10_000,
       );
+      if (isRecord(point) && typeof point.error === "string") throw new Error(point.error);
       if (!isInputPoint(point)) throw new Error("Element does not have a clickable position.");
       if (point.direct === true) {
         await evaluate(
@@ -1338,7 +1340,7 @@ async function performCdpAction(
     case "paste": {
       const send = tabSend(pipe, sessionId);
       await send("Emulation.setFocusEmulationEnabled", { enabled: true });
-      await pasteWithKeys(send, action.text);
+      await pasteWithoutClipboard(send, action.text);
       return;
     }
     case "scroll":
@@ -1372,19 +1374,17 @@ async function performCdpAction(
 }
 
 /**
- * Pastes with Ctrl+V into whatever has focus. With text, it goes on the clipboard just for the
- * paste; the owner's own clipboard text comes back afterwards.
+ * Pastes into whatever has focus without the system clipboard (see pasteEventScript); a field
+ * that ignores the paste event gets the text typed in. Without text, the owner's copy is pasted.
  */
-async function pasteWithKeys(send: CdpSend, text: string | undefined): Promise<void> {
-  const pasted = text?.slice(0, 500_000);
-  const ownerText = pasted === undefined ? null : clipboard.readText();
-  if (pasted !== undefined) clipboard.writeText(pasted);
-  try {
-    await pressCdpKey(send, "Ctrl+v");
-    await delay(500);
-  } finally {
-    if (ownerText && clipboard.readText() === pasted) clipboard.writeText(ownerText);
-  }
+async function pasteWithoutClipboard(send: CdpSend, text: string | undefined): Promise<void> {
+  const pasted = (text ?? clipboard.readText()).slice(0, 500_000);
+  if (!pasted) throw new Error("Nothing to paste: give the text to paste.");
+  const result = (await send("Runtime.evaluate", {
+    expression: pasteEventScript(pasted),
+    returnByValue: true,
+  })) as { result?: { value?: unknown } };
+  if (result.result?.value !== "handled") await send("Input.insertText", { text: pasted });
 }
 
 /** DevTools commands for one Chrome tab, in the shape the shared keyboard code takes. */

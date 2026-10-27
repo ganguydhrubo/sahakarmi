@@ -292,6 +292,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #permissionTimeoutMs: number;
   #usage: UsageService | null = null;
   #takeover: BrowserTakeoverState = { humanInControl: false, requests: [] };
+  /** Coworkers refused the browser during a takeover; told when the owner hands it back. */
+  readonly #refusedDuringTakeover = new Set<string>();
   /** Password/OTP cards waiting in the chat, with the page field each one fills. */
   readonly #secureInputs = new Map<string, PendingSecureInput>();
   readonly #computerUsePrerequisites: (() => ComputerUsePrerequisites) | null;
@@ -714,10 +716,52 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return this.getTakeover();
   }
 
+  /**
+   * Why a browser call must wait during a takeover, or null when it may go ahead. With the
+   * built-in browser only the coworkers that asked for help wait, and nobody may touch the tab the
+   * owner is working in; everyone else carries on in their own tabs.
+   */
+  #takeoverRefusal(params: DynamicToolCallParams): string | null {
+    if (!this.#takeover.humanInControl) return null;
+    const botId = this.#threadToBot.get(params.threadId) ?? null;
+    const waiting =
+      "The owner has taken over the browser (for example to log in or complete 2FA). Do not use the browser now. Continue other work or end your turn; you will be told when control is handed back.";
+    const refuse = (text: string) => {
+      if (botId) this.#refusedDuringTakeover.add(botId);
+      return text;
+    };
+    if (!this.#browser.takeoverHoldsShownTabOnly) return refuse(waiting);
+    if (botId && this.#takeover.requests.some((request) => request.botId === botId)) {
+      return refuse(waiting);
+    }
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    const tabId = getString(args, "tabId");
+    const changesTab = params.tool === "act" || params.tool === "close_tab";
+    if (changesTab && tabId && tabId === this.#browser.activeTabId) {
+      return refuse(
+        "The owner is working in this tab right now. Do not act on it. Use your own tabs (open a new one if needed) or wait; you will be told when the owner hands the browser back.",
+      );
+    }
+    return null;
+  }
+
+  /** Tells coworkers that were refused the browser during the takeover that it is free again. */
+  async #notifyRefusedCoworkers(alreadyTold: Set<string>): Promise<void> {
+    const refused = [...this.#refusedDuringTakeover].filter((botId) => !alreadyTold.has(botId));
+    this.#refusedDuringTakeover.clear();
+    for (const botId of refused) {
+      await this.#notifyBot(
+        botId,
+        "[Browser handed back] The owner finished in the browser, so you can use it again. Take a fresh snapshot of your page before continuing your task.",
+      );
+    }
+  }
+
   async handBackBrowser(note: string | null = null): Promise<BrowserTakeoverState> {
     const requests = this.#takeover.requests;
     this.#takeover = { humanInControl: false, requests: [] };
     this.#emitTakeover();
+    const told = new Set(requests.map((request) => request.botId));
     for (const botId of new Set(requests.map((request) => request.botId))) {
       const reasons = requests.filter((request) => request.botId === botId).map((r) => r.reason);
       await this.#notifyBot(
@@ -731,6 +775,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           .join("\n"),
       );
     }
+    await this.#notifyRefusedCoworkers(told);
     return this.getTakeover();
   }
 
@@ -751,6 +796,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           .join("\n"),
       );
     }
+    await this.#notifyRefusedCoworkers(new Set(requests.map((request) => request.botId)));
     return this.getTakeover();
   }
 
@@ -2244,15 +2290,11 @@ ${carryOver}`
         case "item/tool/call": {
           if (!isDynamicToolCall(request.params)) throw new Error("Invalid dynamic tool request.");
           if (request.params.namespace === SAHKARMI_BROWSER_NAMESPACE) {
-            if (this.#takeover.humanInControl) {
+            const refusal = this.#takeoverRefusal(request.params);
+            if (refusal) {
               client.respond(request.id, {
                 success: false,
-                contentItems: [
-                  {
-                    type: "inputText",
-                    text: "The owner has taken over the browser (for example to log in or complete 2FA). Do not use the browser now. Continue other work or end your turn; you will be told when control is handed back.",
-                  },
-                ],
+                contentItems: [{ type: "inputText", text: refusal }],
               });
               return;
             }
@@ -2516,7 +2558,8 @@ ${carryOver}`
       const args = isRecord(params.arguments) ? params.arguments : {};
       const reason =
         typeof args.reason === "string" && args.reason.trim()
-          ? args.reason.trim().slice(0, 300)
+          ? // The banner shows 300 characters; a longer reason is shortened, never refused.
+            shortenReason(args.reason.trim())
           : "Needs your help in the browser";
       this.#takeover = {
         ...this.#takeover,
@@ -4262,7 +4305,7 @@ const SAHKARMI_DYNAMIC_TOOLS = {
         "Ask the owner to take over the browser for something only a human should do: logging in, OTP/2FA, CAPTCHA, or a payment page. Returns immediately; you are messaged when control is handed back.",
       inputSchema: {
         type: "object",
-        properties: { reason: { type: "string", minLength: 1, maxLength: 300 } },
+        properties: { reason: { type: "string", minLength: 1, maxLength: 4_000 } },
         required: ["reason"],
         additionalProperties: false,
       },
@@ -4803,4 +4846,9 @@ function planStepStatus(status: string | null): TurnPlanStepStatus {
   if (status === "completed") return "completed";
   if (status === "inProgress" || status === "in_progress") return "in_progress";
   return "pending";
+}
+
+/** A takeover reason fits the banner: 300 characters at most. */
+function shortenReason(reason: string): string {
+  return reason.length <= 300 ? reason : `${reason.slice(0, 299).trimEnd()}…`;
 }

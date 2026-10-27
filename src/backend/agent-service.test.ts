@@ -468,6 +468,69 @@ describe.sequential("AgentService", () => {
     expect((await service.handBackBrowser()).humanInControl).toBe(false);
   });
 
+  it("keeps other coworkers working in their own tabs while the owner has taken over", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi_browser",
+      tool: "list_tabs",
+      arguments: {},
+    });
+    const { store, mailbox } = stores();
+    let browserCalls = 0;
+    const browser = {
+      ...fakeBrowser(),
+      takeoverHoldsShownTabOnly: true,
+      activeTabId: "owner-tab",
+      handleDynamicTool: async () => {
+        browserCalls += 1;
+        return { success: true, contentItems: [] };
+      },
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    service.takeOverBrowser();
+    await service.sendMessage({ botId: "vikram-sales", text: "Check the CRM" });
+
+    await waitFor(() => browserCalls === 1);
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(JSON.stringify(reply?.result ?? "")).not.toContain("taken over the browser");
+    await service.handBackBrowser();
+  });
+
+  it("keeps coworkers off the owner's tab during a takeover and tells them on hand-back", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi_browser",
+      tool: "act",
+      arguments: { tabId: "owner-tab", revision: 1, action: { type: "click", ref: "1:2" } },
+    });
+    const { store, mailbox } = stores();
+    let browserCalls = 0;
+    const browser = {
+      ...fakeBrowser(),
+      takeoverHoldsShownTabOnly: true,
+      activeTabId: "owner-tab",
+      handleDynamicTool: async () => {
+        browserCalls += 1;
+        return { success: true, contentItems: [] };
+      },
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    service.takeOverBrowser();
+    await service.sendMessage({ botId: "vikram-sales", text: "Update the lead" });
+
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(JSON.stringify(reply?.result)).toContain("The owner is working in this tab");
+    expect(browserCalls).toBe(0);
+    await service.handBackBrowser();
+    const told = service.listQueue("vikram-sales").deliveries.at(-1);
+    expect(told?.text).toContain("[Browser handed back]");
+  });
+
   it("lets a coworker ask the owner to take over and resumes it on hand-back", async () => {
     process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
       namespace: "sahkarmi",

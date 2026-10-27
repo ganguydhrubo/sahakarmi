@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getName: () => "Sahkarmi" } }));
 
-const { BrowserControlTracker, browserUserAgent, runBrowserTool } = await import("./browser-host");
+const { ANY_REVISION, BrowserControlTracker, browserUserAgent, runBrowserTool } = await import(
+  "./browser-host"
+);
 
 const sessionAgent =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Sahkarmi/0.7.5 Chrome/146.0.0.0 Electron/43.4.0 Safari/537.36";
@@ -21,6 +23,45 @@ describe("browserUserAgent", () => {
     );
     expect(agent).toContain(`Chrome/146.0.0.0 Electron/${process.versions.electron}`);
     expect(agent).not.toContain("Sahkarmi");
+  });
+});
+
+describe("act arguments from runtimes that leave fields out", () => {
+  async function call(args: Record<string, unknown>): Promise<[string, number]> {
+    let received: [string, number] = ["", 0];
+    const browser = {
+      act: async (tabId: string, revision: number) => {
+        received = [tabId, revision];
+        return { revision: 1, title: "", url: "", text: "", elements: [] };
+      },
+    };
+    const result = await runBrowserTool(
+      browser as unknown as Parameters<typeof runBrowserTool>[0],
+      new BrowserControlTracker(),
+      {
+        threadId: "t",
+        turnId: "u",
+        callId: "c",
+        tool: "act",
+        arguments: args,
+      } as Parameters<typeof runBrowserTool>[2],
+    );
+    if (!result.success) throw new Error(JSON.stringify(result.contentItems));
+    return received;
+  }
+
+  it("takes pageId for tabId and the revision from the ref", async () => {
+    expect(await call({ pageId: "tab-9", action: { type: "click", ref: "7:3" } })).toEqual([
+      "tab-9",
+      7,
+    ]);
+  });
+
+  it("lets a key press without ref or revision through", async () => {
+    expect(await call({ tabId: "tab-9", action: { type: "key", key: "Escape" } })).toEqual([
+      "tab-9",
+      ANY_REVISION,
+    ]);
   });
 });
 

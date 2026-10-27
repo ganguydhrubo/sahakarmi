@@ -5,18 +5,30 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
-## [0.12.5] - 2026-10-27
+## [0.12.6] - 2026-10-27
 
 ### Fixed
 
-- Coworkers can now fill Google Sheets and other spreadsheets themselves. Before, the built-in
-  browser could type only into a named field, so typing into a selected cell failed ("ref is
-  required"), the text never reached the cell, and the coworker asked you to take over and paste.
-  Now a coworker can type into whatever is selected (Tab moves to the next cell, a new line to the
-  next row) or paste whole rows at once. Your own clipboard text is put back after the paste.
-- Key combos such as Ctrl+V, Ctrl+A and Shift+Tab now work in the built-in browser.
-- A coworker's screenshot of a browser tab works when the browser panel is closed. Before, it failed
-  with "display surface not available" and the coworker worked blind.
+- Sahkarmi is much lighter. Saved browser tabs no longer all load when the app starts: only the
+  tab on screen loads, the others when you open them or a coworker uses them. A tab nobody used
+  for 30 minutes sleeps (its page is freed; the tab, its address and your sign-ins stay). A
+  coworker opening a page it already has open reuses that tab instead of making a duplicate.
+- Your cursor stays in the chat box while coworkers work. Before, every coworker click or key
+  press took the keyboard into the browser, so you had to click the message box again.
+- Taking over the browser for one coworker no longer stops all the others. Only the coworker that
+  asked you waits; the others carry on in their own tabs and cannot touch the tab you are using.
+  A coworker that was asked to wait is told when you hand the browser back.
+- Coworkers can fill Google Sheets and other spreadsheets themselves: type into the selected cell
+  (Tab moves to the next cell, a new line to the next row) or paste whole rows. Pasting never
+  touches your clipboard.
+- Key combos such as Ctrl+A and Shift+Tab work in the built-in browser.
+- Coworkers can click icon buttons drawn as pictures (Instagram's menu, X's Post button). When an
+  element is gone, the coworker gets a clear "take a fresh snapshot" message instead of "Script
+  failed to execute".
+- When a click opens a new tab (job titles on Naukri), the coworker is told which tab to read.
+- Screenshots of a browser tab work when the browser panel is closed.
+- A coworker asking you to take over is never refused for a long reason; it is shortened instead.
+- Coworkers on Google Antigravity no longer fail browser calls for a missing tab or revision.
 
 ## [0.12.4] - 2026-10-27
 

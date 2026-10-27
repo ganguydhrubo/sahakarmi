@@ -724,7 +724,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           tool(
             "request_browser_takeover",
             "Ask the owner to take over the browser for login, OTP/2FA, CAPTCHA or a payment page. Returns immediately; you are messaged when control is handed back.",
-            { reason: z.string().min(1).max(300) },
+            { reason: z.string().min(1).max(4_000) },
             (args) => call("sahkarmi", "request_browser_takeover", args),
           ),
           tool(

@@ -135,3 +135,29 @@ async function pressCharacter(send: CdpSend, character: string): Promise<void> {
     windowsVirtualKeyCode: keyCode,
   });
 }
+
+/**
+ * A page script that pastes text into whatever has focus (inside same-site frames too, where
+ * grids like Google Sheets keep their input) without the system clipboard, which a page without
+ * keyboard focus may not read. Returns "handled" when the page took the paste itself (grids
+ * turn tab-separated lines into rows), else "unhandled", and the caller inserts the text.
+ */
+export function pasteEventScript(text: string): string {
+  return `((text) => {
+    let doc = document;
+    let target = doc.activeElement;
+    while (target && target.tagName === 'IFRAME') {
+      try {
+        doc = target.contentDocument;
+        target = doc.activeElement;
+      } catch {
+        break;
+      }
+    }
+    target = target || doc.body;
+    const data = new DataTransfer();
+    data.setData('text/plain', text);
+    const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true });
+    return target.dispatchEvent(event) ? 'unhandled' : 'handled';
+  })(${JSON.stringify(text)})`;
+}
