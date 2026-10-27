@@ -53,7 +53,12 @@ interface ThreadConfig {
 
 interface ActiveTurn {
   id: string;
+  /** The text item now streaming. Text after a tool call starts a new one, like Claude Code. */
   itemId: string;
+  segment: number;
+  segmentText: string;
+  textBreakPending: boolean;
+  /** Every text of the turn joined, matched against the SDK's complete assistant messages. */
   text: string;
   assistantMessages: Map<string, string>;
   toolUses: Map<string, { name: string; input: unknown }>;
@@ -318,6 +323,9 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     const activeTurn = {
       id: turnId,
       itemId: `${turnId}:assistant`,
+      segment: 0,
+      segmentText: "",
+      textBreakPending: false,
       text: "",
       assistantMessages: new Map<string, string>(),
       toolUses: new Map<string, { name: string; input: unknown }>(),
@@ -445,6 +453,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         for (const block of toolUseBlocks(message.message)) {
           if (turn.toolUses.has(block.id)) continue;
           turn.toolUses.set(block.id, { name: block.name, input: block.input });
+          turn.textBreakPending = true;
           this.#emitToolItem(runtime, turn.id, block.id, block, false, null);
         }
       }
@@ -463,8 +472,12 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     const turn = runtime.activeTurn;
     if (turn) {
       const completeText = [...turn.assistantMessages.values()].join("");
-      if (completeText) turn.text = completeText;
-      else if (!turn.text && fallback) this.#appendDelta(runtime, fallback);
+      if (completeText.length > 0 && completeText.startsWith(turn.text)) {
+        this.#appendDelta(runtime, completeText.slice(turn.text.length));
+      } else if (completeText && turn.segment === 0) {
+        turn.text = completeText;
+        turn.segmentText = completeText;
+      } else if (!turn.text && fallback) this.#appendDelta(runtime, fallback);
     }
     const interrupted =
       message.terminal_reason === "aborted_streaming" ||
@@ -572,7 +585,15 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   #appendDelta(runtime: ThreadRuntime, delta: string): void {
     const turn = runtime.activeTurn;
     if (!turn || !delta) return;
+    if (turn.textBreakPending && turn.segmentText) {
+      this.#completeTextItem(runtime, turn);
+      turn.segment += 1;
+      turn.itemId = `${turn.id}:assistant:${turn.segment}`;
+      turn.segmentText = "";
+    }
+    turn.textBreakPending = false;
     turn.text += delta;
+    turn.segmentText += delta;
     this.emit("notification", {
       method: "item/agentMessage/delta",
       params: {
@@ -584,17 +605,21 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     });
   }
 
-  #completeTurn(runtime: ThreadRuntime, status: string, error: unknown): void {
-    const turn = runtime.activeTurn;
-    if (!turn) return;
+  #completeTextItem(runtime: ThreadRuntime, turn: ActiveTurn): void {
     this.emit("notification", {
       method: "item/completed",
       params: {
         threadId: runtime.id,
         turnId: turn.id,
-        item: { id: turn.itemId, type: "agentMessage", text: turn.text },
+        item: { id: turn.itemId, type: "agentMessage", text: turn.segmentText },
       },
     });
+  }
+
+  #completeTurn(runtime: ThreadRuntime, status: string, error: unknown): void {
+    const turn = runtime.activeTurn;
+    if (!turn) return;
+    this.#completeTextItem(runtime, turn);
     if (status === "failed" && error) {
       this.emit("notification", {
         method: "error",
