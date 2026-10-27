@@ -570,6 +570,66 @@
     .js .tg-stage.in .m4 { animation-delay: 2.2s; }
     .js .tg-stage.in .m5 { animation-delay: 3s; }
     @keyframes tg-pop { to { opacity: 1; transform: none; } }
+    .ch-band { --amber: #fbbf24; }
+    .ch-shell { position: relative; overflow: hidden; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: clamp(28px, 5vw, 64px); align-items: center; padding: clamp(24px, 5vw, 56px); border-radius: 30px; background: linear-gradient(150deg, rgba(20, 22, 40, 0.92), rgba(12, 13, 26, 0.96)); border: 1px solid rgba(251, 191, 36, 0.35); box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.08), 0 30px 80px rgba(251, 191, 36, 0.12), var(--shadow); color: #eceaf4; backdrop-filter: blur(14px); }
+    .ch-shell > * { min-width: 0; }
+    .ch-glow { position: absolute; right: -160px; top: -160px; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, rgba(251, 191, 36, 0.22), transparent 65%); pointer-events: none; }
+    .ch-copy { position: relative; }
+    .ch-badge { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 16px; padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(251, 191, 36, 0.5); background: rgba(251, 191, 36, 0.12); color: var(--amber); font-size: 13px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+    .ch-copy h2 { color: #fff; margin-bottom: 14px; }
+    .ch-lead { color: #c9c6d6; font-size: 18px; }
+    .ch-feats { list-style: none; padding: 0; margin: 24px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .ch-feats li { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); transition: border-color 0.3s, transform 0.3s var(--ease); }
+    .ch-feats li:hover { border-color: rgba(251, 191, 36, 0.45); transform: translateY(-2px); }
+    .ch-feats h3 { font-size: 16px; color: #fff; margin-bottom: 2px; }
+    .ch-feats p { font-size: 14px; color: #aeaabf; margin: 0; }
+    .ch-ico { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: rgba(251, 191, 36, 0.14); font-size: 18px; }
+    .ch-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+    .ch-btn { gap: 8px; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #1a1405; box-shadow: 0 10px 30px rgba(251, 191, 36, 0.35); }
+    .ch-btn:hover { box-shadow: 0 14px 38px rgba(251, 191, 36, 0.5); }
+    .ch-btn-2 { gap: 8px; color: #fff; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.05); }
+    .ch-btn-2:hover { border-color: rgba(251, 191, 36, 0.6); }
+    .ch-note { color: #8f8ba3; font-size: 14px; margin: 14px 0 0; }
+    .ch-stage { position: relative; display: grid; place-items: center; padding: 20px 0; }
+    .ch-phone { position: relative; width: min(300px, 100%); aspect-ratio: 9 / 18.5; border-radius: 44px; padding: 12px; background: linear-gradient(160deg, #2a2b38, #0d0e16); border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(251, 191, 36, 0.25), 0 0 60px rgba(251, 191, 36, 0.15); transform: rotate(3deg); }
+    .ch-notch { position: absolute; top: 20px; left: 50%; width: 80px; height: 20px; margin-left: -40px; border-radius: 999px; background: #05060a; z-index: 2; }
+    .ch-screen { position: relative; height: 100%; border-radius: 34px; overflow: hidden; padding: 48px 14px 14px; display: flex; flex-direction: column; gap: 12px; background: radial-gradient(circle at 70% 0%, rgba(226, 55, 68, 0.28), transparent 55%), #10111b; }
+    .ch-pill { align-self: center; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(251, 191, 36, 0.16); border: 1px solid rgba(251, 191, 36, 0.5); color: var(--amber); font-size: 12px; font-weight: 800; animation: ch-float 3s ease-in-out infinite; }
+    .ch-pill i, .ch-status i { width: 8px; height: 8px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); animation: ch-pulse 1.8s infinite; }
+    .ch-app { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 12px; border-radius: 14px; background: #e23744; color: #fff; }
+    .ch-app b { font: 800 18px var(--font-display); }
+    .ch-app small { font-size: 12px; opacity: 0.9; }
+    .ch-chat { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .ch-msg { max-width: 90%; padding: 10px 12px; border-radius: 16px; font-size: 13px; line-height: 1.45; }
+    .ch-you { align-self: flex-end; background: #2b5278; border-bottom-right-radius: 4px; }
+    .ch-bot { align-self: flex-start; display: grid; gap: 4px; background: #1c1e2d; border: 1px solid rgba(251, 191, 36, 0.25); border-bottom-left-radius: 4px; }
+    .ch-bot b { color: var(--amber); font-size: 12px; }
+    .ch-step { color: #c9c6d6; }
+    .ch-step.ch-you-pay { color: var(--amber); font-weight: 700; }
+    .ch-status { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px; border-radius: 12px; background: rgba(52, 211, 153, 0.1); color: #6ee7b7; font-size: 12px; font-weight: 700; }
+    .ch-chip { position: absolute; padding: 8px 14px; border-radius: 999px; background: rgba(20, 22, 40, 0.9); border: 1px solid rgba(251, 191, 36, 0.4); color: #fff; font-size: 13px; font-weight: 700; box-shadow: var(--shadow); animation: ch-float 4s ease-in-out infinite; }
+    .ch-chip-a { left: 0; top: 18%; }
+    .ch-chip-b { right: 0; bottom: 16%; animation-delay: 1.2s; }
+    @keyframes ch-pulse { 0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); } 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); } }
+    @keyframes ch-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    .js .ch-shell .ch-chat > li, .js .ch-shell .ch-step { opacity: 0; transform: translateY(8px); }
+    .js .ch-shell.in .ch-chat > li, .js .ch-shell.in .ch-step { animation: tg-pop 0.5s var(--ease) forwards; }
+    .js .ch-shell.in .c1 { animation-delay: 0.3s; } .js .ch-shell.in .c2 { animation-delay: 1s; }
+    .js .ch-shell.in .s1 { animation-delay: 1.4s; } .js .ch-shell.in .s2 { animation-delay: 2s; } .js .ch-shell.in .s3 { animation-delay: 2.6s; } .js .ch-shell.in .s4 { animation-delay: 3.2s; }
+    @media (max-width: 960px) {
+      .ch-shell { grid-template-columns: 1fr; }
+      .ch-phone { transform: none; }
+    }
+    @media (max-width: 560px) {
+      .ch-feats { grid-template-columns: 1fr; }
+      .ch-cta .btn { width: 100%; justify-content: center; }
+      .ch-chip { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .js .ch-shell .ch-chat > li, .js .ch-shell .ch-step { opacity: 1; transform: none; animation: none !important; }
+      .ch-pill, .ch-chip, .ch-pill i, .ch-status i { animation: none; }
+      .ch-feats li:hover { transform: none; }
+    }
     .ln-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
     .ln-card { position: relative; }
     .ln-icon { display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; margin-bottom: 12px; font-size: 20px; color: #0f1220; background: linear-gradient(135deg, var(--saffron), var(--turmeric)); }
@@ -1113,6 +1173,47 @@
       </div>
     </section>
 
+    <!-- Chotu AI (mobile) -->
+    <section id="chotu" class="ch-band" aria-labelledby="ch-h">
+      <div class="wrap">
+        <div class="ch-shell reveal">
+          <div class="ch-glow" aria-hidden="true"></div>
+          <div class="ch-copy">
+            <p class="ch-badge"><span aria-hidden="true">⚡</span><span data-i18n="chEyebrow">Introducing Sahkarmi mobile</span></p>
+            <h2 id="ch-h" data-i18n="chH2">Sahkarmi at your desk. Chotu AI in your pocket.</h2>
+            <p class="ch-lead" data-i18n="chLead">Your coworkers don't stop when you leave your laptop. Chotu AI (ছোটু) is a free Android agent that reads your screen and taps, scrolls and types in your apps for you.</p>
+            <ul class="ch-feats"><li><span class="ch-ico" aria-hidden="true">🍔</span><div><h3 data-i18n="chF1T">Finds your food</h3><p data-i18n="chF1P">Opens Zomato or Swiggy and searches for what you asked for.</p></div></li><li><span class="ch-ico" aria-hidden="true">⚡</span><div><h3 data-i18n="chF2T">Free AI keys work</h3><p data-i18n="chF2P">Use a free Google Gemini or Groq key. Claude, OpenAI and Ollama work too.</p></div></li><li><span class="ch-ico" aria-hidden="true">🛡️</span><div><h3 data-i18n="chF3T">No root needed</h3><p data-i18n="chF3P">Works on a normal phone through Android's Accessibility setting.</p></div></li><li><span class="ch-ico" aria-hidden="true">🤝</span><div><h3 data-i18n="chF4T">You stay in charge</h3><p data-i18n="chF4P">Type UPI PINs and OTPs yourself. Keys are kept encrypted on your phone.</p></div></li></ul>
+            <div class="ch-cta">
+              <a class="btn ch-btn" href="https://github.com/ganguydhrubo/chotu-ai/releases/latest" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">📲</span><span data-i18n="chCta">Download Chotu AI (APK)</span></a>
+              <a class="btn ch-btn-2" href="https://github.com/ganguydhrubo/chotu-ai" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">⭐</span><span data-i18n="chRepo">GitHub repository</span></a>
+            </div>
+            <p class="ch-note" data-i18n="chNote">Android 8.0 or newer. Free and open source (Apache 2.0), based on OpenDroid. Install the APK from GitHub and allow Accessibility when asked.</p>
+          </div>
+          <div class="ch-stage" aria-hidden="true">
+            <div class="ch-phone">
+              <div class="ch-notch"></div>
+              <div class="ch-screen">
+                <div class="ch-pill"><i></i><span data-i18n="chActive">Chotu is active</span></div>
+                <div class="ch-app"><b>Zomato</b><small>Arsalan biryani</small></div>
+                <ul class="ch-chat">
+                  <li class="ch-msg ch-you c1" lang="bn">ছোটু, Arsalan থেকে বিরিয়ানি খুঁজে দাও…</li>
+                  <li class="ch-msg ch-bot c2"><b>Chotu</b>
+                    <span class="ch-step s1">✓ Zomato opened</span>
+                    <span class="ch-step s2">✓ Searching “Arsalan biryani”</span>
+                    <span class="ch-step s3">✓ Results ready</span>
+                    <span class="ch-step s4 ch-you-pay">→ Pick your plate. You pay.</span>
+                  </li>
+                </ul>
+                <div class="ch-status"><i></i><span data-i18n="chStatus">Android 8.0 or newer</span></div>
+              </div>
+            </div>
+            <div class="ch-chip ch-chip-a">🤖 Accessibility</div>
+            <div class="ch-chip ch-chip-b">🔒 No root</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Download -->
     <section id="download" aria-labelledby="dl-h">
       <div class="wrap">
@@ -1516,6 +1617,22 @@
         pGem: "Google's own Antigravity agent, downloaded by Sahkarmi when you click Connect (Google's terms apply). One click opens Log in with Google; a Google AI Studio API key also works.",
         pGemC: "Your Google plan",
         aiNote: "Paid plans are billed by those providers, not by Sahkarmi. Sahkarmi has no pricing, no account and no subscription.",
+        chEyebrow: "Introducing Sahkarmi mobile",
+        chH2: "Sahkarmi at your desk. Chotu AI in your pocket.",
+        chLead: "Your coworkers don't stop when you leave your laptop. Chotu AI (ছোটু) is a free Android agent that reads your screen and taps, scrolls and types in your apps for you.",
+        chF1T: "Finds your food",
+        chF1P: "Opens Zomato or Swiggy and searches for what you asked for.",
+        chF2T: "Free AI keys work",
+        chF2P: "Use a free Google Gemini or Groq key. Claude, OpenAI and Ollama work too.",
+        chF3T: "No root needed",
+        chF3P: "Works on a normal phone through Android's Accessibility setting.",
+        chF4T: "You stay in charge",
+        chF4P: "Type UPI PINs and OTPs yourself. Keys are kept encrypted on your phone.",
+        chCta: "Download Chotu AI (APK)",
+        chRepo: "GitHub repository",
+        chNote: "Android 8.0 or newer. Free and open source (Apache 2.0), based on OpenDroid. Install the APK from GitHub and allow Accessibility when asked.",
+        chActive: "Chotu is active",
+        chStatus: "Android 8.0 or newer",
         dlEyebrow: "Download",
         dlH2: "Download for Windows",
         dlLead: "Every file is built by GitHub Actions from the public source, with SHA-256 checksums and a provenance attestation on the release page. Current version:",
@@ -1856,6 +1973,22 @@
         pGem: "Google का अपना Antigravity एजेंट, जिसे Connect दबाने पर सहकर्मी डाउनलोड करता है (Google की शर्तें लागू). एक क्लिक पर Log in with Google खुलता है; Google AI Studio की API key भी चलती है.",
         pGemC: "आपका Google प्लान",
         aiNote: "पेड प्लान का बिल वही प्रदाता भेजते हैं, सहकर्मी नहीं. सहकर्मी की न कोई क़ीमत है, न अकाउंट, न सब्सक्रिप्शन.",
+        chEyebrow: "पेश है Sahkarmi मोबाइल",
+        chH2: "डेस्क पर Sahkarmi। जेब में Chotu AI।",
+        chLead: "लैपटॉप से उठते ही आपके सहकर्मी रुकते नहीं। Chotu AI (छोटू) एक मुफ़्त Android एजेंट है जो आपकी स्क्रीन पढ़ता है और आपके ऐप्स में आपके लिए टैप, स्क्रॉल और टाइप करता है।",
+        chF1T: "खाना ढूँढता है",
+        chF1P: "Zomato या Swiggy खोलकर वही खोजता है जो आपने माँगा।",
+        chF2T: "मुफ़्त AI चाबियाँ चलती हैं",
+        chF2P: "मुफ़्त Google Gemini या Groq चाबी लगाएँ। Claude, OpenAI और Ollama भी चलते हैं।",
+        chF3T: "रूट की ज़रूरत नहीं",
+        chF3P: "Android की Accessibility सेटिंग से आम फ़ोन पर चलता है।",
+        chF4T: "कंट्रोल आपके हाथ में",
+        chF4P: "UPI PIN और OTP ख़ुद डालें। चाबियाँ आपके फ़ोन पर एन्क्रिप्ट होकर रहती हैं।",
+        chCta: "Chotu AI डाउनलोड करें (APK)",
+        chRepo: "GitHub रिपॉज़िटरी",
+        chNote: "Android 8.0 या नया। मुफ़्त और ओपन सोर्स (Apache 2.0), OpenDroid पर आधारित। GitHub से APK इंस्टॉल करें और पूछे जाने पर Accessibility की अनुमति दें।",
+        chActive: "छोटू चालू है",
+        chStatus: "Android 8.0 या नया",
         dlEyebrow: "डाउनलोड",
         dlH2: "Windows के लिए डाउनलोड करें",
         dlLead: "हर फ़ाइल GitHub Actions ने सार्वजनिक सोर्स से बनाई है, रिलीज़ पेज पर SHA-256 चेकसम और प्रोवेनेंस अटेस्टेशन के साथ. मौजूदा वर्ज़न:",
