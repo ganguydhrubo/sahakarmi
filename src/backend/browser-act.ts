@@ -12,3 +12,6 @@ export const ACT_DESCRIPTION =
   "upload attaches files from this computer to a page's file picker: ref is the page's Upload / " +
   "Add photo / Attach button or its file input, paths are full local file paths (up to 10). " +
   "Use it instead of asking the owner to take over for an upload.";
+
+export const SNAPSHOT_DESCRIPTION =
+  "Read a page and obtain current element references. Long page text comes in parts: when the result has nextOffset, call snapshot again with offset set to it to read on (the references stay the same).";

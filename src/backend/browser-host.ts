@@ -19,7 +19,7 @@ import type {
   BrowserTab,
   BrowserVisibilityInput,
 } from "../shared/ipc";
-import { ACT_DESCRIPTION } from "./browser-act";
+import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
@@ -182,9 +182,9 @@ export const BROWSER_DYNAMIC_TOOLS = [
         additionalProperties: false,
       }),
       functionTool("list_tabs", "List the browser tabs.", emptySchema()),
-      functionTool("snapshot", "Read a page and obtain current element references.", {
+      functionTool("snapshot", SNAPSHOT_DESCRIPTION, {
         type: "object",
-        properties: { tabId: { type: "string" } },
+        properties: { tabId: { type: "string" }, offset: { type: "integer", minimum: 0 } },
         required: ["tabId"],
         additionalProperties: false,
       }),
@@ -367,6 +367,8 @@ export class BrowserHost implements CoworkerBrowser {
   async #wakeLoaded(tab: InternalTab): Promise<WebContentsView> {
     const view = this.#wake(tab);
     const contents = view.webContents;
+    // A hidden page's timers are slowed down; a coworker's call runs it at full speed until it ends.
+    if (tab.busy > 0) contents.setBackgroundThrottling(false);
     if (contents.isLoading() && Date.now() - tab.liveSince < FIRST_LOAD_WAIT_MS) {
       await new Promise<void>((resolve) => {
         const timer = setTimeout(done, FIRST_LOAD_WAIT_MS);
@@ -971,6 +973,9 @@ export class BrowserHost implements CoworkerBrowser {
     const settled = result.finally(() => {
       tab.busy -= 1;
       tab.lastUsed = Date.now();
+      if (tab.busy === 0 && tab.view && !tab.view.webContents.isDestroyed()) {
+        tab.view.webContents.setBackgroundThrottling(true);
+      }
     });
     tab.queue = settled.catch(() => undefined);
     return settled;
@@ -1151,6 +1156,50 @@ function revisionFromRef(action: BrowserAction): number {
   return revision;
 }
 
+/** Characters of a snapshot sent to a coworker: well inside every runtime's tool-result limit. */
+export const SNAPSHOT_BUDGET = 60_000;
+const MIN_SNAPSHOT_TEXT = 8_000;
+const ELEMENT_NAME_CHARS = 120;
+const MIN_ELEMENT_NAME_CHARS = 24;
+
+function textOffset(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+/**
+ * Shortens a snapshot for a coworker. Every element stays (they are what it acts on), with
+ * shorter names; the page text gets what is left and can be read on with offset.
+ */
+export function fitSnapshot(
+  snapshot: BrowserSnapshot,
+  offset: number,
+): BrowserSnapshot & { textOffset?: number; textLength?: number; nextOffset?: number } {
+  // Names get shorter only on a crowded page (hundreds of buttons), never below a readable label.
+  const unnamed = JSON.stringify(snapshot.elements.map((element) => ({ ...element, name: "" })));
+  const perName = Math.floor(
+    (SNAPSHOT_BUDGET - MIN_SNAPSHOT_TEXT - unnamed.length) / Math.max(1, snapshot.elements.length),
+  );
+  const nameChars = Math.min(ELEMENT_NAME_CHARS, Math.max(MIN_ELEMENT_NAME_CHARS, perName));
+  const elements = snapshot.elements.map((element) =>
+    element.name.length > nameChars
+      ? { ...element, name: `${element.name.slice(0, nameChars)}…` }
+      : element,
+  );
+  const room = Math.max(MIN_SNAPSHOT_TEXT, SNAPSHOT_BUDGET - JSON.stringify(elements).length);
+  const start = Math.min(offset, snapshot.text.length);
+  const text = snapshot.text.slice(start, start + room);
+  const end = start + text.length;
+  if (start === 0 && end === snapshot.text.length) return { ...snapshot, elements };
+  return {
+    ...snapshot,
+    text,
+    elements,
+    textOffset: start,
+    textLength: snapshot.text.length,
+    ...(end < snapshot.text.length ? { nextOffset: end } : {}),
+  };
+}
+
 /** The tab a call names; some runtimes call it pageId. */
 function browserTabId(args: Record<string, unknown>): string {
   const pageId = args.pageId;
@@ -1178,7 +1227,7 @@ export async function runBrowserTool(
         return textResult({ tabs: browser.listTabs(), activeTabId: browser.activeTabId });
       case "snapshot": {
         const snapshot = await browser.snapshot(browserTabId(args));
-        return textResult(snapshot);
+        return textResult(fitSnapshot(snapshot, textOffset(args.offset)));
       }
       case "act": {
         const tabId = browserTabId(args);
@@ -1187,7 +1236,7 @@ export async function runBrowserTool(
         // without a ref (a key, a scroll) does not depend on it.
         const revision =
           typeof args.revision === "number" ? args.revision : revisionFromRef(action);
-        return textResult(await browser.act(tabId, revision, action));
+        return textResult(fitSnapshot(await browser.act(tabId, revision, action), 0));
       }
       case "screenshot": {
         const imageUrl = await browser.screenshot(browserTabId(args));
@@ -1433,13 +1482,16 @@ export function sameAddress(left: string, right: string): boolean {
 export function snapshotScript(revision: number): string {
   return `(() => {
     const revision = ${revision};
-    const nodes = [...document.querySelectorAll('a,button,input,textarea,select,[role],[contenteditable="true"],[tabindex]')]
-      .filter((node) => {
-        const style = getComputedStyle(node);
-        const rect = node.getBoundingClientRect();
-        return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
-      })
-      .slice(0, 500);
+    // Stops at 500 visible elements: big pages (Instagram, Sheets) have thousands.
+    const nodes = [];
+    for (const node of document.querySelectorAll('a,button,input,textarea,select,[role],[contenteditable="true"],[tabindex]')) {
+      const visible = typeof node.checkVisibility === 'function'
+        ? node.checkVisibility({ visibilityProperty: true })
+        : getComputedStyle(node).visibility !== 'hidden' && getComputedStyle(node).display !== 'none';
+      if (!visible) continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0 && nodes.push(node) >= 500) break;
+    }
     document.querySelectorAll('[data-sahkarmi-ref]').forEach((node) => node.removeAttribute('data-sahkarmi-ref'));
     const elements = nodes.map((node, index) => {
       const ref = revision + ':' + index;

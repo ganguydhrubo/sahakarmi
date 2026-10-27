@@ -10,6 +10,7 @@ import {
   isNoisyDiagnostic,
   previewText,
   quotaNotice,
+  SHORT_TOOL_WAIT_MS,
   searchExcerpt,
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
@@ -311,6 +312,59 @@ describe.sequential("AgentService", () => {
         .deliveries.some((delivery) => delivery.text.includes("[Approval")),
     ).toBe(false);
     expect(permissions.audit()[0]).toMatchObject({ category: "shell", decision: "rejected" });
+  });
+
+  it("tells a coworker whose runtime cannot wait, and lets its repeat through once approved", async () => {
+    const { store, mailbox } = stores();
+    await store.initialize();
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    const permissions = new PermissionService(join(root, "user-data"));
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      approvals,
+      permissions,
+    );
+    await service.initialize();
+    const saved = SHORT_TOOL_WAIT_MS.antigravity;
+    SHORT_TOOL_WAIT_MS.antigravity = 50;
+    try {
+      const request = {
+        botId: "arjun-research",
+        provider: "antigravity",
+        category: "shell" as const,
+        action: "npm install left-pad",
+        paths: [],
+      };
+      // Antigravity gives up on a tool call after 3 minutes: it is answered before that.
+      const first = await permissions.authorize(request, []);
+      expect(first.allowed).toBe(false);
+      expect(first.reason).toContain("end your turn");
+      const [approval] = service.listApprovals();
+      expect(approval?.status).toBe("pending");
+
+      await service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" });
+      const told = service.listQueue("arjun-research").deliveries.at(-1);
+      expect(told?.text).toContain("[Approval APPROVED]");
+      expect(told?.text).toContain("Repeat exactly the same action");
+
+      // The repeat goes through without a new question, once.
+      expect((await permissions.authorize(request, [])).allowed).toBe(true);
+      expect(service.listApprovals().filter((item) => item.status === "pending")).toHaveLength(0);
+      expect(permissions.audit()[0]).toMatchObject({ category: "shell", decision: "approved" });
+      const again = permissions.authorize(request, []);
+      await waitFor(
+        () =>
+          (service?.listApprovals().filter((item) => item.status === "pending").length ?? 0) === 1,
+      );
+      expect((await again).allowed).toBe(false);
+    } finally {
+      SHORT_TOOL_WAIT_MS.antigravity = saved;
+    }
   });
 
   it("allows Codex file changes inside the coworker folder without asking", async () => {

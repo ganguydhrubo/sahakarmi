@@ -288,6 +288,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #approvals: ApprovalStore | null;
   readonly #permissions: PermissionService | null;
   readonly #permissionWaiters = new Map<string, (outcome: "approved" | "rejected") => void>();
+  /** Approvals a coworker stopped waiting for (its runtime's tool time limit), by approval id. */
+  readonly #deferredPermissions = new Map<string, { botId: string; key: string }>();
+  /** Actions the owner approved after the coworker stopped waiting: key -> expiry (ms). */
+  readonly #approvedLater = new Map<string, number>();
   readonly #fileChangePaths = new Map<string, string[]>();
   readonly #permissionTimeoutMs: number;
   #usage: UsageService | null = null;
@@ -688,6 +692,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const waiter = this.#permissionWaiters.get(approval.id);
       this.#permissionWaiters.delete(approval.id);
       waiter?.(approval.status === "approved" ? "approved" : "rejected");
+      const deferred = this.#deferredPermissions.get(approval.id);
+      if (deferred) {
+        // The coworker stopped waiting: tell it, and let the same action through once.
+        this.#deferredPermissions.delete(approval.id);
+        const approved = approval.status === "approved";
+        if (approved) this.#approvedLater.set(deferred.key, Date.now() + APPROVED_LATER_MS);
+        await this.#notifyBot(
+          deferred.botId,
+          [
+            `[Approval ${approved ? "APPROVED" : "REJECTED"}] "${approval.title}".`,
+            approval.note ? `Owner's note: ${approval.note}` : null,
+            approved
+              ? "Repeat exactly the same action now; it goes through without asking again. Take a fresh snapshot first if the page may have changed."
+              : "Do not perform that action. Tell the owner what you will do instead.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      }
       return approval;
     }
     const verdict = approval.status === "approved" ? "APPROVED" : "REJECTED";
@@ -2153,8 +2176,21 @@ ${carryOver}`
   }
 
   /** Files an inbox request for a paused tool call and waits for the owner (or the timeout). */
-  async #askOwner(request: PermissionRequest): Promise<"approved" | "rejected" | "timed-out"> {
+  async #askOwner(
+    request: PermissionRequest,
+  ): Promise<"approved" | "rejected" | "timed-out" | "deferred"> {
     if (!this.#approvals || !request.botId) return "rejected";
+    const key = permissionKey(request);
+    const approvedUntil = this.#approvedLater.get(key);
+    if (approvedUntil !== undefined) {
+      this.#approvedLater.delete(key);
+      if (approvedUntil > Date.now()) return "approved";
+    }
+    // A runtime that gives up on a tool call after a few minutes is answered before that; the
+    // request stays in the inbox and the coworker hears the owner's decision as a message.
+    const shortWait = SHORT_TOOL_WAIT_MS[request.provider];
+    const defer = shortWait !== undefined && shortWait < this.#permissionTimeoutMs;
+    const waitMs = defer ? shortWait : this.#permissionTimeoutMs;
     const bot = this.#store.list().find((candidate) => candidate.id === request.botId);
     const wording = describePermissionRequest(request, bot?.name ?? "Your coworker", {
       shared: this.#store.sharedRoot,
@@ -2170,9 +2206,15 @@ ${carryOver}`
       permissionCategory: request.category,
     });
     this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+    const botId = request.botId;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.#permissionWaiters.delete(approval.id);
+        if (defer) {
+          this.#deferredPermissions.set(approval.id, { botId, key });
+          resolve("deferred");
+          return;
+        }
         resolve("timed-out");
         void this.#approvals
           ?.decide({
@@ -2186,7 +2228,7 @@ ${carryOver}`
             }
           })
           .catch(() => undefined);
-      }, this.#permissionTimeoutMs);
+      }, waitMs);
       timer.unref?.();
       this.#permissionWaiters.set(approval.id, (outcome) => {
         clearTimeout(timer);
@@ -4851,4 +4893,17 @@ function planStepStatus(status: string | null): TurnPlanStepStatus {
 /** A takeover reason fits the banner: 300 characters at most. */
 function shortenReason(reason: string): string {
   return reason.length <= 300 ? reason : `${reason.slice(0, 299).trimEnd()}…`;
+}
+
+/**
+ * How long a runtime's tool call may wait for the owner's approval. Google Antigravity gives up
+ * on a tool call after 3 minutes and then fails its other running calls too.
+ */
+export const SHORT_TOOL_WAIT_MS: Partial<Record<string, number>> = { antigravity: 150_000 };
+/** An approval given after the coworker stopped waiting stays usable this long. */
+const APPROVED_LATER_MS = 30 * 60_000;
+
+/** The same action by the same coworker, so a later approval matches its repeat. */
+function permissionKey(request: PermissionRequest): string {
+  return [request.botId ?? "", request.category, request.action].join("\n");
 }

@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getName: () => "Sahkarmi" } }));
 
-const { ANY_REVISION, BrowserControlTracker, browserUserAgent, runBrowserTool } = await import(
-  "./browser-host"
-);
+const {
+  ANY_REVISION,
+  BrowserControlTracker,
+  SNAPSHOT_BUDGET,
+  browserUserAgent,
+  fitSnapshot,
+  runBrowserTool,
+} = await import("./browser-host");
 
 const sessionAgent =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Sahkarmi/0.7.5 Chrome/146.0.0.0 Electron/43.4.0 Safari/537.36";
@@ -112,5 +117,51 @@ describe("act parsing", () => {
       text: "a\tb\nc\td",
     });
     expect(await actWith({ type: "paste" })).toEqual({ type: "paste" });
+  });
+});
+
+describe("snapshots sent to a coworker", () => {
+  const page = (text: string, names: string[]) => ({
+    tabId: "tab",
+    revision: 4,
+    title: "Inbox",
+    url: "https://www.instagram.com/direct/inbox/",
+    text,
+    elements: names.map((name, index) => ({
+      ref: `4:${index}`,
+      tag: "div",
+      role: "button",
+      name,
+      disabled: false,
+    })),
+  });
+
+  it("leaves a small page as it is", () => {
+    const small = page("Hello", ["Send"]);
+    expect(fitSnapshot(small, 0)).toEqual(small);
+  });
+
+  it("keeps every element and reads long text on in parts", () => {
+    const text = "x".repeat(150_000);
+    const big = page(
+      text,
+      Array.from({ length: 500 }, (_, index) => `Chat ${index} ${"y".repeat(400)}`),
+    );
+    const first = fitSnapshot(big, 0);
+    expect(JSON.stringify(first).length).toBeLessThan(SNAPSHOT_BUDGET + 2_000);
+    expect(first.elements).toHaveLength(500);
+    expect(first.elements[499]?.ref).toBe("4:499");
+    expect(first.elements[0]?.name.length).toBeLessThanOrEqual(121);
+    expect(first.text.length).toBeGreaterThanOrEqual(8_000);
+    expect(first).toMatchObject({ textOffset: 0, textLength: 150_000 });
+
+    let read = first.text.length;
+    let next = first.nextOffset;
+    while (next !== undefined) {
+      const part = fitSnapshot(big, next);
+      read += part.text.length;
+      next = part.nextOffset;
+    }
+    expect(read).toBe(text.length);
   });
 });

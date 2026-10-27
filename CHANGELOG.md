@@ -29,6 +29,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 - Screenshots of a browser tab work when the browser panel is closed.
 - A coworker asking you to take over is never refused for a long reason; it is shortened instead.
 - Coworkers on Google Antigravity no longer fail browser calls for a missing tab or revision.
+- Coworkers on Google Antigravity no longer fail while you take time to approve something. After
+  about 2.5 minutes the coworker is told to wait; when you approve, it is told and its repeat of
+  the same action goes through without asking you again.
+- Reading a very big page (Instagram, a large sheet) no longer goes over Claude's limit: every
+  button and link is kept, and long page text is read in parts.
+- Reading a page in a hidden tab is faster and no longer times out: the page runs at full speed
+  while a coworker works in it, and slows down again afterwards to save battery.
 
 ## [0.12.4] - 2026-10-27
 
