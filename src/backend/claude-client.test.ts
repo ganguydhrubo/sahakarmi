@@ -195,6 +195,54 @@ fi
     await client.stop();
   });
 
+  it("starts a new text item after each tool call, so text and steps interleave", async () => {
+    const { client, notifications, output, threadId } = await createHarness();
+    const turnId = "66666666-6666-4666-8666-666666666666";
+    await startTurn(client, threadId, turnId);
+    const toolUse = (uuid: string, id: string) =>
+      ({
+        type: "assistant",
+        parent_tool_use_id: null,
+        session_id: threadId,
+        uuid,
+        message: {
+          content: [{ type: "tool_use", id, name: "mcp__sahkarmi_browser__act", input: {} }],
+        },
+      }) as unknown as SDKMessage;
+
+    output.push(streamDelta(threadId, turnId, "Let me add a row."));
+    output.push(assistantMessage(threadId, "m1", "Let me add a row."));
+    output.push(toolUse("m2", "t1"));
+    output.push(streamDelta(threadId, turnId, "Fields confirmed."));
+    output.push(assistantMessage(threadId, "m3", "Fields confirmed."));
+    output.push(toolUse("m4", "t2"));
+    output.push(streamDelta(threadId, turnId, "Done."));
+    output.push(assistantMessage(threadId, "m5", "Done."));
+    output.push(resultMessage(threadId, turnId, "Done."));
+    await waitFor(() => notifications.some((event) => event.method === "turn/completed"));
+
+    const order = notifications.flatMap((event) => {
+      const params = event.params as { itemId?: string; item?: { id: string; text?: string } };
+      if (event.method === "item/agentMessage/delta") return [`delta ${params.itemId}`];
+      if (event.method === "item/started") return [`tool ${params.item?.id}`];
+      if (event.method === "item/completed" && params.item?.text !== undefined) {
+        return [`text ${params.item.id}: ${params.item.text}`];
+      }
+      return [];
+    });
+    expect(order).toEqual([
+      `delta ${turnId}:assistant`,
+      "tool tool:t1",
+      `text ${turnId}:assistant: Let me add a row.`,
+      `delta ${turnId}:assistant:1`,
+      "tool tool:t2",
+      `text ${turnId}:assistant:1: Fields confirmed.`,
+      `delta ${turnId}:assistant:2`,
+      `text ${turnId}:assistant:2: Done.`,
+    ]);
+    await client.stop();
+  });
+
   it("turns Claude's TodoWrite list into the turn's live plan", async () => {
     const { client, notifications, output, threadId } = await createHarness();
     const turnId = "44444444-4444-4444-8444-444444444444";

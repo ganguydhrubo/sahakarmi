@@ -3611,7 +3611,20 @@ ${carryOver}`
       this.#syncDeliveryMessage(snapshot, delivery.delivery.id);
       this.#emitQueue(botId);
       if (terminal === "completed" && latestAssistant && delivery.delivery.sender.kind === "bot") {
-        await this.#relayAgentResult(botId, turnId, delivery, latestAssistant.text);
+        // Text between tool calls arrives as separate messages; the asking coworker gets them all.
+        const replyText = snapshot.messages
+          .filter(
+            (message) =>
+              message.author === "assistant" &&
+              message.turnId === turnId &&
+              message.itemType !== "commentary" &&
+              !message.tool &&
+              !message.exchange &&
+              message.text.trim(),
+          )
+          .map((message) => message.text.trim())
+          .join("\n\n");
+        await this.#relayAgentResult(botId, turnId, delivery, replyText);
       }
     }
     this.#attachDeliverables(botId, snapshot, turnId, latestAssistant);
