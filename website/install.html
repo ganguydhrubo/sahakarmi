@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Install Sahkarmi — Windows and from source</title>
-  <meta name="description" content="Step-by-step installation of the Sahkarmi desktop app on Windows (macOS and Linux builds come later), how to verify the download, connect an AI provider, update, troubleshoot and uninstall." />
+  <meta name="description" content="Step-by-step installation of the Sahkarmi desktop app on Windows, how to verify the download, connect an AI provider, update, troubleshoot and uninstall." />
   <link rel="canonical" href="https://sahkarmi.site/install.html" />
   <meta name="robots" content="index, follow" />
   <meta name="theme-color" content="#0F1220" />
@@ -77,7 +77,6 @@
     <ul class="toc">
       <li><a href="#requirements">Requirements</a></li>
       <li><a href="#windows">Windows</a></li>
-      <li><a href="#other-platforms">macOS and Linux</a></li>
       <li><a href="#verify">Verify the download</a></li>
       <li><a href="#first-launch">First launch</a></li>
       <li><a href="#providers">AI providers</a></li>
@@ -92,7 +91,6 @@
       <thead><tr><th>Platform</th><th>File</th><th>Status</th></tr></thead>
       <tbody>
         <tr><td>Windows 10 or 11, 64-bit (x64)</td><td><code>Sahkarmi-<span data-release-version>0.7.1</span>-x64.exe</code>, <span data-release-size="win">212 MB</span></td><td><span class="status tested">Built and tested</span> on Windows 11 by the project</td></tr>
-        <tr><td>macOS and Linux</td><td>none yet</td><td><span class="status none">Coming later</span>: builds are paused until tested on real hardware</td></tr>
         <tr><td>Windows ARM and 32-bit systems</td><td>none</td><td><span class="status none">Not supported</span></td></tr>
       </tbody>
     </table>
@@ -106,9 +104,6 @@
       <li>Sahkarmi opens by itself after installing.</li>
     </ol>
     <div class="box"><strong>winget:</strong> a manifest for <code>Sahkarmi.Sahkarmi</code> has been submitted to the Windows Package Manager community repository and is waiting for Microsoft's moderation. Until it is accepted, <code>winget install Sahkarmi.Sahkarmi</code> does not work; use the installer above.</div>
-
-    <h2 id="other-platforms">macOS and Linux</h2>
-    <p>Sahkarmi launches on Windows first. The macOS (Apple silicon) and Linux (AppImage) builds are paused and are not published with this release; they return once the project has tested them on real hardware. Until then there is nothing to download for those systems. Developers can <a href="#terminal">build and run from source</a> on macOS and Linux, and the <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub repository</a> will carry the announcement.</p>
 
     <h2 id="verify">Verify the download</h2>
     <p>Every release attaches <code>SHA256SUMS.txt</code> and <code>SHA256SUMS-windows.txt</code>, plus a build provenance attestation created by GitHub Actions. Compare the hash of your file with the one on the <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer">release page</a>.</p>
@@ -144,7 +139,7 @@ cd sahakarmi
 bun install --frozen-lockfile
 bun run fetch:opencode   # downloads the bundled free-model runtime for your platform
 bun run dev              # starts the app from source</code></pre>
-    <p>Installer build: <code>bun run dist:win</code> on Windows (the macOS and Linux installer scripts exist in the repository but are not used for releases right now). See <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/README.md" target="_blank" rel="noopener noreferrer">the README</a> for the full command list.</p>
+    <p>Installer build: <code>bun run dist:win</code> on Windows. See <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/README.md" target="_blank" rel="noopener noreferrer">the README</a> for the full command list.</p>
 
     <h2 id="update">Updating</h2>
     <p>The installed app checks GitHub Releases for updates shortly after launch and then periodically. Under Settings, <strong>Updates</strong>, you choose whether updates download automatically or ask each time, and you can check now. Updates install when you restart the app. On Windows the update is the same unsigned installer, so SmartScreen may ask again. Your coworkers, chats and settings are kept across updates.</p>
