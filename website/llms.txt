@@ -22,6 +22,7 @@ Key facts (verified against release 0.7.1 on 24 October 2026):
 - [Privacy policy](https://sahkarmi.site/privacy.html): what the app stores on the computer, what it sends and to whom, what the website collects, how to delete data
 - [Terms of use](https://sahkarmi.site/terms.html): Apache License 2.0 summary, no warranty, owner responsibility for AI coworkers, no affiliation with AI companies
 - [Download (GitHub Releases)](https://github.com/ganguydhrubo/sahakarmi/releases/latest): Windows installer, checksums, SBOM and provenance attestation
+- [itch.io page](https://sahkarmisite.itch.io/sahkarmi): the same Windows installer, also listed on itch.io
 - [Source code](https://github.com/ganguydhrubo/sahakarmi): GitHub repository, issues, contributing guide, security policy, privacy notes
 - [LinkedIn](https://www.linkedin.com/company/sahkarmi/): official company page
 - [Facebook](https://www.facebook.com/sahakarmi): official page
