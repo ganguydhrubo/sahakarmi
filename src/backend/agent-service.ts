@@ -74,7 +74,7 @@ import {
   type CoworkerBrowser,
   SAHKARMI_BROWSER_NAMESPACE,
 } from "./browser-host";
-import { ClaudeAgentClient } from "./claude-client";
+import { ClaudeAgentClient, type ClaudePlanLimit } from "./claude-client";
 import {
   type AcpCliInfo,
   type ClaudeCliInfo,
@@ -600,11 +600,30 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return this.#usage.overview(this.#status.providers ?? [], plans);
   }
 
-  /** Re-reads what can be re-read on demand (Codex rate limits); other providers report live. */
+  /** Re-reads what can be re-read on demand (Codex and Claude plan limits); others report live. */
   async refreshUsage(): Promise<UsageOverview> {
-    const client = this.#clients.get("codex");
-    if (client) await this.#refreshUsage(client).catch(() => undefined);
+    const codex = this.#clients.get("codex");
+    const claude = this.#clients.get("claude");
+    await Promise.all([
+      codex ? this.#refreshUsage(codex).catch(() => undefined) : undefined,
+      claude ? this.#refreshClaudeLimits(claude).catch(() => undefined) : undefined,
+    ]);
     return this.usageOverview();
+  }
+
+  /** Claude's plan windows (5-hour, weekly, per model), read without sending a prompt. */
+  async #refreshClaudeLimits(client: AgentClient): Promise<void> {
+    const { limits } = await client.request<{ limits: ClaudePlanLimit[] | null }>(
+      "sahkarmi/planLimits/read",
+      {},
+    );
+    if (!limits?.length) return;
+    this.#usage?.record({
+      kind: "limits",
+      provider: "claude",
+      replace: true,
+      windows: claudeLimitWindows(limits, "Claude Agent SDK /usage"),
+    });
   }
 
   getStatus(): AgentStatus {
@@ -1680,6 +1699,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       message: null,
     });
     if (codexClient) void this.#refreshUsage(codexClient).catch(() => undefined);
+    const claudeClient = this.#clients.get("claude");
+    if (claudeClient) void this.#refreshClaudeLimits(claudeClient).catch(() => undefined);
     await this.#adoptAvailableProvider();
     // Reconcile only the providers that were (re)started here. A restart of one provider (a
     // lazy start, the CLI/model refresh re-probing a signed-out Codex or Claude, a crash
@@ -3411,28 +3432,16 @@ ${carryOver}`
     if (!this.#usage) return;
     const provider = threadId ? this.#providerForThread(threadId) : null;
     if (!provider) return;
-    const limit = getRecord(params, "limit");
-    if (limit) {
-      const id = getString(limit, "id") ?? "current";
-      const status = getString(limit, "status");
-      const resetsAt = finiteNumberOrNull(limit.resetsAt);
+    const limits = isRecord(params) && Array.isArray(params.limits) ? params.limits : null;
+    if (limits) {
       this.#usage.record({
         kind: "limits",
         provider,
         replace: false,
-        windows: [
-          {
-            id,
-            label: CLAUDE_LIMIT_LABELS[id] ?? id.replaceAll("_", " "),
-            usedPercent: null,
-            resetsAt: resetsAt === null ? null : new Date(resetsAt * 1_000).toISOString(),
-            status:
-              status === "rejected" ? "limited" : status === "allowed_warning" ? "warning" : "ok",
-            source: "Claude Agent SDK rate_limit_event",
-            observedAt: new Date().toISOString(),
-            dataLabel: "verified",
-          },
-        ],
+        windows: claudeLimitWindows(
+          limits as ClaudePlanLimit[],
+          "Claude Agent SDK rate_limit_event",
+        ),
       });
       return;
     }
@@ -3449,9 +3458,11 @@ ${carryOver}`
       provider,
       botId,
       counterKey: getString(params, "sessionKey") ?? `${provider}:${threadId}`,
-      persistent: false,
+      persistent: isRecord(params) && params.persistent === true,
       tokens,
       costUsd,
+      turnTokens: isRecord(params) ? finiteNumberOrNull(params.turnTokens) : null,
+      resumed: isRecord(params) && params.resumed === true,
     });
   }
 
@@ -4905,6 +4916,25 @@ const CLAUDE_LIMIT_LABELS: Record<string, string> = {
   seven_day_sonnet: "Weekly (Sonnet)",
   overage: "Extra usage",
 };
+
+function claudeLimitWindows(limits: ClaudePlanLimit[], source: string): UsageLimitWindow[] {
+  const observedAt = new Date().toISOString();
+  return limits
+    .filter((limit) => isRecord(limit) && typeof limit.id === "string")
+    .map((limit) => ({
+      id: limit.id,
+      label: limit.label ?? CLAUDE_LIMIT_LABELS[limit.id] ?? limit.id.replaceAll("_", " "),
+      usedPercent:
+        typeof limit.usedPercent === "number" && Number.isFinite(limit.usedPercent)
+          ? limit.usedPercent
+          : null,
+      resetsAt: typeof limit.resetsAt === "string" ? limit.resetsAt : null,
+      status: limit.status,
+      source,
+      observedAt,
+      dataLabel: "verified" as const,
+    }));
+}
 
 function codexLimitWindows(usage: AccountUsage): UsageLimitWindow[] {
   const observedAt = new Date().toISOString();

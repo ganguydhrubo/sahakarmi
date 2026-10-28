@@ -5,6 +5,36 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-28
+
+### Fixed
+
+- Model usage showed far too many Claude tokens (more than 240 crore in a week) and a cost of
+  over US$ 1,700. Claude Code reports a running total for each chat, and when a chat was reopened
+  after a restart that total included everything from before, so the same work was counted again
+  and again. Each chat is now counted once, across restarts. The old Claude counts were too high to
+  keep, so they were removed and counting starts again from the update; a notice on the page says
+  so for a week. ChatGPT (Codex) counts were correct and are kept.
+- Claude's plan limits now show real percentages: the 5-hour window, the weekly limit and any
+  per-model weekly limit, each with its reset time. They are read when the app starts and when you
+  open Model usage, without sending a prompt, and updated during each Claude task. Before, only a
+  "Close to the limit" status was kept, and it could stay on screen days after the limit reset.
+- A limit window that has already reset no longer shows its old percentage.
+- Team memory showed "&amp;" instead of "&" in titles and notes, and long notes (file paths,
+  commit hashes) spilled into the next card. Text now wraps inside the card, and long notes fold
+  with a Show all button.
+
+### Changed
+
+- The rings above Settings show each provider's logo and fill up as its real limit is used, for
+  every provider that reports a limit (now Claude as well as ChatGPT).
+- Model usage has a cleaner layout: one card per provider with short numbers that fit (3.68Cr;
+  the exact count is in the tooltip), clear status pills, and providers that report nothing
+  listed in one row instead of empty cards. The cost is labelled as what the work would cost at
+  API prices, not a bill, when you are on a fixed-price plan.
+- Team memory cards have a colour strip for each kind, a count on each filter, and the date each
+  note was last updated.
+
 ## [0.15.0] - 2026-10-28
 
 ### Added

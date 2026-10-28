@@ -9,6 +9,7 @@ import type { BotProfile } from "../data";
 import { t } from "../i18n";
 import { speechLocale as localeTag } from "../preferences";
 import { DataLabel } from "./DataLabel";
+import { ProviderLogo } from "./ProviderLogo";
 
 const REFRESH_MS = 60_000;
 
@@ -56,6 +57,10 @@ export function ModelUsageView(props: { bots: BotProfile[] }) {
     return result;
   });
   const maxDay = () => Math.max(1, ...days().map((day) => day.tokens));
+  const maxBot = () => Math.max(1, ...(overview()?.bots ?? []).map((row) => row.tokens30d));
+  // Full cards only where the provider reports something; the rest share one quiet row.
+  const reporting = () => (overview()?.providers ?? []).filter(hasData);
+  const quiet = () => (overview()?.providers ?? []).filter((summary) => !hasData(summary));
 
   return (
     <section class="center-view usage-view" aria-labelledby="usage-heading">
@@ -82,7 +87,12 @@ export function ModelUsageView(props: { bots: BotProfile[] }) {
                   <For each={data().alerts}>
                     {(alert) => (
                       <li class={`usage-alert usage-alert-${alert.level}`} role="status">
-                        <strong>{PROVIDER_LABELS[alert.provider]}</strong> {alert.message}
+                        <span class="usage-alert-icon">
+                          <ProviderLogo provider={alert.provider} size={16} />
+                        </span>
+                        <span>
+                          <strong>{PROVIDER_LABELS[alert.provider]}</strong> {alert.message}
+                        </span>
                       </li>
                     )}
                   </For>
@@ -90,29 +100,62 @@ export function ModelUsageView(props: { bots: BotProfile[] }) {
               </Show>
 
               <div class="usage-providers">
-                <For each={data().providers}>{(summary) => <ProviderCard summary={summary} />}</For>
+                <For each={reporting()}>{(summary) => <ProviderCard summary={summary} />}</For>
               </div>
 
-              <section class="usage-section" aria-labelledby="usage-days">
-                <h2 id="usage-days" class="center-view-subheading">
-                  {t("usageDaily")} <DataLabel label="verified" />
-                </h2>
+              <Show when={quiet().length > 0}>
+                <section class="usage-quiet" aria-labelledby="usage-quiet-heading">
+                  <h2 id="usage-quiet-heading" class="usage-quiet-heading">
+                    {t("usageOtherProviders")}
+                  </h2>
+                  <ul class="usage-quiet-list">
+                    <For each={quiet()}>
+                      {(summary) => (
+                        <li class="usage-quiet-item" title={summary.limitsNote}>
+                          <ProviderLogo provider={summary.provider} size={16} />
+                          <span class="usage-quiet-name">{PROVIDER_LABELS[summary.provider]}</span>
+                          <span class={`usage-connection usage-connection-${summary.connection}`}>
+                            {connectionLabel(summary.connection)}
+                          </span>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </section>
+              </Show>
+
+              <section class="usage-section usage-panel" aria-labelledby="usage-days">
+                <div class="usage-panel-head">
+                  <h2 id="usage-days" class="center-view-subheading">
+                    {t("usageDaily")} <DataLabel label="verified" />
+                  </h2>
+                  <span class="usage-chart-max">
+                    {formatCompact(maxDay())} {t("usageTokens")}
+                  </span>
+                </div>
                 <p class="settings-meta">{t("usageDailyHint")}</p>
                 <div class="usage-chart" role="img" aria-label={t("usageDailyAria")}>
                   <For each={days()}>
-                    {(day) => (
+                    {(day, index) => (
                       <span
                         class="usage-bar"
                         style={{ height: `${Math.max(2, (day.tokens / maxDay()) * 100)}%` }}
-                        title={`${day.date}: ${formatNumber(day.tokens)} ${t("usageTokens")}`}
-                        classList={{ "usage-bar-empty": day.tokens === 0 }}
+                        title={`${formatDay(day.date)}: ${formatNumber(day.tokens)} ${t("usageTokens")}`}
+                        classList={{
+                          "usage-bar-empty": day.tokens === 0,
+                          "usage-bar-today": index() === days().length - 1,
+                        }}
                       />
                     )}
                   </For>
                 </div>
+                <div class="usage-chart-axis" aria-hidden="true">
+                  <span>{formatDay(days()[0]?.date ?? "")}</span>
+                  <span>{t("usageToday")}</span>
+                </div>
               </section>
 
-              <section class="usage-section" aria-labelledby="usage-bots">
+              <section class="usage-section usage-panel" aria-labelledby="usage-bots">
                 <h2 id="usage-bots" class="center-view-subheading">
                   {t("usageByCoworker")}
                 </h2>
@@ -120,32 +163,52 @@ export function ModelUsageView(props: { bots: BotProfile[] }) {
                   when={data().bots.length > 0}
                   fallback={<p class="center-view-empty">{t("usageNoActivity")}</p>}
                 >
-                  <table class="usage-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">{t("usageCoworker")}</th>
-                        <th scope="col">{t("usageProvider")}</th>
-                        <th scope="col">{t("usageTokens30")}</th>
-                        <th scope="col">{t("usageTurns")}</th>
-                        <th scope="col">{t("usageLast")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <For each={data().bots}>
-                        {(row) => (
-                          <tr>
-                            <td>
-                              {props.bots.find((bot) => bot.id === row.botId)?.name ?? row.botId}
-                            </td>
-                            <td>{PROVIDER_LABELS[row.provider]}</td>
-                            <td>{formatNumber(row.tokens30d)}</td>
-                            <td>{row.turns30d}</td>
-                            <td>{formatWhen(row.lastAt)}</td>
-                          </tr>
-                        )}
-                      </For>
-                    </tbody>
-                  </table>
+                  <div class="usage-table-wrap">
+                    <table class="usage-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">{t("usageCoworker")}</th>
+                          <th scope="col">{t("usageProvider")}</th>
+                          <th scope="col">{t("usageTokens30")}</th>
+                          <th scope="col">{t("usageTurns")}</th>
+                          <th scope="col">{t("usageLast")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <For each={data().bots}>
+                          {(row) => (
+                            <tr>
+                              <td class="usage-table-name">
+                                {props.bots.find((bot) => bot.id === row.botId)?.name ?? row.botId}
+                              </td>
+                              <td>
+                                <span class="usage-table-provider">
+                                  <ProviderLogo provider={row.provider} size={14} />
+                                  {PROVIDER_LABELS[row.provider]}
+                                </span>
+                              </td>
+                              <td>
+                                <span class="usage-share" title={formatNumber(row.tokens30d)}>
+                                  <span class="usage-share-value">
+                                    {formatCompact(row.tokens30d)}
+                                  </span>
+                                  <span class="usage-share-track" aria-hidden="true">
+                                    <span
+                                      style={{
+                                        width: `${Math.max(2, (row.tokens30d / maxBot()) * 100)}%`,
+                                      }}
+                                    />
+                                  </span>
+                                </span>
+                              </td>
+                              <td class="usage-table-number">{formatNumber(row.turns30d)}</td>
+                              <td class="usage-table-when">{formatWhen(row.lastAt)}</td>
+                            </tr>
+                          )}
+                        </For>
+                      </tbody>
+                    </table>
+                  </div>
                 </Show>
               </section>
 
@@ -172,103 +235,157 @@ export function ModelUsageView(props: { bots: BotProfile[] }) {
   );
 }
 
+/** Anything worth a full card: limits, token counts, a cost or a context reading. */
+function hasData(summary: ProviderUsageSummary): boolean {
+  return (
+    summary.limits.length > 0 ||
+    summary.tokens30d !== null ||
+    summary.costUsd30d !== null ||
+    summary.context !== null
+  );
+}
+
 function ProviderCard(props: { summary: ProviderUsageSummary }) {
   const summary = () => props.summary;
+  const contextShare = () => {
+    const context = summary().context;
+    return context && context.size > 0 ? Math.min(100, (context.used / context.size) * 100) : 0;
+  };
   return (
     <article class="usage-card" aria-labelledby={`usage-${summary().provider}`}>
       <header class="usage-card-head">
-        <h2 id={`usage-${summary().provider}`}>{PROVIDER_LABELS[summary().provider]}</h2>
+        <ProviderLogo provider={summary().provider} size={22} tile />
+        <div class="usage-card-title">
+          <h2 id={`usage-${summary().provider}`}>{PROVIDER_LABELS[summary().provider]}</h2>
+          <Show when={summary().plan}>
+            <span class="usage-plan">
+              {t("usagePlan")} · {capitalise(summary().plan ?? "")}
+            </span>
+          </Show>
+        </div>
         <span class={`usage-connection usage-connection-${summary().connection}`}>
           {connectionLabel(summary().connection)}
         </span>
       </header>
-      <Show when={summary().plan}>
-        <p class="settings-meta">
-          {t("usagePlan")}: {summary().plan}
-        </p>
-      </Show>
 
-      <h3>
-        {t("usageLimits")} <DataLabel label={summary().limitsLabel} />
-      </h3>
-      <Show
-        when={summary().limits.length > 0}
-        fallback={<p class="usage-unavailable">{summary().limitsNote}</p>}
-      >
-        <ul class="usage-windows">
-          <For each={summary().limits}>{(window) => <LimitRow window={window} />}</For>
-        </ul>
-        <p class="usage-source">{summary().limitsNote}</p>
-      </Show>
+      <section class="usage-block">
+        <h3>
+          {t("usageLimits")} <DataLabel label={summary().limitsLabel} />
+        </h3>
+        <Show
+          when={summary().limits.length > 0}
+          fallback={<p class="usage-unavailable">{summary().limitsNote}</p>}
+        >
+          <ul class="usage-windows">
+            <For each={summary().limits}>{(window) => <LimitRow window={window} />}</For>
+          </ul>
+        </Show>
+      </section>
 
-      <h3>
-        {t("usageTokens")} <DataLabel label={summary().tokensLabel} />
-      </h3>
-      <Show
-        when={summary().tokens30d !== null}
-        fallback={<p class="usage-unavailable">{t("usageTokensUnavailable")}</p>}
-      >
-        <dl class="usage-stats">
-          <div>
-            <dt>{t("usageToday")}</dt>
-            <dd>{formatNumber(summary().tokensToday ?? 0)}</dd>
-          </div>
-          <div>
-            <dt>{t("usage7d")}</dt>
-            <dd>{formatNumber(summary().tokens7d ?? 0)}</dd>
-          </div>
-          <div>
-            <dt>{t("usage30d")}</dt>
-            <dd>{formatNumber(summary().tokens30d ?? 0)}</dd>
-          </div>
-        </dl>
-        <p class="usage-source">{t("usageTokensHint")}</p>
-      </Show>
+      <section class="usage-block">
+        <h3>
+          {t("usageTokens")} <DataLabel label={summary().tokensLabel} />
+        </h3>
+        <Show
+          when={summary().tokens30d !== null}
+          fallback={<p class="usage-unavailable">{t("usageTokensUnavailable")}</p>}
+        >
+          <dl class="usage-stats">
+            <Stat label={t("usageToday")} value={summary().tokensToday ?? 0} />
+            <Stat label={t("usage7d")} value={summary().tokens7d ?? 0} />
+            <Stat label={t("usage30d")} value={summary().tokens30d ?? 0} />
+          </dl>
+        </Show>
+      </section>
 
       <Show when={summary().costUsd30d !== null}>
-        <h3>
-          {t("usageCost")} <DataLabel label={summary().costLabel} />
-        </h3>
-        <p class="usage-cost">US$ {formatUsd(summary().costUsd30d ?? 0)}</p>
-        <p class="usage-source">{t("usageCostHint")}</p>
+        <section class="usage-block">
+          <h3>
+            {t("usageCost")} <DataLabel label={summary().costLabel} />
+          </h3>
+          <p class="usage-cost">US$ {formatUsd(summary().costUsd30d ?? 0)}</p>
+          <p class="usage-source">
+            {summary().plan
+              ? t("usageCostPlanHint", { plan: capitalise(summary().plan ?? "") })
+              : t("usageCostHint")}
+          </p>
+        </section>
       </Show>
 
       <Show when={summary().context}>
         {(context) => (
-          <p class="usage-source">
-            {t("usageContext", {
-              used: formatNumber(context().used),
-              size: formatNumber(context().size),
-            })}
-          </p>
+          <section class="usage-block usage-context">
+            <p class="usage-source">
+              {t("usageContext", {
+                used: formatCompact(context().used),
+                size: formatCompact(context().size),
+              })}
+            </p>
+            <div class="usage-meter usage-meter-thin" aria-hidden="true">
+              <span style={{ width: `${Math.max(1, contextShare())}%` }} />
+            </div>
+          </section>
         )}
       </Show>
+
+      <footer class="usage-card-foot">
+        <Show when={summary().limits.length > 0}>
+          <span>{summary().limitsNote}</span>
+        </Show>
+        <Show when={summary().tokens30d !== null}>
+          <span>{t("usageTokensHint")}</span>
+        </Show>
+      </footer>
     </article>
+  );
+}
+
+function Stat(props: { label: string; value: number }) {
+  return (
+    <div class="usage-stat">
+      <dt>{props.label}</dt>
+      <dd title={formatNumber(props.value)}>{formatCompact(props.value)}</dd>
+    </div>
   );
 }
 
 function LimitRow(props: { window: UsageLimitWindow }) {
   const percent = () => props.window.usedPercent;
+  // A window past its reset time says nothing about now; never show its old status.
+  const wasReset = () =>
+    props.window.resetsAt !== null && Date.parse(props.window.resetsAt) < Date.now();
+  const status = () => (wasReset() ? "unknown" : props.window.status);
   return (
-    <li class={`usage-window usage-window-${props.window.status}`}>
+    <li class={`usage-window usage-window-${status()}`}>
       <div class="usage-window-head">
-        <span>{props.window.label}</span>
-        <span>
-          {percent() === null ? statusLabel(props.window.status) : `${Math.round(percent() ?? 0)}%`}
-          <Show when={props.window.dataLabel === "stale"}>
-            {" "}
+        <span class="usage-window-label">{props.window.label}</span>
+        <span class="usage-window-value">
+          <Show
+            when={!wasReset() && percent() !== null}
+            fallback={
+              <span class={`usage-status usage-status-${status()}`}>
+                {wasReset() ? t("usageNoReading") : statusLabel(status())}
+              </span>
+            }
+          >
+            {`${Math.round(percent() ?? 0)}%`}
+          </Show>
+          <Show when={props.window.dataLabel === "stale" && !wasReset()}>
             <DataLabel label="stale" />
           </Show>
         </span>
       </div>
-      <Show when={percent() !== null}>
+      <Show when={!wasReset() && percent() !== null}>
         <div class="usage-meter" aria-hidden="true">
           <span style={{ width: `${Math.min(100, percent() ?? 0)}%` }} />
         </div>
       </Show>
       <small>
         <Show when={props.window.resetsAt}>
-          {t("usageResets", { when: formatWhen(props.window.resetsAt ?? "") })} ·{" "}
+          {wasReset()
+            ? t("usageWasReset", { when: formatWhen(props.window.resetsAt ?? "") })
+            : t("usageResets", { when: formatWhen(props.window.resetsAt ?? "") })}{" "}
+          ·{" "}
         </Show>
         {t("usageObserved", { when: formatWhen(props.window.observedAt) })}
       </small>
@@ -302,8 +419,27 @@ function statusLabel(status: UsageLimitWindow["status"]): string {
         : t("labelUnavailable");
 }
 
+function capitalise(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat(localeTag()).format(value);
+}
+
+/** Short form for big counts (1.37 bn, 137 Cr); the exact number is in the tooltip. */
+function formatCompact(value: number): string {
+  if (Math.abs(value) < 10_000) return formatNumber(value);
+  return new Intl.NumberFormat(localeTag(), {
+    notation: "compact",
+    maximumSignificantDigits: 3,
+  }).format(value);
+}
+
+function formatDay(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(localeTag(), { day: "numeric", month: "short" }).format(date);
 }
 
 function formatWhen(value: string): string {

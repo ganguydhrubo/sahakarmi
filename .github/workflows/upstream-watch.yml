@@ -13,6 +13,10 @@ on:
         description: "Analyse only: no issue, no mail, no commit"
         type: boolean
         default: false
+      test_mail:
+        description: "Only send one test mail, to check where the mails arrive"
+        type: boolean
+        default: false
       max_releases:
         description: "Releases to process in this run"
         type: number
@@ -54,14 +58,16 @@ jobs:
           UPSTREAM_MAIL_TOKEN: ${{ secrets.UPSTREAM_MAIL_TOKEN }}
           UPSTREAM_MAX_RELEASES: ${{ inputs.max_releases || 5 }}
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ inputs.test_mail }}" = "true" ]; then
+            node scripts/check-upstream.mjs --test-mail
+          elif [ "${{ inputs.dry_run }}" = "true" ]; then
             node scripts/check-upstream.mjs --dry-run
           else
             node scripts/check-upstream.mjs
           fi
 
       - name: Commit radar state and reports
-        if: ${{ inputs.dry_run != true }}
+        if: ${{ inputs.dry_run != true && inputs.test_mail != true }}
         run: |
           git config user.name "Sahkarmi Radar Bot"
           git config user.email "radar@sahkarmi.site"

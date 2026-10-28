@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ClaudeAgentClient } from "./claude-client";
+import { ClaudeAgentClient, planUsageWindows, rateLimitWindows } from "./claude-client";
 
 let root: string | null = null;
 
@@ -34,6 +34,41 @@ describe("ClaudeAgentClient", () => {
       data: [{ model: "claude-future", displayName: "Future Claude" }],
     });
     expect(await client.request("model/list", {})).toEqual(result);
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[0]?.[0]).toMatchObject({
+      options: { tools: [], mcpServers: {}, persistSession: false },
+    });
+    await client.stop();
+  });
+
+  it("reads the plan limits without sending a prompt when no chat is open", async () => {
+    const close = vi.fn();
+    const usage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rate_limits_available: true,
+        rate_limits: {
+          five_hour: { utilization: 14, resets_at: "2026-10-28T14:00:00Z" },
+          seven_day: { utilization: 77, resets_at: "2026-10-29T17:00:00Z" },
+        },
+      })
+      .mockRejectedValueOnce(new Error("offline"));
+    const query = vi.fn(
+      (_params: Parameters<NonNullable<ConstructorParameters<typeof ClaudeAgentClient>[1]>>[0]) =>
+        ({
+          usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: usage,
+          close,
+        }) as unknown as Query,
+    );
+    const client = new ClaudeAgentClient({ executable: "unused", version: "test" }, query);
+    client.start();
+    expect(await client.request("sahkarmi/planLimits/read", {})).toEqual({
+      limits: [
+        expect.objectContaining({ id: "five_hour", usedPercent: 14, status: "ok" }),
+        expect.objectContaining({ id: "seven_day", usedPercent: 77, status: "warning" }),
+      ],
+    });
+    expect(await client.request("sahkarmi/planLimits/read", {})).toEqual({ limits: null });
     expect(close).toHaveBeenCalledTimes(2);
     expect(query.mock.calls[0]?.[0]).toMatchObject({
       options: { tools: [], mcpServers: {}, persistSession: false },
@@ -369,6 +404,118 @@ fi
     await client.stop();
   });
 
+  it("keys usage by session and flags only the first total after a resume", async () => {
+    const { client, notifications, output, threadId } = await createHarness(
+      "33333333-3333-4333-8333-333333333333",
+    );
+    const usageResult = (turnId: string, total: number, turn: number) =>
+      ({
+        ...(resultMessage(threadId, turnId, "ok") as object),
+        total_cost_usd: total / 1_000_000,
+        modelUsage: {
+          "claude-sonnet-5": {
+            inputTokens: total - 100,
+            outputTokens: 100,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        },
+        usage: {
+          input_tokens: turn - 10,
+          output_tokens: 10,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        },
+      }) as unknown as SDKMessage;
+
+    const first = "44444444-4444-4444-8444-444444444444";
+    await startTurn(client, threadId, first);
+    output.push(usageResult(first, 72_645, 25_191));
+    await waitFor(() => notifications.some((event) => event.method === "turn/completed"));
+    const second = "55555555-5555-4555-8555-555555555555";
+    await startTurn(client, threadId, second);
+    output.push(usageResult(second, 99_748, 27_103));
+    await waitFor(
+      () => notifications.filter((event) => event.method === "sahkarmi/usage").length === 2,
+    );
+
+    expect(
+      notifications.filter((event) => event.method === "sahkarmi/usage").map((e) => e.params),
+    ).toEqual([
+      expect.objectContaining({
+        sessionKey: `thread:claude:${threadId}`,
+        persistent: true,
+        resumed: true,
+        tokens: 72_645,
+        turnTokens: 25_191,
+      }),
+      expect.objectContaining({
+        sessionKey: `thread:claude:${threadId}`,
+        resumed: false,
+        tokens: 99_748,
+        turnTokens: 27_103,
+      }),
+    ]);
+    await client.stop();
+  });
+
+  it("reads every plan window and its real percentage from a rate_limit_event", () => {
+    // As Claude Code 2.1.312 sent it on 28 Oct 2026.
+    expect(
+      rateLimitWindows({
+        status: "allowed_warning",
+        resetsAt: 1793293200,
+        rateLimitType: "seven_day",
+        utilization: 0.76,
+        surpassedThreshold: 0.75,
+        unifiedWindows: {
+          five_hour: { utilization: 0.13, resetsAt: 1793196000, status: "allowed" },
+          seven_day: { utilization: 0.76, resetsAt: 1793293200, status: "allowed_warning" },
+        },
+      }),
+    ).toEqual([
+      {
+        id: "five_hour",
+        label: null,
+        usedPercent: 13,
+        resetsAt: "2026-10-28T14:00:00.000Z",
+        status: "ok",
+      },
+      {
+        id: "seven_day",
+        label: null,
+        usedPercent: 76,
+        resetsAt: "2026-10-29T17:00:00.000Z",
+        status: "warning",
+      },
+    ]);
+    expect(rateLimitWindows({ status: "rejected", rateLimitType: "five_hour" })).toEqual([
+      { id: "five_hour", label: null, usedPercent: null, resetsAt: null, status: "limited" },
+    ]);
+  });
+
+  it("reads the /usage plan windows, including per-model weekly limits", () => {
+    expect(
+      planUsageWindows({
+        subscription_type: "max",
+        rate_limits_available: true,
+        rate_limits: {
+          five_hour: { utilization: 14, resets_at: "2026-10-28T14:00:00.204923+00:00" },
+          seven_day: { utilization: 77, resets_at: "2026-10-29T17:00:00.204947+00:00" },
+          seven_day_opus: null,
+          model_scoped: [
+            { display_name: "Fable", utilization: 30, resets_at: "2026-10-29T17:00:00Z" },
+          ],
+        },
+      }),
+    ).toEqual([
+      expect.objectContaining({ id: "five_hour", usedPercent: 14, status: "ok" }),
+      expect.objectContaining({ id: "seven_day", usedPercent: 77, status: "warning" }),
+      expect.objectContaining({ id: "model:fable", label: "Weekly (Fable)", usedPercent: 30 }),
+    ]);
+    expect(planUsageWindows({ rate_limits_available: false, rate_limits: null })).toBeNull();
+  });
+
   it("does not duplicate a fully streamed assistant message", async () => {
     const { client, notifications, output, threadId } = await createHarness();
     const turnId = "33333333-3333-4333-8333-333333333333";
@@ -385,7 +532,7 @@ fi
   });
 });
 
-async function createHarness(): Promise<{
+async function createHarness(resumeThreadId?: string): Promise<{
   client: ClaudeAgentClient;
   notifications: Array<{ method: string; params: unknown }>;
   output: TestQueue<SDKMessage>;
@@ -408,12 +555,16 @@ async function createHarness(): Promise<{
   const notifications: Array<{ method: string; params: unknown }> = [];
   client.on("notification", (notification) => notifications.push(notification));
   client.start();
-  const thread = await client.request<{ thread: { id: string } }>("thread/start", {
-    cwd: root,
-    model: "claude-sonnet-5",
-    developerInstructions: "Be concise.",
-    runtimeWorkspaceRoots: [root],
-  });
+  const thread = await client.request<{ thread: { id: string } }>(
+    resumeThreadId ? "thread/resume" : "thread/start",
+    {
+      ...(resumeThreadId ? { threadId: resumeThreadId } : {}),
+      cwd: root,
+      model: "claude-sonnet-5",
+      developerInstructions: "Be concise.",
+      runtimeWorkspaceRoots: [root],
+    },
+  );
   return { client, notifications, output, threadId: thread.thread.id };
 }
 

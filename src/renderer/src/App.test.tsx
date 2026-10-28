@@ -582,9 +582,30 @@ describe("Sahkarmi connected desktop shell", () => {
   });
 
   it("shows real usage limits as rings in the sidebar", async () => {
+    const [codexUsage, antigravityUsage] = USAGE.providers;
+    const [primary] = codexUsage?.limits ?? [];
+    if (!codexUsage || !antigravityUsage || !primary) throw new Error("usage fixture");
+    const resetsAt = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    vi.mocked(window.sahkarmi.usage.overview).mockResolvedValue({
+      ...USAGE,
+      providers: [
+        { ...codexUsage, limits: [{ ...primary, resetsAt }] },
+        {
+          ...antigravityUsage,
+          provider: "claude",
+          limits: [
+            // Claude warns from 75 %, so its ring turns amber before 80 %.
+            { ...primary, id: "seven_day", label: "Weekly", usedPercent: 77, resetsAt },
+          ],
+        },
+        antigravityUsage,
+      ],
+    });
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     const ring = await screen.findByRole("button", { name: "ChatGPT 91%" });
+    expect(screen.getByRole("button", { name: "Claude 77%" })).toHaveClass("usage-ring-mid");
+    expect(screen.queryByRole("button", { name: /^Antigravity/ })).not.toBeInTheDocument();
     await fireEvent.focus(ring);
     expect(await screen.findByText("5-hour window")).toBeInTheDocument();
   });
@@ -613,20 +634,42 @@ describe("Sahkarmi connected desktop shell", () => {
   });
 
   it("shows model usage with a label on every number and no invented values", async () => {
+    const [codexUsage, antigravityUsage] = USAGE.providers;
+    const [primary] = codexUsage?.limits ?? [];
+    if (!codexUsage || !antigravityUsage || !primary) throw new Error("usage fixture");
+    const current: UsageOverview = {
+      ...USAGE,
+      providers: [
+        {
+          ...codexUsage,
+          limits: [
+            { ...primary, resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString() },
+            // A window past its reset time no longer describes now: no old percentage.
+            { ...primary, id: "codex:secondary", label: "Weekly", usedPercent: 64 },
+          ],
+          tokens30d: 12_345_678,
+        },
+        antigravityUsage,
+      ],
+    };
+    vi.mocked(window.sahkarmi.usage.refresh).mockResolvedValue(current);
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "Model usage" }));
 
     expect(await screen.findByText("5-hour window is 91% used.")).toBeInTheDocument();
-    const codex = screen.getByRole("article", { name: "ChatGPT (Codex)" });
-    expect(within(codex).getByText("91%")).toBeInTheDocument();
+    const codex = await screen.findByRole("article", { name: "ChatGPT (Codex)" });
+    expect(await within(codex).findByText("91%")).toBeInTheDocument();
+    expect(within(codex).queryByText("64%")).not.toBeInTheDocument();
+    expect(within(codex).getByText("No reading since the reset")).toBeInTheDocument();
     expect(within(codex).getAllByText("Verified").length).toBeGreaterThan(0);
-    const antigravity = screen.getByRole("article", { name: "Google Antigravity" });
-    expect(
-      within(antigravity).getByText("This provider does not report token usage."),
-    ).toBeInTheDocument();
-    expect(within(antigravity).getAllByText("Unavailable").length).toBe(2);
-    expect(within(antigravity).queryByText(/\d+%/)).not.toBeInTheDocument();
+    // Big counts stay short so they fit the card; the exact count is in the tooltip.
+    expect(within(codex).getByTitle("1,23,45,678")).toHaveTextContent("1.23Cr");
+    // A provider that reports nothing gets no card and no numbers, only its name.
+    expect(screen.queryByRole("article", { name: "Google Antigravity" })).not.toBeInTheDocument();
+    const others = screen.getByRole("region", { name: "Other providers: nothing reported yet" });
+    expect(within(others).getByText("Google Antigravity")).toBeInTheDocument();
+    expect(within(others).queryByText(/\d/)).not.toBeInTheDocument();
     expect(window.sahkarmi.usage.refresh).toHaveBeenCalled();
   });
 

@@ -1,6 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { AgentMemory } from "../../../shared/ipc";
 import { t } from "../i18n";
+import { speechLocale } from "../preferences";
 
 type MemoryKind = "fact" | "decision" | "preference" | "architecture";
 
@@ -15,6 +16,37 @@ const KIND_LABELS = {
 
 const kindLabel = (kind: string) => t(KIND_LABELS[kind as MemoryKind] ?? "memoryKindFact");
 
+/** Long notes start folded so the grid stays even; the owner can open each one. */
+const LONG_NOTE = 360;
+
+const ENTITIES: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&#x27;": "'",
+  "&apos;": "'",
+};
+
+/** Coworkers sometimes save "&amp;" for "&"; show what they meant. */
+export function readableText(value: string): string {
+  return value.replace(
+    /&(?:amp|lt|gt|quot|#39|#x27|apos);/g,
+    (entity) => ENTITIES[entity] ?? entity,
+  );
+}
+
+function formatUpdated(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(speechLocale(), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 export function MemoryView() {
   const [memories, setMemories] = createSignal<AgentMemory[]>([]);
   const [searchQuery, setSearchQuery] = createSignal("");
@@ -26,6 +58,16 @@ export function MemoryView() {
   const [newContent, setNewContent] = createSignal("");
   const [newKind, setNewKind] = createSignal<MemoryKind>("fact");
   const [newTags, setNewTags] = createSignal("");
+  const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const countFor = (kind: "all" | MemoryKind) =>
+    kind === "all" ? memories().length : memories().filter((m) => m.category === kind).length;
   let opener: HTMLButtonElement | undefined;
 
   const loadMemories = async () => {
@@ -93,7 +135,7 @@ export function MemoryView() {
 
   const handleDelete = async (memory: AgentMemory) => {
     if (!window.sahkarmi?.memory) return;
-    if (!window.confirm(t("memoryDeleteConfirm", { name: memory.key }))) return;
+    if (!window.confirm(t("memoryDeleteConfirm", { name: readableText(memory.key) }))) return;
     await window.sahkarmi.memory.delete(memory.id);
     await loadMemories();
   };
@@ -136,6 +178,7 @@ export function MemoryView() {
                 onClick={() => setSelectedKind(kind)}
               >
                 {kind === "all" ? t("memoryAll") : kindLabel(kind)}
+                <span class="marketplace-filter-count">{countFor(kind)}</span>
               </button>
             )}
           </For>
@@ -147,29 +190,55 @@ export function MemoryView() {
         >
           <ul class="memory-grid">
             <For each={filteredMemories()}>
-              {(memory) => (
-                <li class="memory-card">
-                  <div class="memory-card-head">
-                    <h2>{memory.key}</h2>
-                    <span class={`memory-kind memory-kind-${memory.category}`}>
-                      {kindLabel(memory.category)}
-                    </span>
-                  </div>
-                  <p class="memory-content">{memory.content}</p>
-                  <div class="memory-card-foot">
-                    <span class="memory-tags">
-                      <For each={memory.tags}>{(tag) => <span>#{tag}</span>}</For>
-                    </span>
-                    <button
-                      type="button"
-                      class="button-danger-quiet memory-delete"
-                      onClick={() => void handleDelete(memory)}
+              {(memory) => {
+                const long = () => memory.content.length > LONG_NOTE;
+                const open = () => expanded().has(memory.id);
+                return (
+                  <li class={`memory-card memory-card-${memory.category}`}>
+                    <div class="memory-card-head">
+                      <h2>{readableText(memory.key)}</h2>
+                      <span class={`memory-kind memory-kind-${memory.category}`}>
+                        {kindLabel(memory.category)}
+                      </span>
+                    </div>
+                    <p
+                      id={`memory-content-${memory.id}`}
+                      class="memory-content"
+                      classList={{ "memory-content-folded": long() && !open() }}
                     >
-                      {t("memoryDelete")}
-                    </button>
-                  </div>
-                </li>
-              )}
+                      {readableText(memory.content)}
+                    </p>
+                    <Show when={long()}>
+                      <button
+                        type="button"
+                        class="memory-more"
+                        aria-expanded={open()}
+                        aria-controls={`memory-content-${memory.id}`}
+                        onClick={() => toggleExpanded(memory.id)}
+                      >
+                        {open() ? t("showLess") : t("showAll")}
+                      </button>
+                    </Show>
+                    <Show when={memory.tags.length > 0}>
+                      <span class="memory-tags">
+                        <For each={memory.tags}>{(tag) => <span>#{readableText(tag)}</span>}</For>
+                      </span>
+                    </Show>
+                    <div class="memory-card-foot">
+                      <time class="memory-updated" dateTime={memory.updatedAt}>
+                        {formatUpdated(memory.updatedAt)}
+                      </time>
+                      <button
+                        type="button"
+                        class="button-danger-quiet memory-delete"
+                        onClick={() => void handleDelete(memory)}
+                      >
+                        {t("memoryDelete")}
+                      </button>
+                    </div>
+                  </li>
+                );
+              }}
             </For>
           </ul>
         </Show>
