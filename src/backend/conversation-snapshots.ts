@@ -9,6 +9,8 @@ export function snapshotFromThread(
   findDelivery: (deliveryId: string) => DeliveryContext | null,
 ): ConversationSnapshot {
   const messages: ConversationMessage[] = [];
+  // A turn with no known time follows the one before it; "now" would move it to the end.
+  let nextFallbackTime: number | undefined;
   for (const turn of thread.turns ?? []) {
     const items = turn.items ?? [];
     const firstUserItem = items.find(
@@ -21,7 +23,8 @@ export function snapshotFromThread(
       ? deliveryTime
       : Number.isFinite(turnStartedAt)
         ? turnStartedAt
-        : Date.now();
+        : (nextFallbackTime ?? Date.now());
+    nextFallbackTime = baseTime + items.length;
     for (const [itemIndex, item] of items.entries()) {
       const createdAt = new Date(baseTime + itemIndex).toISOString();
       if (item.type === "userMessage" && typeof item.id === "string") {
