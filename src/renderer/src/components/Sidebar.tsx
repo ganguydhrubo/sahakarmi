@@ -337,6 +337,15 @@ function SettingsIcon() {
   );
 }
 
+function HelpIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <circle cx="10" cy="10" r="7.2" />
+      <path d="M7.9 7.8a2.2 2.2 0 1 1 3.2 2c-.7.4-1.1.9-1.1 1.7v.3M10 14.4v.1" />
+    </svg>
+  );
+}
+
 function ChevronDownIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" class="workspace-chevron">
@@ -883,6 +892,8 @@ export function AppNavigation(props: {
   pendingApprovals: number;
   onSelectView: (view: CenterView) => void;
   onShowTeam: () => void;
+  helpOpen?: boolean;
+  onToggleHelp?: () => void;
 }) {
   return (
     <nav class="app-icon-rail" aria-label="Sahkarmi">
@@ -912,6 +923,7 @@ export function AppNavigation(props: {
               type="button"
               class="rail-nav-item app-rail-button"
               classList={{ "rail-nav-active": props.view === item.view }}
+              data-tour={item.view}
               aria-label={t(item.label)}
               title={t(item.label)}
               aria-current={props.view === item.view ? "page" : undefined}
@@ -930,6 +942,21 @@ export function AppNavigation(props: {
       </div>
       <div class="app-rail-bottom">
         <UsageRings onOpenUsage={() => props.onSelectView("usage")} />
+        <Show when={props.onToggleHelp}>
+          <button
+            type="button"
+            class="rail-nav-item app-rail-button"
+            classList={{ "rail-nav-active": props.helpOpen === true }}
+            data-help-button
+            aria-label={t("helpButton")}
+            title={t("helpButton")}
+            aria-expanded={props.helpOpen === true}
+            aria-haspopup="dialog"
+            onClick={() => props.onToggleHelp?.()}
+          >
+            <HelpIcon />
+          </button>
+        </Show>
         <button
           type="button"
           class="rail-nav-item app-rail-button"

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentEvent,
   AttachmentImportEvent,
@@ -10,6 +10,7 @@ import type {
 } from "../../shared/ipc";
 import { App } from "./App";
 import { REVEAL_MESSAGE_EVENT } from "./components/Conversation";
+import { ONBOARDING_KEY, reloadOnboardingForTests } from "./onboarding";
 import { setActivityStyle } from "./preferences";
 
 let emitAgentEvent: ((event: AgentEvent) => void) | undefined;
@@ -149,6 +150,7 @@ describe("Sahkarmi connected desktop shell", () => {
     emitAgentEvent = undefined;
     emitAttachmentImport = undefined;
     window.localStorage.clear();
+    reloadOnboardingForTests();
     Object.defineProperty(window, "sahkarmi", {
       configurable: true,
       value: {
@@ -3028,6 +3030,224 @@ describe("Sahkarmi connected desktop shell", () => {
       { timeout: 9_500 },
     );
   }, 15_000);
+
+  describe("getting started", () => {
+    /** A fresh install: example coworkers already have a job, and no chat yet. */
+    const NEW_INSTALL = BOTS.map((bot) => ({ ...bot, role: "Accounts" }));
+
+    afterEach(() => vi.restoreAllMocks());
+
+    function useBots(bots: BotSummary[]) {
+      vi.mocked(window.sahkarmi.agent.listBots).mockResolvedValue(bots);
+    }
+
+    /** jsdom lays nothing out; give the tour's controls a size so it can point at them. */
+    function layOutTourTargets() {
+      const original = HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+        this: HTMLElement,
+      ) {
+        if (this.dataset.tour) {
+          return {
+            top: 400,
+            left: 80,
+            width: 400,
+            height: 60,
+            right: 480,
+            bottom: 460,
+            x: 80,
+            y: 400,
+            toJSON: () => ({}),
+          } as DOMRect;
+        }
+        return original.call(this);
+      });
+    }
+
+    it("welcomes a new install once, inside the empty chat, and stays dismissed after a restart", async () => {
+      useBots(NEW_INSTALL);
+      const first = render(() => <App />);
+      const welcome = await screen.findByRole("region", { name: "Welcome to Sahkarmi" });
+      // Not a dialog or overlay: the message box is there and usable.
+      const composer = screen.getByRole("textbox", { name: "Message Chief" });
+      expect(composer).toHaveAttribute("aria-disabled", "false");
+      await fireEvent.click(within(welcome).getByRole("button", { name: "Not now" }));
+      expect(screen.queryByRole("region", { name: "Welcome to Sahkarmi" })).not.toBeInTheDocument();
+      expect(JSON.parse(window.localStorage.getItem(ONBOARDING_KEY) ?? "{}").welcome).toBe(
+        "dismissed",
+      );
+
+      first.unmount();
+      reloadOnboardingForTests();
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      expect(screen.queryByRole("region", { name: "Welcome to Sahkarmi" })).not.toBeInTheDocument();
+    });
+
+    it("waits for the AIs to finish starting instead of saying no provider is connected", async () => {
+      useBots(NEW_INSTALL);
+      const ready = await window.sahkarmi.agent.getStatus();
+      vi.mocked(window.sahkarmi.agent.getStatus).mockResolvedValue({
+        ...ready,
+        phase: "starting",
+        message: "Starting local agent CLI…",
+      });
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      expect(screen.queryByRole("region", { name: "Welcome to Sahkarmi" })).not.toBeInTheDocument();
+      emitAgentEvent?.({ type: "status", status: ready });
+      const welcome = await screen.findByRole("region", { name: "Welcome to Sahkarmi" });
+      expect(within(welcome).getByRole("button", { name: "Start a task" })).toBeInTheDocument();
+    });
+
+    it("never shows a first-run welcome to someone who already has chats", async () => {
+      useBots(NEW_INSTALL.map((bot) => ({ ...bot, preview: "Sent the GST summary" })));
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      await waitFor(() =>
+        expect(JSON.parse(window.localStorage.getItem(ONBOARDING_KEY) ?? "{}").welcome).toBe(
+          "dismissed",
+        ),
+      );
+      expect(screen.queryByRole("region", { name: "Welcome to Sahkarmi" })).not.toBeInTheDocument();
+    });
+
+    it("Start a task puts the cursor in the message box", async () => {
+      useBots(NEW_INSTALL);
+      render(() => <App />);
+      const welcome = await screen.findByRole("region", { name: "Welcome to Sahkarmi" });
+      await fireEvent.click(within(welcome).getByRole("button", { name: "Start a task" }));
+      expect(screen.queryByRole("region", { name: "Welcome to Sahkarmi" })).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Message Chief" })),
+      );
+    });
+
+    it("opens Help from the rail with help for the current screen, and Esc gives focus back", async () => {
+      useBots(NEW_INSTALL);
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      const helpButton = screen.getByRole("button", { name: "Help" });
+      await fireEvent.click(helpButton);
+      const panel = await screen.findByRole("dialog", { name: "Help" });
+      expect(panel).toHaveTextContent("Type a task in the box below.");
+      // One guidance surface at a time.
+      expect(screen.queryByRole("region", { name: "Welcome to Sahkarmi" })).not.toBeInTheDocument();
+      await fireEvent.keyDown(within(panel).getByRole("button", { name: "Close help" }), {
+        key: "Escape",
+      });
+      expect(screen.queryByRole("dialog", { name: "Help" })).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(helpButton);
+
+      // Help follows the screen it is opened on.
+      await fireEvent.click(screen.getByRole("button", { name: "Approvals" }));
+      await fireEvent.click(helpButton);
+      expect(await screen.findByRole("dialog", { name: "Help" })).toHaveTextContent(
+        "Coworkers ask here before paying",
+      );
+    });
+
+    it("marks checklist steps done only from real app state and shows at most three", async () => {
+      useBots(NEW_INSTALL);
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      await fireEvent.click(screen.getByRole("button", { name: "Help" }));
+      const panel = await screen.findByRole("dialog", { name: "Help" });
+      const items = () => panel.querySelectorAll(".help-checklist-item");
+      expect(items()).toHaveLength(3);
+      // What is left to do comes first: no task has been sent yet.
+      expect(items()[0]).toHaveAttribute("data-item", "task");
+      expect(items()[0]).toHaveAttribute("data-status", "todo");
+      await fireEvent.click(within(panel).getByRole("button", { name: /Show all/ }));
+      expect(items().length).toBeGreaterThan(3);
+      // Codex is connected in this setup, so that step is done, and says so in words.
+      const provider = panel.querySelector('[data-item="provider"]');
+      expect(provider).toHaveAttribute("data-status", "done");
+      expect(provider).toHaveTextContent("Done");
+      // The browser step cannot be checked, so it is never claimed as done.
+      expect(panel.querySelector('[data-item="browser"]')).toHaveAttribute(
+        "data-status",
+        "optional",
+      );
+      expect(within(panel).queryByText(/You have tried the main features/)).not.toBeInTheDocument();
+    });
+
+    it("Show me around walks real controls, never blocks them, and closes when the screen changes", async () => {
+      useBots(NEW_INSTALL);
+      layOutTourTargets();
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      await fireEvent.click(screen.getByRole("button", { name: "Help" }));
+      await fireEvent.click(await screen.findByRole("button", { name: "Show me around" }));
+      const tour = await screen.findByRole("dialog", { name: "Start a task here" });
+      expect(tour).toHaveTextContent(/Step 1 of \d/);
+      expect(screen.queryByRole("dialog", { name: "Help" })).not.toBeInTheDocument();
+      await fireEvent.click(within(tour).getByRole("button", { name: "Next" }));
+      expect(
+        await screen.findByRole("dialog", { name: "Watch your coworker work" }),
+      ).toBeInTheDocument();
+      await fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      expect(await screen.findByRole("dialog", { name: "Start a task here" })).toBeInTheDocument();
+
+      // Clicking something else still works and ends the tour.
+      await fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+      await waitFor(() => expect(document.querySelector(".tour-card")).not.toBeInTheDocument());
+      expect(document.querySelector(".tour-ring")).not.toBeInTheDocument();
+    });
+
+    it("Esc in the tour skips it without stopping a coworker", async () => {
+      useBots(NEW_INSTALL);
+      layOutTourTargets();
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      await fireEvent.click(screen.getByRole("button", { name: "Help" }));
+      await fireEvent.click(await screen.findByRole("button", { name: "Show me around" }));
+      const tour = await screen.findByRole("dialog", { name: "Start a task here" });
+      await fireEvent.keyDown(within(tour).getByRole("button", { name: "Next" }), {
+        key: "Escape",
+      });
+      await waitFor(() => expect(document.querySelector(".tour-card")).not.toBeInTheDocument());
+      expect(window.sahkarmi.agent.interrupt).not.toHaveBeenCalled();
+      expect(JSON.parse(window.localStorage.getItem(ONBOARDING_KEY) ?? "{}").tour).toBe("skipped");
+    });
+
+    it("Reset guidance asks first, then brings the welcome back", async () => {
+      useBots(NEW_INSTALL.map((bot) => ({ ...bot, preview: "Done" })));
+      render(() => <App />);
+      await screen.findByRole("textbox", { name: "Message Chief" });
+      await fireEvent.click(screen.getByRole("button", { name: "Help" }));
+      const panel = await screen.findByRole("dialog", { name: "Help" });
+      await fireEvent.click(within(panel).getByRole("button", { name: "Reset guidance" }));
+      expect(JSON.parse(window.localStorage.getItem(ONBOARDING_KEY) ?? "{}").welcome).toBe(
+        "dismissed",
+      );
+      await fireEvent.click(within(panel).getByRole("button", { name: "Yes, reset" }));
+      expect(JSON.parse(window.localStorage.getItem(ONBOARDING_KEY) ?? "{}").welcome).toBe("show");
+    });
+
+    it("keeps the app working with no guidance when settings cannot be saved", async () => {
+      useBots(NEW_INSTALL);
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("disk full");
+      });
+      reloadOnboardingForTests();
+      render(() => <App />);
+      const composer = await screen.findByRole("textbox", { name: "Message Chief" });
+      expect(screen.queryByRole("region", { name: "Welcome to Sahkarmi" })).not.toBeInTheDocument();
+      // Help still opens on request.
+      await fireEvent.click(screen.getByRole("button", { name: "Help" }));
+      expect(await screen.findByRole("dialog", { name: "Help" })).toBeInTheDocument();
+      composer.textContent = "Make the invoice list";
+      await fireEvent.input(composer);
+      await fireEvent.keyDown(composer, { key: "Enter" });
+      await waitFor(() =>
+        expect(window.sahkarmi.agent.sendMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ botId: "chief", text: "Make the invoice list" }),
+        ),
+      );
+      vi.restoreAllMocks();
+    });
+  });
 });
 
 function attachment(id: string, name: string, kind: "image" | "pdf") {

@@ -12381,3 +12381,325 @@ fieldset.memory-filters {
   color: var(--text-secondary);
   font-size: 13px;
 }
+
+/* Getting started: welcome card, Help panel and Show me around */
+.welcome-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 640px);
+  margin: 8px 0 18px;
+  padding: 16px 18px;
+  border: 1px solid rgb(var(--primary-rgb) / 0.35);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.welcome-card h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.welcome-card p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 20px;
+}
+
+.welcome-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.welcome-card-actions button:not(.button-primary),
+.help-panel-confirm button,
+.tour-card-actions button:not(.button-primary) {
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  padding: 6px 12px;
+}
+
+.welcome-card-actions button:not(.button-primary):hover,
+.help-panel-confirm button:hover,
+.tour-card-actions button:not(.button-primary):hover {
+  background: var(--sahkarmi-hover);
+}
+
+.welcome-card-actions .welcome-card-dismiss {
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.help-panel {
+  position: fixed;
+  left: 62px;
+  bottom: 12px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(320px, calc(100vw - 74px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  color: var(--text-primary);
+}
+
+.help-panel h2,
+.help-panel h3 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.help-panel h2 {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.help-panel h3 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.help-panel-header,
+.help-panel-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.help-panel-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.help-panel-close:hover {
+  background: var(--sahkarmi-hover);
+  color: var(--text-primary);
+}
+
+.help-panel-section {
+  display: grid;
+  gap: 8px;
+}
+
+.help-panel-screen p,
+.help-panel-quiet {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.help-panel-link {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--primary-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 2px 0;
+}
+
+.help-panel-link:hover {
+  text-decoration: underline;
+}
+
+.help-checklist {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help-checklist-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+}
+
+.help-checklist-mark {
+  color: var(--text-muted);
+  font-weight: 700;
+  line-height: 19px;
+  text-align: center;
+}
+
+.help-checklist-item[data-status="done"] .help-checklist-mark {
+  color: var(--success);
+}
+
+.help-checklist-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.help-checklist-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.help-checklist-copy span {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.help-checklist-status {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 19px;
+}
+
+.help-checklist-item[data-status="done"] .help-checklist-status {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.help-checklist-action {
+  grid-column: 2 / -1;
+  justify-self: start;
+  border: 1px solid rgb(var(--primary-rgb) / 0.4);
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb) / 0.06);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+}
+
+.help-checklist-action:hover {
+  background: rgb(var(--primary-rgb) / 0.12);
+}
+
+.help-panel-footer {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sahkarmi-line);
+}
+
+.help-panel-confirm {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.help-panel-confirm legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.tour-ring {
+  position: fixed;
+  z-index: 95;
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 0 0 3px var(--primary),
+    0 0 0 7px rgb(var(--primary-rgb) / 0.22);
+  pointer-events: none;
+  transition:
+    top 160ms ease,
+    left 160ms ease,
+    width 160ms ease,
+    height 160ms ease;
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 96;
+  display: grid;
+  gap: 6px;
+  width: min(300px, calc(100vw - 24px));
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  color: var(--text-primary);
+}
+
+.tour-card h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tour-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.tour-card .tour-card-progress {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.tour-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tour-card-actions .tour-card-skip {
+  border-color: transparent;
+  color: var(--text-muted);
+  padding-left: 4px;
+}
+
+.tour-card-spacer {
+  flex: 1;
+}
+
+@media (max-width: 1080px) {
+  .help-panel {
+    left: 58px;
+    width: min(320px, calc(100vw - 70px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring {
+    transition: none;
+  }
+}
