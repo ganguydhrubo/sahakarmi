@@ -3,6 +3,7 @@ import {
   createMemo,
   createSignal,
   For,
+  type JSX,
   on,
   onCleanup,
   onMount,
@@ -94,6 +95,8 @@ interface ConversationProps {
   creatingAgent: boolean;
   settingsRequest: { botId: string; nonce: number } | null;
   onboardingRequest: { botId: string; nonce: number } | null;
+  /** Getting-started card shown in an empty chat; App decides when. */
+  welcome?: JSX.Element;
   queue: QueueSnapshot | undefined;
   browserTabs: BrowserTab[];
   activeBrowserTabId: string | null;
@@ -2324,6 +2327,7 @@ export function Conversation(props: ConversationProps) {
                 <button
                   type="button"
                   class="header-panel-toggle computer-button browser-toggle"
+                  data-tour="browser"
                   classList={{
                     "computer-button-agent-active": Boolean(activeBrowserControl()),
                     "browser-toggle-open": screenOpen(),
@@ -2462,6 +2466,17 @@ export function Conversation(props: ConversationProps) {
             <div class="time-marker">
               <span>{props.messages[0]?.time ?? "now"}</span>
             </div>
+          </Show>
+          <Show
+            when={
+              props.welcome &&
+              props.messages.length === 0 &&
+              !onboardingActive() &&
+              !props.activeTurnId &&
+              !props.prompt
+            }
+          >
+            {props.welcome}
           </Show>
           <Show
             when={
@@ -2842,7 +2857,11 @@ export function Conversation(props: ConversationProps) {
             {scheduleNotice()}
           </div>
         </Show>
-        <div class="composer" classList={{ "composer-scheduling": scheduleMode() }}>
+        <div
+          class="composer"
+          classList={{ "composer-scheduling": scheduleMode() }}
+          data-tour="composer"
+        >
           <div class="composer-input-label">
             <ComposerEditor
               botId={props.bot?.id}

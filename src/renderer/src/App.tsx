@@ -5,6 +5,7 @@ import {
   createSignal,
   lazy,
   Match,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -56,10 +57,17 @@ import { SharedFilesView } from "./components/SharedFilesView";
 import { AppNavigation, type CenterView, Sidebar } from "./components/Sidebar";
 import { SplashScreen } from "./components/SplashScreen";
 import { UpdateControl } from "./components/UpdateControl";
+import { WelcomeCard } from "./components/WelcomeCard";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { accentForAvatarColor, accentForBot, type BotMessage, type BotProfile } from "./data";
-import { loadFeatures } from "./features";
+import { featureOn, loadFeatures } from "./features";
 import { t } from "./i18n";
+import {
+  dismissWelcome,
+  setTourResult,
+  settleWelcomeForExistingUser,
+  welcomeEligible,
+} from "./onboarding";
 import { rememberSettingsSection } from "./settings-section";
 import { loadVoiceState, speakText, voiceState } from "./voice-store";
 
@@ -90,6 +98,13 @@ const OrchestratorView = lazy(() =>
 );
 const MemoryView = lazy(() =>
   import("./components/MemoryView").then((module) => ({ default: module.MemoryView })),
+);
+// Help and the tour are mounted only while open.
+const HelpPanel = lazy(() =>
+  import("./components/HelpPanel").then((module) => ({ default: module.HelpPanel })),
+);
+const GuidedTour = lazy(() =>
+  import("./components/GuidedTour").then((module) => ({ default: module.GuidedTour })),
 );
 
 const FALLBACK_STATUS: AgentStatus = {
@@ -207,6 +222,9 @@ export function App() {
   const [permissionsOpen, setPermissionsOpen] = createSignal(false);
   const [view, setView] = createSignal<CenterView>("coworker");
   const [searchOpen, setSearchOpen] = createSignal(false);
+  const [botsLoaded, setBotsLoaded] = createSignal(false);
+  const [helpOpen, setHelpOpen] = createSignal(false);
+  const [tourOpen, setTourOpen] = createSignal(false);
   /** A coworker hidden from the list while its 8-second Undo window runs. */
   const [pendingDelete, setPendingDelete] = createSignal<{
     bot: BotProfile;
@@ -346,7 +364,10 @@ export function App() {
         .catch(() => undefined),
       window.sahkarmi.agent
         .listBots()
-        .then(applyStoredBots)
+        .then((bots) => {
+          applyStoredBots(bots);
+          setBotsLoaded(true);
+        })
         .catch((error) => {
           setAgentStatus((current) => ({ ...current, message: String(error) }));
         }),
@@ -1119,6 +1140,57 @@ export function App() {
     return statuses;
   });
 
+  /** Any chat with a message from the owner: such a user is not new. */
+  const hasHistory = createMemo(
+    () =>
+      botList().some((bot) => bot.preview !== NO_MESSAGES_PREVIEW) ||
+      Object.values(liveMessages()).some((messages) =>
+        messages.some((message) => message.author === "you"),
+      ),
+  );
+  createEffect(() =>
+    settleWelcomeForExistingUser({ botsLoaded: botsLoaded(), hasHistory: hasHistory() }),
+  );
+  const showWelcome = createMemo(() => {
+    const botId = activeBot()?.id;
+    return (
+      welcomeEligible({ botsLoaded: botsLoaded(), hasHistory: hasHistory() }) &&
+      // While AIs are still starting, "connect a provider" would not be true yet.
+      agentStatus().phase !== "starting" &&
+      agentStatus().phase !== "restarting" &&
+      view() === "coworker" &&
+      !permissionsOpen() &&
+      !helpOpen() &&
+      !tourOpen() &&
+      !agentPickerOpen() &&
+      !pendingApprovals().some((approval) => approval.botId === botId) &&
+      !secureInputs().some((request) => request.botId === botId) &&
+      !takeover().requests.some((request) => request.botId === botId)
+    );
+  });
+  // Changing screens ends the tour: its targets belong to the screen it started on.
+  createEffect(on(view, () => setTourOpen(false), { defer: true }));
+
+  function focusComposer() {
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(".composer-editor-surface")?.focus(),
+    );
+  }
+
+  function closeHelp(returnFocus = true) {
+    setHelpOpen(false);
+    if (returnFocus) document.querySelector<HTMLElement>("[data-help-button]")?.focus();
+  }
+
+  function startTour() {
+    closeHelp(false);
+    dismissWelcome();
+    setAgentPickerOpen(false);
+    setView("coworker");
+    // After the chat screen has rendered, so its controls can be found.
+    requestAnimationFrame(() => setTourOpen(true));
+  }
+
   function setSidebarCollapsed(collapsed: boolean) {
     setLeftPanelCollapsed(collapsed);
     window.localStorage.setItem(LEFT_PANEL_COLLAPSED_STORAGE_KEY, String(collapsed));
@@ -1192,6 +1264,8 @@ export function App() {
                 setAgentPickerOpen(false);
                 setView("coworker");
               }}
+              helpOpen={helpOpen()}
+              onToggleHelp={() => (helpOpen() ? closeHelp() : setHelpOpen(true))}
             />
             <Show when={!leftPanelCollapsed()}>
               <Sidebar
@@ -1389,6 +1463,26 @@ export function App() {
                     creatingAgent={creatingAgent()}
                     settingsRequest={settingsRequest()}
                     onboardingRequest={onboardingRequest()}
+                    welcome={
+                      showWelcome() ? (
+                        <WelcomeCard
+                          agentReady={isAgentReady()}
+                          onStart={() => {
+                            dismissWelcome();
+                            focusComposer();
+                          }}
+                          onConnect={() => {
+                            dismissWelcome();
+                            openAiSettings();
+                          }}
+                          onExplore={() => {
+                            dismissWelcome();
+                            setHelpOpen(true);
+                          }}
+                          onDismiss={dismissWelcome}
+                        />
+                      ) : undefined
+                    }
                     onCloseAgentPicker={() => setAgentPickerOpen(false)}
                     onCreateAgent={() => void createAgent()}
                     onSelectAgent={selectBot}
@@ -1445,6 +1539,54 @@ export function App() {
                 onSave={saveSetup}
                 onClose={() => setPermissionsOpen(false)}
               />
+            </Show>
+            <Show when={helpOpen()}>
+              <Suspense>
+                <HelpPanel
+                  view={view()}
+                  providerConnected={
+                    isAgentReady() ||
+                    (agentStatus().providers ?? []).some(
+                      (provider) => provider.state === "available",
+                    )
+                  }
+                  hasTask={hasHistory()}
+                  routineCount={featureOn("schedules") ? routines().routines.length : null}
+                  onClose={() => closeHelp()}
+                  onConnect={() => {
+                    closeHelp(false);
+                    openAiSettings();
+                  }}
+                  onStartTask={() => {
+                    closeHelp(false);
+                    setAgentPickerOpen(false);
+                    setView("coworker");
+                    focusComposer();
+                  }}
+                  onOpenSkills={() => {
+                    closeHelp(false);
+                    rememberSettingsSection("skills");
+                    setAgentPickerOpen(false);
+                    setView("settings");
+                  }}
+                  onOpenRoutines={() => {
+                    closeHelp(false);
+                    setAgentPickerOpen(false);
+                    setView("routines");
+                  }}
+                  onStartTour={startTour}
+                />
+              </Suspense>
+            </Show>
+            <Show when={tourOpen()}>
+              <Suspense>
+                <GuidedTour
+                  onEnd={(result) => {
+                    setTourOpen(false);
+                    if (result !== "nothing") setTourResult(result);
+                  }}
+                />
+              </Suspense>
             </Show>
             <WhatsNewDialog version={appInfo()?.version ?? "0.5.4"} />
             <GlobalSearch
@@ -1565,12 +1707,14 @@ function toBotMessages(messages: ConversationMessage[]): BotMessage[] {
   return result;
 }
 
+const NO_MESSAGES_PREVIEW = "No messages yet";
+
 function cleanPreview(preview: string): string {
   const cleaned = preview
     .replace(/\binbox\s+at\s+zero\b[:,]?\s*/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
-  return cleaned || "No messages yet";
+  return cleaned || NO_MESSAGES_PREVIEW;
 }
 
 function botMessagesEqual(left: BotMessage, right: BotMessage): boolean {

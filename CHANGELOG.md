@@ -5,6 +5,18 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-28
+
+### Added
+
+- Getting started help that stays out of the way. A new install shows a small welcome card in
+  the empty chat (Start a task, Explore features, Not now). It is not a popup: the message box
+  keeps working, and once dismissed it does not come back. Anyone who already has chats never
+  sees it.
+- A Help button (?) above Settings in the left rail. It explains the screen you are on, has a
+  short Getting started list (a step shows Done only when the app can confirm it), a three-step
+  "Show me around" tour, and Reset guidance. It works offline and in English, Hindi and Bengali.
+
 ## [0.14.0] - 2026-10-28
 
 ### Fixed
