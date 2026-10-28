@@ -374,6 +374,16 @@
     .dl-card.primary { border-color: var(--saffron); box-shadow: 0 0 0 1px var(--saffron) inset; }
     .dl-card .os { display: flex; align-items: center; gap: 10px; }
     .dl-card .os svg { width: 26px; height: 26px; }
+    .dl-card .os-win { gap: 18px; margin-bottom: 4px; }
+    .os-win h3 { font-size: 22px; margin: 0; }
+    .os-sub { color: var(--muted); font-size: 13px; letter-spacing: 0.04em; }
+    .win-tile { flex: none; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 20px; perspective: 400px;
+      background: linear-gradient(145deg, rgba(31, 155, 240, 0.22), rgba(10, 95, 209, 0.08)); border: 1px solid rgba(127, 216, 255, 0.35);
+      box-shadow: 0 18px 36px -12px rgba(10, 95, 209, 0.55), 0 0 0 6px rgba(31, 155, 240, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+    .dl-card .win-tile svg { width: 46px; height: 46px; transform: rotateY(-18deg) rotateX(8deg); transform-origin: center;
+      filter: drop-shadow(4px 6px 6px rgba(4, 40, 110, 0.45)); transition: transform 0.5s var(--ease); }
+    .dl-card:hover .win-tile svg { transform: rotateY(0deg) rotateX(0deg) scale(1.06); }
+    @media (prefers-reduced-motion: reduce) { .dl-card .win-tile svg { transition: none; } }
     .dl-card .status { font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; display: inline-block; width: fit-content; }
     .status.tested { background: rgba(94, 196, 138, 0.16); color: var(--leaf-ink); }
     .status.built { background: rgba(242, 183, 5, 0.16); color: var(--turmeric); }
@@ -1124,7 +1134,19 @@
         </div>
         <div class="dl-grid reveal">
           <div class="dl-card primary" id="card-win">
-            <div class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.2 10.4 4v7.3H3zM11.3 3.9 21 2.5v8.8h-9.7zM3 12.2h7.4v7.3L3 18.3zM11.3 12.2H21V21l-9.7-1.4z"/></svg><h3>Windows</h3></div>
+            <div class="os os-win">
+              <span class="win-tile" aria-hidden="true">
+                <svg viewBox="0 0 88 88">
+                  <defs>
+                    <linearGradient id="winPane" x1="0" y1="0" x2="88" y2="88" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7fd8ff"/><stop offset="0.45" stop-color="#1f9bf0"/><stop offset="1" stop-color="#0a5fd1"/></linearGradient>
+                    <linearGradient id="winGloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.55"/><stop offset="0.5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+                  </defs>
+                  <g fill="url(#winPane)"><rect x="4" y="4" width="38" height="38" rx="3"/><rect x="46" y="4" width="38" height="38" rx="3"/><rect x="4" y="46" width="38" height="38" rx="3"/><rect x="46" y="46" width="38" height="38" rx="3"/></g>
+                  <g fill="url(#winGloss)"><rect x="4" y="4" width="38" height="38" rx="3"/><rect x="46" y="4" width="38" height="38" rx="3"/><rect x="4" y="46" width="38" height="38" rx="3"/><rect x="46" y="46" width="38" height="38" rx="3"/></g>
+                </svg>
+              </span>
+              <div><h3>Windows</h3><span class="os-sub">10 · 11 · 64-bit</span></div>
+            </div>
             <span class="status tested" data-i18n="stWin">Built and tested by the project</span>
             <p><span data-i18n="winP">Windows 10 or 11, 64-bit. SmartScreen will warn because the installer is not code-signed yet: choose More info, then Run anyway.</span> <span class="size">(<span data-release-size="win">212 MB</span>)</span></p>
             <a class="btn btn-primary" data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe"><span data-i18n="winBtn">Download .exe</span></a>
