@@ -38,6 +38,17 @@ import {
 } from "./protocol";
 
 const execFileAsync = promisify(execFile);
+const PLAN_USAGE_TIMEOUT_MS = 8_000;
+
+/** One claude.ai plan window (5-hour, weekly, per model) as Claude reports it. */
+export interface ClaudePlanLimit {
+  id: string;
+  label: string | null;
+  /** 0–100, or null when Claude gives a status only. */
+  usedPercent: number | null;
+  resetsAt: string | null;
+  status: "ok" | "warning" | "limited" | "unknown";
+}
 
 interface ClientEvents {
   notification: [notification: AppServerNotification];
@@ -76,6 +87,8 @@ interface ThreadRuntime {
   query: Query;
   activeTurn: ActiveTurn | null;
   consume: Promise<void>;
+  /** Started from a saved session and no usage reported yet: its first total includes older usage. */
+  resumedUsage: boolean;
   /** Claude Code's TaskCreate / TaskUpdate list for this thread, by task id. */
   tasks?: Map<string, { text: string; status: string }>;
 }
@@ -93,7 +106,6 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   readonly #createQuery: QueryFactory;
   readonly #threads = new Map<string, ThreadRuntime>();
   readonly #pendingServerRequests = new Map<RequestId, PendingServerRequest>();
-  readonly #instanceId = randomUUID();
   #running = false;
   #catalog = CLAUDE_MODELS;
 
@@ -135,6 +147,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         return (await this.#readAccount()) as T;
       case "account/rateLimits/read":
         return { rateLimits: null, rateLimitsByLimitId: null } as T;
+      case "sahkarmi/planLimits/read":
+        return { limits: await this.#readPlanLimits() } as T;
       case "model/list":
         return { data: await this.#readModelCatalog() } as T;
       case "plugin/list":
@@ -305,6 +319,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       query: claudeQuery,
       activeTurn: null,
       consume: Promise.resolve(),
+      resumedUsage: resume,
     };
     runtime.consume = this.#consume(runtime);
     this.#threads.set(threadId, runtime);
@@ -369,20 +384,14 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   /**
    * Usage as the SDK reports it: rate-limit windows (verified, claude.ai subscriptions) and the
    * running per-session token/cost totals from result.modelUsage (cost is an SDK estimate).
+   * A resumed session's totals start from where the saved session left off, so the counter is
+   * keyed by the session id and kept across restarts, like Codex thread totals.
    */
   #emitUsage(runtime: ThreadRuntime, message: SDKMessage): void {
     if (message.type === "rate_limit_event") {
-      const info = message.rate_limit_info;
       this.emit("notification", {
         method: "sahkarmi/usage",
-        params: {
-          threadId: runtime.id,
-          limit: {
-            id: info.rateLimitType ?? "current",
-            status: info.status,
-            resetsAt: typeof info.resetsAt === "number" ? info.resetsAt : null,
-          },
-        },
+        params: { threadId: runtime.id, limits: rateLimitWindows(message.rate_limit_info) },
       });
       return;
     }
@@ -395,15 +404,74 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         (usage.cacheReadInputTokens ?? 0) +
         (usage.cacheCreationInputTokens ?? 0);
     }
+    const turn = message.usage;
+    const resumed = runtime.resumedUsage;
+    runtime.resumedUsage = false;
     this.emit("notification", {
       method: "sahkarmi/usage",
       params: {
         threadId: runtime.id,
-        sessionKey: `${this.#instanceId}:${runtime.id}`,
+        sessionKey: `thread:claude:${runtime.id}`,
+        persistent: true,
+        resumed,
         tokens,
+        // This turn's main-loop calls only: used when a resumed total cannot be split.
+        turnTokens: turn
+          ? (turn.input_tokens ?? 0) +
+            (turn.output_tokens ?? 0) +
+            (turn.cache_read_input_tokens ?? 0) +
+            (turn.cache_creation_input_tokens ?? 0)
+          : null,
         costUsd: typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
       },
     });
+  }
+
+  /**
+   * The claude.ai plan windows behind /usage, read without sending a prompt. The SDK marks this
+   * call experimental, so any failure just means "no fresh reading" (null).
+   */
+  async #readPlanLimits(): Promise<ClaudePlanLimit[] | null> {
+    const runtime = this.#threads.values().next().value as ThreadRuntime | undefined;
+    let owned: Query | null = null;
+    const input = new AsyncMessageQueue();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      let session = runtime?.query;
+      if (!session) {
+        // No chat is open yet: a short-lived session reads the plan without sending a prompt.
+        owned = this.#createQuery({
+          prompt: input,
+          options: {
+            cwd: process.cwd(),
+            pathToClaudeCodeExecutable: this.#cli.executable,
+            permissionMode: "dontAsk",
+            tools: [],
+            mcpServers: {},
+            settingSources: [],
+            persistSession: false,
+          },
+        });
+        session = owned;
+      }
+      const read = session.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+      if (typeof read !== "function") return null;
+      const usage = await Promise.race([
+        read.call(session),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), PLAN_USAGE_TIMEOUT_MS);
+        }),
+      ]);
+      return usage ? planUsageWindows(usage) : null;
+    } catch {
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (owned) {
+        input.close();
+        owned.close();
+      }
+    }
   }
 
   #fail(error: Error): void {
@@ -1058,6 +1126,70 @@ const CLAUDE_MODELS = [
     })),
   },
 ];
+
+/**
+ * Windows from a rate_limit_event. Claude sends utilization as a fraction (0.76 = 76 %) and,
+ * besides the window that triggered the event, every window in `unifiedWindows`.
+ */
+export function rateLimitWindows(info: unknown): ClaudePlanLimit[] {
+  if (!isRecord(info)) return [];
+  const windows = new Map<string, ClaudePlanLimit>();
+  const add = (id: string, value: unknown) => {
+    if (!isRecord(value)) return;
+    const utilization = typeof value.utilization === "number" ? value.utilization : null;
+    windows.set(id, {
+      id,
+      label: null,
+      usedPercent: utilization === null ? null : Math.round(utilization * 1_000) / 10,
+      resetsAt:
+        typeof value.resetsAt === "number" ? new Date(value.resetsAt * 1_000).toISOString() : null,
+      status: limitStatus(value.status),
+    });
+  };
+  if (isRecord(info.unifiedWindows)) {
+    for (const [id, window] of Object.entries(info.unifiedWindows)) add(id, window);
+  }
+  add(typeof info.rateLimitType === "string" ? info.rateLimitType : "current", info);
+  return [...windows.values()];
+}
+
+/** Windows from the SDK's /usage data (utilization already 0–100). */
+export function planUsageWindows(usage: unknown): ClaudePlanLimit[] | null {
+  const limits = isRecord(usage) && isRecord(usage.rate_limits) ? usage.rate_limits : null;
+  if (!limits) return null;
+  const windows: ClaudePlanLimit[] = [];
+  const add = (id: string, label: string | null, value: unknown) => {
+    if (!isRecord(value) || typeof value.utilization !== "number") return;
+    const percent = value.utilization;
+    windows.push({
+      id,
+      label,
+      usedPercent: percent,
+      resetsAt: typeof value.resets_at === "string" ? value.resets_at : null,
+      // Claude itself warns from 75 % of a window (surpassedThreshold 0.75).
+      status: percent >= 100 ? "limited" : percent >= 75 ? "warning" : "ok",
+    });
+  };
+  for (const id of ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet"])
+    add(id, null, limits[id]);
+  if (Array.isArray(limits.model_scoped)) {
+    for (const scoped of limits.model_scoped) {
+      const name = isRecord(scoped) ? getString(scoped, "display_name") : null;
+      if (name) add(`model:${name.toLowerCase()}`, `Weekly (${name})`, scoped);
+    }
+  }
+  return windows;
+}
+
+function limitStatus(status: unknown): ClaudePlanLimit["status"] {
+  return status === "rejected"
+    ? "limited"
+    : status === "allowed_warning"
+      ? "warning"
+      : status === "allowed"
+        ? "ok"
+        : "unknown";
+}
 
 function readThreadConfig(params: unknown): ThreadConfig {
   const roots =

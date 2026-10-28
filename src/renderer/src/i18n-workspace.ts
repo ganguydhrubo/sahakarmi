@@ -167,6 +167,11 @@ export const workspaceEn = {
   usageLimited: "Limit reached",
   usageNearLimit: "Close to the limit",
   usageOk: "Within limit",
+  usageOtherProviders: "Other providers: nothing reported yet",
+  usageNoReading: "No reading since the reset",
+  usageWasReset: "Reset {when}",
+  usageCostPlanHint:
+    "What this work would cost at API prices. Your {plan} plan has a fixed price, so this is not a bill.",
   permIntro:
     "These rules are enforced by Sahkarmi on every tool call, whatever the AI decides. Money, messages, posts, account changes and official forms always need your approval or are blocked.",
   permAction: "Action",
@@ -769,6 +774,11 @@ export const workspaceHi: WorkspaceDictionary = {
   usageLimited: "सीमा पूरी",
   usageNearLimit: "सीमा के क़रीब",
   usageOk: "सीमा में",
+  usageOtherProviders: "दूसरे प्रदाता: अभी कुछ नहीं बताया",
+  usageNoReading: "रीसेट के बाद कोई जानकारी नहीं",
+  usageWasReset: "{when} को रीसेट हुआ",
+  usageCostPlanHint:
+    "API की क़ीमत पर इस काम का ख़र्च. आपके {plan} प्लान की क़ीमत तय है, इसलिए यह बिल नहीं है.",
   permIntro:
     "ये नियम सहकर्मी हर टूल कॉल पर लागू करता है, AI कुछ भी तय करे. पैसे, मैसेज, पोस्ट, अकाउंट बदलाव और सरकारी फ़ॉर्म पर हमेशा आपकी मंज़ूरी चाहिए, या वे रोक दिए जाते हैं.",
   permAction: "काम",
@@ -1355,6 +1365,10 @@ export const workspaceBn: WorkspaceDictionary = {
   usageLimited: "সীমা শেষ",
   usageNearLimit: "সীমার কাছাকাছি",
   usageOk: "সীমার মধ্যে",
+  usageOtherProviders: "অন্য প্রদানকারী: এখনও কিছু জানায়নি",
+  usageNoReading: "রিসেটের পরে কোনো তথ্য নেই",
+  usageWasReset: "{when}-এ রিসেট হয়েছে",
+  usageCostPlanHint: "API দামে এই কাজের খরচ। আপনার {plan} প্ল্যানের দাম নির্দিষ্ট, তাই এটা বিল নয়।",
   permIntro:
     "এই নিয়মগুলো সহকর্মী প্রতিটি টুল কলে প্রয়োগ করে, AI যা-ই ঠিক করুক। টাকা, মেসেজ, পোস্ট, অ্যাকাউন্ট বদল আর সরকারি ফর্মে সবসময় আপনার অনুমোদন লাগে, নয়তো আটকে দেওয়া হয়।",
   permAction: "কাজ",

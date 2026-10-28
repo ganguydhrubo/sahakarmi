@@ -153,6 +153,13 @@ async function sendMail(mail) {
   return parsed;
 }
 
+/** Where the relay sent a mail. It names the inbox only partly, because these logs are public. */
+function sentToNote(reply) {
+  return typeof reply?.sentTo === "string" && reply.sentTo
+    ? `to ${reply.sentTo}`
+    : "to the relay's MAIL_TO";
+}
+
 // ---------------------------------------------------------------------------------------------
 // Processing one release
 
@@ -245,10 +252,10 @@ async function processRelease(release, state) {
     return;
   }
   try {
-    await sendMail(mail);
+    const reply = await sendMail(mail);
     state.pendingMail = state.pendingMail.filter((tag) => tag !== analysis.tag);
     writeState(state);
-    log(`mailed: ${mail.subject}`);
+    log(`mailed ${sentToNote(reply)}: ${mail.subject}`);
   } catch (error) {
     log(`MAIL NOT SENT (will retry next run): ${error.message}`);
   }
@@ -273,10 +280,10 @@ async function retryPendingMail(state, releasesByTag) {
       reportUrl: null,
     });
     try {
-      await sendMail(mail);
+      const reply = await sendMail(mail);
       state.pendingMail = state.pendingMail.filter((item) => item !== tag);
       writeState(state);
-      log(`mailed (retry): ${mail.subject}`);
+      log(`mailed (retry) ${sentToNote(reply)}: ${mail.subject}`);
     } catch (error) {
       log(`MAIL STILL NOT SENT for ${tag}: ${error.message}`);
     }
@@ -320,8 +327,8 @@ async function main() {
       issueUrl: null,
       reportUrl: null,
     });
-    await sendMail(mail);
-    log(`test mail sent: ${mail.subject}`);
+    const reply = await sendMail(mail);
+    log(`test mail sent ${sentToNote(reply)}: ${mail.subject}`);
     return;
   }
 
@@ -429,6 +436,8 @@ function selfTest() {
     "win flag",
   );
   assert(!mail.html.includes("<script"), "html safe");
+  assert(sentToNote({ ok: true, sentTo: "g•••@gmail.com" }) === "to g•••@gmail.com", "sent to");
+  assert(sentToNote({ ok: true }) === "to the relay's MAIL_TO", "sent to (old relay)");
   log("self-test passed");
 }
 

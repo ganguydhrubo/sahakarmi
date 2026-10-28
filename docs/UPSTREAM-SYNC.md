@@ -49,3 +49,19 @@ UPSTREAM_REPO=owner/repo node scripts/check-upstream.mjs --dry-run
 
 State advances only after a release is processed; a mail that fails is retried on the next run;
 GitHub 403/429/5xx are retried with backoff; at most 5 releases per run.
+
+## Not getting the mails?
+
+1. Check where they go. Mails go only to the relay's `MAIL_TO` script property (Apps Script →
+   Project Settings → Script properties). To get them in more than one inbox, list the addresses
+   with commas, for example `owner@gmail.com, teammate@company.com`.
+2. Send a test mail: Actions → Upstream Radar → Run workflow → tick "Only send one test mail".
+   The log line `test mail sent to g•••@gmail.com` shows which inbox got it (only the first letter
+   and the domain, because the logs are public). A relay deployed before 28 Oct 2026 says
+   "to the relay's MAIL_TO" until it is redeployed with the current `Code.gs` (Deploy → Manage
+   deployments → edit → New version keeps the same URL).
+3. Look in Spam and in Gmail's Updates tab for "Sahkarmi Upstream Radar". Marking one as
+   "Not spam" (or adding a filter "Never send it to Spam") keeps the next ones in the inbox.
+4. A mail goes out only for a new upstream desktop release, never on quiet days. GitHub runs the
+   hourly schedule late when it is busy (often every 4 to 6 hours), so a mail can arrive a few
+   hours after the release.

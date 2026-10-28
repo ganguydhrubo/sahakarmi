@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -101,6 +101,132 @@ describe("UsageService", () => {
     expect(claude?.tokensToday).toBe(1_100);
     expect(claude?.costUsd30d).toBeCloseTo(0.025, 6);
     expect(claude?.costLabel).toBe("estimated");
+  });
+
+  it("counts a resumed Claude session once, across app restarts", async () => {
+    // Real totals from Claude Code 2.1.312: a resumed session reports its saved total plus the new turn.
+    const report = (
+      usage: UsageService,
+      tokens: number,
+      costUsd: number,
+      turnTokens: number,
+      resumed = false,
+    ) =>
+      usage.record({
+        kind: "cumulative",
+        provider: "claude",
+        botId: "meera",
+        counterKey: "thread:claude:s1",
+        persistent: true,
+        tokens,
+        costUsd,
+        turnTokens,
+        resumed,
+      });
+    const first = new UsageService(root, clock);
+    await first.initialize();
+    report(first, 22_712, 0.000922, 22_712);
+    report(first, 47_454, 0.002251, 24_742);
+    await first.flush();
+
+    const second = new UsageService(root, clock);
+    await second.initialize();
+    report(second, 72_645, 0.002973, 25_191, true);
+    report(second, 99_748, 0.003691, 27_103);
+    const claude = second.overview(PROVIDERS).providers.find((p) => p.provider === "claude");
+    expect(claude?.tokensToday).toBe(99_748);
+    expect(claude?.costUsd30d).toBeCloseTo(0.003691, 6);
+    expect(second.overview(PROVIDERS).bots).toEqual([
+      expect.objectContaining({ botId: "meera", tokens30d: 99_748, turns30d: 4 }),
+    ]);
+  });
+
+  it("counts only the new turn when a resumed total has nothing saved to subtract", async () => {
+    const usage = new UsageService(root, clock);
+    await usage.initialize();
+    usage.record({
+      kind: "cumulative",
+      provider: "claude",
+      botId: "meera",
+      counterKey: "thread:claude:s2",
+      persistent: true,
+      tokens: 148_965_964,
+      costUsd: 120,
+      turnTokens: 2_000_000,
+      resumed: true,
+    });
+    const claude = usage.overview(PROVIDERS).providers.find((p) => p.provider === "claude");
+    expect(claude?.tokensToday).toBe(2_000_000);
+    expect(claude?.costUsd30d).toBeCloseTo(120 * (2_000_000 / 148_965_964), 6);
+
+    // The next turn in the same run is measured against the resumed total, not counted again.
+    usage.record({
+      kind: "cumulative",
+      provider: "claude",
+      botId: "meera",
+      counterKey: "thread:claude:s2",
+      persistent: true,
+      tokens: 150_965_964,
+      costUsd: 121,
+      turnTokens: 2_000_000,
+    });
+    expect(
+      usage.overview(PROVIDERS).providers.find((p) => p.provider === "claude")?.tokensToday,
+    ).toBe(4_000_000);
+  });
+
+  it("drops Claude totals written by version 1, which counted resumed sessions twice", async () => {
+    const bucket = {
+      tokens: 1_366_341_625,
+      costUsd: 1001.55,
+      turns: 41,
+      lastAt: now.toISOString(),
+    };
+    await writeFile(
+      join(root, "usage.json"),
+      JSON.stringify({
+        version: 1,
+        days: {
+          "2026-10-20|claude|meera": bucket,
+          "2026-10-20|codex|asha": {
+            tokens: 5_000,
+            costUsd: null,
+            turns: 2,
+            lastAt: bucket.lastAt,
+          },
+        },
+        counters: { "thread:codex:t1": { tokens: 5_000, costUsd: 0 } },
+        limits: {},
+        context: {},
+      }),
+    );
+    const usage = new UsageService(root, clock);
+    await usage.initialize();
+    const providers = usage.overview(PROVIDERS).providers;
+    expect(providers.find((p) => p.provider === "claude")).toMatchObject({
+      tokensToday: 0,
+      costUsd30d: null,
+    });
+    expect(providers.find((p) => p.provider === "codex")?.tokensToday).toBe(5_000);
+    expect(usage.overview(PROVIDERS).alerts).toContainEqual(
+      expect.objectContaining({
+        id: "claude:recounted",
+        level: "info",
+        message: expect.stringContaining("start again from 20 Oct 2026"),
+      }),
+    );
+    await usage.flush();
+    const saved = JSON.parse(await readFile(join(root, "usage.json"), "utf8"));
+    expect(saved.version).toBe(2);
+    expect(Object.keys(saved.days)).toEqual(["2026-10-20|codex|asha"]);
+
+    // Read again later: nothing more is removed, and the notice goes after a week.
+    now = new Date("2026-10-28T10:00:00Z");
+    const later = new UsageService(root, clock);
+    await later.initialize();
+    expect(later.overview(PROVIDERS).alerts.map((alert) => alert.id)).not.toContain(
+      "claude:recounted",
+    );
   });
 
   it("never invents numbers for providers that report nothing", async () => {

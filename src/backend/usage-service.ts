@@ -28,6 +28,13 @@ export type UsageObservation =
       persistent: boolean;
       tokens: number | null;
       costUsd: number | null;
+      /** This turn's own tokens, when the provider reports them separately. */
+      turnTokens?: number | null;
+      /**
+       * First report after a saved session was resumed. Claude restores the session's earlier
+       * running total on resume, so without a saved count to subtract only this turn is new.
+       */
+      resumed?: boolean;
     }
   | { kind: "limits"; provider: AgentProviderId; windows: UsageLimitWindow[]; replace: boolean }
   | { kind: "context"; provider: AgentProviderId; used: number; size: number };
@@ -40,17 +47,21 @@ interface DayBucket {
 }
 
 interface UsageFileState {
-  version: 1;
+  /** 2: Claude counts survive restarts. Version 1 counted a resumed Claude session again in full. */
+  version: 1 | 2;
   /** "YYYY-MM-DD|provider|botId" → totals for that day. */
   days: Record<string, DayBucket>;
   /** Last seen cumulative values for counters that survive restarts (Codex thread totals). */
   counters: Record<string, { tokens: number; costUsd: number }>;
   limits: Partial<Record<AgentProviderId, UsageLimitWindow[]>>;
   context: Partial<Record<AgentProviderId, { used: number; size: number; observedAt: string }>>;
+  /** When a provider's wrong totals were removed, so the page can say why counting restarted. */
+  recounted?: Partial<Record<AgentProviderId, string>>;
 }
 
 const RETENTION_DAYS = 90;
 const STALE_AFTER_MS = 30 * 60_000;
+const RECOUNT_NOTICE_MS = 7 * 86_400_000;
 const SAVE_DELAY_MS = 2_000;
 
 /** Where each provider's numbers come from; shown next to the data. */
@@ -60,7 +71,7 @@ export const USAGE_SOURCES: Record<AgentProviderId, { limits: string; tokens: st
     tokens: "Codex App Server · thread/tokenUsage/updated",
   },
   claude: {
-    limits: "Claude Agent SDK · rate_limit_event (sent during a task)",
+    limits: "Claude Agent SDK · plan usage (on refresh) and rate_limit_event (during a task)",
     tokens: "Claude Agent SDK · result.modelUsage",
   },
   opencode: {
@@ -100,6 +111,16 @@ export class UsageService {
 
   async initialize(): Promise<void> {
     this.#state = await this.#file.read(emptyState, isUsageState);
+    if (this.#state.version === 1) {
+      // Version 1 counted every resumed Claude session again from its first day, so those
+      // totals cannot be trusted. Codex counts were right and stay.
+      for (const key of Object.keys(this.#state.days)) {
+        if (key.split("|")[1] === "claude") delete this.#state.days[key];
+      }
+      this.#state.version = 2;
+      this.#state.recounted = { ...this.#state.recounted, claude: this.#now().toISOString() };
+      this.#scheduleSave();
+    }
     this.#prune();
   }
 
@@ -131,9 +152,21 @@ export class UsageService {
       : this.#state.counters[observation.counterKey];
     const tokens = observation.tokens ?? previous?.tokens ?? 0;
     const cost = observation.costUsd ?? previous?.costUsd ?? 0;
-    // A smaller running total means the provider restarted its count (new session, /clear).
-    const tokenDelta = previous && tokens >= previous.tokens ? tokens - previous.tokens : tokens;
-    const costDelta = previous && cost >= previous.costUsd ? cost - previous.costUsd : cost;
+    let tokenDelta: number;
+    let costDelta: number;
+    if (previous && tokens >= previous.tokens && cost >= previous.costUsd) {
+      tokenDelta = tokens - previous.tokens;
+      costDelta = cost - previous.costUsd;
+    } else if (observation.resumed) {
+      // The total includes usage counted before the restart, and nothing saved says how much.
+      // Count this turn only; its cost is its share of the session's cost (still an estimate).
+      tokenDelta = Math.min(tokens, Math.max(0, observation.turnTokens ?? 0));
+      costDelta = tokens > 0 ? cost * (tokenDelta / tokens) : 0;
+    } else {
+      // A smaller running total means the provider restarted its count (new session, /clear).
+      tokenDelta = previous && tokens >= previous.tokens ? tokens - previous.tokens : tokens;
+      costDelta = previous && cost >= previous.costUsd ? cost - previous.costUsd : cost;
+    }
     const next = { tokens, costUsd: cost };
     if (store) store.set(observation.counterKey, next);
     else this.#state.counters[observation.counterKey] = next;
@@ -242,12 +275,13 @@ export class UsageService {
       providers: summaries,
       days: [...dayMap.values()].sort((left, right) => left.date.localeCompare(right.date)),
       bots: [...botMap.values()].sort((left, right) => right.tokens30d - left.tokens30d),
-      alerts: usageAlerts(summaries),
+      alerts: [...usageAlerts(summaries), ...recountAlerts(this.#state.recounted, now)],
       ledgerSince: dates[0] ?? null,
     };
   }
 
   async clear(): Promise<void> {
+    // Clearing on purpose starts every count fresh; no notice needed.
     this.#state = emptyState();
     this.#sessionCounters.clear();
     await this.flush();
@@ -315,6 +349,27 @@ export function usageAlerts(summaries: ProviderUsageSummary[]): UsageAlert[] {
   return alerts;
 }
 
+/** Shown for a week after wrong totals were removed, so a fresh count does not look like a fault. */
+function recountAlerts(recounted: UsageFileState["recounted"], now: Date): UsageAlert[] {
+  const alerts: UsageAlert[] = [];
+  for (const [provider, at] of Object.entries(recounted ?? {}) as [AgentProviderId, string][]) {
+    const since = Date.parse(at);
+    if (Number.isNaN(since) || now.getTime() - since > RECOUNT_NOTICE_MS) continue;
+    const day = new Date(since).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    alerts.push({
+      id: `${provider}:recounted`,
+      level: "info",
+      provider,
+      message: `Token counts start again from ${day}. Earlier counts were too high: a chat reopened after a restart was counted again, so they were removed.`,
+    });
+  }
+  return alerts;
+}
+
 function freshness(window: UsageLimitWindow, now: Date): UsageDataLabel {
   if (window.dataLabel === "unavailable" || window.dataLabel === "estimated")
     return window.dataLabel;
@@ -330,13 +385,13 @@ function dayOffset(now: Date, days: number): string {
 }
 
 function emptyState(): UsageFileState {
-  return { version: 1, days: {}, counters: {}, limits: {}, context: {} };
+  return { version: 2, days: {}, counters: {}, limits: {}, context: {} };
 }
 
 function isUsageState(value: unknown): value is UsageFileState {
   return (
     isRecord(value) &&
-    value.version === 1 &&
+    (value.version === 1 || value.version === 2) &&
     isRecord(value.days) &&
     isRecord(value.counters) &&
     isRecord(value.limits) &&

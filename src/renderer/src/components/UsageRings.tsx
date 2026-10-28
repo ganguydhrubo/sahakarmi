@@ -4,6 +4,7 @@ import {
   PROVIDER_LABELS,
   type ProviderUsageSummary,
 } from "../../../shared/ipc";
+import { ProviderLogo } from "./ProviderLogo";
 
 const NAMES: Partial<Record<AgentProviderId, string>> = {
   codex: "ChatGPT",
@@ -45,9 +46,19 @@ export function UsageRings(props: { onOpenUsage: () => void }) {
       <div class="usage-rings">
         <For each={providers()}>
           {(provider) => {
-            const highest = () =>
-              Math.max(...provider.limits.map((limit) => limit.usedPercent ?? 0));
-            const level = () => (highest() >= 95 ? "high" : highest() >= 80 ? "mid" : "ok");
+            // A window past its reset time no longer describes now.
+            const live = () =>
+              provider.limits.filter(
+                (limit) => !limit.resetsAt || Date.parse(limit.resetsAt) >= Date.now(),
+              );
+            const highest = () => Math.max(0, ...live().map((limit) => limit.usedPercent ?? 0));
+            // The provider's own status counts too: Claude warns from 75 % of a window.
+            const level = () =>
+              highest() >= 95 || live().some((limit) => limit.status === "limited")
+                ? "high"
+                : highest() >= 80 || live().some((limit) => limit.status === "warning")
+                  ? "mid"
+                  : "ok";
             return (
               <div class="usage-ring-wrap">
                 <button
@@ -70,9 +81,7 @@ export function UsageRings(props: { onOpenUsage: () => void }) {
                       stroke-dasharray={`${(Math.min(100, highest()) / 100) * 94.25} 94.25`}
                     />
                   </svg>
-                  <span>
-                    {(NAMES[provider.provider] ?? PROVIDER_LABELS[provider.provider]).slice(0, 1)}
-                  </span>
+                  <ProviderLogo provider={provider.provider} size={15} />
                 </button>
                 <Show when={open() === provider.provider}>
                   <div class="usage-ring-popover" role="tooltip">
