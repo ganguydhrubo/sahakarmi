@@ -19,6 +19,7 @@ import { z } from "zod";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
 import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
+import { isInterruptMarker, readTranscriptLines } from "./claude-transcript";
 import type { ClaudeCliInfo } from "./cli";
 import {
   LIST_SKILLS_DESCRIPTION,
@@ -646,16 +647,29 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     const messages = await getSessionMessages(threadId, {
       ...(runtime?.config.cwd ? { dir: runtime.config.cwd } : {}),
     });
+    // The SDK's messages carry no times; without them every reopen would stamp these turns "now".
+    const lines = await readTranscriptLines(threadId);
     const turns: NonNullable<ThreadResponse["thread"]["turns"]> = [];
     let current: (typeof turns)[number] | null = null;
+    let lastStartedAt: number | undefined;
     for (const message of messages) {
       if (message.parent_tool_use_id) continue;
       const text = messageText(message.message);
+      const line = lines.get(message.uuid);
+      const startedAt = line?.time != null ? line.time / 1_000 : lastStartedAt;
       if (message.type === "user") {
         if (!text) continue;
+        lastStartedAt = startedAt;
+        if (line?.internal || isInterruptMarker(text)) {
+          // Claude Code's own note, not the owner's message: keep the replies after it, no bubble.
+          current = { id: message.uuid, status: "completed", startedAt, items: [] };
+          turns.push(current);
+          continue;
+        }
         current = {
           id: message.uuid,
           status: "completed",
+          startedAt,
           items: [
             {
               id: message.uuid,
@@ -668,7 +682,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         turns.push(current);
       } else if (message.type === "assistant" && text) {
         if (!current) {
-          current = { id: message.uuid, status: "completed", items: [] };
+          lastStartedAt = startedAt;
+          current = { id: message.uuid, status: "completed", startedAt, items: [] };
           turns.push(current);
         }
         current.items?.push({ id: message.uuid, type: "agentMessage", text });

@@ -5,6 +5,16 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-28
+
+### Fixed
+
+- Chats with Claude coworkers keep their order. Before, switching to another coworker and back
+  could move older replies to the bottom of the chat. This happened after a long chat was
+  summarised, after you pressed Stop, or after a background task finished.
+- Claude Code's own notes (the "This session is being continued…" summary, "[Request interrupted
+  by user]" and background-task notices) no longer show up as messages from you.
+
 ## [0.13.0] - 2026-10-27
 
 ### Added
