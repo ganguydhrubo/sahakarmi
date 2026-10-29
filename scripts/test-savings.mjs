@@ -9,7 +9,7 @@ const C = ctx.SavingsCalc;
 
 let failed = 0;
 function near(name, actual, expected, tol = 0.01) {
-  const ok = actual !== null && Math.abs(actual - expected) <= tol;
+  const ok = actual !== null && actual !== undefined && Math.abs(actual - expected) <= tol;
   if (!ok) failed++;
   console.log(`${ok ? "PASS" : "FAIL"} ${name}: ${actual} (expected ${expected})`);
 }
@@ -18,106 +18,162 @@ function is(name, actual, expected) {
   if (!ok) failed++;
   console.log(`${ok ? "PASS" : "FAIL"} ${name}: ${actual} (expected ${expected})`);
 }
-const email = { id: "e", type: "email", name: "Email", method: "chat", fit: "review", freq: 10, per: "day", manualMin: 8, aiMin: 3, reviewMin: 2, redoPct: 10, setupHours: 0.5 };
-const code = { id: "c", type: "code", name: "Code", method: "code", fit: "review", freq: 3, per: "week", manualMin: 60, aiMin: 15, reviewMin: 10, redoPct: 10, setupHours: 1 };
+const task = (type, extra = {}) => ({ id: type, name: type, ...C.TASK_TYPES[type], ...extra });
 const base = { ...C.DEFAULTS, owned: [], compare: [] };
 const opt = (r, id) => r.options.find((o) => o.id === id);
 
-// 1. Monthly pay ₹50,000; 8 h × 5 days × 48 weeks = 1,920 h a year → ₹312.50 an hour.
-//    Email: 10 a day × 20 days = 200 runs; by hand 200 × 8 ÷ 60 = 26.667 h.
-//    Paid plan: 3 + 2 + 10% × 8 = 5.8 min a run → 19.333 h; saved 7.333 h; worth ₹2,291.67.
-//    Free plans only (50% of runs): 200 × (0.5 × 5.8 + 0.5 × 8) ÷ 60 = 23 h; saved 3.667 h; worth ₹1,145.83.
-//    Claude Pro: $20 × 95.22 × 1.18 GST = ₹2,247.19; net 2,291.67 − 2,247.19 = ₹44.48.
+// Working year with the defaults: 5 days × 52 weeks − 10 public holidays = 250 business days.
+// The person is away 15 leave + 6 sick = 21 days, so works 229 days × 8 h = 1,832 hours.
+// Real cost of an hour: ₹50,000 × 12 × 1.25 (extra costs) ÷ 1,832 = ₹409.39.
+const BD = 250, HOURS = 1832, HOURLY = (50000 * 12 * 1.25) / HOURS, PER_DAY = BD / 12, PER_WEEK = BD / 5 / 12;
 {
-  const r = C.compute({ ...base, tasks: [email], compare: ["claude-pro", "chatgpt-plus"] });
-  near("hourly value", r.hourly, 312.5);
-  near("runs a month", opt(r, "free").result.typical.rows[0].runs, 200);
-  near("manual hours", opt(r, "free").result.typical.manualH, 26.6667, 0.001);
-  near("free saved hours", opt(r, "free").result.typical.savedH, 3.6667, 0.001);
-  near("free value", opt(r, "free").result.typical.value, 1145.83);
-  near("Claude Pro cost with GST", opt(r, "one:claude-pro").toolCost, 2247.19);
-  near("Claude Pro saved hours", opt(r, "one:claude-pro").result.typical.savedH, 7.3333, 0.001);
-  near("Claude Pro net", opt(r, "one:claude-pro").result.typical.net, 44.48);
-  near("ChatGPT Plus net (rupee price, no GST added)", opt(r, "one:chatgpt-plus").result.typical.net, 292.67);
-  near("both plans together cost", opt(r, "multi").toolCost, 4246.19);
-  is("best value is the free option", r.bestId, "free");
-  is("free option has no return-on-spend figure", opt(r, "free").result.typical.roi, null);
-  // Cautious: 5 × 1.5 + 15% × 8 = 8.7 min ≥ 8 by hand → no saving. Best case: 3.75 + 0.4 = 4.15 min → 12.833 h.
-  near("cautious saves nothing", opt(r, "one:claude-pro").result.low.savedH, 0);
-  near("best case saved hours", opt(r, "one:claude-pro").result.high.savedH, 12.8333, 0.001);
-  near("setup hours counted once", opt(r, "one:claude-pro").result.typical.setupH, 0.5);
-  near("first year", opt(r, "one:claude-pro").result.typical.firstYear, 44.48 * 12 - 0.5 * 312.5, 0.1);
+  const r = C.compute({ ...base, tasks: [] });
+  near("business days", r.schedule.businessDays, BD);
+  near("days worked", r.schedule.workDays, 229);
+  near("hours worked a year", r.schedule.hoursPerYear, HOURS);
+  near("real cost of an hour", r.hourly, 409.3886, 0.001);
+  near("share of business days away", r.schedule.awayShare, 0.084, 1e-9);
+  // More leave means fewer worked hours, so each one costs more: 30 + 6 days → 214 days × 8 h = 1,712 h.
+  near("more leave raises the hourly cost", C.compute({ ...base, leaveDays: 30, tasks: [] }).hourly, 750000 / 1712, 0.001);
 }
 
-// 2. $50 an hour, coding 3 a week × 4 weeks = 12 runs, 12 h by hand.
-//    Paid: 15 + 10 + 10% × 60 = 31 min → 6.2 h; saved 5.8 h; worth $290.
-//    Claude Pro yearly, no GST: $17; net $273; setup $50; first year 273 × 12 − 50 = $3,226;
-//    pays back in 50 ÷ 273 = 0.183 months; return (290 × 12 − 254) ÷ 254 = 12.701.
-//    Copilot Pro $10 saves the same → net $280, so it is the best value. Free (50%): saved 2.9 h, net $145.
+// 1. Email, asking an AI each time: 10 a day × 250 ÷ 12 = 208.33 runs; by hand 208.33 × 8 ÷ 60 = 27.78 h.
+//    With a paid plan: 2 + 2 + 10% × 8 = 4.8 min → 16.67 h; saved 11.11 h = 40% less time (as in Noy and Zhang).
+//    Free chat tools only (50% of runs): 208.33 × (0.5 × 4.8 + 0.5 × 8) ÷ 60 = 22.22 h; saved 5.56 h.
+//    Claude Pro: $20 × 95.22 × 1.18 GST = ₹2,247.19 a person.
 {
-  const s = { ...base, currency: "USD", payMode: "hourly", hourlyRate: 50, billing: "annual", addGst: false, tasks: [code], compare: ["claude-pro", "copilot-pro"] };
+  const r = C.compute({ ...base, tasks: [task("email")], compare: ["claude-pro", "chatgpt-plus"] });
+  const pro = opt(r, "one:claude-pro").result.typical;
+  near("email runs a month", pro.rows[0].runs, 10 * PER_DAY, 1e-9);
+  near("email hours by hand", pro.manualH, (10 * PER_DAY * 8) / 60, 1e-9);
+  near("email saved with Claude Pro", pro.savedH, (10 * PER_DAY * (8 - 4.8)) / 60, 1e-9);
+  near("email: 40% less time", pro.pct, 0.4, 1e-9);
+  near("email saved with free chat tools", opt(r, "free").result.typical.savedH, (10 * PER_DAY * (8 - 6.4)) / 60, 1e-9);
+  near("Claude Pro cost with GST", opt(r, "one:claude-pro").toolCost, 2247.192, 1e-6);
+  near("Claude Pro net a month", pro.net, ((10 * PER_DAY * 3.2) / 60) * HOURLY - 2247.192, 1e-6);
+  near("ChatGPT Plus net (rupee price, no GST added)", opt(r, "one:chatgpt-plus").result.typical.net, ((10 * PER_DAY * 3.2) / 60) * HOURLY - 1999, 1e-6);
+  near("net a year = 12 × month", pro.netYear, pro.net * 12, 1e-6);
+  near("both plans together cost", opt(r, "multi").toolCost, 2247.192 + 1999, 1e-6);
+  is("free option has no return-on-spend figure", opt(r, "free").result.typical.roi, null);
+  // Cautious: (2 + 2) × 1.5 + 15% × 8 = 7.2 min. Best case: 4 × 0.75 + 5% × 8 = 3.4 min.
+  near("cautious saved hours", opt(r, "one:claude-pro").result.low.savedH, (10 * PER_DAY * (8 - 7.2)) / 60, 1e-9);
+  near("best case saved hours", opt(r, "one:claude-pro").result.high.savedH, (10 * PER_DAY * (8 - 3.4)) / 60, 1e-9);
+}
+
+// 2. Spreadsheet work set to run by itself: 1 a day → 20.83 runs × 30 min = 10.42 h by hand.
+//    Running by itself, your time is checking + redo only: 3 + 10% × 30 = 6 min → 80% less time.
+{
+  const sheet = [task("spreadsheet")];
+  const r = C.compute({ ...base, tasks: sheet, compare: ["claude-pro", "chatgpt-plus"] });
+  const proApp = opt(r, "one:claude-pro").result.typical;
+  near("Claude Pro with Sahkarmi: 80% less time", proApp.pct, 0.8, 1e-9);
+  near("Claude Pro with Sahkarmi: saved hours", proApp.savedH, (PER_DAY * 24) / 60, 1e-9);
+  is("runs by itself with Sahkarmi + Claude Pro", proApp.rows[0].auto, true);
+  // Sahkarmi on free models: only 50% of runs → 20.83 × (0.5 × 6 + 0.5 × 30) ÷ 60 = 6.25 h; saved 4.17 h.
+  near("Sahkarmi on free models (50% of runs)", opt(r, "browser").result.typical.savedH, PER_DAY * 12 / 60, 1e-9);
+  // ChatGPT Plus has scheduled tasks for chat work, so it runs by itself too.
+  near("ChatGPT Plus scheduled task: 80%", opt(r, "one:chatgpt-plus").result.typical.pct, 0.8, 1e-9);
+  // Without Sahkarmi, Claude Pro cannot schedule it, so you ask each time: 5 + 3 + 3 = 11 min → 63.3%.
+  const noApp = C.compute({ ...base, useSahkarmi: false, tasks: sheet, compare: ["claude-pro"] });
+  near("Claude Pro alone: asks each time", opt(noApp, "one:claude-pro").result.typical.pct, (30 - 11) / 30, 1e-9);
+  is("Claude Pro alone notes it cannot run by itself", opt(noApp, "one:claude-pro").notAuto.length, 1);
+  // Free chat tools only: no scheduling, 50% of runs: 20.83 × (0.5 × 11 + 0.5 × 30) ÷ 60.
+  near("free chat tools: asks each time, half the runs", opt(r, "free").result.typical.savedH, (PER_DAY * (30 - 20.5)) / 60, 1e-9);
+}
+
+// 3. A team of 10 doing email + spreadsheet work, with Claude Pro and Sahkarmi.
+//    Saved per person: 11.11 + 8.33 = 19.44 h; team 194.44 h a month out of 381.94 h by hand (50.9% less).
+//    Plans: 10 × ₹2,247.19. Setup: 0.5 + 2 h once + 2 h learning × 10 people = 22.5 h.
+//    Like 194.44 ÷ (1,832 ÷ 12) = 1.27 extra people. Leave cover: 381.94 × 21 ÷ 250 = 32.08 h,
+//    of which the spreadsheet's 10.42 × 10 × 0.084 = 8.75 h keeps running by itself.
+{
+  const r = C.compute({ ...base, people: 10, tasks: [task("email"), task("spreadsheet")], compare: ["claude-pro"] });
+  const T = opt(r, "one:claude-pro").result.typical;
+  const saved = 10 * ((PER_DAY * 10 * 3.2) / 60 + (PER_DAY * 24) / 60), manual = 10 * ((PER_DAY * 80) / 60 + (PER_DAY * 30) / 60);
+  near("team hours saved", T.savedH, saved, 1e-9);
+  near("team hours by hand", T.manualH, manual, 1e-9);
+  near("team % less time", T.pct, saved / manual, 1e-9);
+  near("team plan cost", T.toolCost, 22471.92, 1e-6);
+  near("team value a month", T.value, saved * HOURLY, 1e-6);
+  near("team net a year", T.netYear, (saved * HOURLY - 22471.92) * 12, 1e-4);
+  near("setup hours", T.setupH, 22.5, 1e-9);
+  near("first year", T.firstYear, (saved * HOURLY - 22471.92) * 12 - 22.5 * HOURLY, 1e-4);
+  near("like extra people", T.peopleEquiv, saved / (HOURS / 12), 1e-9);
+  near("leave and sick cover hours", T.awayH, manual * 0.084, 1e-9);
+  near("cover that keeps running by itself", T.keepsRunningH, 10 * ((PER_DAY * 30) / 60) * 0.084, 1e-9);
+}
+
+// 4. $50 an hour (all-in), coding 3 a week × 50 business weeks ÷ 12 = 12.5 runs, 12.5 h by hand.
+//    Paid plan: 12 + 10 + 10% × 60 = 28 min → 5.83 h; saved 6.67 h (53% less, as in Peng et al.); worth $333.33.
+//    Claude Pro yearly, no GST: $17; net $316.33; setup 1 h + 2 h learning = $150;
+//    first year 316.33 × 12 − 150 = $3,646; pays back in 150 ÷ 316.33 = 0.474 months;
+//    return (333.33 × 12 − (17 × 12 + 150)) ÷ 354 = 10.30. Copilot Pro $10 → net $323.33, the best value.
+{
+  const s = { ...base, currency: "USD", payMode: "hourly", hourlyRate: 50, billing: "annual", addGst: false, tasks: [task("code")], compare: ["claude-pro", "copilot-pro"] };
   const r = C.compute(s);
   const pro = opt(r, "one:claude-pro").result.typical;
+  near("coding runs", pro.rows[0].runs, 3 * PER_WEEK, 1e-9);
   near("Claude Pro yearly cost", opt(r, "one:claude-pro").toolCost, 17);
-  near("coding saved hours", pro.savedH, 5.8);
-  near("coding net", pro.net, 273);
-  near("coding first year", pro.firstYear, 3226);
-  near("pays back (months)", pro.breakEvenMonths, 0.1832, 0.001);
-  near("return in year one", pro.roi, 12.7008, 0.001);
-  near("hours needed to cover the plan", pro.hoursToCover, 0.34);
-  near("Copilot Pro net", opt(r, "one:copilot-pro").result.typical.net, 280);
-  near("free coding saved hours", opt(r, "free").result.typical.savedH, 2.9);
+  near("coding saved hours", pro.savedH, (12.5 * 32) / 60, 1e-9);
+  near("coding net", pro.net, (12.5 * 32 / 60) * 50 - 17, 1e-9);
+  near("coding first year", pro.firstYear, ((12.5 * 32 / 60) * 50 - 17) * 12 - 150, 1e-6);
+  near("pays back (months)", pro.breakEvenMonths, 150 / ((12.5 * 32 / 60) * 50 - 17), 1e-9);
+  near("return in year one", pro.roi, ((12.5 * 32 / 60) * 50 * 12 - 354) / 354, 1e-9);
+  near("Copilot Pro net", opt(r, "one:copilot-pro").result.typical.net, (12.5 * 32 / 60) * 50 - 10, 1e-9);
   is("best value is Copilot Pro", r.bestId, "one:copilot-pro");
 }
 
-// 3. Currency: ChatGPT Plus ₹1,999 in US dollars = 1,999 ÷ 95.22 = $20.99; with a 3% card fee = $21.62.
+// 5. Currency: ChatGPT Plus ₹1,999 in US dollars = 1,999 ÷ 95.22 = $20.99; with a 3% card fee = $21.62.
 {
   const plus = C.TOOLS.find((t) => t.id === "chatgpt-plus");
-  near("rupee plan in dollars", C.planCost(plus, { currency: "USD", billing: "monthly", addGst: true, cardMarkupPct: 0 }), 20.9935);
-  near("with 3% card fee", C.planCost(plus, { currency: "USD", billing: "monthly", addGst: true, cardMarkupPct: 3 }), 21.6233);
-  near("AED peg", C.convert(1, "USD", "AED"), 3.6725, 0.00001);
+  near("rupee plan in dollars", C.planCost(plus, { currency: "USD", billing: "monthly", addGst: true, cardMarkupPct: 0 }), 1999 / 95.22, 1e-9);
+  near("with 3% card fee", C.planCost(plus, { currency: "USD", billing: "monthly", addGst: true, cardMarkupPct: 3 }), (1999 / 95.22) * 1.03, 1e-9);
+  near("AED peg", C.convert(1, "USD", "AED"), 3.6725, 1e-9);
 }
 
-// 4. The 5% rule: hourly ₹560 → free net 2,053.33, ChatGPT Plus net 2,107.67 (within 5%) → free wins.
-//    At ₹700 → free 2,566.67, Plus 3,134.33 → Plus wins.
+// 6. The 5% rule, email only, all-in hourly cost h: free saves 5.556 h, ChatGPT Plus 11.111 h.
+//    At ₹360: free 2,000.00 vs Plus 4,000 − 1,999 = 2,001.00 (within 5%) → free wins. At ₹500 → Plus wins.
 {
-  const s = { ...base, payMode: "hourly", tasks: [email], compare: ["chatgpt-plus"] };
-  const a = C.compute({ ...s, hourlyRate: 560 });
-  near("free net at ₹560", opt(a, "free").result.typical.net, 2053.33);
-  near("Plus net at ₹560", opt(a, "one:chatgpt-plus").result.typical.net, 2107.67);
+  const s = { ...base, payMode: "hourly", tasks: [task("email")], compare: ["chatgpt-plus"] };
+  const a = C.compute({ ...s, hourlyRate: 360 });
+  near("free net at ₹360", opt(a, "free").result.typical.net, 2000, 1e-6);
+  near("Plus net at ₹360", opt(a, "one:chatgpt-plus").result.typical.net, 2001, 1e-6);
   is("cheaper option within 5% wins", a.bestId, "free");
-  is("Plus wins at ₹700", C.compute({ ...s, hourlyRate: 700 }).bestId, "one:chatgpt-plus");
+  is("Plus wins at ₹500", C.compute({ ...s, hourlyRate: 500 }).bestId, "one:chatgpt-plus");
 }
 
-// 5. Plans already paid for are in every option at no cost and are not offered again.
+// 7. Plans already paid for are in every option at no cost, and let Sahkarmi run without free-model limits.
 {
-  const r = C.compute({ ...base, owned: ["claude-pro"], compare: ["claude-pro", "chatgpt-plus"], tasks: [email] });
+  const r = C.compute({ ...base, owned: ["claude-pro"], compare: ["claude-pro", "chatgpt-plus"], tasks: [task("email"), task("spreadsheet")] });
   near("owned plan costs nothing", opt(r, "free").toolCost, 0);
-  near("owned plan counts fully", opt(r, "free").result.typical.savedH, 7.3333, 0.001);
+  near("owned plan counts fully for asking each time", opt(r, "free").result.typical.rows[0].savedH, (PER_DAY * 10 * 3.2) / 60, 1e-9);
+  near("Sahkarmi on your own Claude Pro runs every run", opt(r, "browser").result.typical.rows[1].share, 1);
   is("owned plan not compared again", opt(r, "one:claude-pro"), undefined);
 }
 
-// 6. Odd and empty input.
+// 8. Odd and empty input.
 {
   const none = C.compute({ ...base, tasks: [] });
   is("no tasks → keep doing it by hand", none.bestId, "manual");
   near("no tasks → zero hours", opt(none, "free").result.typical.savedH, 0);
-  const manualTask = { ...email, method: "none", fit: "manual" };
-  const m = C.compute({ ...base, tasks: [manualTask], compare: ["claude-pro"] });
+  near("no tasks → 0% less time", opt(none, "free").result.typical.pct, 0);
+  const m = C.compute({ ...base, tasks: [task("meetings")], compare: ["claude-pro"] });
   near("hand-only task saves nothing", opt(m, "one:claude-pro").result.typical.savedH, 0);
-  near("hand-only task has no setup", opt(m, "one:claude-pro").result.typical.setupH, 0);
-  const zeroPay = C.compute({ ...base, monthlyPay: 0, tasks: [email] });
-  near("no pay → zero value", opt(zeroPay, "free").result.typical.value, 0);
-  is("no pay → free option still best", zeroPay.bestId, "free");
-  const junk = C.compute({ ...base, hoursPerDay: "", daysPerWeek: 99, weeksPerYear: -3, tasks: [{ ...email, freq: "abc", manualMin: -5 }] });
+  near("no saving → no setup or learning", opt(m, "one:claude-pro").result.typical.setupH, 0);
+  const zeroPay = C.compute({ ...base, monthlyPay: 0, tasks: [task("email")] });
+  near("no salary → zero value", opt(zeroPay, "free").result.typical.value, 0);
+  is("no salary → free option still best", zeroPay.bestId, "free");
+  const junk = C.compute({ ...base, people: "abc", hoursPerDay: "", daysPerWeek: 99, holidays: -3, leaveDays: 900, tasks: [task("email", { freq: "abc", manualMin: -5 })] });
+  near("bad team size → 1", opt(junk, "free").result.typical.people, 1);
   near("blank hours a day → 8", junk.schedule.hoursPerDay, 8);
   near("99 days a week → 7", junk.schedule.daysPerWeek, 7);
-  near("negative weeks → 1", junk.schedule.weeksPerYear, 1);
+  near("negative holidays → 0", junk.schedule.holidays, 0);
+  near("leave cannot exceed the year", junk.schedule.workDays, 1);
   near("junk task saves nothing", opt(junk, "free").result.typical.savedH, 0);
-  const browserTask = { ...email, method: "browser" };
-  const b = C.compute({ ...base, tasks: [browserTask] });
-  near("free chat plans do not count for browser work", opt(b, "free").result.typical.savedH, 0);
-  near("Sahkarmi counts for browser work (50%)", opt(b, "browser").result.typical.savedH, 3.6667, 0.001);
+  const b = C.compute({ ...base, tasks: [task("dataentry")] });
+  near("free chat tools cannot do website work", opt(b, "free").result.typical.savedH, 0);
+  // Sahkarmi on free models, 50% of runs: 3 a day → 62.5 runs × (0.5 × (2 + 2) + 0.5 × 20) ÷ 60.
+  near("Sahkarmi does website work by itself (50% on free models)", opt(b, "browser").result.typical.savedH, (62.5 * (20 - 12)) / 60, 1e-9);
 }
 
 console.log(failed ? `\n${failed} check(s) failed.` : "\nAll savings calculator checks passed.");

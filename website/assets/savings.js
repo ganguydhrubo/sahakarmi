@@ -3,7 +3,7 @@
 (function () {
   "use strict";
   const C = window.SavingsCalc;
-  const STORE = "sahkarmi.savings.v1";
+  const STORE = "sahkarmi.savings.v2";
   const FX_STORE = "sahkarmi.savings.fx";
 
   // The closing note under the results. Change or add lines freely: {days} and {hours} are filled in.
@@ -15,20 +15,27 @@
   };
 
   const FIELDS = {
-    monthlyPay: { min: 0, max: 100000000, label: "Monthly pay" },
-    hourlyRate: { min: 0, max: 1000000, label: "Value per hour" },
+    people: { min: 1, max: 100000, label: "People who do this work", int: true },
+    monthlyPay: { min: 0, max: 100000000, label: "Monthly salary" },
+    overheadPct: { min: 0, max: 200, label: "Extra costs" },
+    hourlyRate: { min: 0, max: 1000000, label: "Cost of one hour" },
+    leaveDays: { min: 0, max: 120, label: "Paid leave days" },
+    sickDays: { min: 0, max: 120, label: "Sick days" },
     hoursPerDay: { min: 1, max: 24, label: "Working hours a day" },
     daysPerWeek: { min: 1, max: 7, label: "Working days a week", int: true },
-    weeksPerYear: { min: 1, max: 52, label: "Working weeks a year", int: true },
+    holidays: { min: 0, max: 60, label: "Public holidays", int: true },
+    learnHours: { min: 0, max: 200, label: "Hours to learn the tools" },
     cardMarkupPct: { min: 0, max: 20, label: "Card fee" },
     limitShare: { min: 0, max: 100, label: "Work free plans can handle" },
     freq: { min: 0, max: 1000, label: "How often" },
     manualMin: { min: 0, max: 1440, label: "Minutes by hand" },
     aiMin: { min: 0, max: 1440, label: "Minutes for the AI part" },
-    reviewMin: { min: 0, max: 1440, label: "Minutes to review" },
+    reviewMin: { min: 0, max: 1440, label: "Minutes to check" },
     redoPct: { min: 0, max: 100, label: "Share redone by hand" },
     setupHours: { min: 0, max: 200, label: "Setup hours" },
   };
+  const STATE_NUMS = ["people", "monthlyPay", "overheadPct", "hourlyRate", "leaveDays", "sickDays", "hoursPerDay", "daysPerWeek", "holidays", "learnHours", "cardMarkupPct", "limitShare"];
+  const TASK_NUMS = ["freq", "manualMin", "aiMin", "reviewMin", "redoPct", "setupHours"];
 
   const $ = (sel, el = document) => el.querySelector(sel);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -51,6 +58,7 @@
     return { mode: "simple", ...structuredClone(C.DEFAULTS), tasks: C.PROFESSIONS[C.DEFAULTS.profession].tasks.map(makeTask), tasksTouched: false };
   }
   function load() {
+    try { localStorage.removeItem("sahkarmi.savings.v1"); } catch { /* old version's data */ }
     const saved = read(STORE);
     if (!saved || typeof saved !== "object" || !Array.isArray(saved.tasks)) return defaults();
     const base = defaults();
@@ -96,9 +104,10 @@
     const f = FIELDS[key];
     if (!f) return { value: raw, error: "" };
     const label = f.label;
-    if (raw === "" || raw === null || raw === undefined) return { value: key === "monthlyPay" || key === "hourlyRate" ? 0 : f.min, error: `${label} is required.` };
+    const fallback = key === "people" ? 1 : key === "monthlyPay" || key === "hourlyRate" ? 0 : (C.DEFAULTS[key] ?? f.min);
+    if (raw === "" || raw === null || raw === undefined) return { value: fallback, error: `${label} is required.` };
     const n = Number(raw);
-    if (!Number.isFinite(n)) return { value: f.min, error: `${label} must be a number.` };
+    if (!Number.isFinite(n)) return { value: fallback, error: `${label} must be a number.` };
     if (n < f.min || n > f.max) return { value: Math.min(f.max, Math.max(f.min, n)), error: `${label} must be between ${plain(f.min)} and ${plain(f.max)}.` };
     if (f.int && !Number.isInteger(n)) return { value: Math.round(n), error: `${label} must be a whole number.` };
     return { value: n, error: "" };
@@ -134,14 +143,15 @@
         <button type="button" class="btn btn-danger icon-btn" data-remove title="Remove task" aria-label="Remove task: ${esc(name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
       </div>
       <div class="grid">
-        <div class="field"><span id="l-${t.id}-freq">How often</span><div class="freq"><input type="number" inputmode="decimal" data-f="freq" min="0" max="1000" step="any" value="${esc(t.freq)}" aria-labelledby="l-${t.id}-freq" aria-describedby="e-${t.id}-freq" /><select data-f="per" aria-label="Per day, week or month">${opt({ day: "times a day", week: "times a week", month: "times a month" }, t.per)}</select></div><span class="err" id="e-${t.id}-freq" role="alert"></span></div>
+        <div class="field"><span id="l-${t.id}-freq">How often (each person)</span><div class="freq"><input type="number" inputmode="decimal" data-f="freq" min="0" max="1000" step="any" value="${esc(t.freq)}" aria-labelledby="l-${t.id}-freq" aria-describedby="e-${t.id}-freq" /><select data-f="per" aria-label="Per day, week or month">${opt({ day: "times a day", week: "times a week", month: "times a month" }, t.per)}</select></div><span class="err" id="e-${t.id}-freq" role="alert"></span></div>
         ${num("manualMin", "Minutes by hand, each time")}
-        <label class="field"><span>How AI would help</span><select data-f="method">${opt(C.METHODS, t.method)}</select></label>
+        <label class="field"><span>Kind of work</span><select data-f="method">${opt(C.METHODS, t.method)}</select></label>
+        <label class="field" data-modefield${t.method === "none" ? " hidden" : ""}><span>How the AI is used</span><select data-f="mode">${opt(C.MODES, t.mode)}</select></label>
         <label class="field"><span>How reliable is AI here?</span><select data-f="fit">${opt(C.FITS, t.fit)}</select></label>
-        ${num("aiMin", "Minutes for the AI part", "Writing the request and waiting.", " adv")}
-        ${num("reviewMin", "Minutes to review", "Checking and fixing its output.", " adv")}
+        ${num("aiMin", "Minutes for the AI part", "Your time writing the request and waiting. Not your time when it runs by itself.", " adv")}
+        ${num("reviewMin", "Minutes to check", "Checking and fixing its output.", " adv")}
         ${num("redoPct", "Share redone by hand (%)", "Runs where the AI result is unusable.", " adv")}
-        ${num("setupHours", "Setup hours (once)", "Prompts, testing, learning the tool.", " adv")}
+        ${num("setupHours", "Setup hours (once)", "Building the automation or prompt.", " adv")}
       </div>
       <div class="task-foot" data-foot></div>
     </li>`;
@@ -174,6 +184,7 @@
     for (const el of form.querySelectorAll("[data-list]")) el.checked = (state[el.dataset.list] || []).includes(el.value);
     for (const el of form.querySelectorAll("[data-list='compare']")) el.closest(".choice").hidden = state.owned.includes(el.value);
     $("#f-monthlyPay").hidden = state.payMode !== "monthly";
+    $("#f-overheadPct").hidden = state.payMode !== "monthly";
     $("#f-hourlyRate").hidden = state.payMode !== "hourly";
     const sym = C.CURRENCIES[state.currency].symbol.trim();
     for (const b of document.querySelectorAll(".cur-sym")) { b.textContent = sym; b.parentElement.style.setProperty("--pre", `${sym.length}ch`); }
@@ -196,10 +207,10 @@
   // Values the maths uses: invalid entries are replaced with the nearest valid value.
   function clean() {
     const s = { ...state };
-    for (const k of ["monthlyPay", "hourlyRate", "hoursPerDay", "daysPerWeek", "weeksPerYear", "cardMarkupPct", "limitShare"]) s[k] = check(k, state[k]).value;
+    for (const k of STATE_NUMS) s[k] = check(k, state[k]).value;
     s.tasks = state.tasks.map((t, i) => {
       const c = { ...t, name: String(t.name).trim() || C.TASK_TYPES[t.type]?.label || `Task ${i + 1}` };
-      for (const f of ["freq", "manualMin", "aiMin", "reviewMin", "redoPct", "setupHours"]) c[f] = check(f, t[f]).value;
+      for (const f of TASK_NUMS) c[f] = check(f, t[f]).value;
       return c;
     });
     return s;
@@ -214,34 +225,49 @@
     const pick = r.options.find((o) => o.id === pickId) || best;
     const T = best.result.typical;
     const hasTasks = r.tasks.length > 0;
+    const team = T.people > 1;
 
-    animate($("#sum-hours"), T.savedH, (v) => hrs(v));
+    $("#sum-kicker").textContent = best.id === "manual" ? "Your result" : `With ${best.short}${team ? ` · team of ${plain(T.people)}` : ""}`;
+    animate($("#sum-pct"), T.pct * 100, (v) => `${plain(v)}%`);
+    $("#sum-sub").textContent = hasTasks ? `on these tasks: ${hrs(T.manualH)} hours a month by hand, ${hrs(T.autoH)} with AI${team ? `, for ${plain(T.people)} people` : ""}.` : "on these tasks.";
     animate($("#sum-day"), T.perDay, (v) => hrs(v, 1));
-    animate($("#sum-week"), T.perWeek, (v) => hrs(v, 1));
+    animate($("#sum-month"), T.savedH, (v) => hrs(v));
     animate($("#sum-year"), T.perYear, (v) => hrs(v, 0));
-    animate($("#sum-value"), T.value, (v) => money(v));
-    $("#sum-cost").textContent = best.toolCost ? money(best.toolCost) : `${money(0)} (free)`;
-    animate($("#sum-net"), T.net, (v) => money(v));
+    animate($("#sum-value"), T.valueYear, (v) => money(v));
+    $("#sum-cost").textContent = best.toolCost ? money(best.toolCost * 12) : `${money(0)} (free)`;
+    animate($("#sum-net"), T.netYear, (v) => money(v));
     $("#sum-net-row").classList.toggle("neg", T.net < 0);
-    $("#sum-kicker").textContent = best.id === "manual" ? "Hours back each month" : `Hours back each month with ${best.short}`;
-    $("#mini-hours").textContent = `${hrs(T.savedH)} h`;
-    $("#mini-net").textContent = money(T.net);
+    $("#mini-pct").textContent = `${plain(T.pct * 100)}%`;
+    $("#mini-net").textContent = money(T.netYear);
+
+    const facts = [];
+    if (hasTasks && T.savedH > 0) {
+      if (T.peopleEquiv >= 0.05) {
+        const n = plain(T.peopleEquiv, T.peopleEquiv < 10 ? 1 : 0);
+        facts.push(T.peopleEquiv < 0.95 ? `Like adding <b>${n} of a full-time person</b>, without hiring.` : `Like <b>${n} extra full-time ${n === "1" ? "person" : "people"}</b>, without hiring.`);
+      }
+      if (T.awayH > 0.05) facts.push(T.keepsRunningH > 0.05
+        ? `On leave and sick days, <b>${hrs(T.awayH)} hours a month</b> of this work needs cover today. <b>${hrs(T.keepsRunningH)} hours</b> of it would keep running by itself.`
+        : `On leave and sick days, <b>${hrs(T.awayH)} hours a month</b> of this work needs cover today. Set tasks to run by themselves to keep them going.`);
+      facts.push(`One worked hour really costs <b>${money(r.hourly)}</b>, counting extra costs and paid days off.`);
+    }
+    $("#sum-facts").innerHTML = facts.map((f) => `<li><span>${f}</span></li>`).join("");
 
     const rec = $("#sum-rec");
     rec.classList.remove("warn");
     if (!hasTasks) { rec.textContent = "Add a task to see your savings."; rec.classList.add("warn"); }
-    else if (best.id === "manual") { rec.innerHTML = "<b>Keep these tasks by hand for now.</b> With your numbers, none of the options saves time for less than it costs. Try the Detailed view to adjust review and redo time."; rec.classList.add("warn"); }
+    else if (best.id === "manual") { rec.innerHTML = "<b>Keep these tasks by hand for now.</b> With your numbers, none of the options saves time for less than it costs. Try setting structured tasks to run by themselves, or adjust checking and redo time in the Detailed view."; rec.classList.add("warn"); }
     else rec.innerHTML = recommendation(r, best);
-    if (hasTasks && r.hourly === 0) { rec.innerHTML += " <b>Enter your pay</b> to see what the time is worth."; rec.classList.add("warn"); }
+    if (hasTasks && r.hourly === 0) { rec.innerHTML += " <b>Enter a salary</b> to see what the time is worth."; rec.classList.add("warn"); }
 
     $("#sum-scen").innerHTML = ["low", "typical", "high"].map((l) => {
       const x = best.result[l];
-      return `<div class="${l === "typical" ? "on" : ""}">${C.SCENARIOS[l].label}<b>${hrs(x.savedH)} h</b>${money(x.net)} / Month</div>`;
+      return `<div class="${l === "typical" ? "on" : ""}">${C.SCENARIOS[l].label}<b>${plain(x.pct * 100)}% less</b>${money(x.netYear)} / Year</div>`;
     }).join("");
 
     renderBars(r, best, pick);
     renderTable(r, best, pick);
-    renderTaskSection(r, pick, s);
+    renderTaskSection(r, pick);
     renderFormulas(r, pick, s);
     renderPrices(s);
     renderFoot(r, best);
@@ -249,7 +275,7 @@
 
     clearTimeout(liveTimer);
     liveTimer = setTimeout(() => {
-      $("#live").textContent = hasTasks ? `Typical case: ${hrs(T.savedH)} hours saved a month, net benefit ${money(T.net)} a month, best value ${best.label}.` : "No tasks added.";
+      $("#live").textContent = hasTasks ? `Typical case: ${plain(T.pct * 100)}% less time, ${hrs(T.savedH)} hours saved a month, net benefit ${money(T.netYear)} a year, best value ${best.label}.` : "No tasks added.";
     }, 900);
   }
 
@@ -257,30 +283,29 @@
     const T = best.result.typical;
     const paid = r.options.filter((o) => (o.kind === "one" || o.kind === "multi") && !o.priceMissing)
       .sort((a, b) => b.result.typical.net - a.result.typical.net)[0];
-    let text = `<b>Best value: ${esc(cap(best.short))}${best.kind === "one" ? " on top of free tools" : ""}.</b> About ${hrs(T.savedH)} hours a month, worth ${money(T.value)}.`;
+    let text = `<b>Best value: ${esc(cap(best.short))}.</b> ${hrs(T.savedH)} hours a month back, worth ${money(T.valueYear)} a year.`;
     if (best.toolCost === 0 && paid && paid.result.typical.savedH > T.savedH) {
       const extraH = paid.result.typical.savedH - T.savedH, gap = T.net - paid.result.typical.net;
       text += gap > 0
-        ? ` ${esc(cap(paid.short))} would save ${hrs(extraH)} more hours, but costs ${money(gap)} a month more than that time is worth to you.`
+        ? ` ${esc(cap(paid.short))} would save ${hrs(extraH)} more hours a month, but costs ${money(gap * 12)} a year more than that time is worth.`
         : ` ${esc(cap(paid.short))} saves a little more, but not enough to beat the free option by more than 5%.`;
     } else if (best.toolCost > 0) {
       const free = r.options.find((o) => o.id === "browser");
-      if (free) text += ` That beats free tools by ${money(T.net - free.result.typical.net)} a month after paying ${money(best.toolCost)} for the plan.`;
+      if (free) text += ` That is ${money((T.net - free.result.typical.net) * 12)} a year more than free tools, after paying ${money(best.toolCost * 12)} a year for the plan.`;
       if (T.hoursToCover !== null) text += ` It pays for itself once it saves ${hrs(T.hoursToCover, 1)} hours a month.`;
     }
     if (best.limitedTools.length) text += " Free plans have usage limits, so only part of your runs are counted.";
+    if (best.notAuto.length) text += ` This option cannot run ${esc(best.notAuto.join(", "))} by itself, so it is counted as asking an AI each time.`;
     return text;
   }
 
   function renderBars(r, best, pick) {
-    const rows = r.options;
-    const vals = rows.map((o) => o.result.typical.net);
-    const max = Math.max(1, ...vals.map(Math.abs));
-    const hasNeg = vals.some((v) => v < 0), hasPos = vals.some((v) => v > 0);
-    const zero = hasNeg && hasPos ? (Math.abs(Math.min(...vals)) / (Math.abs(Math.min(...vals)) + Math.max(...vals))) * 100 : hasNeg ? 100 : 0;
-    const span = hasNeg && hasPos ? Math.abs(Math.min(...vals)) + Math.max(...vals) : max;
-    $("#bars").innerHTML = rows.map((o) => {
-      const v = o.result.typical.net;
+    const vals = r.options.map((o) => o.result.typical.netYear);
+    const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+    const span = Math.max(1, hi - lo);
+    const zero = (-lo / span) * 100;
+    $("#bars").innerHTML = r.options.map((o, i) => {
+      const v = vals[i];
       const w = (Math.abs(v) / span) * 100;
       const left = v >= 0 ? zero : zero - w;
       const cls = v < 0 ? "neg" : o.id === best.id ? "best" : "";
@@ -295,18 +320,20 @@
       const L = o.result.low, T = o.result.typical, H = o.result.high;
       const notes = [];
       if (o.id === "manual") notes.push("The starting point: no AI.");
-      if (o.kind === "browser") notes.push("Adds Sahkarmi's built-in browser for web tasks. Made by the team behind this calculator.");
+      if (o.kind === "browser") notes.push("Sahkarmi runs tasks on a schedule and works on websites. Made by the team behind this calculator.");
       if (o.limitedTools.length) notes.push(`Free limits cap part of your runs (${esc(state.limitShare)}% counted): ${esc(o.limitedTools.join(", "))}.`);
+      if (o.notAuto.length && o.id !== "manual") notes.push(`Cannot run by itself, so counted as asking each time: ${esc(o.notAuto.join(", "))}.`);
       if (o.uncovered.length && o.id !== "manual") notes.push(`Not counted for: ${esc(o.uncovered.join(", "))}.`);
       if (o.plan && C.TOOLS.find((t) => t.id === o.plan).from) notes.push("Lowest tier price; higher tiers cost more.");
+      if (T.people > 1 && o.toolCost > 0) notes.push(`${money(o.perPerson)} per person.`);
       if (state.owned.length && o.id !== "manual") notes.push("Plans you already pay for are included at no extra cost.");
       const be = o.id === "manual" ? "—" : T.net <= 0 ? "Does not" : T.breakEvenMonths === 0 ? "Right away" : T.breakEvenMonths < 1 ? "Within a month" : `${plain(T.breakEvenMonths, 1)} months`;
       const roi = T.roi === null ? (o.id === "manual" ? "—" : "No plan cost") : pct(T.roi);
       return `<tr class="${o.id === best.id ? "best" : ""} ${o.id === pick.id ? "pick" : ""}">
         <td>${esc(o.label)}${o.id === best.id ? '<br><span class="tag">Best value</span>' : ""}${notes.length ? `<span class="note">${notes.join(" ")}</span>` : ""}</td>
         <td class="num" data-label="New cost / Month">${o.priceMissing ? "Price not available" : money(o.toolCost)}</td>
+        <td class="num" data-label="Less time"><b>${plain(T.pct * 100)}%</b><span class="note">${plain(L.pct * 100)}% to ${plain(H.pct * 100)}%</span></td>
         <td class="num" data-label="Hours saved / Month">${hrs(T.savedH)}<span class="note">${hrs(L.savedH)} to ${hrs(H.savedH)}</span></td>
-        <td class="num" data-label="Value / Month">${money(T.value)}</td>
         <td class="num ${T.net < 0 ? "neg-v" : T.net > 0 ? "pos-v" : ""}" data-label="Net / Month"><b>${money(T.net)}</b><span class="note">${money(L.net)} to ${money(H.net)}</span></td>
         <td class="num" data-label="First year">${money(T.firstYear)}<span class="note">after setup ${money(T.setupCost)}</span></td>
         <td class="num" data-label="Pays back">${be}</td>
@@ -314,20 +341,24 @@
     }).join("");
   }
 
-  function suitability(task, row) {
-    if (task.method === "none" || task.fit === "manual") return ['manual', "Not reliable to automate"];
+  function howItRuns(task, row) {
+    if (task.method === "none" || task.fit === "manual") return ["manual", "Not reliable to automate"];
     if (row.share === 0) return ["manual", "Not covered by these tools"];
     if (row.slower) return ["manual", "AI not faster here"];
-    const base = task.fit === "good" ? ["good", "Automatable, spot-check"] : ["review", "AI drafts, needs review"];
-    if (row.share < 1) base[1] += ` · ${plain(row.share * 100)}% of runs (free limits)`;
-    return base;
+    let out = row.auto
+      ? (task.fit === "good" ? ["good", "Runs by itself, you spot-check"] : ["good", "Runs by itself, you check each result"])
+      : (task.fit === "good" ? ["review", "You ask AI, spot-check"] : ["review", "You ask AI, review each time"]);
+    if (task.mode === "auto" && !row.auto) out = ["review", "You ask AI each time (no scheduling here)"];
+    if (row.share < 1) out[1] += ` · ${plain(row.share * 100)}% of runs (free limits)`;
+    return out;
   }
 
-  function renderTaskSection(r, pick, s) {
+  function renderTaskSection(r, pick) {
     fillSelect($("#pick"), r.options.map((o) => [o.id, o.label]), pick.id);
-    $("#task-sub").textContent = `Typical case with: ${pick.label}.`;
-    const T = pick.result.typical;
-    const max = Math.max(0.01, ...T.rows.map((x) => x.manualH));
+    const T = pick.result.typical, P = T.people;
+    $("#task-sub").textContent = `Typical case with: ${pick.label}${P > 1 ? `, for ${plain(P)} people` : ""}.`;
+    $("#tb-team").textContent = P > 1 ? `Whole team of ${plain(P)}` : "";
+    const max = Math.max(0.01, ...T.rows.map((x) => x.manualH * P));
     const byId = Object.fromEntries(r.tasks.map((t) => [t.id, t]));
     if (!T.rows.length) {
       $("#tbars").innerHTML = `<li class="empty" style="display:block">No tasks yet.</li>`;
@@ -337,16 +368,17 @@
     $("#tbars").innerHTML = T.rows.map((x) => {
       const t = byId[x.id];
       return `<li><span>${esc(t.name)}</span><span class="pair">
-        <span class="row"><span class="track"><i class="man" style="width:${(x.manualH / max) * 100}%"></i></span><span>${hrs(x.manualH)} h</span></span>
-        <span class="row"><span class="track"><i class="ai" style="width:${(x.autoH / max) * 100}%"></i></span><span>${hrs(x.autoH)} h</span></span></span></li>`;
+        <span class="row"><span class="track"><i class="man" style="width:${(x.manualH * P / max) * 100}%"></i></span><span>${hrs(x.manualH * P)} h</span></span>
+        <span class="row"><span class="track"><i class="ai" style="width:${(x.autoH * P / max) * 100}%"></i></span><span>${hrs(x.autoH * P)} h</span></span></span></li>`;
     }).join("");
     $("#ttable tbody").innerHTML = T.rows.map((x) => {
       const t = byId[x.id];
-      const [cls, label] = suitability(t, x);
-      return `<tr><td>${esc(t.name)}</td><td class="num" data-label="Runs / Month">${plain(x.runs, 1)}</td><td class="num" data-label="By hand">${hrs(x.manualH)} h</td>
-        <td class="num" data-label="With AI">${hrs(x.autoH)} h</td><td class="num" data-label="Saved"><b>${hrs(x.savedH)} h</b></td>
-        <td class="wide" data-label="Suitability"><span class="pill ${cls}">${esc(label)}</span></td></tr>`;
-    }).join("") + `<tr><td><b>Total</b></td><td class="num" data-label="Runs / Month"></td><td class="num" data-label="By hand"><b>${hrs(T.manualH)} h</b></td><td class="num" data-label="With AI"><b>${hrs(T.autoH)} h</b></td><td class="num" data-label="Saved"><b>${hrs(T.savedH)} h</b></td><td class="wide" data-label="Cost by hand">By hand costs ${money(T.manualCost)} of your time a month</td></tr>`;
+      const [cls, label] = howItRuns(t, x);
+      return `<tr><td>${esc(t.name)}<span class="note">${plain(x.runs * P, 1)} runs a month</span></td><td class="num" data-label="By hand">${hrs(x.manualH * P)} h</td>
+        <td class="num" data-label="With AI">${hrs(x.autoH * P)} h</td><td class="num" data-label="Saved"><b>${hrs(x.savedH * P)} h</b></td>
+        <td class="num" data-label="Less time"><b>${x.manualH > 0 ? plain((x.savedH / x.manualH) * 100) : 0}%</b></td>
+        <td class="wide" data-label="How it runs"><span class="pill ${cls}">${esc(label)}</span></td></tr>`;
+    }).join("") + `<tr><td><b>Total</b></td><td class="num" data-label="By hand"><b>${hrs(T.manualH)} h</b></td><td class="num" data-label="With AI"><b>${hrs(T.autoH)} h</b></td><td class="num" data-label="Saved"><b>${hrs(T.savedH)} h</b></td><td class="num" data-label="Less time"><b>${plain(T.pct * 100)}%</b></td><td class="wide" data-label="Cost by hand">By hand costs ${money(T.manualCost)} of work time a month</td></tr>`;
   }
 
   function renderFoot(r, best) {
@@ -355,36 +387,44 @@
     for (const li of document.querySelectorAll("#tasks .task")) {
       const t = r.tasks.find((x) => x.id === li.dataset.id), x = byId[li.dataset.id];
       if (!t || !x) continue;
-      const [cls, label] = suitability(t, x);
-      li.querySelector("[data-foot]").innerHTML = `<span class="pill ${cls}">${esc(label)}</span><span>${plain(x.runs, 1)} runs a month · saves <b>${hrs(x.savedH)} h</b> a month (typical, with ${esc(best.short)})</span>`;
+      const [cls, label] = howItRuns(t, x);
+      const p = x.manualH > 0 ? plain((x.savedH / x.manualH) * 100) : 0;
+      li.querySelector("[data-foot]").innerHTML = `<span class="pill ${cls}">${esc(label)}</span><span><b>${p}% less time</b> · saves ${hrs(x.savedH)} h a month per person (typical, with ${esc(best.short)})</span>`;
     }
   }
 
   function renderFormulas(r, pick, s) {
-    const sch = r.schedule, T = pick.result.typical, c = state.currency;
+    const sch = r.schedule, T = pick.result.typical, P = T.people, c = state.currency;
     const first = r.tasks[0], row = first && T.rows.find((x) => x.id === first.id);
-    const hourlyLine = s.payMode === "hourly"
-      ? `Value of one hour = ${money(r.hourly, state.currency, 2)} (entered by you)`
-      : `Hourly value = monthly pay × 12 ÷ (hours a day × days a week × weeks a year) = ${money(s.monthlyPay)} × 12 ÷ (${plain(sch.hoursPerDay, 1)} × ${plain(sch.daysPerWeek)} × ${plain(sch.weeksPerYear)}) = ${money(r.hourly, state.currency, 2)}`;
-    const items = [["Value of your time", hourlyLine]];
+    const items = [
+      ["Business days a year", `days a week × 52 − public holidays = ${plain(sch.daysPerWeek)} × 52 − ${plain(sch.holidays)} = ${plain(sch.businessDays)}`],
+      ["Days actually worked", `business days − paid leave − sick days = ${plain(sch.businessDays)} − ${plain(s.leaveDays, 1)} − ${plain(s.sickDays, 1)} = ${plain(sch.workDays, 1)} days, ${plain(sch.hoursPerYear, 1)} hours a year`],
+      ["Real cost of one worked hour", s.payMode === "hourly"
+        ? `${money(r.hourly, c, 2)} (entered by you, all-in)`
+        : `salary × 12 × (1 + extra costs) ÷ hours worked = ${money(s.monthlyPay)} × 12 × ${plain(1 + s.overheadPct / 100, 2)} ÷ ${plain(sch.hoursPerYear, 1)} = ${money(r.hourly, c, 2)}`],
+    ];
     if (first && row) {
-      const runsLine = first.per === "day" ? `${plain(first.freq, 2)} a day × ${plain(sch.daysPerWeek)} days × ${plain(sch.weeksPerYear)} weeks ÷ 12`
-        : first.per === "week" ? `${plain(first.freq, 2)} a week × ${plain(sch.weeksPerYear)} weeks ÷ 12` : `${plain(first.freq, 2)} a month`;
-      items.push([`Runs a month (${first.name})`, `${runsLine} = ${plain(row.runs, 1)}`]);
-      items.push(["Hours by hand", `runs × minutes by hand ÷ 60 = ${plain(row.runs, 1)} × ${plain(first.manualMin, 1)} ÷ 60 = ${hrs(row.manualH)} h`]);
+      const runsLine = first.per === "day" ? `${plain(first.freq, 2)} a day × ${plain(sch.businessDays)} business days ÷ 12`
+        : first.per === "week" ? `${plain(first.freq, 2)} a week × ${plain(sch.businessDays / sch.daysPerWeek, 1)} business weeks ÷ 12` : `${plain(first.freq, 2)} a month`;
+      items.push([`Runs a month, each person (${first.name})`, `${runsLine} = ${plain(row.runs, 1)}`]);
+      items.push(["Hours by hand", `runs × minutes by hand ÷ 60 = ${plain(row.runs, 1)} × ${plain(first.manualMin, 1)} ÷ 60 = ${hrs(row.manualH, 2)} h`]);
       if (row.share > 0 && !row.slower) {
-        items.push(["Minutes per run with AI", `AI minutes + review minutes + redo share × minutes by hand = ${plain(first.aiMin, 1)} + ${plain(first.reviewMin, 1)} + ${plain(first.redoPct)}% × ${plain(first.manualMin, 1)} = ${plain(row.aiRunMin, 2)} min`]);
-        items.push(["Hours with AI", `runs × (share AI can take × minutes with AI + rest × minutes by hand) ÷ 60 = ${plain(row.runs, 1)} × (${plain(row.share * 100)}% × ${plain(row.aiRunMin, 2)} + ${plain((1 - row.share) * 100)}% × ${plain(first.manualMin, 1)}) ÷ 60 = ${hrs(row.autoH)} h`]);
-      } else items.push(["Hours with AI", `No saving counted for this task with this option, so it stays at ${hrs(row.autoH)} h`]);
+        items.push(["Your minutes per run with AI", row.auto
+          ? `runs by itself, so only checking + redo share × minutes by hand = ${plain(first.reviewMin, 1)} + ${plain(first.redoPct)}% × ${plain(first.manualMin, 1)} = ${plain(row.aiRunMin, 2)} min`
+          : `AI part + checking + redo share × minutes by hand = ${plain(first.aiMin, 1)} + ${plain(first.reviewMin, 1)} + ${plain(first.redoPct)}% × ${plain(first.manualMin, 1)} = ${plain(row.aiRunMin, 2)} min`]);
+        items.push(["Hours with AI", `runs × (share AI takes × minutes with AI + rest × minutes by hand) ÷ 60 = ${plain(row.runs, 1)} × (${plain(row.share * 100)}% × ${plain(row.aiRunMin, 2)} + ${plain((1 - row.share) * 100)}% × ${plain(first.manualMin, 1)}) ÷ 60 = ${hrs(row.autoH, 2)} h`]);
+      } else items.push(["Hours with AI", `No saving counted for this task with this option, so it stays at ${hrs(row.autoH, 2)} h`]);
     }
-    items.push(["Hours saved a month (all tasks)", `hours by hand − hours with AI = ${hrs(T.manualH)} − ${hrs(T.autoH)} = ${hrs(T.savedH)} h`]);
-    items.push(["Value of the time saved", `hours saved × hourly value = ${hrs(T.savedH, 2)} × ${money(r.hourly, state.currency, 2)} = ${money(T.value)} a month`]);
-    items.push(["New plan cost", pick.toolCost ? `${money(pick.toolCost)} a month in ${c}${state.addGst ? ", including 18% GST on US dollar plans" : ""}${Number(s.cardMarkupPct) ? ` and a ${plain(s.cardMarkupPct, 1)}% card fee` : ""}` : `${money(0)}: no new plan`]);
-    items.push(["Net benefit", `value − plan cost = ${money(T.value)} − ${money(pick.toolCost || 0)} = ${money(T.net)} a month`]);
-    items.push(["First year", `net benefit × 12 − setup time (${hrs(T.setupH, 1)} h × ${money(r.hourly)}) = ${money(T.firstYear)}`]);
-    items.push(["Return in year one", T.roi === null ? "No plan to pay for, so there is no return on money spent" : `(value × 12 − year cost) ÷ year cost, where year cost = plan × 12 + setup = (${money(T.value * 12)} − ${money(pick.toolCost * 12 + T.setupCost)}) ÷ ${money(pick.toolCost * 12 + T.setupCost)} = ${pct(T.roi)}`]);
+    items.push(["Hours saved a month (all tasks)", `(hours by hand − hours with AI)${P > 1 ? ` × ${plain(P)} people` : ""} = ${hrs(T.manualH)} − ${hrs(T.autoH)} = ${hrs(T.savedH, 2)} h, ${plain(T.pct * 100)}% less time`]);
+    items.push(["Value of the time saved", `hours saved × cost of an hour = ${hrs(T.savedH, 2)} × ${money(r.hourly, c, 2)} = ${money(T.value)} a month, ${money(T.valueYear)} a year`]);
+    items.push(["New plan cost", pick.toolCost ? `${money(pick.perPerson)} per person${P > 1 ? ` × ${plain(P)} people` : ""} = ${money(pick.toolCost)} a month in ${c}${state.addGst ? ", including 18% GST on US dollar plans" : ""}${Number(s.cardMarkupPct) ? ` and a ${plain(s.cardMarkupPct, 1)}% card fee` : ""}` : `${money(0)}: no new plan`]);
+    items.push(["Net benefit", `value − plan cost = ${money(T.value)} − ${money(pick.toolCost || 0)} = ${money(T.net)} a month, ${money(T.netYear)} a year`]);
+    items.push(["First year", `net benefit × 12 − setup (${hrs(T.setupH, 1)} h: each task's setup once, plus ${plain(s.learnHours, 1)} h learning × ${plain(P)} ${P > 1 ? "people" : "person"}) × ${money(r.hourly, c, 2)} = ${money(T.firstYear)}`]);
+    items.push(["Like extra people", `hours saved a month ÷ hours one person works a month = ${hrs(T.savedH, 2)} ÷ ${plain(sch.hoursPerMonth, 1)} = ${plain(T.peopleEquiv, 2)}`]);
+    items.push(["Leave and sick-day cover", `hours by hand × days away ÷ business days = ${hrs(T.manualH)} × ${plain(sch.awayDays, 1)} ÷ ${plain(sch.businessDays)} = ${hrs(T.awayH, 1)} h a month; ${hrs(T.keepsRunningH, 1)} h of it runs by itself`]);
+    items.push(["Return in year one", T.roi === null ? "No plan to pay for, so there is no return on money spent" : `(value × 12 − year cost) ÷ year cost, where year cost = plan × 12 + setup = (${money(T.valueYear)} − ${money(pick.toolCost * 12 + T.setupCost)}) ÷ ${money(pick.toolCost * 12 + T.setupCost)} = ${pct(T.roi)}`]);
     if (state.savedTimeUse === "cash") items.push(["Cash saving", `saved hours replace paid work: ${money(T.cash)} − plan cost ${money(pick.toolCost || 0)} = ${money(T.cashNet)} a month`]);
-    else items.push(["Cash saving", `${money(0)} in cash: the time is productivity value. The plan cost, ${money(pick.toolCost || 0)} a month, is real money`]);
+    else items.push(["Cash saving", `${money(0)} in cash: the time is freed for other work. The plan cost, ${money(pick.toolCost || 0)} a month, is real money`]);
     $("#formulas").innerHTML = items.map(([h, f]) => `<li>${esc(h)}<code>${esc(f)}</code></li>`).join("");
   }
 
@@ -394,10 +434,11 @@
     const what = { chat: "Chat", browser: "Browser", code: "Code" };
     $("#prices tbody").innerHTML = C.TOOLS.map((t) => {
       const cost = C.planCost(t, s, fx);
+      const runs = (t.auto || []).length ? `<span class="note">runs by itself: ${t.auto.map((m) => what[m].toLowerCase()).join(", ")}</span>` : "";
       return `<tr><td><a href="${esc(t.source)}" target="_blank" rel="noopener noreferrer">${esc(t.name)}</a><span class="note">${esc(t.vendor)}</span></td>
         <td class="num" data-label="Listed price">${esc(listed(t))}${t.from ? '<span class="note">lowest tier</span>' : ""}</td>
         <td class="num" data-label="Your cost / Month">${t.monthly ? money(cost) : "Free"}</td>
-        <td class="methods" data-label="Counted for">${t.methods.map((m) => what[m]).join(", ")}${t.limited ? '<span class="note">usage limits</span>' : ""}</td>
+        <td class="methods" data-label="Counted for">${t.methods.map((m) => what[m]).join(", ")}${runs}${t.limited ? '<span class="note">usage limits</span>' : ""}</td>
         <td class="wide" data-label="Notes"><span class="note" style="margin:0">${esc(t.note)}${t.monthly ? ` ${esc(C.TAX_NOTES[t.vendor] || "")}` : ""}</span></td></tr>`;
     }).join("");
     $("#fx-state").textContent = `Exchange rates from ${dateText(fx.date)}: 1 US dollar = ${C.CURRENCIES.INR.symbol}${plain(fx.rates.INR, 2)}.`;
@@ -438,7 +479,7 @@
     }
     state.currency = next;
     syncForm();
-    toast(`Pay converted to ${C.CURRENCIES[next].label} at the ${dateText(fx.date)} rate.`);
+    toast(`Salary converted to ${C.CURRENCIES[next].label} at the ${dateText(fx.date)} rate.`);
   }
 
   function toast(text, undo) {
@@ -485,12 +526,13 @@
         syncForm();
         changed();
       } else if (el.dataset.f && el.tagName === "SELECT") {
-        const t = state.tasks.find((x) => x.id === el.closest(".task").dataset.id);
+        const li = el.closest(".task"), t = state.tasks.find((x) => x.id === li.dataset.id);
         t[el.dataset.f] = el.value;
         if (el.dataset.f === "method" && el.value === "none") t.fit = "manual";
         if (el.dataset.f === "fit" && el.value !== "manual" && t.method === "none") t.method = "chat";
-        el.closest(".task").querySelector('[data-f="fit"]').value = t.fit;
-        el.closest(".task").querySelector('[data-f="method"]').value = t.method;
+        li.querySelector('[data-f="fit"]').value = t.fit;
+        li.querySelector('[data-f="method"]').value = t.method;
+        li.querySelector("[data-modefield]").hidden = t.method === "none";
         state.tasksTouched = true;
         changed();
       }

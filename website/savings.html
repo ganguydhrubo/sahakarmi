@@ -76,7 +76,7 @@
     .prefix { position: relative; }
     .prefix > b { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; pointer-events: none; font-size: 15px; }
     .prefix input { padding-left: calc(18px + var(--pre, 1ch)); }
-    .seg { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg); }
+    .seg { align-self: flex-start; display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg); }
     .seg label { position: relative; }
     .seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
     .seg span { display: block; white-space: nowrap; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
@@ -125,7 +125,12 @@
     .per { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 16px; }
     .per div { padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--bg) 60%, transparent); border: 1px solid var(--line); text-align: center; }
     .per b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
-    .per span { font-size: 12px; color: var(--muted); }
+    .per span { font-size: 12px; color: var(--muted); line-height: 1.25; display: block; }
+    .sub { margin: 4px 0 0; color: var(--text-2); font-size: 15px; }
+    .facts { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+    .facts li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--text-2); line-height: 1.4; }
+    .facts li::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--saffron); }
+    .facts b { color: var(--text); }
     .money { display: grid; gap: 8px; margin: 0 0 14px; }
     .money div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
     .money dt { color: var(--text-2); font-size: 15px; }
@@ -225,6 +230,9 @@
       .resp, .resp tbody, .resp tr, .resp td { display: block; width: 100%; }
       .resp tr { border: 1px solid var(--line); border-radius: 14px; padding: 6px 4px; margin-bottom: 10px; }
       .resp td { border: 0; padding: 6px 10px; display: flex; justify-content: space-between; gap: 12px; text-align: right; white-space: normal; }
+      .resp td { flex-wrap: wrap; }
+      .resp td .note { flex-basis: 100%; text-align: right; }
+      .resp td:first-child .note, .resp td.wide .note { text-align: left; }
       .resp td::before { content: attr(data-label); color: var(--muted); font-size: 13px; font-weight: 700; text-align: left; flex: none; max-width: 48%; }
       .resp td:first-child { display: block; text-align: left; font-weight: 700; }
       .resp td:first-child::before { display: none; }
@@ -278,27 +286,32 @@
         </div>
 
         <section class="card" aria-labelledby="s1">
-          <div class="card-head"><span class="step" aria-hidden="true">1</span><div><h2 id="s1">About your work</h2><p class="help" style="margin:0">Your pay sets what an hour of your time is worth.</p></div></div>
+          <div class="card-head"><span class="step" aria-hidden="true">1</span><div><h2 id="s1">About your work</h2><p class="help" style="margin:0">Pay, extra costs and days off set what one worked hour really costs.</p></div></div>
           <div class="grid">
             <label class="field"><span>Profession</span><select id="profession" data-k="profession"></select></label>
+            <label class="field"><span>People who do this work*</span><input type="number" inputmode="decimal" data-k="people" min="1" max="100000" step="1" aria-describedby="e-people" /><span class="err" id="e-people" role="alert"></span><span class="help">1 for just you. Your team size for a company view.</span></label>
             <div class="field">
-              <span class="legend" id="pay-legend">Value of your time</span>
+              <span class="legend" id="pay-legend">Cost of their time</span>
               <div class="seg" role="radiogroup" aria-labelledby="pay-legend">
-                <label><input type="radio" name="payMode" value="monthly" data-k="payMode" checked /><span>Monthly pay</span></label>
+                <label><input type="radio" name="payMode" value="monthly" data-k="payMode" checked /><span>Monthly salary</span></label>
                 <label><input type="radio" name="payMode" value="hourly" data-k="payMode" /><span>Per hour</span></label>
               </div>
             </div>
-            <label class="field" id="f-monthlyPay"><span>Monthly pay or salary (before tax)*</span>
-              <span class="prefix"><b class="cur-sym" aria-hidden="true">₹</b><input type="number" inputmode="decimal" data-k="monthlyPay" min="0" max="100000000" step="any" placeholder="Enter monthly pay" aria-describedby="e-monthlyPay" /></span>
+            <label class="field" id="f-monthlyPay"><span>Monthly salary per person (CTC)*</span>
+              <span class="prefix"><b class="cur-sym" aria-hidden="true">₹</b><input type="number" inputmode="decimal" data-k="monthlyPay" min="0" max="100000000" step="any" placeholder="Enter monthly salary" aria-describedby="e-monthlyPay" /></span>
               <span class="err" id="e-monthlyPay" role="alert"></span></label>
-            <label class="field" id="f-hourlyRate" hidden><span>Value of one hour of your time*</span>
-              <span class="prefix"><b class="cur-sym" aria-hidden="true">₹</b><input type="number" inputmode="decimal" data-k="hourlyRate" min="0" max="1000000" step="any" placeholder="Enter value per hour" aria-describedby="e-hourlyRate" /></span>
+            <label class="field" id="f-overheadPct"><span>Extra costs on top of salary (%)</span><input type="number" inputmode="decimal" data-k="overheadPct" min="0" max="200" step="1" aria-describedby="e-overheadPct" /><span class="err" id="e-overheadPct" role="alert"></span><span class="help">Office, laptop, software, HR and management. A common rule of thumb is 25–40%.</span></label>
+            <label class="field" id="f-hourlyRate" hidden><span>All-in cost of one hour of work*</span>
+              <span class="prefix"><b class="cur-sym" aria-hidden="true">₹</b><input type="number" inputmode="decimal" data-k="hourlyRate" min="0" max="1000000" step="any" placeholder="Enter cost per hour" aria-describedby="e-hourlyRate" /></span>
               <span class="err" id="e-hourlyRate" role="alert"></span></label>
+            <label class="field"><span>Paid leave days a year</span><input type="number" inputmode="decimal" data-k="leaveDays" min="0" max="120" step="1" aria-describedby="e-leaveDays" /><span class="err" id="e-leaveDays" role="alert"></span><span class="help">Earned, casual and other paid leave.</span></label>
+            <label class="field"><span>Sick days a year</span><input type="number" inputmode="decimal" data-k="sickDays" min="0" max="120" step="1" aria-describedby="e-sickDays" /><span class="err" id="e-sickDays" role="alert"></span><span class="help">Days off ill. The work still has to be done or covered.</span></label>
           </div>
           <div class="grid adv" style="margin-top:14px">
             <label class="field"><span>Working hours a day</span><input type="number" inputmode="decimal" data-k="hoursPerDay" min="1" max="24" step="0.5" aria-describedby="e-hoursPerDay" /><span class="err" id="e-hoursPerDay" role="alert"></span></label>
-            <label class="field"><span>Working days a week</span><input type="number" inputmode="numeric" data-k="daysPerWeek" min="1" max="7" step="1" aria-describedby="e-daysPerWeek" /><span class="err" id="e-daysPerWeek" role="alert"></span></label>
-            <label class="field"><span>Working weeks a year</span><input type="number" inputmode="numeric" data-k="weeksPerYear" min="1" max="52" step="1" aria-describedby="e-weeksPerYear" /><span class="err" id="e-weeksPerYear" role="alert"></span><span class="help">48 leaves four weeks for leave and holidays.</span></label>
+            <label class="field"><span>Working days a week</span><input type="number" inputmode="decimal" data-k="daysPerWeek" min="1" max="7" step="1" aria-describedby="e-daysPerWeek" /><span class="err" id="e-daysPerWeek" role="alert"></span></label>
+            <label class="field"><span>Public holidays a year</span><input type="number" inputmode="decimal" data-k="holidays" min="0" max="60" step="1" aria-describedby="e-holidays" /><span class="err" id="e-holidays" role="alert"></span><span class="help">Days the business is closed.</span></label>
+            <label class="field"><span>Hours to learn the tools (per person)</span><input type="number" inputmode="decimal" data-k="learnHours" min="0" max="200" step="0.5" aria-describedby="e-learnHours" /><span class="err" id="e-learnHours" role="alert"></span><span class="help">Counted once, in the first year.</span></label>
           </div>
           <fieldset style="margin-top:16px">
             <legend class="legend" style="margin-bottom:8px">What happens to the time you save?</legend>
@@ -319,6 +332,7 @@
 
         <section class="card" aria-labelledby="s3">
           <div class="card-head"><span class="step" aria-hidden="true">3</span><div><h2 id="s3">AI plans</h2><p class="help" style="margin:0">Free tools are always compared. Plans you already pay for are never charged twice.</p></div></div>
+          <label class="choice" style="margin-bottom:16px"><input type="checkbox" data-k="useSahkarmi" /><span>Use Sahkarmi (free) for tasks that run by themselves<small>Sahkarmi is a free Windows app made by the team behind this calculator. It runs work on a schedule using free AI models or the paid plan you pick below.</small></span></label>
           <fieldset>
             <legend class="legend" style="margin-bottom:8px">Plans you already pay for</legend>
             <div class="choices" id="owned"></div>
@@ -348,18 +362,20 @@
       <aside class="summary" aria-labelledby="sum-title">
         <div class="sum-card" id="sum-card">
           <h2 class="sr" id="sum-title">Your result</h2>
-          <p class="kicker" id="sum-kicker">Hours back each month</p>
-          <div class="big"><span id="sum-hours">0</span><small>hours</small></div>
+          <p class="kicker" id="sum-kicker">Your result</p>
+          <div class="big"><span id="sum-pct">0%</span><small>less time</small></div>
+          <p class="sub" id="sum-sub">on these tasks.</p>
           <div class="per">
-            <div><b id="sum-day">0</b><span>a day</span></div>
-            <div><b id="sum-week">0</b><span>a week</span></div>
-            <div><b id="sum-year">0</b><span>a year</span></div>
+            <div><b id="sum-day">0</b><span>hours back a day</span></div>
+            <div><b id="sum-month">0</b><span>hours a month</span></div>
+            <div><b id="sum-year">0</b><span>hours a year</span></div>
           </div>
           <dl class="money">
-            <div><dt>Value of the time saved</dt><dd id="sum-value">₹0</dd></div>
-            <div><dt>New plan cost</dt><dd id="sum-cost">₹0</dd></div>
-            <div class="net" id="sum-net-row"><dt>Net benefit a month</dt><dd id="sum-net">₹0</dd></div>
+            <div><dt>Value of the time saved a year</dt><dd id="sum-value">₹0</dd></div>
+            <div><dt>New plan cost a year</dt><dd id="sum-cost">₹0</dd></div>
+            <div class="net" id="sum-net-row"><dt>Net benefit a year</dt><dd id="sum-net">₹0</dd></div>
           </dl>
+          <ul class="facts" id="sum-facts"></ul>
           <p class="rec" id="sum-rec">Add a task to see your savings.</p>
           <div class="scen" id="sum-scen" aria-label="Range of results"></div>
           <div class="saved"><span id="save-state">Saved in this browser only.</span><button type="button" class="btn btn-danger" id="clear">Clear my data</button></div>
@@ -369,12 +385,12 @@
     </div>
 
     <section class="section" aria-labelledby="cmp-title">
-      <div class="sec-head"><div><h2 id="cmp-title">Free tools or a paid plan?</h2><p class="muted small" style="margin:0">Net benefit a month in the typical case: value of time saved minus new plan cost. Click a row to see its tasks.</p></div>
+      <div class="sec-head"><div><h2 id="cmp-title">Free tools or a paid plan?</h2><p class="muted small" style="margin:0">Net benefit a year in the typical case: value of time saved minus new plan cost. Click a row to see its tasks.</p></div>
         <div class="legend-row"><span><i style="background:var(--leaf)"></i>Gain</span><span><i style="background:var(--danger)"></i>Costs more than it saves</span></div></div>
       <div class="card"><ul class="bars" id="bars"></ul></div>
       <div class="card" style="padding:6px 8px">
         <table class="resp" id="cmp">
-          <thead><tr><th>Option</th><th class="num">New cost / Month</th><th class="num">Hours saved / Month</th><th class="num">Value / Month</th><th class="num">Net / Month</th><th class="num">First year</th><th class="num">Pays back</th><th class="num">Return, year one</th></tr></thead>
+          <thead><tr><th>Option</th><th class="num">New cost / Month</th><th class="num">Less time</th><th class="num">Hours saved / Month</th><th class="num">Net / Month</th><th class="num">First year</th><th class="num">Pays back</th><th class="num">Return, year one</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -385,12 +401,12 @@
         <label class="field" style="min-width:240px"><span>Show tasks for</span><select id="pick"></select></label></div>
       <div class="two">
         <div class="card">
-          <div class="legend-row" style="margin-bottom:12px"><span><i style="background:var(--bar-manual)"></i>By hand (hours / Month)</span><span><i style="background:var(--saffron)"></i>With AI, review and redo included</span></div>
+          <div class="legend-row" style="margin-bottom:12px"><span><i style="background:var(--bar-manual)"></i>By hand (hours / Month)</span><span id="tb-team"></span><span><i style="background:var(--saffron)"></i>With AI, review and redo included</span></div>
           <ul class="tbars" id="tbars"></ul>
         </div>
         <div class="card" style="padding:6px 8px">
           <table class="resp" id="ttable">
-            <thead><tr><th>Task</th><th class="num">Runs / Month</th><th class="num">By hand</th><th class="num">With AI</th><th class="num">Saved</th><th>Suitability</th></tr></thead>
+            <thead><tr><th>Task</th><th class="num">By hand</th><th class="num">With AI</th><th class="num">Saved</th><th class="num">Less time</th><th>How it runs</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -405,15 +421,18 @@
         <details style="margin-top:16px">
           <summary>Assumptions and limits</summary>
           <ul class="assume">
-            <li><b>Time with AI</b> = AI minutes + your review minutes, plus the share of runs you redo by hand at full manual time. If that is not faster than doing it by hand, no saving is counted.</li>
-            <li><b>Cautious</b> uses 1.5 times the AI and review time and 1.5 times the redo share. <b>Best case</b> uses 0.75 times the time and half the redo share.</li>
-            <li><b>Free plans</b> have usage limits that vendors do not publish as fixed numbers, so they are counted for only part of your runs (your setting, 50% to start). Paid plans also have limits; heavy use may still hit them.</li>
-            <li><b>A plan only counts</b> for the kind of work its vendor's pricing page lists: chat, acting in a browser, or coding. Nothing here promises a tool will do your task correctly. Check what it produces.</li>
-            <li><b>Setup time</b> (writing prompts, testing, learning the tool) is counted once, in the first year, at your hourly value.</li>
-            <li><b>Value of time is not cash.</b> Unless saved hours replace paid work, the money figure is productivity. The plan price is real money either way.</li>
-            <li><b>Plans you already pay for</b> are included in every option at no extra cost, so nothing is counted twice.</li>
+            <li><b>Real cost of an hour.</b> Salary plus extra costs (office, laptop, software, HR, management), divided by the hours actually worked. Paid leave, sick days and public holidays are paid but not worked, so each worked hour costs more than salary alone suggests.</li>
+            <li><b>Work does not stop when someone is away.</b> Daily and weekly tasks happen on every business day. On leave and sick days someone else covers them at the same cost, or they pile up. Tasks that run by themselves keep going.</li>
+            <li><b>Two ways to use AI.</b> <em>You ask an AI each time:</em> your time is writing the request and waiting, checking, and redoing the share that fails. <em>Runs by itself:</em> a scheduled agent does the work; your time is checking and redoing failures only. If neither is faster than doing it by hand, no saving is counted.</li>
+            <li><b>Where the starting numbers come from.</b> Asking an AI each time: writing tasks took 40% less time with ChatGPT (<a href="https://www.science.org/doi/10.1126/science.adh2586" target="_blank" rel="noopener noreferrer">Noy and Zhang, Science, 2023</a>); developers finished 55.8% faster with Copilot (<a href="https://arxiv.org/abs/2302.06590" target="_blank" rel="noopener noreferrer">Peng et al., 2023</a>); support agents resolved 14% more issues an hour, and newer staff 35% more (<a href="https://www.nber.org/papers/w31161" target="_blank" rel="noopener noreferrer">Brynjolfsson et al., NBER, 2023</a>). Runs by itself: our estimates for well set-up scheduled agents on structured, repetitive work. Time a week of real runs and change them.</li>
+            <li><b>Cautious</b> uses 1.5 times your AI and checking time and 1.5 times the redo share. <b>Best case</b> uses 0.75 times the time and half the redo share.</li>
+            <li><b>Free plans</b> have usage limits that vendors do not publish as fixed numbers, so they are counted for only part of your runs (your setting, 50% to start). Paid plans have limits too; heavy use may still hit them.</li>
+            <li><b>A plan only counts</b> for what its vendor's pricing page lists. Only Sahkarmi and ChatGPT's scheduled tasks are counted as running work by themselves. Nothing here promises a tool will do your task correctly: check what it produces.</li>
+            <li><b>Setup</b> (building each automation or prompt) is counted once for the team, and learning the tools once per person, in the first year.</li>
+            <li><b>Value of time is not cash.</b> Unless saved hours replace paid overtime, freelancers or hiring, the money figure is time freed for other work. The plan price is real money either way.</li>
+            <li><b>No double counting.</b> Plans you already pay for are in every option at no extra cost. Each plan is priced per person.</li>
             <li><b>Best value</b> is the option with the highest typical net benefit, but a cheaper option within 5% of it is picked instead.</li>
-            <li><b>Taxes:</b> rupee prices are shown as listed on each vendor's India page, which do not say whether GST is included. US dollar prices can have 18% GST added (on by default).</li>
+            <li><b>Taxes:</b> rupee prices are as listed on each vendor's India page, which do not say whether GST is included. US dollar prices can have 18% GST added (on by default).</li>
           </ul>
         </details>
       </div>
@@ -434,7 +453,7 @@
     <p class="witty" id="witty" hidden></p>
   </main>
 
-  <a class="mini" id="mini" href="#sum-card"><span><b id="mini-hours">0 h</b> back a month</span><span>Net <b id="mini-net">₹0</b> →</span></a>
+  <a class="mini" id="mini" href="#sum-card"><span><b id="mini-pct">0%</b> less time</span><span>Net <b id="mini-net">₹0</b> a year →</span></a>
 
   <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-undo" hidden>Undo</button></div>
 
