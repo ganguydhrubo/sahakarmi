@@ -676,6 +676,10 @@
     .plug-announce:hover { background: rgba(139, 124, 246, 0.22); }
     .plug-announce .plug-spark { width: 24px; height: 24px; font-size: 12px; }
     .plug-announce b { color: #8b7cf6; }
+    .calc-announce { border-color: rgba(232, 119, 46, 0.5); background: rgba(232, 119, 46, 0.12); }
+    .calc-announce:hover { background: rgba(232, 119, 46, 0.22); }
+    .calc-mark { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--saffron); color: #0f1220; font-size: 13px; font-weight: 800; }
+    .calc-announce b { color: var(--saffron-ink); }
     @media (max-width: 960px) {
       .plug-grid { grid-template-columns: 1fr; }
       .plug-mcp { grid-row: auto; }
@@ -742,6 +746,7 @@
         <div class="hero-copy">
           <a class="tg-announce" href="#telegram"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><span data-i18n="tgAnnounce">New: give your team work from Telegram</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce plug-announce" href="#plug"><span class="plug-spark" aria-hidden="true">✦</span><span data-i18n="plugAnnounce">New: Skills, MCP servers and workflow export</span><b aria-hidden="true">→</b></a>
+          <a class="tg-announce calc-announce" href="/savings.html"><span class="calc-mark" aria-hidden="true">₹</span><span data-i18n="calcAnnounce">New: how much time and money can AI save you?</span><b aria-hidden="true">→</b></a>
           <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Free · Open source · Version</span> <span data-release-version>latest</span></p>
           <h1><span data-i18n="h1a">Hire an AI team.</span> <span class="accent" data-i18n="h1b">Pay ₹0.</span></h1>
           <p class="rotator"><span data-i18n="rotPre">They</span> <span class="rot-words"><span data-i18n="rot1" class="on">chase your invoices.</span><span data-i18n="rot2">answer your customers.</span><span data-i18n="rot3">write your posts.</span><span data-i18n="rot4">research your market.</span><span data-i18n="rot5">fix your code.</span><span data-i18n="rot6">work while you sleep.</span></span></p>
@@ -1300,6 +1305,7 @@
         <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c1.6.7 2.3.8 3.1.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3z"/></svg>WhatsApp +91 82408 01921</a>
         <a href="/install.html" data-i18n="footInstall">Install guide</a>
         <a href="/docs.html" data-i18n="footDocs">Get started</a>
+        <a href="/savings.html" data-i18n="footSavings">Savings calculator</a>
         <a href="/changelog.html" data-i18n="footChangelog">Changelog</a>
         <a href="https://sahkarmisite.itch.io/sahkarmi" target="_blank" rel="noopener noreferrer">itch.io</a>
         <a href="/privacy.html" data-i18n="footPrivacy">Privacy policy</a>
@@ -1322,6 +1328,7 @@
         navFaq: "FAQ",
         navCommunity: "Community",
         tgAnnounce: "New: give your team work from Telegram",
+        calcAnnounce: "New: how much time and money can AI save you?",
         tgEyebrow: "New: Telegram",
         tgH2: "Your AI team, now in your pocket",
         tgLead: "Send a message on Telegram from your phone. Your coworker on your PC does the work and replies in the same chat. Set it up once, in about 2 minutes.",
@@ -1595,6 +1602,7 @@
         talk: "Talk to a human:",
         footInstall: "Install guide",
         footDocs: "Get started",
+        footSavings: "Savings calculator",
         footChangelog: "Changelog",
         footPrivacy: "Privacy policy",
         footTerms: "Terms of use",
@@ -1657,6 +1665,7 @@
         navFaq: "सवाल",
         navCommunity: "समुदाय",
         tgAnnounce: "नया: टेलीग्राम से अपनी टीम को काम दीजिए",
+        calcAnnounce: "नया: AI आपका कितना समय और पैसा बचा सकता है?",
         tgEyebrow: "नया: टेलीग्राम",
         tgH2: "आपकी AI टीम, अब आपकी जेब में",
         tgLead: "फ़ोन से टेलीग्राम पर मैसेज भेजिए. आपके PC पर आपका सहकर्मी काम करता है और उसी चैट में जवाब देता है. बस एक बार सेट करें, लगभग 2 मिनट में.",
@@ -1930,6 +1939,7 @@
         talk: "किसी इंसान से बात करें:",
         footInstall: "इंस्टॉल गाइड",
         footDocs: "शुरुआत करें",
+        footSavings: "बचत कैलकुलेटर",
         footChangelog: "बदलावों की सूची",
         footPrivacy: "गोपनीयता नीति",
         footTerms: "उपयोग की शर्तें",

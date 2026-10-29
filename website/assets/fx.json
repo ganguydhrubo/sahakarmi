@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-28",
+  "source": "European Central Bank reference rates, via Frankfurter",
+  "rates": {
+    "USD": 1,
+    "AUD": 1.4219,
+    "CAD": 1.4047,
+    "EUR": 0.89823,
+    "GBP": 0.75258,
+    "INR": 95.22,
+    "SGD": 1.2821,
+    "AED": 3.6725
+  }
+}

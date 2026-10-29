@@ -262,6 +262,7 @@ async function main() {
   for (const page of [
     "/install.html",
     "/docs.html",
+    "/savings.html",
     "/changelog.html",
     "/privacy.html",
     "/terms.html",

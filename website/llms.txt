@@ -17,6 +17,7 @@ Key facts (verified against release 0.7.1 on 24 October 2026):
 
 - [Website](https://sahkarmi.site/): product overview, explainer video, real screenshots, download and FAQ
 - [Install guide](https://sahkarmi.site/install.html): Windows steps, checksum verification, provider setup, updates, troubleshooting, uninstall
+- [AI savings calculator](https://sahkarmi.site/savings.html): estimate hours saved, the value of that time, and whether a paid ChatGPT, Claude, Google AI or GitHub Copilot plan beats free tools; India prices checked 29/10/2026, runs in the browser
 - [Get started](https://sahkarmi.site/docs.html): first launch, connecting an AI provider, creating a coworker, giving it work, the built-in browser and approvals, Telegram chat, updates, where data lives
 - [Changelog](https://sahkarmi.site/changelog.html): release notes for every version, linked to each GitHub release
 - [Privacy policy](https://sahkarmi.site/privacy.html): what the app stores on the computer, what it sends and to whom, what the website collects, how to delete data

@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AI time and money savings calculator — Sahkarmi</title>
+  <meta name="description" content="Work out how many hours AI could save you each month, what that time is worth, and whether a paid ChatGPT, Claude, Google AI or Copilot plan beats free tools. Real India prices, runs in your browser." />
+  <link rel="canonical" href="https://sahkarmi.site/savings.html" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0F1220" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta property="og:site_name" content="Sahkarmi" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://sahkarmi.site/savings.html" />
+  <meta property="og:title" content="AI time and money savings calculator — Sahkarmi" />
+  <meta property="og:description" content="How many hours could AI give back to you, and is a paid plan worth it over free tools? Real prices, honest limits, runs in your browser." />
+  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    @font-face { font-family: "Baloo 2"; font-weight: 800; font-display: swap; src: url(/assets/fonts/baloo-2-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 400; font-display: swap; src: url(/assets/fonts/mukta-latin-400-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Mukta"; font-weight: 700; font-display: swap; src: url(/assets/fonts/mukta-latin-700-normal.woff2) format("woff2"); }
+    :root { --saffron: #e8772e; --saffron-ink: #f0904f; --bg: #0b0d17; --bg-2: #161a2e; --bg-3: #1d2240; --text: #f3efe6; --text-2: #c9c4b8; --muted: #9a9cb3; --line: rgba(255,255,255,0.1); --line-2: rgba(255,255,255,0.18); --leaf: #5ec48a; --turmeric: #f2b705; --danger: #e46a5c; --bar-manual: #59607f; color-scheme: dark; }
+    @media (prefers-color-scheme: light) { :root { --bg: #fbf7f0; --bg-2: #ffffff; --bg-3: #f3ede2; --text: #141829; --text-2: #3a3f55; --muted: #646a85; --line: rgba(20,24,41,0.1); --line-2: rgba(20,24,41,0.2); --saffron-ink: #a84e14; --leaf: #22703f; --danger: #b3261e; --bar-manual: #b6b9c9; color-scheme: light; } }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; animation: none !important; } }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.6 "Mukta", system-ui, sans-serif; }
+    a { color: var(--saffron-ink); text-underline-offset: 3px; }
+    :focus-visible { outline: 3px solid var(--turmeric); outline-offset: 3px; border-radius: 6px; }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .wrap { width: min(1180px, 100% - 2 * clamp(16px, 4vw, 40px)); margin-inline: auto; }
+    header { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); }
+    header .wrap { display: flex; align-items: center; gap: 14px; min-height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font: 800 20px "Baloo 2", "Mukta", sans-serif; }
+    .brand svg { width: 30px; height: 30px; }
+    header nav { margin-left: auto; display: flex; gap: 14px; font-weight: 700; font-size: 15px; }
+    h1 { font: 800 clamp(32px, 5vw, 50px)/1.08 "Baloo 2", "Mukta", sans-serif; margin: 10px 0 12px; letter-spacing: -0.01em; }
+    h1 .accent { color: var(--saffron-ink); }
+    h2 { font: 800 clamp(22px, 2.6vw, 28px)/1.15 "Baloo 2", "Mukta", sans-serif; margin: 0 0 6px; }
+    h3 { font: 700 18px/1.25 "Mukta", sans-serif; margin: 0 0 6px; }
+    p { margin: 0 0 12px; }
+    .muted { color: var(--muted); }
+    .small { font-size: 14px; }
+
+    /* Intro */
+    .intro { padding: 40px 0 18px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 28px; align-items: end; }
+    .badge { display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px 5px 6px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--saffron) 50%, transparent); background: color-mix(in srgb, var(--saffron) 13%, transparent); font-size: 14px; font-weight: 700; }
+    .badge i { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--saffron); color: #0f1220; font-style: normal; font-size: 13px; }
+    .lead { font-size: 19px; color: var(--text-2); max-width: 640px; }
+    .trust { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+    .trust li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-2); font-size: 15px; color: var(--text-2); }
+    .trust b { color: var(--text); display: block; }
+    .trust svg { width: 22px; height: 22px; flex: none; margin-top: 2px; }
+
+    /* Layout */
+    .calc { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 8px; }
+    .card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 18px; padding: clamp(16px, 2.4vw, 24px); margin-bottom: 18px; }
+    .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .step { display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 10px; background: color-mix(in srgb, var(--saffron) 18%, transparent); color: var(--saffron-ink); font: 800 17px "Baloo 2", sans-serif; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .field > span:first-child, .legend { font-size: 14px; font-weight: 700; color: var(--text); }
+    .help { font-size: 13px; color: var(--muted); line-height: 1.4; }
+    input[type="number"], input[type="text"], select { width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); font: inherit; font-size: 16px; }
+    select { cursor: pointer; }
+    input:hover, select:hover { border-color: color-mix(in srgb, var(--saffron) 55%, var(--line-2)); }
+    input[aria-invalid="true"] { border-color: var(--danger); }
+    .err { color: var(--danger); font-size: 13px; font-weight: 700; min-height: 0; }
+    .err:empty { display: none; }
+    .prefix { position: relative; }
+    .prefix > b { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; pointer-events: none; font-size: 15px; }
+    .prefix input { padding-left: calc(18px + var(--pre, 1ch)); }
+    .seg { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg); }
+    .seg label { position: relative; }
+    .seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+    .seg span { display: block; white-space: nowrap; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
+    .seg input:checked + span { background: var(--saffron); color: #0f1220; }
+    .seg input:focus-visible + span { outline: 3px solid var(--turmeric); outline-offset: 2px; }
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    .choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; font-size: 15px; }
+    .choice:hover { border-color: var(--line-2); }
+    .choice input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--saffron); flex: none; cursor: pointer; }
+    .choice small { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+    [data-mode="simple"] .adv { display: none !important; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 18px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--text); font: 700 15px "Mukta", sans-serif; cursor: pointer; text-decoration: none; transition: background 0.15s, border-color 0.15s; }
+    .btn:hover { background: var(--bg-3); border-color: color-mix(in srgb, var(--saffron) 60%, var(--line-2)); }
+    .btn-primary { background: var(--saffron); border-color: var(--saffron); color: #0f1220; }
+    .btn-primary:hover { background: #f08a47; border-color: #f08a47; }
+    .btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
+    .btn-danger:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); border-color: var(--danger); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px; border-radius: 999px; border: 1px dashed var(--line-2); background: transparent; color: var(--text-2); font: 600 14px "Mukta", sans-serif; cursor: pointer; }
+    .chip:hover { border-style: solid; border-color: var(--saffron); color: var(--text); }
+
+    /* Tasks */
+    .tasks { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 12px; }
+    .task { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: color-mix(in srgb, var(--bg) 45%, var(--bg-2)); }
+    .task-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; margin-bottom: 12px; }
+    .task .grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .freq { display: grid; grid-template-columns: minmax(70px, 0.8fr) minmax(0, 1.2fr); gap: 6px; }
+    .task-foot { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 14px; color: var(--text-2); }
+    .icon-btn { width: 44px; height: 44px; padding: 0; }
+    .icon-btn svg { width: 18px; height: 18px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+    .pill.good { background: color-mix(in srgb, var(--leaf) 16%, transparent); color: var(--leaf); }
+    .pill.review { background: color-mix(in srgb, var(--turmeric) 16%, transparent); color: var(--turmeric); }
+    .pill.manual { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+    @media (prefers-color-scheme: light) { .pill.review { color: #8a6500; } }
+    .empty { text-align: center; padding: 22px; border: 1px dashed var(--line-2); border-radius: 14px; color: var(--muted); }
+
+    /* Summary */
+    .summary { position: sticky; top: 80px; }
+    .sum-card { position: relative; overflow: hidden; background: radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--saffron) 22%, transparent), transparent 60%), var(--bg-2); border: 1px solid color-mix(in srgb, var(--saffron) 35%, var(--line)); border-radius: 20px; padding: clamp(18px, 2.4vw, 26px); }
+    .kicker { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+    .big { font: 800 clamp(44px, 6vw, 64px)/1 "Baloo 2", "Mukta", sans-serif; color: var(--text); font-variant-numeric: tabular-nums; }
+    .big small { font-size: 0.42em; color: var(--muted); margin-left: 6px; }
+    .per { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 16px; }
+    .per div { padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--bg) 60%, transparent); border: 1px solid var(--line); text-align: center; }
+    .per b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .per span { font-size: 12px; color: var(--muted); }
+    .money { display: grid; gap: 8px; margin: 0 0 14px; }
+    .money div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .money dt { color: var(--text-2); font-size: 15px; }
+    .money dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .money .net dd { font: 800 26px "Baloo 2", sans-serif; color: var(--leaf); }
+    .money .net.neg dd { color: var(--danger); }
+    .rec { padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--leaf) 10%, transparent); border: 1px solid color-mix(in srgb, var(--leaf) 35%, transparent); font-size: 15px; color: var(--text-2); }
+    .rec b { color: var(--text); }
+    .rec.warn { background: color-mix(in srgb, var(--turmeric) 10%, transparent); border-color: color-mix(in srgb, var(--turmeric) 35%, transparent); }
+    .scen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+    .scen div { padding: 10px; border-radius: 12px; border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+    .scen div.on { border-color: var(--saffron); }
+    .scen b { display: block; color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
+    .saved { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+
+    /* Results sections */
+    .section { margin-top: 30px; }
+    .section > header, .sec-head { position: static; background: none; backdrop-filter: none; border: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; justify-content: space-between; margin-bottom: 14px; }
+    table { border-collapse: collapse; width: 100%; font-size: 15px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+    th { overflow-wrap: normal; white-space: nowrap; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #prices td:first-child { min-width: 170px; }
+    #prices td.methods { white-space: nowrap; }
+    tr.best td { background: color-mix(in srgb, var(--leaf) 8%, transparent); }
+    tr.pick td:first-child { box-shadow: inset 3px 0 0 var(--saffron); }
+    .tag { display: inline-block; margin: 2px 0 0; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--leaf) 18%, transparent); color: var(--leaf); }
+    .note { display: block; font-size: 13px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+    .neg-v { color: var(--danger); }
+    .pos-v { color: var(--leaf); }
+    .bars { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .bars li { display: grid; grid-template-columns: minmax(120px, 0.9fr) minmax(0, 2fr) minmax(90px, auto); gap: 12px; align-items: center; font-size: 14px; }
+    .bars button { all: unset; cursor: pointer; color: var(--text-2); line-height: 1.3; }
+    .bars button:hover { color: var(--text); text-decoration: underline; }
+    .bars button:focus-visible { outline: 3px solid var(--turmeric); outline-offset: 3px; border-radius: 4px; }
+    .track { position: relative; height: 16px; border-radius: 6px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+    .track .zero { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--line-2); }
+    .track i { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--leaf); transition: left 0.5s, width 0.5s; }
+    .track i.neg { background: var(--danger); }
+    .track i.best { background: linear-gradient(90deg, var(--leaf), color-mix(in srgb, var(--leaf) 70%, var(--turmeric))); }
+    .bars .v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .tbars { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+    .tbars li { display: grid; grid-template-columns: minmax(120px, 0.9fr) minmax(0, 2fr); gap: 12px; align-items: center; font-size: 14px; color: var(--text-2); }
+    .tbars .pair { display: grid; gap: 4px; }
+    .tbars .row { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
+    .tbars .row span { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+    .tbars .track { height: 12px; }
+    .tbars i.man { background: var(--bar-manual); left: 0; }
+    .tbars i.ai { background: var(--saffron); left: 0; }
+    .legend-row { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); }
+    .legend-row i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .formula { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .formula li { padding: 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); font-size: 15px; color: var(--text-2); }
+    .formula code { display: block; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13.5px; color: var(--text); margin-top: 4px; overflow-wrap: anywhere; }
+    details > summary { cursor: pointer; font-weight: 700; color: var(--text); list-style: none; display: flex; align-items: center; gap: 8px; }
+    details > summary::-webkit-details-marker { display: none; }
+    details > summary::before { content: "▸"; color: var(--saffron-ink); transition: transform 0.2s; }
+    details[open] > summary::before { transform: rotate(90deg); }
+    .assume { margin: 10px 0 0; padding-left: 20px; color: var(--text-2); font-size: 15px; }
+    .assume li { margin-bottom: 6px; }
+    .witty { margin: 30px 0 0; padding: 18px 20px; border-radius: 16px; border: 1px dashed color-mix(in srgb, var(--turmeric) 50%, transparent); color: var(--text-2); font-size: 16px; }
+    .witty b { color: var(--turmeric); }
+    @media (prefers-color-scheme: light) { .witty b { color: #8a6500; } }
+    .disclaim { margin-top: 18px; font-size: 14px; color: var(--muted); }
+
+    /* Toast and dialog */
+    .toast { position: fixed; left: 50%; bottom: 20px; visibility: hidden; transform: translateX(-50%) translateY(calc(100% + 40px)); z-index: 40; display: flex; gap: 14px; align-items: center; max-width: calc(100% - 32px); padding: 10px 12px 10px 18px; border-radius: 14px; background: var(--text); color: var(--bg); font-size: 15px; font-weight: 600; box-shadow: 0 10px 40px rgba(0,0,0,0.35); transition: transform 0.25s, visibility 0.25s; }
+    .toast.show { visibility: visible; transform: translateX(-50%) translateY(0); }
+    .toast button { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 999px; border: 1px solid currentColor; font-weight: 700; }
+    .toast button:focus-visible { outline: 3px solid var(--turmeric); }
+    dialog { border: 1px solid var(--line-2); border-radius: 18px; background: var(--bg-2); color: var(--text); padding: 22px; width: min(440px, calc(100% - 32px)); }
+    dialog::backdrop { background: rgba(5, 6, 12, 0.6); }
+    dialog .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+    .btn-fill-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+    .btn-fill-danger:hover { background: color-mix(in srgb, var(--danger) 85%, #000); border-color: var(--danger); }
+
+    footer { border-top: 1px solid var(--line); margin-top: 64px; padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+    .foot-nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; font-weight: 700; font-size: 15px; }
+    .mini { display: none; }
+    .noscript { padding: 16px; border-radius: 14px; border: 1px solid var(--turmeric); margin: 16px 0; }
+
+    @media (max-width: 980px) {
+      .intro, .calc, .two { grid-template-columns: 1fr; }
+      .summary { position: static; }
+      .intro { padding-top: 28px; }
+      .trust li { padding: 10px 12px; font-size: 14px; }
+      .mini { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--saffron) 45%, var(--line)); background: color-mix(in srgb, var(--bg-2) 94%, transparent); backdrop-filter: blur(8px); color: var(--text); text-decoration: none; font-size: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); transition: opacity 0.2s; }
+      .mini b { font-variant-numeric: tabular-nums; }
+      .mini.off { opacity: 0; pointer-events: none; }
+      .toast { bottom: 80px; }
+      footer { padding-bottom: 90px; }
+    }
+    @media (max-width: 720px) {
+      header nav { gap: 10px; font-size: 14px; }
+      .resp thead { display: none; }
+      .resp, .resp tbody, .resp tr, .resp td { display: block; width: 100%; }
+      .resp tr { border: 1px solid var(--line); border-radius: 14px; padding: 6px 4px; margin-bottom: 10px; }
+      .resp td { border: 0; padding: 6px 10px; display: flex; justify-content: space-between; gap: 12px; text-align: right; white-space: normal; }
+      .resp td::before { content: attr(data-label); color: var(--muted); font-size: 13px; font-weight: 700; text-align: left; flex: none; max-width: 48%; }
+      .resp td:first-child { display: block; text-align: left; font-weight: 700; }
+      .resp td:first-child::before { display: none; }
+      .resp td.wide { display: block; text-align: left; }
+      .resp td.wide::before { display: block; max-width: none; margin-bottom: 2px; }
+      .bars li, .tbars li { grid-template-columns: 1fr; gap: 4px; }
+      .bars li { grid-template-columns: minmax(0, 1fr) auto; }
+      .bars .track { grid-column: 1 / -1; grid-row: 2; }
+      .per b { font-size: 18px; }
+    }
+  </style>
+</head>
+<body data-mode="simple">
+  <header>
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Sahkarmi home">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><defs><clipPath id="l"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l)"/></svg>
+        Sahkarmi
+      </a>
+      <nav aria-label="Site"><a href="/">Home</a><a href="/#download">Download</a><a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="intro">
+      <div>
+        <p class="badge"><i aria-hidden="true">₹</i>Free calculator · runs in your browser</p>
+        <h1>How much time and money can <span class="accent">AI save you?</span></h1>
+        <p class="lead">Add the tasks you repeat. See how many hours AI could give back each month, what that time is worth, and whether a paid plan is worth it over free tools.</p>
+      </div>
+      <ul class="trust">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--leaf)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="m9 12 2 2 4-4"/></svg><span><b>Private by design</b>Your pay and tasks stay in this browser. No sign-up, no server, no AI calls.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--saffron-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6"/></svg><span><b>Real prices, with sources</b><span id="trust-prices">Plan prices checked on 29/10/2026 from India.</span></span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--turmeric)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg><span><b>Honest about limits</b>Review time, redo work, setup and usage limits are counted. No plan is unlimited.</span></li>
+      </ul>
+    </section>
+
+    <noscript><p class="noscript">This calculator needs JavaScript. Everything runs in your browser and nothing is sent anywhere.</p></noscript>
+
+    <div class="calc">
+      <form id="calc" class="inputs" novalidate autocomplete="off">
+        <div class="toolbar">
+          <div class="seg" role="radiogroup" aria-label="Level of detail">
+            <label><input type="radio" name="mode" value="simple" data-k="mode" checked /><span>Simple</span></label>
+            <label><input type="radio" name="mode" value="detailed" data-k="mode" /><span>Detailed</span></label>
+          </div>
+          <label class="field" style="flex-direction:row;align-items:center;gap:10px">
+            <span>Currency</span>
+            <select id="currency" data-k="currency" style="width:auto"></select>
+          </label>
+        </div>
+
+        <section class="card" aria-labelledby="s1">
+          <div class="card-head"><span class="step" aria-hidden="true">1</span><div><h2 id="s1">About your work</h2><p class="help" style="margin:0">Your pay sets what an hour of your time is worth.</p></div></div>
+          <div class="grid">
+            <label class="field"><span>Profession</span><select id="profession" data-k="profession"></select></label>
+            <div class="field">
+              <span class="legend" id="pay-legend">Value of your time</span>
+              <div class="seg" role="radiogroup" aria-labelledby="pay-legend">
+                <label><input type="radio" name="payMode" value="monthly" data-k="payMode" checked /><span>Monthly pay</span></label>
+                <label><input type="radio" name="payMode" value="hourly" data-k="payMode" /><span>Per hour</span></label>
+              </div>
+            </div>
+            <label class="field" id="f-monthlyPay"><span>Monthly pay or salary (before tax)*</span>
+              <span class="prefix"><b class="cur-sym" aria-hidden="true">₹</b><input type="number" inputmode="decimal" data-k="monthlyPay" min="0" max="100000000" step="any" placeholder="Enter monthly pay" aria-describedby="e-monthlyPay" /></span>
+              <span class="err" id="e-monthlyPay" role="alert"></span></label>
+            <label class="field" id="f-hourlyRate" hidden><span>Value of one hour of your time*</span>
+              <span class="prefix"><b class="cur-sym" aria-hidden="true">₹</b><input type="number" inputmode="decimal" data-k="hourlyRate" min="0" max="1000000" step="any" placeholder="Enter value per hour" aria-describedby="e-hourlyRate" /></span>
+              <span class="err" id="e-hourlyRate" role="alert"></span></label>
+          </div>
+          <div class="grid adv" style="margin-top:14px">
+            <label class="field"><span>Working hours a day</span><input type="number" inputmode="decimal" data-k="hoursPerDay" min="1" max="24" step="0.5" aria-describedby="e-hoursPerDay" /><span class="err" id="e-hoursPerDay" role="alert"></span></label>
+            <label class="field"><span>Working days a week</span><input type="number" inputmode="numeric" data-k="daysPerWeek" min="1" max="7" step="1" aria-describedby="e-daysPerWeek" /><span class="err" id="e-daysPerWeek" role="alert"></span></label>
+            <label class="field"><span>Working weeks a year</span><input type="number" inputmode="numeric" data-k="weeksPerYear" min="1" max="52" step="1" aria-describedby="e-weeksPerYear" /><span class="err" id="e-weeksPerYear" role="alert"></span><span class="help">48 leaves four weeks for leave and holidays.</span></label>
+          </div>
+          <fieldset style="margin-top:16px">
+            <legend class="legend" style="margin-bottom:8px">What happens to the time you save?</legend>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="savedTimeUse" value="productive" data-k="savedTimeUse" checked /><span>I use it for other work<small>Counted as productivity value, not cash in hand.</small></span></label>
+              <label class="choice"><input type="radio" name="savedTimeUse" value="cash" data-k="savedTimeUse" /><span>It replaces paid hours<small>Overtime, freelancers or extra staff you would otherwise pay for.</small></span></label>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="card" aria-labelledby="s2">
+          <div class="card-head"><span class="step" aria-hidden="true">2</span><div><h2 id="s2">Tasks you repeat</h2><p class="help" style="margin:0">Starting numbers are typical guesses. Change them to match your work.</p></div></div>
+          <p class="help" id="sugg-label" style="margin-bottom:6px">Add a common task:</p>
+          <ul class="chips" id="suggest" aria-labelledby="sugg-label"></ul>
+          <ol class="tasks" id="tasks"></ol>
+          <button type="button" class="btn btn-primary" id="add-task"><span aria-hidden="true">+</span> Add your own task</button>
+        </section>
+
+        <section class="card" aria-labelledby="s3">
+          <div class="card-head"><span class="step" aria-hidden="true">3</span><div><h2 id="s3">AI plans</h2><p class="help" style="margin:0">Free tools are always compared. Plans you already pay for are never charged twice.</p></div></div>
+          <fieldset>
+            <legend class="legend" style="margin-bottom:8px">Plans you already pay for</legend>
+            <div class="choices" id="owned"></div>
+          </fieldset>
+          <fieldset style="margin-top:16px">
+            <legend class="legend" style="margin-bottom:8px">Paid plans to compare</legend>
+            <div class="choices" id="compare"></div>
+          </fieldset>
+          <div class="grid" style="margin-top:16px">
+            <div class="field">
+              <span class="legend" id="bill-legend">Billing</span>
+              <div class="seg" role="radiogroup" aria-labelledby="bill-legend">
+                <label><input type="radio" name="billing" value="monthly" data-k="billing" checked /><span>Month</span></label>
+                <label><input type="radio" name="billing" value="annual" data-k="billing" /><span>Year</span></label>
+              </div>
+              <span class="help">Yearly billing changes only Claude Pro. Other yearly prices were not checked, so their monthly price is used.</span>
+            </div>
+            <label class="choice" style="align-self:start"><input type="checkbox" data-k="addGst" /><span>Add 18% GST to plans priced in US dollars<small>Indian GST on imported digital services. Turn off outside India.</small></span></label>
+          </div>
+          <div class="grid adv" style="margin-top:14px">
+            <label class="field"><span>Card fee for foreign currency (%)</span><input type="number" inputmode="decimal" data-k="cardMarkupPct" min="0" max="20" step="0.1" aria-describedby="e-cardMarkupPct" /><span class="err" id="e-cardMarkupPct" role="alert"></span><span class="help">Many cards add 2–4% when you pay in another currency.</span></label>
+            <label class="field"><span>Work free plans can handle (%)</span><input type="number" inputmode="numeric" data-k="limitShare" min="0" max="100" step="5" aria-describedby="e-limitShare" /><span class="err" id="e-limitShare" role="alert"></span><span class="help">Free plans have usage limits with no fixed published numbers. 50% is our guess; change it if you know better.</span></label>
+          </div>
+        </section>
+      </form>
+
+      <aside class="summary" aria-labelledby="sum-title">
+        <div class="sum-card" id="sum-card">
+          <h2 class="sr" id="sum-title">Your result</h2>
+          <p class="kicker" id="sum-kicker">Hours back each month</p>
+          <div class="big"><span id="sum-hours">0</span><small>hours</small></div>
+          <div class="per">
+            <div><b id="sum-day">0</b><span>a day</span></div>
+            <div><b id="sum-week">0</b><span>a week</span></div>
+            <div><b id="sum-year">0</b><span>a year</span></div>
+          </div>
+          <dl class="money">
+            <div><dt>Value of the time saved</dt><dd id="sum-value">₹0</dd></div>
+            <div><dt>New plan cost</dt><dd id="sum-cost">₹0</dd></div>
+            <div class="net" id="sum-net-row"><dt>Net benefit a month</dt><dd id="sum-net">₹0</dd></div>
+          </dl>
+          <p class="rec" id="sum-rec">Add a task to see your savings.</p>
+          <div class="scen" id="sum-scen" aria-label="Range of results"></div>
+          <div class="saved"><span id="save-state">Saved in this browser only.</span><button type="button" class="btn btn-danger" id="clear">Clear my data</button></div>
+        </div>
+        <p class="sr" aria-live="polite" id="live"></p>
+      </aside>
+    </div>
+
+    <section class="section" aria-labelledby="cmp-title">
+      <div class="sec-head"><div><h2 id="cmp-title">Free tools or a paid plan?</h2><p class="muted small" style="margin:0">Net benefit a month in the typical case: value of time saved minus new plan cost. Click a row to see its tasks.</p></div>
+        <div class="legend-row"><span><i style="background:var(--leaf)"></i>Gain</span><span><i style="background:var(--danger)"></i>Costs more than it saves</span></div></div>
+      <div class="card"><ul class="bars" id="bars"></ul></div>
+      <div class="card" style="padding:6px 8px">
+        <table class="resp" id="cmp">
+          <thead><tr><th>Option</th><th class="num">New cost / Month</th><th class="num">Hours saved / Month</th><th class="num">Value / Month</th><th class="num">Net / Month</th><th class="num">First year</th><th class="num">Pays back</th><th class="num">Return, year one</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="task-title">
+      <div class="sec-head"><div><h2 id="task-title">Task by task</h2><p class="muted small" style="margin:0" id="task-sub">Typical case.</p></div>
+        <label class="field" style="min-width:240px"><span>Show tasks for</span><select id="pick"></select></label></div>
+      <div class="two">
+        <div class="card">
+          <div class="legend-row" style="margin-bottom:12px"><span><i style="background:var(--bar-manual)"></i>By hand (hours / Month)</span><span><i style="background:var(--saffron)"></i>With AI, review and redo included</span></div>
+          <ul class="tbars" id="tbars"></ul>
+        </div>
+        <div class="card" style="padding:6px 8px">
+          <table class="resp" id="ttable">
+            <thead><tr><th>Task</th><th class="num">Runs / Month</th><th class="num">By hand</th><th class="num">With AI</th><th class="num">Saved</th><th>Suitability</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="how-title">
+      <div class="card">
+        <h2 id="how-title">How the numbers are worked out</h2>
+        <p class="muted small">With your current numbers, for the option shown in the task table, typical case.</p>
+        <ul class="formula" id="formulas"></ul>
+        <details style="margin-top:16px">
+          <summary>Assumptions and limits</summary>
+          <ul class="assume">
+            <li><b>Time with AI</b> = AI minutes + your review minutes, plus the share of runs you redo by hand at full manual time. If that is not faster than doing it by hand, no saving is counted.</li>
+            <li><b>Cautious</b> uses 1.5 times the AI and review time and 1.5 times the redo share. <b>Best case</b> uses 0.75 times the time and half the redo share.</li>
+            <li><b>Free plans</b> have usage limits that vendors do not publish as fixed numbers, so they are counted for only part of your runs (your setting, 50% to start). Paid plans also have limits; heavy use may still hit them.</li>
+            <li><b>A plan only counts</b> for the kind of work its vendor's pricing page lists: chat, acting in a browser, or coding. Nothing here promises a tool will do your task correctly. Check what it produces.</li>
+            <li><b>Setup time</b> (writing prompts, testing, learning the tool) is counted once, in the first year, at your hourly value.</li>
+            <li><b>Value of time is not cash.</b> Unless saved hours replace paid work, the money figure is productivity. The plan price is real money either way.</li>
+            <li><b>Plans you already pay for</b> are included in every option at no extra cost, so nothing is counted twice.</li>
+            <li><b>Best value</b> is the option with the highest typical net benefit, but a cheaper option within 5% of it is picked instead.</li>
+            <li><b>Taxes:</b> rupee prices are shown as listed on each vendor's India page, which do not say whether GST is included. US dollar prices can have 18% GST added (on by default).</li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="price-title">
+      <div class="sec-head"><div><h2 id="price-title">Prices and sources</h2><p class="muted small" style="margin:0" id="price-sub"></p></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="small muted" id="fx-state"></span><button type="button" class="btn" id="fx-refresh">Get today's exchange rates</button></div></div>
+      <div class="card" style="padding:6px 8px">
+        <table class="resp" id="prices">
+          <thead><tr><th>Plan</th><th class="num">Listed price</th><th class="num">Your cost / Month</th><th>Counted for</th><th>Notes</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="disclaim">Estimates only, to help you decide. Your results depend on your work, the AI model and how carefully you check its output. Prices change; follow each source link before you buy. This calculator is made by the team behind Sahkarmi, a free app that is listed under the same rules as every other option. Exchange rates come from the European Central Bank (via Frankfurter); the UAE dirham uses its fixed rate of 3.6725 to the US dollar.</p>
+    </section>
+
+    <p class="witty" id="witty" hidden></p>
+  </main>
+
+  <a class="mini" id="mini" href="#sum-card"><span><b id="mini-hours">0 h</b> back a month</span><span>Net <b id="mini-net">₹0</b> →</span></a>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-undo" hidden>Undo</button></div>
+
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <h2 id="confirm-title" style="font-size:22px">Clear your saved calculator data?</h2>
+    <p class="muted" style="margin:8px 0 0">This removes your pay, tasks and plan choices from this browser and puts the starting numbers back. It cannot be undone.</p>
+    <div class="row"><button type="button" class="btn" id="confirm-cancel">Cancel</button><button type="button" class="btn btn-fill-danger" id="confirm-ok">Clear my data</button></div>
+  </dialog>
+
+  <footer>
+    <div class="wrap">
+      <nav class="foot-nav" aria-label="Site pages"><a href="/install.html">Install guide</a><a href="/docs.html">Get started</a><a href="/savings.html" aria-current="page">Savings calculator</a><a href="/changelog.html">Changelog</a><a href="/privacy.html">Privacy policy</a><a href="/terms.html">Terms of use</a></nav>
+      © 2026 Sahkarmi Team · Apache License 2.0 · <a href="/">sahkarmi.site</a> · <a href="mailto:dhrubo@sahkarmi.site">dhrubo@sahkarmi.site</a> · <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer">WhatsApp +91 82408 01921</a></div>
+  </footer>
+
+  <script src="/assets/savings-calc.js"></script>
+  <script src="/assets/savings.js"></script>
+</body>
+</html>

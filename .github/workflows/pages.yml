@@ -3,7 +3,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["website/**", "scripts/check-website.mjs", "scripts/inject-downloads.mjs", "scripts/inject-notify.mjs", ".github/workflows/pages.yml"]
+    paths: ["website/**", "scripts/check-website.mjs", "scripts/update-fx.mjs", "scripts/test-savings.mjs", "scripts/inject-downloads.mjs", "scripts/inject-notify.mjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -44,6 +44,14 @@ jobs:
         env:
           DOWNLOAD_NOTIFY_URL: ${{ vars.DOWNLOAD_NOTIFY_URL }}
         run: node scripts/inject-notify.mjs
+
+      # Refresh the savings calculator's exchange rates. If the rate service is down, the committed copy stays.
+      - name: Refresh exchange rates for the savings calculator
+        continue-on-error: true
+        run: node scripts/update-fx.mjs
+
+      - name: Check the savings calculator maths
+        run: node scripts/test-savings.mjs
 
       - name: Check website files (SEO, structured data, links, translations)
         run: node scripts/check-website.mjs
