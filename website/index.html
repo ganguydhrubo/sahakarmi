@@ -94,7 +94,7 @@
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
-        "downloadUrl": "https://github.com/ganguydhrubo/sahakarmi/releases/latest",
+        "downloadUrl": "https://apps.microsoft.com/detail/9PD6BP3NGVST",
         "installUrl": "https://sahkarmi.site/install.html",
         "softwareHelp": { "@type": "CreativeWork", "url": "https://sahkarmi.site/install.html" },
         "screenshot": "https://sahkarmi.site/assets/shots/conversation-1440.webp",
@@ -148,7 +148,7 @@
           {
             "@type": "Question",
             "name": "Is it safe to install an unsigned app?",
-            "acceptedAnswer": { "@type": "Answer", "text": "The Windows installer is not code-signed yet, so SmartScreen shows a warning; choose More info, then Run anyway. Every release publishes SHA-256 checksums and a build provenance attestation so you can verify the file you downloaded was built from the public source by GitHub Actions." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Install from the Microsoft Store and there is no warning at all: Microsoft signs and certifies that package itself. The direct .exe from GitHub is not code-signed yet, so SmartScreen warns; choose More info, then Run anyway. Every release publishes SHA-256 checksums and a build provenance attestation so you can verify the file you downloaded was built from the public source by GitHub Actions." }
           },
           {
             "@type": "Question",
@@ -194,6 +194,7 @@
       --line: rgba(255, 255, 255, 0.09);
       --line-2: rgba(255, 255, 255, 0.16);
       --focus: #f2b705;
+      --ms-ink: #4cc2ff;
       --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
       --font-ui: "Mukta", system-ui, -apple-system, "Segoe UI", sans-serif;
       --font-display: "Baloo 2", "Mukta", system-ui, sans-serif;
@@ -204,6 +205,7 @@
     }
     @media (prefers-color-scheme: light) {
       :root:not([data-theme="dark"]) {
+        --ms-ink: #0067b8;
         --bg: #fbf7f0;
         --bg-2: #f5efe4;
         --bg-3: #ffffff;
@@ -515,6 +517,37 @@
     @media (max-width: 960px) { .bento { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 600px) { .bento { grid-template-columns: 1fr; } .tile-xl, .tile-wide, .tile-tall { grid-column: auto; grid-row: auto; } }
 
+    /* Microsoft Store */
+    .store-announce { border-color: rgba(0, 164, 239, 0.5); background: rgba(0, 164, 239, 0.12); }
+    .store-announce:hover { background: rgba(0, 164, 239, 0.22); }
+    .store-announce b { color: var(--ms-ink); }
+    .ms-mark { width: 20px; height: 20px; flex: none; }
+    .ms-badge { display: inline-flex; border-radius: 9px; transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease); }
+    .ms-badge img { display: block; width: 190px; height: auto; }
+    .ms-badge:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(0, 120, 212, 0.4); }
+    .ms-spot { position: relative; overflow: hidden; margin-top: 18px; max-width: 620px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 18px 14px 14px; border-radius: 20px; border: 1px solid rgba(0, 164, 239, 0.35); background: linear-gradient(115deg, rgba(0, 120, 212, 0.2), rgba(232, 119, 46, 0.1) 65%, transparent), var(--card); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22); }
+    .ms-spot::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.12) 50%, transparent 70%); transform: translateX(-100%); animation: ms-sheen 6s var(--ease) 1.2s infinite; pointer-events: none; }
+    @keyframes ms-sheen { 0%, 70% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+    .ms-copy { display: grid; gap: 6px; flex: 1 1 230px; min-width: 0; }
+    .ms-title { font-weight: 800; font-size: 16px; color: var(--text); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .ms-free { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--leaf); color: #fff; font-size: 13px; font-weight: 800; letter-spacing: 0.02em; }
+    .ms-ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13.5px; color: var(--text-2); }
+    .ms-ticks li::before { content: "\2713"; color: var(--leaf-ink); font-weight: 800; margin-right: 6px; }
+    .dl-grid { max-width: 880px; }
+    .dl-card.store { border-color: #0078d4; box-shadow: 0 0 0 1px #0078d4 inset, 0 20px 50px rgba(0, 120, 212, 0.18); background: linear-gradient(160deg, rgba(0, 120, 212, 0.14), transparent 55%), var(--card); position: relative; }
+    .dl-card.store .ribbon { position: absolute; top: 14px; right: 14px; padding: 3px 10px; border-radius: 999px; background: #0078d4; color: #fff; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+    .dl-card.store .ms-mark { width: 40px; height: 40px; }
+    .status.certified { background: rgba(0, 164, 239, 0.15); color: var(--ms-ink); }
+    .price { display: flex; align-items: baseline; gap: 8px; }
+    .price b { font-family: var(--font-display); font-size: 34px; font-weight: 800; line-height: 1; color: var(--text); }
+    .price s { color: var(--muted); }
+    .winget { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg-2); min-width: 0; }
+    .winget code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 600 12.5px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--ms-ink); }
+    .winget button { flex: none; min-height: 34px; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--card-solid); color: var(--text); font: 700 13px var(--font-ui); cursor: pointer; }
+    .winget button:hover { border-color: #0078d4; }
+    .go-store { display: grid; justify-items: center; gap: 8px; margin-top: 6px; color: var(--muted); font-size: 14px; }
+    @media (prefers-reduced-motion: reduce) { .ms-spot::after { animation: none; display: none; } .ms-badge:hover { transform: none; } }
+
     .go { position: relative; overflow: hidden; text-align: center; padding: clamp(80px, 12vw, 160px) 0; }
     .go-inner { position: relative; z-index: 1; display: grid; justify-items: center; gap: 16px; }
     .go h2 { font-size: clamp(40px, 7vw, 84px); letter-spacing: -0.03em; max-width: 16ch; }
@@ -744,6 +777,7 @@
       <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="wrap hero-grid">
         <div class="hero-copy">
+          <a class="tg-announce store-announce" href="#download"><svg class="ms-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#f25022" d="M2 2h9.5v9.5H2z"/><path fill="#7fba00" d="M12.5 2H22v9.5h-9.5z"/><path fill="#00a4ef" d="M2 12.5h9.5V22H2z"/><path fill="#ffb900" d="M12.5 12.5H22V22h-9.5z"/></svg><span data-i18n="msAnnounce">New: Sahkarmi is on the Microsoft Store, free</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce" href="#telegram"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><span data-i18n="tgAnnounce">New: give your team work from Telegram</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce plug-announce" href="#plug"><span class="plug-spark" aria-hidden="true">✦</span><span data-i18n="plugAnnounce">New: Skills, MCP servers and workflow export</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce calc-announce" href="/savings.html"><span class="calc-mark" aria-hidden="true">₹</span><span data-i18n="calcAnnounce">New: how much time and money can AI save you?</span><b aria-hidden="true">→</b></a>
@@ -757,6 +791,13 @@
               <span id="download-label" data-i18n="download">Download for Windows</span>
             </a>
             <a class="btn btn-secondary" href="#see"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg><span data-i18n="watch">Watch the 2-minute film</span></a>
+          </div>
+          <div class="ms-spot">
+            <a class="ms-badge" href="https://apps.microsoft.com/detail/9PD6BP3NGVST?mode=direct" target="_blank" rel="noopener noreferrer"><img src="/assets/ms-store-badge.svg" width="190" height="52" alt="Download from the Microsoft Store" /></a>
+            <div class="ms-copy">
+              <p class="ms-title"><span class="ms-free" data-i18n="msFree">FREE · ₹0</span><span data-i18n="msTitle">Now on the Microsoft Store</span></p>
+              <ul class="ms-ticks"><li data-i18n="msT1">Signed and certified by Microsoft</li><li data-i18n="msT2">One-click install, no SmartScreen warning</li><li data-i18n="msT3">Updates automatically</li></ul>
+            </div>
           </div>
           <p class="cta-meta"><span id="dl-meta" data-i18n="dlMeta">Free forever. No account, no card. Windows 10 and 11.</span> · <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer" data-i18n="source">Source code</a></p>
           <ul class="proof">
@@ -1138,7 +1179,17 @@
           <p class="lead"><span data-i18n="dlLead">Every file is built by GitHub Actions from the public source, with SHA-256 checksums and a provenance attestation on the release page. Current version:</span> <strong data-release-version>latest</strong></p>
         </div>
         <div class="dl-grid reveal">
-          <div class="dl-card primary" id="card-win">
+          <div class="dl-card store" id="card-store">
+            <span class="ribbon" data-i18n="storeRibbon">Recommended</span>
+            <div class="os os-win"><svg class="ms-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#f25022" d="M2 2h9.5v9.5H2z"/><path fill="#7fba00" d="M12.5 2H22v9.5h-9.5z"/><path fill="#00a4ef" d="M2 12.5h9.5V22H2z"/><path fill="#ffb900" d="M12.5 12.5H22V22h-9.5z"/></svg><div><h3>Microsoft Store</h3><span class="os-sub" data-i18n="storeSub">Windows 10 · 11 · verified by Microsoft</span></div></div>
+            <span class="status certified" data-i18n="stStore">Signed and certified by Microsoft</span>
+            <p class="price"><b>₹0</b><span data-i18n="storePrice">free forever, no in-app purchases</span></p>
+            <p data-i18n="storeP">One-click install with no SmartScreen warning, and the Store keeps Sahkarmi up to date for you.</p>
+            <a class="ms-badge" href="https://apps.microsoft.com/detail/9PD6BP3NGVST?mode=direct" target="_blank" rel="noopener noreferrer"><img src="/assets/ms-store-badge.svg" width="190" height="52" alt="Download from the Microsoft Store" /></a>
+            <div class="winget"><code>winget install --id 9PD6BP3NGVST --source msstore</code><button type="button" data-copy="winget install --id 9PD6BP3NGVST --source msstore" data-i18n="msCopy">Copy</button></div>
+            <small><a href="ms-windows-store://pdp/?productid=9PD6BP3NGVST" data-i18n="storeApp">Open straight in the Microsoft Store app</a></small>
+          </div>
+          <div class="dl-card" id="card-win">
             <div class="os os-win">
               <span class="win-tile" aria-hidden="true">
                 <svg viewBox="0 0 88 88">
@@ -1202,6 +1253,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           <span data-i18n="goBtn">Download free for Windows</span>
         </a>
+        <div class="go-store"><span data-i18n="goStore">or get it free from the Microsoft Store</span><a class="ms-badge" href="https://apps.microsoft.com/detail/9PD6BP3NGVST?mode=direct" target="_blank" rel="noopener noreferrer"><img src="/assets/ms-store-badge.svg" width="190" height="52" alt="Download from the Microsoft Store" /></a></div>
       </div>
     </section>
 
@@ -1239,7 +1291,7 @@
           </details>
           <details>
             <summary data-i18n="q7">Is it safe to install an unsigned app?</summary>
-            <p data-i18n="a7">The Windows installer is not code-signed yet, so SmartScreen shows a warning; choose More info, then Run anyway. Every release publishes SHA-256 checksums and a build provenance attestation so you can verify the file you downloaded was built from the public source by GitHub Actions.</p>
+            <p data-i18n="a7">Install from the Microsoft Store and there is no warning at all: Microsoft signs and certifies that package itself. The direct .exe from GitHub is not code-signed yet, so SmartScreen warns; choose More info, then Run anyway. Every release publishes SHA-256 checksums and a build provenance attestation so you can verify the file you downloaded was built from the public source by GitHub Actions.</p>
           </details>
           <details>
             <summary data-i18n="q8">Who makes Sahkarmi, and how do I report a problem?</summary>
@@ -1327,6 +1379,21 @@
         navPrivacy: "Privacy",
         navFaq: "FAQ",
         navCommunity: "Community",
+        msAnnounce: "New: Sahkarmi is on the Microsoft Store, free",
+        msFree: "FREE · ₹0",
+        msTitle: "Now on the Microsoft Store",
+        msT1: "Signed and certified by Microsoft",
+        msT2: "One-click install, no SmartScreen warning",
+        msT3: "Updates automatically",
+        storeRibbon: "Recommended",
+        storeSub: "Windows 10 · 11 · verified by Microsoft",
+        stStore: "Signed and certified by Microsoft",
+        storePrice: "free forever, no in-app purchases",
+        storeP: "One-click install with no SmartScreen warning, and the Store keeps Sahkarmi up to date for you.",
+        msCopy: "Copy",
+        msCopied: "Copied",
+        storeApp: "Open straight in the Microsoft Store app",
+        goStore: "or get it free from the Microsoft Store",
         tgAnnounce: "New: give your team work from Telegram",
         calcAnnounce: "New: how much time and money can AI save you?",
         tgEyebrow: "New: Telegram",
@@ -1587,7 +1654,7 @@
         q6: "Which languages does it support?",
         a6: "The interface is available in English, Hindi and Bengali, plus nine more Indian languages that are partly translated and fall back to English where a line is missing. Coworkers reply in the language you write in.",
         q7: "Is it safe to install an unsigned app?",
-        a7: "The Windows installer is not code-signed yet, so SmartScreen shows a warning; choose More info, then Run anyway. Every release publishes SHA-256 checksums and a build provenance attestation so you can verify the file you downloaded was built from the public source by GitHub Actions.",
+        a7: "Install from the Microsoft Store and there is no warning at all: Microsoft signs and certifies that package itself. The direct .exe from GitHub is not code-signed yet, so SmartScreen warns; choose More info, then Run anyway. Every release publishes SHA-256 checksums and a build provenance attestation so you can verify the file you downloaded was built from the public source by GitHub Actions.",
         q8: "Who makes Sahkarmi, and how do I report a problem?",
         a8: "Sahkarmi is built in India by the Sahkarmi Team and developed in the open on GitHub. Report bugs as GitHub issues with the app version and steps to reproduce, and report security problems privately through the repository's security policy.",
         comEyebrow: "Community and feedback",
@@ -1664,6 +1731,21 @@
         navPrivacy: "गोपनीयता",
         navFaq: "सवाल",
         navCommunity: "समुदाय",
+        msAnnounce: "नया: Sahkarmi अब Microsoft Store पर है, मुफ़्त",
+        msFree: "मुफ़्त · ₹0",
+        msTitle: "अब Microsoft Store पर",
+        msT1: "Microsoft द्वारा साइन और प्रमाणित",
+        msT2: "एक क्लिक में इंस्टॉल, कोई SmartScreen चेतावनी नहीं",
+        msT3: "अपने-आप अपडेट होता है",
+        storeRibbon: "सुझाया गया",
+        storeSub: "Windows 10 · 11 · Microsoft द्वारा जाँचा गया",
+        stStore: "Microsoft द्वारा साइन और प्रमाणित",
+        storePrice: "हमेशा मुफ़्त, कोई इन-ऐप ख़रीदारी नहीं",
+        storeP: "एक क्लिक में इंस्टॉल, कोई SmartScreen चेतावनी नहीं, और Store Sahkarmi को अपने-आप अपडेट रखता है.",
+        msCopy: "कॉपी करें",
+        msCopied: "कॉपी हो गया",
+        storeApp: "सीधे Microsoft Store ऐप में खोलें",
+        goStore: "या Microsoft Store से मुफ़्त पाएँ",
         tgAnnounce: "नया: टेलीग्राम से अपनी टीम को काम दीजिए",
         calcAnnounce: "नया: AI आपका कितना समय और पैसा बचा सकता है?",
         tgEyebrow: "नया: टेलीग्राम",
@@ -1924,7 +2006,7 @@
         q6: "कौन-सी भाषाएँ चलती हैं?",
         a6: "इंटरफ़ेस English, हिन्दी और বাংলা में है, और नौ और भारतीय भाषाओं में आंशिक अनुवाद है जहाँ कोई पंक्ति न हो वहाँ English दिखती है. सहकर्मी उसी भाषा में जवाब देते हैं जिसमें आप लिखते हैं.",
         q7: "क्या बिना साइन किया ऐप इंस्टॉल करना सुरक्षित है?",
-        a7: "Windows इंस्टॉलर पर अभी कोड-साइनिंग नहीं है, इसलिए SmartScreen चेतावनी दिखाता है; More info, फिर Run anyway चुनें. हर रिलीज़ के साथ SHA-256 चेकसम और बिल्ड प्रोवेनेंस अटेस्टेशन प्रकाशित होते हैं, ताकि आप जाँच सकें कि डाउनलोड की फ़ाइल GitHub Actions ने सार्वजनिक सोर्स से बनाई है.",
+        a7: "Microsoft Store से इंस्टॉल करें तो कोई चेतावनी नहीं आती: उस पैकेज को Microsoft खुद साइन और प्रमाणित करता है. GitHub वाली सीधी .exe पर अभी कोड-साइनिंग नहीं है, इसलिए SmartScreen चेतावनी दिखाता है; More info, फिर Run anyway चुनें. हर रिलीज़ के साथ SHA-256 चेकसम और बिल्ड प्रोवेनेंस अटेस्टेशन प्रकाशित होते हैं, ताकि आप जाँच सकें कि डाउनलोड की फ़ाइल GitHub Actions ने सार्वजनिक सोर्स से बनाई है.",
         q8: "सहकर्मी कौन बनाता है, और समस्या की रिपोर्ट कैसे करूँ?",
         a8: "सहकर्मी भारत में Sahkarmi Team बनाती है और इसका विकास GitHub पर खुले में होता है. बग GitHub issue के रूप में ऐप वर्ज़न और दोहराने के कदमों के साथ रिपोर्ट करें, और सुरक्षा की समस्याएँ रिपॉज़िटरी की सुरक्षा नीति के ज़रिए निजी तौर पर बताएँ.",
         comEyebrow: "समुदाय और फ़ीडबैक",
@@ -2040,7 +2122,7 @@
         button.setAttribute("href", DOWNLOADS[platform]);
         if (header) header.setAttribute("href", DOWNLOADS[platform]);
       }
-      document.getElementById("card-win").classList.add("primary");
+      document.getElementById("card-store").classList.add("primary");
     }
 
     const params = new URLSearchParams(location.search);
@@ -2049,6 +2131,15 @@
     applyLanguage(params.get("lang") || saved || (navigator.language.startsWith("hi") ? "hi" : "en"));
     for (const button of document.querySelectorAll(".lang button")) {
       button.addEventListener("click", () => applyLanguage(button.dataset.lang));
+    }
+
+    // Copy the winget command
+    for (const button of document.querySelectorAll("[data-copy]")) {
+      button.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(button.dataset.copy); } catch (_) { return; }
+        button.textContent = STRINGS[lang].msCopied;
+        setTimeout(() => { button.textContent = STRINGS[lang].msCopy; }, 1800);
+      });
     }
 
     // Mobile menu
