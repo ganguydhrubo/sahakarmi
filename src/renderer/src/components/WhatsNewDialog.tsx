@@ -38,8 +38,8 @@ const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
     {
       icon: "⚡",
       badge: "Faster",
-      title: "Lighter and no more freezes",
-      desc: "Unused pages sleep to free memory and wake when opened, still signed in. Busy web pages can no longer hold up the app.",
+      title: "Lighter, with fewer freezes",
+      desc: "Unused pages sleep to free memory and wake when opened, still signed in. AI servers nobody is using stop too, and start again when needed.",
     },
   ],
   "0.7.3": [

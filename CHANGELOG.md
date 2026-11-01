@@ -40,7 +40,7 @@ All notable changes to Sahkarmi are documented here. The project follows
 - A Telegram chat no longer changes coworker silently when a new coworker is added.
 - Saving a coworker's settings retries when Windows briefly holds the file.
 - Requests still waiting from before a restart now show straight away on the Approvals screen.
-- The freezes on a large browser history are fixed. Pages changing their title or loading state no
+- Less freezing with many browser pages. Pages changing their title or loading state no
   longer flood the app, page pictures are small and paused while the window is hidden, and at most
   six unused pages stay awake (each is a separate process). Sleeping pages stay in the list and wake
   signed in. Saving chat, approval and file records no longer blocks the app in a burst.
