@@ -264,7 +264,7 @@ describe.sequential("AgentService", () => {
     expect(queued?.text).toContain("Wait for GST invoice");
     await expect(
       service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" }),
-    ).rejects.toThrow("already decided");
+    ).rejects.toThrow("already rejected");
   });
 
   it("asks Codex for approval and holds a command until the owner decides", async () => {
@@ -414,6 +414,7 @@ describe.sequential("AgentService", () => {
     const browser = {
       ...fakeBrowser(),
       describeTarget: () => ({ label: "Pay now button", url: "https://pay.example.in/checkout" }),
+      listTabs: () => [],
       handleDynamicTool: async () => {
         browserCalls += 1;
         return { success: true, contentItems: [] };
@@ -469,7 +470,8 @@ describe.sequential("AgentService", () => {
     );
     expect(reply?.result).toEqual({ decision: "decline" });
     expect(permissions.audit()[0]?.decision).toBe("timed-out");
-    await waitFor(() => service?.listApprovals()[0]?.status === "rejected");
+    // The owner was never asked in time, so the request expired; it was not refused by them.
+    await waitFor(() => service?.listApprovals()[0]?.status === "expired");
   });
 
   it("reports a provider retry as a retry, not as an error", async () => {
@@ -620,7 +622,15 @@ describe.sequential("AgentService", () => {
     let tabUrl = "https://mail.rediff.com/cgi-bin/login.cgi";
     const browser = {
       ...fakeBrowser(),
-      listTabs: () => [{ id: "tab-1", url: tabUrl, title: "Rediffmail", loading: false }],
+      listTabs: () => [
+        {
+          id: "tab-1",
+          url: tabUrl,
+          title: "Rediffmail",
+          loading: false,
+          ownerBotId: "asha-accounts",
+        },
+      ],
       act: async (tabId: string, revision: number, action: unknown) => {
         acts.push({ tabId, revision, action });
         return {};
@@ -669,7 +679,15 @@ describe.sequential("AgentService", () => {
     const { store, mailbox } = stores();
     const browser = {
       ...fakeBrowser(),
-      listTabs: () => [{ id: "tab-1", url: "https://bank.example/otp", title: "", loading: false }],
+      listTabs: () => [
+        {
+          id: "tab-1",
+          url: "https://bank.example/otp",
+          title: "",
+          loading: false,
+          ownerBotId: "asha-accounts",
+        },
+      ],
       activate: async () => undefined,
     } as unknown as BrowserHost;
     service = new AgentService(store, mailbox, browser);
@@ -1678,6 +1696,436 @@ describe.sequential("AgentService", () => {
 });
 
 /** Every conversation update for this service that carries a plan, in order. */
+describe("AgentService team, authority and accounts", () => {
+  /** What the app answered the fake runtime's one tool call, as text. */
+  async function toolAnswer(): Promise<string> {
+    let answer = "";
+    await waitFor(async () => {
+      const found = (await protocolMessages()).find((entry) => entry.id === "agent-tool-custom");
+      if (found) answer = JSON.stringify(found);
+      return Boolean(found);
+    });
+    return answer;
+  }
+
+  /** Filed before the service starts, because the fake runtime reads its call at start-up. */
+  async function existingRequest(category: "data" | "payment") {
+    const seed = new ApprovalStore(join(root, "user-data"));
+    await seed.initialize();
+    return seed.create({ botId: "asha-accounts", title: "Request", details: "", category });
+  }
+
+  async function team(call: { tool: string; arguments: unknown; namespace?: string }) {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({ namespace: "sahkarmi", ...call });
+    const { store, mailbox } = stores();
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex", approvals);
+    await service.initialize();
+    const workspaceId = service.listWorkspaces().workspaces[0]?.id ?? "";
+    return { store, approvals, workspaceId, target: service };
+  }
+
+  it("tells the window about requests still waiting from before a restart", async () => {
+    const request = await existingRequest("data");
+    const { store, mailbox } = stores();
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      new ApprovalStore(join(root, "user-data")),
+    );
+    expect(service.listApprovals()).toEqual([]);
+    const seen: string[][] = [];
+    service.on("event", (event: { type: string; approvals?: Array<{ id: string }> }) => {
+      if (event.type === "approvals-changed") {
+        seen.push((event.approvals ?? []).map((approval) => approval.id));
+      }
+    });
+    await service.initialize();
+    expect(seen[0]).toEqual([request.id]);
+  });
+
+  it("refuses a message to a coworker in another workspace", async () => {
+    const { target, store } = await team({
+      tool: "send_message",
+      arguments: { recipientBotIds: ["arjun-research"], text: "Do my work" },
+    });
+    await target.createWorkspace("Other company");
+    const other = target.listWorkspaces().workspaces[1]?.id ?? "";
+    const moved = await store.createBot(other);
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "send_message",
+      arguments: { recipientBotIds: ["arjun-research"], text: "Do my work" },
+    });
+    await target.sendMessage({ botId: moved.id, text: "Start" });
+    expect(await toolAnswer()).toContain("another workspace");
+    expect(target.listQueue("arjun-research").deliveries).toHaveLength(0);
+  });
+
+  it("under a CEO, an employee cannot pass work straight to a colleague", async () => {
+    const { target, workspaceId } = await team({
+      tool: "send_message",
+      arguments: { recipientBotIds: ["arjun-research"], text: "Do my work" },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.sendMessage({ botId: "asha-accounts", text: "Start" });
+    expect(await toolAnswer()).toContain("send this to the CEO");
+    expect(target.listQueue("arjun-research").deliveries).toHaveLength(0);
+  });
+
+  it("without a CEO, colleagues in a workspace still reach each other", async () => {
+    const { target } = await team({
+      tool: "send_message",
+      arguments: { recipientBotIds: ["arjun-research"], text: "Please check this" },
+    });
+    await target.sendMessage({ botId: "asha-accounts", text: "Start" });
+    await waitFor(() => target.listQueue("arjun-research").deliveries.length === 1);
+  });
+
+  it("lists only the coworker's own workspace, naming the CEO", async () => {
+    const { target, workspaceId, store } = await team({ tool: "list_agents", arguments: {} });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.createWorkspace("Other company");
+    const outsider = await store.createBot(target.listWorkspaces().workspaces[1]?.id);
+    await target.sendMessage({ botId: "asha-accounts", text: "Who is here?" });
+    const answer = await toolAnswer();
+    expect(answer).toContain("mitra-lead");
+    expect(answer).toContain("CEO");
+    expect(answer).not.toContain(outsider.id);
+  });
+
+  it("the CEO hands out work, employees' results return, then it is told to consolidate", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "MY RESULT";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "150";
+    const { target, workspaceId } = await team({
+      tool: "send_message",
+      arguments: { recipientBotIds: ["asha-accounts", "arjun-research"], text: "Your part" },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.sendMessage({ botId: "mitra-lead", text: "Prepare the quarterly review" });
+
+    const prompts = async () => JSON.stringify(await protocolMessages());
+    await waitFor(async () => (await prompts()).includes("Consolidate the results"), 15_000);
+    const log = await prompts();
+    expect(log).toContain("Still waiting for");
+    expect(log).toContain("MY RESULT");
+    // Delegated work went to the employees named, and to nobody else.
+    expect(target.listQueue("asha-accounts").deliveries.every((d) => d.sender.kind === "bot")).toBe(
+      true,
+    );
+    expect(target.listQueue("vikram-sales").deliveries).toHaveLength(0);
+  }, 30_000);
+
+  it("sends an employee's request to the CEO only when the owner granted that kind", async () => {
+    const { target, workspaceId } = await team({
+      tool: "request_approval",
+      arguments: { title: "Pay vendor", details: "₹500", category: "payment" },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.grantApprovalAuthority({ workspaceId, categories: ["payment"], hours: 1 });
+    await target.sendMessage({ botId: "asha-accounts", text: "Pay it" });
+    await waitFor(() => target.listApprovals().length === 1);
+    await waitFor(() => target.listApprovals()[0]?.routedToBotId === "mitra-lead");
+    await waitFor(() =>
+      target
+        .listQueue("mitra-lead")
+        .deliveries.some((delivery) => delivery.text.startsWith("[Approval request]")),
+    );
+    expect(target.listApprovals()[0]?.status).toBe("pending");
+  });
+
+  it("keeps a request with the owner when the CEO was given nothing", async () => {
+    const { target, workspaceId } = await team({
+      tool: "request_approval",
+      arguments: { title: "Pay vendor", details: "₹500", category: "payment" },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.sendMessage({ botId: "asha-accounts", text: "Pay it" });
+    await waitFor(() => target.listApprovals().length === 1);
+    expect(target.listApprovals()[0]?.routedToBotId ?? null).toBeNull();
+    expect(target.listQueue("mitra-lead").deliveries).toHaveLength(0);
+  });
+
+  it("the CEO decides within its authority, and the decision is recorded as its own", async () => {
+    const request = await existingRequest("data");
+    const { target, workspaceId, approvals } = await team({
+      tool: "decide_approval",
+      arguments: { approvalId: request.id, decision: "approved", note: "Within budget" },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.grantApprovalAuthority({ workspaceId, categories: ["data"], hours: 1 });
+    await target.sendMessage({ botId: "mitra-lead", text: "Decide" });
+    await waitFor(() => approvals.get(request.id)?.status === "approved");
+    expect(approvals.get(request.id)?.decidedBy).toBe("coworker:mitra-lead");
+    await waitFor(() =>
+      target
+        .listQueue("asha-accounts")
+        .deliveries.some((delivery) => delivery.text.includes("[Approval APPROVED]")),
+    );
+  });
+
+  it("refuses a CEO deciding outside what the owner granted", async () => {
+    const request = await existingRequest("payment");
+    const { target, workspaceId, approvals } = await team({
+      tool: "decide_approval",
+      arguments: { approvalId: request.id, decision: "approved" },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.grantApprovalAuthority({ workspaceId, categories: ["data"], hours: 1 });
+    await target.sendMessage({ botId: "mitra-lead", text: "Decide" });
+    expect(await toolAnswer()).toContain("no authority");
+    expect(approvals.get(request.id)?.status).toBe("pending");
+  });
+
+  it("the CEO can pass on only what it holds, and revoking it ends what was passed on", async () => {
+    const { target, workspaceId, approvals } = await team({
+      tool: "delegate_approval_authority",
+      arguments: { botId: "asha-accounts", categories: ["payment"], hours: 9_999 },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    const [ownerGrant] = await target.grantApprovalAuthority({
+      workspaceId,
+      categories: ["payment"],
+      hours: 1,
+    });
+    await target.sendMessage({ botId: "mitra-lead", text: "Delegate" });
+    await waitFor(() => approvals.listAuthority().some((g) => g.botId === "asha-accounts"));
+    const passed = approvals.listAuthority().find((grant) => grant.botId === "asha-accounts");
+    expect(passed?.categories).toEqual(["payment"]);
+    expect(Date.parse(passed?.expiresAt ?? "")).toBeLessThanOrEqual(
+      Date.parse(ownerGrant?.expiresAt ?? ""),
+    );
+    await target.revokeApprovalAuthority(ownerGrant?.id ?? "");
+    expect(approvals.listAuthority()).toHaveLength(0);
+  });
+
+  it("refuses a CEO passing on more than the owner gave", async () => {
+    const { target, workspaceId, approvals } = await team({
+      tool: "delegate_approval_authority",
+      arguments: { botId: "asha-accounts", categories: ["payment", "data"] },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.grantApprovalAuthority({ workspaceId, categories: ["payment"], hours: 1 });
+    await target.sendMessage({ botId: "mitra-lead", text: "Delegate" });
+    expect(await toolAnswer()).toContain("did not give you authority for: data");
+    expect(approvals.listAuthority().some((g) => g.botId === "asha-accounts")).toBe(false);
+  });
+
+  it("an employee cannot delegate, and a new CEO starts with no authority", async () => {
+    const { target, workspaceId, approvals } = await team({
+      tool: "delegate_approval_authority",
+      arguments: { botId: "arjun-research", categories: ["data"] },
+    });
+    await target.setWorkspaceCeo(workspaceId, "mitra-lead");
+    await target.grantApprovalAuthority({ workspaceId, categories: ["data"], hours: 1 });
+    await target.sendMessage({ botId: "asha-accounts", text: "Delegate" });
+    expect(await toolAnswer()).toContain("Only the workspace's CEO");
+    await target.setWorkspaceCeo(workspaceId, "asha-accounts");
+    expect(approvals.listAuthority()).toHaveLength(0);
+  });
+
+  it("deletes a workspace, moving its coworkers and ending what was granted there", async () => {
+    const { target, workspaceId, approvals, store } = await team({
+      tool: "list_agents",
+      arguments: {},
+    });
+    await target.createWorkspace("Company B");
+    const second = target.listWorkspaces().workspaces[1]?.id ?? "";
+    const worker = await store.createBot(second);
+    await target.setWorkspaceCeo(second, worker.id);
+    await target.grantApprovalAuthority({ workspaceId: second, categories: ["data"], hours: 1 });
+
+    const { state, deletedBotIds } = await target.deleteWorkspace({
+      workspaceId: second,
+      moveCoworkersTo: workspaceId,
+    });
+    expect(state.workspaces.map((space) => space.id)).toEqual([workspaceId]);
+    expect(state.activeWorkspaceId).toBe(workspaceId);
+    expect(deletedBotIds).toEqual([]);
+    expect(store.list().find((bot) => bot.id === worker.id)?.workspaceId).toBe(workspaceId);
+    expect(approvals.listAuthority()).toHaveLength(0);
+  });
+
+  it("deletes a workspace with its coworkers, leaving nothing that names them", async () => {
+    const { target, workspaceId, approvals, store } = await team({
+      tool: "list_agents",
+      arguments: {},
+    });
+    await target.createWorkspace("Company B");
+    const second = target.listWorkspaces().workspaces[1]?.id ?? "";
+    const worker = await store.createBot(second);
+    await approvals.create({ botId: worker.id, title: "x", details: "", category: "data" });
+
+    const { deletedBotIds } = await target.deleteWorkspace({
+      workspaceId: second,
+      moveCoworkersTo: null,
+    });
+    expect(deletedBotIds).toEqual([worker.id]);
+    expect(store.list().some((bot) => bot.id === worker.id)).toBe(false);
+    expect(store.list().every((bot) => bot.workspaceId === workspaceId)).toBe(true);
+    expect(approvals.list().some((approval) => approval.botId === worker.id)).toBe(false);
+  });
+
+  it("will not delete the last workspace or a busy coworker's workspace", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "";
+    const { target, workspaceId, store } = await team({ tool: "list_agents", arguments: {} });
+    await expect(target.deleteWorkspace({ workspaceId, moveCoworkersTo: null })).rejects.toThrow(
+      "only workspace",
+    );
+    await target.createWorkspace("Company B");
+    const second = target.listWorkspaces().workspaces[1]?.id ?? "";
+    const worker = await store.createBot(second);
+    await target.sendMessage({ botId: worker.id, text: "Keep working" });
+    await expect(
+      target.deleteWorkspace({ workspaceId: second, moveCoworkersTo: null }),
+    ).rejects.toThrow("still working");
+    expect(target.listWorkspaces().workspaces).toHaveLength(2);
+    expect(store.list().some((bot) => bot.id === worker.id)).toBe(true);
+  });
+
+  describe("publishing accounts", () => {
+    async function publisher(signedIn: string | null, label = "Post") {
+      process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+        namespace: "sahkarmi_browser",
+        tool: "act",
+        arguments: { tabId: "tab-1", revision: 1, action: { type: "click", ref: "1:1" } },
+      });
+      const { store, mailbox } = stores();
+      const approvals = new ApprovalStore(join(root, "user-data"));
+      const calls = { browser: 0 };
+      const browser = {
+        ...fakeBrowser(),
+        listTabs: () => [
+          { id: "tab-1", url: "https://www.facebook.com/", ownerBotId: "kavya-content" },
+        ],
+        describeTarget: () => ({ label, url: "https://www.facebook.com/" }),
+        signedInAccount: async () => signedIn,
+        handleDynamicTool: async (params: { botId?: string }) => {
+          calls.browser += 1;
+          expect(params.botId).toBe("kavya-content");
+          return { success: true, contentItems: [] };
+        },
+      } as unknown as BrowserHost;
+      service = new AgentService(store, mailbox, browser, null, 30_000, "codex", approvals);
+      await service.initialize();
+      return { store, approvals, calls, target: service };
+    }
+
+    const bind = (store: BotStore, accountId: string) =>
+      store.setPublishingAccounts("kavya-content", [
+        { platform: "facebook", source: "browser", accountId, boundAt: "2026-11-01T00:00:00Z" },
+      ]);
+
+    it("publishes through the account the coworker is tied to", async () => {
+      const { store, calls, target } = await publisher("111");
+      await bind(store, "111");
+      await target.sendMessage({ botId: "kavya-content", text: "Post it" });
+      await waitFor(() => calls.browser === 1);
+    });
+
+    it("stops when another person's account is signed in, with no fallback", async () => {
+      const { store, calls, target, approvals } = await publisher("222");
+      await bind(store, "111");
+      await target.sendMessage({ botId: "kavya-content", text: "Post it" });
+      expect(await toolAnswer()).toContain("signed in to Facebook as 222");
+      expect(calls.browser).toBe(0);
+      expect(approvals.list()).toHaveLength(0);
+    });
+
+    it("stops any click at all while the wrong account is signed in", async () => {
+      const { store, calls, target } = await publisher("222", "Edit profile");
+      await bind(store, "111");
+      await target.sendMessage({ botId: "kavya-content", text: "Change it" });
+      expect(await toolAnswer()).toContain("Stopped");
+      expect(calls.browser).toBe(0);
+    });
+
+    it("stops when the account cannot be verified", async () => {
+      const { store, calls, target } = await publisher(null);
+      await bind(store, "111");
+      await target.sendMessage({ botId: "kavya-content", text: "Post it" });
+      expect(await toolAnswer()).toContain("could not be verified");
+      expect(calls.browser).toBe(0);
+    });
+
+    it("asks the owner before tying a first account; a coworker cannot answer", async () => {
+      const { store, calls, target, approvals } = await publisher("333");
+      await target.sendMessage({ botId: "kavya-content", text: "Post it" });
+      expect(await toolAnswer()).toContain("not tied to a Facebook account");
+      expect(calls.browser).toBe(0);
+      const [request] = target.listApprovals();
+      expect(request).toMatchObject({ ownerOnly: true, routedToBotId: null });
+      await target.setWorkspaceCeo(target.listWorkspaces().workspaces[0]?.id ?? "", "mitra-lead");
+      await target.grantApprovalAuthority({
+        workspaceId: target.listWorkspaces().workspaces[0]?.id ?? "",
+        categories: ["submission"],
+        hours: 1,
+      });
+      expect(target.listApprovals()[0]?.routedToBotId ?? null).toBeNull();
+
+      await target.decideApproval({ approvalId: request?.id ?? "", decision: "approved" });
+      expect(
+        store.list().find((bot) => bot.id === "kavya-content")?.publishingAccounts?.[0],
+      ).toMatchObject({ platform: "facebook", accountId: "333" });
+      expect(approvals.get(request?.id ?? "")?.status).toBe("approved");
+    });
+
+    it("leaves ordinary sites and reading alone", async () => {
+      const { calls, target } = await publisher(null, "Like");
+      await target.sendMessage({ botId: "kavya-content", text: "Look around" });
+      await waitFor(() => calls.browser === 1);
+    });
+  });
+
+  it("refuses a coworker's upload from a colleague's private folder", async () => {
+    const { store, mailbox } = stores();
+    const list = await store.initialize().then(() => store.list());
+    const colleague = list.find((bot) => bot.id === "arjun-research");
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi_browser",
+      tool: "act",
+      arguments: {
+        tabId: "tab-1",
+        revision: 1,
+        action: {
+          type: "upload",
+          ref: "1:1",
+          paths: [join(colleague?.workspacePath ?? "", "a.pdf")],
+        },
+      },
+    });
+    let calls = 0;
+    const browser = {
+      ...fakeBrowser(),
+      listTabs: () => [],
+      describeTarget: () => ({ label: "Attach", url: "https://example.com/" }),
+      handleDynamicTool: async () => {
+        calls += 1;
+        return { success: true, contentItems: [] };
+      },
+    } as unknown as BrowserHost;
+    const permissions = new PermissionService(join(root, "user-data"));
+    service = new AgentService(
+      store,
+      mailbox,
+      browser,
+      null,
+      30_000,
+      "codex",
+      new ApprovalStore(join(root, "user-data")),
+      permissions,
+    );
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Attach it" });
+    expect(await toolAnswer()).toContain("private folder");
+    expect(calls).toBe(0);
+  });
+});
+
 function planEvents(target: AgentService): ConversationSnapshot[] {
   const seen: ConversationSnapshot[] = [];
   target.on("event", (event: AgentEvent) => {

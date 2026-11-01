@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import {
   app,
   type BrowserWindow,
@@ -18,12 +18,19 @@ import type {
   BrowserControlState,
   BrowserTab,
   BrowserVisibilityInput,
+  SocialPlatform,
 } from "../shared/ipc";
 import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
+import {
+  ACCOUNT_COOKIES,
+  linkedinAccountFromRedirect,
+  siteOfHost,
+  siteOfUrl,
+} from "./publishing-accounts";
 
 export interface BrowserHostEvents {
   changed: [tabs: BrowserTab[], activeTabId: string | null];
@@ -126,15 +133,17 @@ function webOrigin(url: string): string | null {
   }
 }
 
+interface StoredBrowserTab {
+  id: string;
+  url: string;
+  ownerThreadId: string | null;
+  ownerBotId: string | null;
+}
+
 export interface StoredBrowserState {
   version: 1;
   activeTabId: string | null;
-  tabs: Array<{
-    id: string;
-    url: string;
-    ownerThreadId: string | null;
-    ownerBotId: string | null;
-  }>;
+  tabs: StoredBrowserTab[];
 }
 
 export interface BrowserSnapshot {
@@ -242,6 +251,11 @@ export const BROWSER_DYNAMIC_TOOLS = [
 
 /** A hidden page gets this long, this many times, to paint before its preview is taken. */
 const PREVIEW_PAINT_MS = 120;
+const PREVIEW_WIDTH = 480;
+const PREVIEW_JPEG_QUALITY = 70;
+/** Pages change their title and loading state many times a second; the app hears at most this often. */
+const CHANGE_EVENT_MIN_MS = 250;
+const PERSIST_DELAY_MS = 500;
 const PREVIEW_PAINT_ATTEMPTS = 12;
 /** A coworker waits at most this long for a page that just woke up or opened to load. */
 const FIRST_LOAD_WAIT_MS = 15_000;
@@ -250,10 +264,30 @@ const FIRST_LOAD_WAIT_MS = 15_000;
 async function captureIfPainted(view: WebContentsView): Promise<string | null> {
   try {
     const image = await withTimeout(view.webContents.capturePage(), 5_000, "Preview timed out.");
-    return image.isEmpty() ? null : image.toDataURL();
+    if (image.isEmpty()) return null;
+    // A page card is small. A full-size PNG is encoded on the main thread and blocks the whole app.
+    const small =
+      image.getSize().width > PREVIEW_WIDTH ? image.resize({ width: PREVIEW_WIDTH }) : image;
+    return `data:image/jpeg;base64,${small.toJPEG(PREVIEW_JPEG_QUALITY).toString("base64")}`;
   } catch {
     return null;
   }
+}
+
+const SHARED_PARTITION = "persist:sahkarmi-browser";
+const SIGN_IN_SPLIT_MARKER = "browser-signins-split.json";
+
+/** Each coworker's browser data lives in a partition of its own. */
+export function browserPartition(botId: string): string {
+  return `${SHARED_PARTITION}-${botId}`;
+}
+
+export interface BrowserRestoreOptions {
+  /** The coworker a saved tab's chat belongs to. */
+  botOfThread?: (threadId: string) => string | null;
+  botIds?: string[];
+  /** Pages coworkers are known to have used, besides their saved tabs. */
+  usedPages?: Array<{ botId: string; url: string }>;
 }
 
 export class BrowserHost implements CoworkerBrowser {
@@ -264,16 +298,24 @@ export class BrowserHost implements CoworkerBrowser {
   /** A tab is reloaded by itself at most this often, however busy the coworker is. */
   static STALE_MIN_GAP_MS = 30_000;
   /** A hidden tab nobody used for this long sleeps: its page is freed, the tab stays listed. */
-  static IDLE_SLEEP_MS = 30 * 60_000;
+  static IDLE_SLEEP_MS = 15 * 60_000;
+  /** More pages than this are put to sleep, least recently used first. Each one is a process. */
+  static MAX_AWAKE_TABS = 6;
+  /** A page used more recently than this stays awake whatever the count: a coworker may be on it. */
+  static AWAKE_LIMIT_IDLE_MS = 2 * 60_000;
   /** How often idle tabs are looked for. */
   static SLEEP_CHECK_MS = 60_000;
   readonly takeoverHoldsShownTabOnly = true;
   readonly #window: BrowserWindow;
   readonly #session: Session;
+  readonly #botSessions = new Map<string, Session>();
   readonly #downloadsRoot: string;
   readonly #statePath: string;
   readonly #tabs = new Map<string, InternalTab>();
   readonly #listeners = new Set<(...args: BrowserHostEvents["changed"]) => void>();
+  #changeTimer: ReturnType<typeof setTimeout> | null = null;
+  #changePending = false;
+  #persistTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #control = new BrowserControlTracker();
   readonly #reservedDownloadPaths = new Set<string>();
   #activeTabId: string | null = null;
@@ -291,8 +333,8 @@ export class BrowserHost implements CoworkerBrowser {
     this.#window = window;
     this.#downloadsRoot = downloadsRoot;
     this.#statePath = statePath;
-    this.#session = session.fromPartition("persist:sahkarmi-browser", { cache: true });
-    this.#configureSession();
+    this.#session = session.fromPartition(SHARED_PARTITION, { cache: true });
+    this.#configureSession(this.#session);
     this.#sleepTimer = setInterval(() => this.#sleepIdleTabs(), BrowserHost.SLEEP_CHECK_MS);
     this.#sleepTimer.unref?.();
   }
@@ -301,12 +343,20 @@ export class BrowserHost implements CoworkerBrowser {
    * Brings back the saved tabs asleep: only the tab on screen loads now, the rest when they are
    * opened or a coworker uses them. Loading every saved tab at once used gigabytes of memory.
    */
-  async restore(): Promise<void> {
+  async restore(options: BrowserRestoreOptions = {}): Promise<void> {
     const state = await readBrowserState(this.#statePath);
+    // A coworker's own open() used to record only its chat; name the coworker on those tabs.
+    const ownerOf = (stored: StoredBrowserTab) =>
+      stored.ownerBotId ??
+      (stored.ownerThreadId ? (options.botOfThread?.(stored.ownerThreadId) ?? null) : null);
+    await this.#splitSharedSignIns(
+      state.tabs.map((stored) => ({ ...stored, ownerBotId: ownerOf(stored) })),
+      options,
+    );
     if (state.tabs.length === 0) return;
 
     const tabs = state.tabs.map((stored) => {
-      const tab = this.#createTab(stored.id, stored.url, stored.ownerThreadId, stored.ownerBotId);
+      const tab = this.#createTab(stored.id, stored.url, stored.ownerThreadId, ownerOf(stored));
       this.#tabs.set(tab.id, tab);
       return tab;
     });
@@ -315,6 +365,105 @@ export class BrowserHost implements CoworkerBrowser {
       : (tabs[0]?.id ?? null);
     this.#syncAttachedView();
     this.#emitChanged();
+  }
+
+  /**
+   * Before coworkers had a browser each, every sign-in lived in one shared session. Once, each
+   * coworker receives the sign-ins of the sites it was actually using, so nobody is logged out and
+   * nobody inherits a colleague's other accounts. The shared session is left intact.
+   */
+  async #splitSharedSignIns(
+    tabs: StoredBrowserTab[],
+    options: BrowserRestoreOptions,
+  ): Promise<void> {
+    if (!options.botIds?.length) return;
+    const markerPath = join(dirname(this.#statePath), SIGN_IN_SPLIT_MARKER);
+    if (existsSync(markerPath)) return;
+    const shared = await this.#session.cookies.get({});
+    const sites = new Map<string, Set<string>>();
+    const addSite = (botId: string, url: string) => {
+      const site = siteOfUrl(url);
+      if (!site) return;
+      if (!sites.has(botId)) sites.set(botId, new Set());
+      sites.get(botId)?.add(site);
+    };
+    for (const tab of tabs) if (tab.ownerBotId) addSite(tab.ownerBotId, tab.url);
+    for (const used of options.usedPages ?? []) addSite(used.botId, used.url);
+    const onlyBot = options.botIds.length === 1 ? options.botIds[0] : null;
+    for (const botId of options.botIds) {
+      const wanted = sites.get(botId);
+      const cookies = shared.filter(
+        (cookie) => botId === onlyBot || wanted?.has(siteOfHost(cookie.domain ?? "")),
+      );
+      if (cookies.length === 0) continue;
+      const target = this.#sessionFor(botId);
+      for (const cookie of cookies) {
+        const host = (cookie.domain ?? "").replace(/^\./, "");
+        await target.cookies
+          .set({
+            url: `${cookie.secure ? "https" : "http"}://${host}${cookie.path ?? "/"}`,
+            name: cookie.name,
+            value: cookie.value,
+            ...(cookie.hostOnly ? {} : { domain: cookie.domain }),
+            path: cookie.path,
+            secure: cookie.secure,
+            httpOnly: cookie.httpOnly,
+            expirationDate: cookie.expirationDate,
+            sameSite: cookie.sameSite,
+          })
+          .catch(() => undefined);
+      }
+      await target.cookies.flushStore().catch(() => undefined);
+    }
+    await writeFile(markerPath, `${JSON.stringify({ splitAt: new Date().toISOString() })}\n`, {
+      encoding: "utf8",
+    });
+  }
+
+  /** A coworker's own browser profile; a tab with no coworker uses the owner's shared one. */
+  #sessionFor(botId: string | null): Session {
+    if (!botId) return this.#session;
+    let botSession = this.#botSessions.get(botId);
+    if (!botSession) {
+      botSession = session.fromPartition(browserPartition(botId), { cache: true });
+      this.#configureSession(botSession);
+      this.#botSessions.set(botId, botSession);
+    }
+    return botSession;
+  }
+
+  /** Which account is signed in to this tab's browser, read from that browser alone. */
+  async signedInAccount(tabId: string, platform: SocialPlatform): Promise<string | null> {
+    const tabSession = this.#sessionFor(this.#requireTab(tabId).ownerBotId);
+    const cookie = ACCOUNT_COOKIES[platform];
+    if (cookie) {
+      const [found] = await tabSession.cookies.get({ url: cookie.url, name: cookie.name });
+      return found?.value || null;
+    }
+    if (platform !== "linkedin") return null;
+    const [member] = await tabSession.cookies.get({
+      url: "https://www.linkedin.com",
+      name: "li_at",
+    });
+    if (!member?.value) return null;
+    const response = await tabSession
+      .fetch("https://www.linkedin.com/in/me/", {
+        redirect: "manual",
+        signal: AbortSignal.timeout(10_000),
+      })
+      .catch(() => null);
+    return linkedinAccountFromRedirect(response?.headers.get("location") ?? null);
+  }
+
+  /** A deleted coworker's tabs close and its browser data goes with it. */
+  async releaseBot(botId: string): Promise<void> {
+    for (const tab of [...this.#tabs.values()]) {
+      if (tab.ownerBotId === botId) await this.close(tab.id);
+    }
+    const botSession =
+      this.#botSessions.get(botId) ?? session.fromPartition(browserPartition(botId));
+    await botSession.clearStorageData().catch(() => undefined);
+    this.#botSessions.delete(botId);
   }
 
   /** During a takeover the panel keeps showing the owner's tab, whatever coworkers open. */
@@ -343,7 +492,7 @@ export class BrowserHost implements CoworkerBrowser {
   #attachLiveView(tab: InternalTab): WebContentsView {
     tab.lastUsed = Date.now();
     if (tab.view) return tab.view;
-    const view = this.#createView();
+    const view = this.#createView(this.#sessionFor(tab.ownerBotId));
     tab.view = view;
     tab.liveSince = Date.now();
     this.#mountView(view);
@@ -354,10 +503,15 @@ export class BrowserHost implements CoworkerBrowser {
   }
 
   /** A coworker chat's own tab already showing this address, unless the owner typed in it. */
-  #reusableTab(url: string, ownerThreadId: string | null): InternalTab | null {
-    if (!ownerThreadId) return null;
+  #reusableTab(
+    url: string,
+    ownerThreadId: string | null,
+    ownerBotId: string | null,
+  ): InternalTab | null {
+    if (!ownerThreadId && !ownerBotId) return null;
     for (const tab of this.#tabs.values()) {
-      if (tab.ownerThreadId !== ownerThreadId || tab.ownerTyped || tab.busy > 0) continue;
+      const own = ownerBotId ? tab.ownerBotId === ownerBotId : tab.ownerThreadId === ownerThreadId;
+      if (!own || tab.ownerTyped || tab.busy > 0) continue;
       if (sameAddress(currentTabUrl(tab), url)) return tab;
     }
     return null;
@@ -405,14 +559,29 @@ export class BrowserHost implements CoworkerBrowser {
   #sleepIdleTabs(): void {
     const now = Date.now();
     let slept = false;
+    const candidates: InternalTab[] = [];
+    let awake = 0;
     for (const tab of this.#tabs.values()) {
       const view = tab.view;
       if (!view) continue;
+      awake += 1;
       if (this.#visible && this.#attachedView === view) continue;
       if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) continue;
-      if (now - tab.lastUsed < BrowserHost.IDLE_SLEEP_MS) continue;
       if (view.webContents.isCurrentlyAudible()) continue;
+      if (now - tab.lastUsed < BrowserHost.IDLE_SLEEP_MS) {
+        candidates.push(tab);
+        continue;
+      }
       this.#sleep(tab);
+      awake -= 1;
+      slept = true;
+    }
+    candidates.sort((a, b) => a.lastUsed - b.lastUsed);
+    for (const tab of candidates) {
+      if (awake <= BrowserHost.MAX_AWAKE_TABS) break;
+      if (now - tab.lastUsed < BrowserHost.AWAKE_LIMIT_IDLE_MS) break;
+      this.#sleep(tab);
+      awake -= 1;
       slept = true;
     }
     if (slept) {
@@ -479,9 +648,10 @@ export class BrowserHost implements CoworkerBrowser {
     id?: string,
   ): Promise<BrowserTab> {
     const normalizedUrl = normalizeBrowserUrl(url);
-    const reused = id === undefined ? this.#reusableTab(normalizedUrl, ownerThreadId) : null;
+    const reused =
+      id === undefined ? this.#reusableTab(normalizedUrl, ownerThreadId, ownerBotId) : null;
     if (reused) {
-      if (!this.#ownerHolding) this.#activeTabId = reused.id;
+      if (this.#mayTakePanel(ownerBotId)) this.#activeTabId = reused.id;
       const view = this.#attachLiveView(reused);
       this.#syncAttachedView();
       this.#emitChanged();
@@ -493,7 +663,7 @@ export class BrowserHost implements CoworkerBrowser {
 
     this.#tabs.set(tab.id, tab);
     const view = this.#attachLiveView(tab);
-    if (!this.#ownerHolding || !this.#activeTabId) this.#activeTabId = tab.id;
+    if (!this.#activeTabId || this.#mayTakePanel(ownerBotId)) this.#activeTabId = tab.id;
     this.#syncAttachedView();
     this.#emitChanged();
     await this.#persistState();
@@ -517,6 +687,13 @@ export class BrowserHost implements CoworkerBrowser {
     }
 
     return toPublicTab(tab);
+  }
+
+  /** A coworker's page never replaces another coworker's on the panel the owner is looking at. */
+  #mayTakePanel(ownerBotId: string | null): boolean {
+    if (this.#ownerHolding) return false;
+    const shown = this.#activeTabId ? this.#tabs.get(this.#activeTabId) : null;
+    return !shown || !shown.ownerBotId || !ownerBotId || shown.ownerBotId === ownerBotId;
   }
 
   async activate(tabId: string): Promise<void> {
@@ -720,6 +897,10 @@ export class BrowserHost implements CoworkerBrowser {
   }
 
   async destroy(): Promise<void> {
+    if (this.#changeTimer) clearTimeout(this.#changeTimer);
+    if (this.#persistTimer) clearTimeout(this.#persistTimer);
+    this.#changeTimer = null;
+    this.#persistTimer = null;
     try {
       await this.#persistState();
     } finally {
@@ -766,10 +947,10 @@ export class BrowserHost implements CoworkerBrowser {
     };
   }
 
-  #createView(): WebContentsView {
+  #createView(viewSession: Session): WebContentsView {
     const view = new WebContentsView({
       webPreferences: {
-        session: this.#session,
+        session: viewSession,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -781,19 +962,19 @@ export class BrowserHost implements CoworkerBrowser {
     return view;
   }
 
-  #configureSession(): void {
-    const userAgent = browserUserAgent(this.#session.getUserAgent());
-    this.#session.setUserAgent(userAgent, preferredBrowserLanguageCodes());
-    this.#session.webRequest.onBeforeSendHeaders((details, callback) => {
+  #configureSession(target: Session): void {
+    const userAgent = browserUserAgent(target.getUserAgent());
+    target.setUserAgent(userAgent, preferredBrowserLanguageCodes());
+    target.webRequest.onBeforeSendHeaders((details, callback) => {
       callback({
         requestHeaders: browserRequestHeaders(details.requestHeaders, userAgent, details.url),
       });
     });
-    this.#session.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    target.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(false);
     });
-    this.#session.setPermissionCheckHandler(() => false);
-    this.#session.on("will-download", (_event, item) => {
+    target.setPermissionCheckHandler(() => false);
+    target.on("will-download", (_event, item) => {
       const safeName = basename(item.getFilename()).replace(/[^a-zA-Z0-9._ -]/g, "_");
       const downloadPath = uniqueDownloadPath(
         this.#downloadsRoot,
@@ -876,7 +1057,7 @@ export class BrowserHost implements CoworkerBrowser {
           autoHideMenuBar: true,
           title: "Sign in",
           webPreferences: {
-            session: this.#session,
+            session: this.#sessionFor(tab.ownerBotId),
             sandbox: true,
             contextIsolation: true,
             nodeIntegration: false,
@@ -981,15 +1162,33 @@ export class BrowserHost implements CoworkerBrowser {
     return settled;
   }
 
+  /** The first change goes out at once; a burst after it is sent once, with the latest state. */
   #emitChanged(): void {
+    if (this.#changeTimer) {
+      this.#changePending = true;
+      return;
+    }
+    this.#sendChanged();
+    this.#changeTimer = setTimeout(() => {
+      this.#changeTimer = null;
+      if (this.#changePending) this.#emitChanged();
+    }, CHANGE_EVENT_MIN_MS);
+    this.#changePending = false;
+  }
+
+  #sendChanged(): void {
     const tabs = this.listTabs();
     for (const listener of this.#listeners) listener(tabs, this.#activeTabId);
   }
 
   #schedulePersist(): void {
-    void this.#persistState().catch((error) => {
-      console.error("Unable to persist browser tabs:", error);
-    });
+    if (this.#persistTimer) return;
+    this.#persistTimer = setTimeout(() => {
+      this.#persistTimer = null;
+      void this.#persistState().catch((error) => {
+        console.error("Unable to persist browser tabs:", error);
+      });
+    }, PERSIST_DELAY_MS);
   }
 
   #persistState(): Promise<void> {
@@ -1028,7 +1227,10 @@ export interface BrowserToolTarget {
 
 /** The coworker browser as the rest of the app sees it, whichever engine runs it. */
 export interface CoworkerBrowser extends BrowserToolTarget {
-  restore(): Promise<void>;
+  restore(options?: BrowserRestoreOptions): Promise<void>;
+  /** Which account is signed in for this tab; absent where it cannot be read, so publishing stops. */
+  signedInAccount?(tabId: string, platform: SocialPlatform): Promise<string | null>;
+  releaseBot?(botId: string): Promise<void>;
   onChanged(listener: (...args: BrowserHostEvents["changed"]) => void): () => void;
   onControlChanged(listener: (...args: BrowserHostEvents["controlChanged"]) => void): () => void;
   getControlState(): BrowserControlState;
@@ -1207,6 +1409,14 @@ function browserTabId(args: Record<string, unknown>): string {
   return requiredString(args, "tabId");
 }
 
+/** Tabs from before a coworker was recorded on them still belong to the chat that opened them. */
+export function isOwnTab(
+  tab: Pick<BrowserTab, "ownerBotId" | "ownerThreadId">,
+  caller: { botId?: string; threadId: string },
+): boolean {
+  return tab.ownerBotId ? tab.ownerBotId === caller.botId : tab.ownerThreadId === caller.threadId;
+}
+
 /** Runs one sahkarmi_browser tool call against a browser engine. */
 export async function runBrowserTool(
   browser: BrowserToolTarget,
@@ -1216,15 +1426,30 @@ export async function runBrowserTool(
   const args = isRecord(params.arguments) ? params.arguments : {};
   control.begin(params, args);
   try {
+    if (params.botId && params.tool !== "open" && params.tool !== "list_tabs") {
+      const tabId = browserTabId(args);
+      const tab = browser.listTabs().find((candidate) => candidate.id === tabId);
+      if (tab && !isOwnTab(tab, params)) {
+        throw new Error(
+          `Page ${tabId} belongs to another coworker's browser, so it was not touched. Open your own page with open.`,
+        );
+      }
+    }
     switch (params.tool) {
       case "open": {
         const url = requiredString(args, "url");
-        const tab = await browser.open(url, params.threadId);
+        const tab = await browser.open(url, params.threadId, params.botId ?? null);
         control.updateTab(params, tab.id);
         return textResult({ tab });
       }
-      case "list_tabs":
-        return textResult({ tabs: browser.listTabs(), activeTabId: browser.activeTabId });
+      case "list_tabs": {
+        if (!params.botId) {
+          return textResult({ tabs: browser.listTabs(), activeTabId: browser.activeTabId });
+        }
+        const tabs = browser.listTabs().filter((tab) => isOwnTab(tab, params));
+        const shown = tabs.some((tab) => tab.id === browser.activeTabId);
+        return textResult({ tabs, activeTabId: shown ? browser.activeTabId : null });
+      }
       case "snapshot": {
         const snapshot = await browser.snapshot(browserTabId(args));
         return textResult(fitSnapshot(snapshot, textOffset(args.offset)));

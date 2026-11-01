@@ -159,6 +159,13 @@ export class PermissionService {
     return this.get();
   }
 
+  /** A pre-authorisation for one coworker ends with it. */
+  async deleteBotData(botId: string): Promise<void> {
+    if (!this.#policy.grants.some((grant) => grant.botId === botId)) return;
+    this.#policy.grants = this.#policy.grants.filter((grant) => grant.botId !== botId);
+    await this.#persistPolicy();
+  }
+
   audit(): PermissionAuditEntry[] {
     return this.#audit.map((entry) => ({ ...entry }));
   }
@@ -207,7 +214,7 @@ export class PermissionService {
     // Still undecided: recorded once the owner decides and the coworker repeats the action.
     if (outcome === "deferred") return { allowed: false, reason: DEFERRED_APPROVAL_REASON };
     await this.#record(safeRequest, decision, outcome);
-    if (outcome === "approved") return { allowed: true, reason: "Approved by the owner." };
+    if (outcome === "approved") return { allowed: true, reason: "Approved." };
     return {
       allowed: false,
       reason:

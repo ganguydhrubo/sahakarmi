@@ -60,6 +60,12 @@ export const IPC_CHANNELS = {
   teamCreateWorkspace: "team:create-workspace",
   teamRenameWorkspace: "team:rename-workspace",
   teamSetActiveWorkspace: "team:set-active-workspace",
+  teamDeleteWorkspace: "team:delete-workspace",
+  teamSetWorkspaceCeo: "team:set-workspace-ceo",
+  teamUnbindPublishingAccount: "team:unbind-publishing-account",
+  approvalsListAuthority: "approvals:list-authority",
+  approvalsGrantAuthority: "approvals:grant-authority",
+  approvalsRevokeAuthority: "approvals:revoke-authority",
   approvalsList: "approvals:list",
   approvalsDecide: "approvals:decide",
   schedulesList: "schedules:list",
@@ -530,6 +536,23 @@ export interface BotSummary {
   avatarColor: BotAvatarColor;
   /** The Marketplace template this coworker was added from, if any. */
   template?: BotTemplateRef;
+  /**
+   * The only social accounts this coworker may publish through, bound by the owner. There is no
+   * fallback: when the account in use is not one of these, publishing stops.
+   */
+  publishingAccounts?: PublishingAccount[];
+}
+
+export const SOCIAL_PLATFORMS = ["facebook", "instagram", "linkedin"] as const;
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
+export interface PublishingAccount {
+  platform: SocialPlatform;
+  /** "browser": signed in to this coworker's browser. "composio": a connected app account. */
+  source: "browser" | "composio";
+  /** The platform's own account id (browser) or the Composio connection id. */
+  accountId: string;
+  boundAt: string;
 }
 
 /**
@@ -707,6 +730,38 @@ export interface WorkspaceSummary {
   id: string;
   name: string;
   createdAt: string;
+  /** The coworker the owner made CEO: it coordinates every other coworker in this workspace. */
+  ceoBotId?: string | null;
+}
+
+/** What happens to a workspace's coworkers when it is deleted. */
+export interface DeleteWorkspaceInput {
+  workspaceId: string;
+  /** Move them to this workspace, or null to delete them with it. */
+  moveCoworkersTo: string | null;
+}
+
+/**
+ * Authority to decide coworkers' approvals. It only ever starts with the owner, who grants the
+ * CEO named categories for a limited time; the CEO can pass on part of that to an employee.
+ */
+export interface ApprovalAuthorityGrant {
+  id: string;
+  workspaceId: string;
+  botId: string;
+  categories: ApprovalCategory[];
+  /** "owner", or the id of the CEO that passed it on. */
+  grantedBy: string;
+  /** The grant this was passed on from; revoking that one ends this one too. */
+  parentGrantId: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface GrantApprovalAuthorityInput {
+  workspaceId: string;
+  categories: ApprovalCategory[];
+  hours: number;
 }
 
 export interface WorkspaceState {
@@ -719,7 +774,15 @@ export type CoworkerStatus = "idle" | "working" | "waiting" | "error";
 
 export const APPROVAL_CATEGORIES = ["payment", "message", "submission", "data", "other"] as const;
 export type ApprovalCategory = (typeof APPROVAL_CATEGORIES)[number];
-export type ApprovalStatus = "pending" | "approved" | "rejected";
+/**
+ * "expired" is distinct from "rejected": the owner never answered, so the action did not run.
+ * A missing answer must never read as consent, nor as a deliberate refusal.
+ */
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+
+/** Coarse risk band derived from the permission category; shown in Telegram summaries. */
+export const APPROVAL_RISK_LEVELS = ["low", "medium", "high"] as const;
+export type ApprovalRiskLevel = (typeof APPROVAL_RISK_LEVELS)[number];
 
 export interface ApprovalRequest {
   id: string;
@@ -740,6 +803,26 @@ export interface ApprovalRequest {
   permissionCategory?: PermissionCategory;
   /** The exact command or tool call, shown folded under "Technical details". */
   technical?: string;
+  /** Which workspace the asking coworker belongs to, so a remote decision names the right one. */
+  workspaceId?: string;
+  /** The coworker's turn this request belongs to, when it was raised inside one. */
+  taskId?: string | null;
+  /** After this moment the request is dead: it can be read, never approved. */
+  expiresAt?: string | null;
+  /** How risky the action is, derived from permissionCategory. Never widens the policy. */
+  riskLevel?: ApprovalRiskLevel;
+  /** Who decided: "desktop", "telegram:<numeric user id>" or "coworker:<bot id>". Audit only. */
+  decidedBy?: string | null;
+  /** The coworker holding authority for this request, told about it. The owner can always decide. */
+  routedToBotId?: string | null;
+  /** Only the owner can decide this (binding an account, for one). Never routed or delegated. */
+  ownerOnly?: boolean;
+  /** Set on a request to bind this account; approving it binds it. */
+  bindsAccount?: PublishingAccount;
+  /** When Telegram accepted the notification for this request. */
+  notifiedAt?: string | null;
+  /** Why the Telegram notification could not be delivered, if it failed. */
+  deliveryError?: string | null;
 }
 
 /** Operations the permission engine distinguishes. Order is the Settings display order. */
@@ -885,6 +968,11 @@ export interface DecideApprovalInput {
   approvalId: string;
   decision: "approved" | "rejected";
   note?: string | null;
+  /**
+   * Who authenticated the decision: "desktop" (the trusted renderer) or
+   * "telegram:<numeric user id>". Recorded for the audit trail; it never affects the policy.
+   */
+  decidedBy?: string | null;
 }
 
 export const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
@@ -1535,6 +1623,13 @@ export interface TeamDesktopApi {
   createWorkspace: (name: string) => Promise<WorkspaceState>;
   renameWorkspace: (workspaceId: string, name: string) => Promise<WorkspaceState>;
   setActiveWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
+  deleteWorkspace: (input: DeleteWorkspaceInput) => Promise<WorkspaceState>;
+  setWorkspaceCeo: (workspaceId: string, botId: string | null) => Promise<WorkspaceState>;
+  unbindPublishingAccount: (
+    botId: string,
+    platform: SocialPlatform,
+    source: PublishingAccount["source"],
+  ) => Promise<void>;
 }
 
 export interface PermissionsDesktopApi {
@@ -1595,6 +1690,9 @@ export interface LearnedSkillSummary {
 export interface ApprovalsDesktopApi {
   list: () => Promise<ApprovalRequest[]>;
   decide: (input: DecideApprovalInput) => Promise<ApprovalRequest>;
+  listAuthority: () => Promise<ApprovalAuthorityGrant[]>;
+  grantAuthority: (input: GrantApprovalAuthorityInput) => Promise<ApprovalAuthorityGrant[]>;
+  revokeAuthority: (grantId: string) => Promise<ApprovalAuthorityGrant[]>;
 }
 
 export interface RoutinesDesktopApi {
@@ -1875,6 +1973,13 @@ export interface TelegramStatus {
   coworkerId: string | null;
   running: boolean;
   error: string | null;
+  /**
+   * True once the paired chat's numeric Telegram user id is known. Approval commands are
+   * refused without it, so a chat paired by an older build must pair again before it can decide.
+   */
+  ownerIdVerified?: boolean;
+  /** True when approvals may be decided from Telegram at all. */
+  approvalsEnabled?: boolean;
 }
 
 export interface TelegramDesktopApi {

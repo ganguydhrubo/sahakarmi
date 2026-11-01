@@ -1,17 +1,29 @@
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AgentEvent, ConversationMessage, ConversationSnapshot } from "../shared/ipc";
+import type {
+  AgentEvent,
+  ConversationMessage,
+  ConversationSnapshot,
+  DecideApprovalInput,
+} from "../shared/ipc";
+import { ApprovalStore } from "./approval-store";
 import { type TelegramAgent, TelegramBridge, telegramChunks } from "./telegram-bridge";
 
 const TOKEN = "123456789:AAH-abcdefghijklmnopqrstuvwxyz0123456";
 const OWNER = { id: 42, type: "private", first_name: "Dhrubo" };
 const STRANGER = { id: 99, type: "private", first_name: "Someone" };
 
-function fakeTelegram() {
-  const inbox: Array<{ update_id: number; message: { text: string; chat: typeof OWNER } }> = [];
-  const sent: Array<{ chat_id: number; text: string }> = [];
+function fakeTelegram(options: { failSend?: () => boolean } = {}) {
+  const inbox: Array<{
+    update_id: number;
+    message: { text: string; chat: typeof OWNER; from?: { id: number; is_bot?: boolean } };
+  }> = [];
+  const sent: Array<{ chat_id: number; text: string; reply_markup?: unknown }> = [];
+  const edits: Array<{ message_id: number; text: string }> = [];
+  const answered: string[] = [];
+  let nextMessage = 500;
   let nextId = 1;
   const fetcher = (async (url: string, init: RequestInit) => {
     const method = String(url).split("/").pop();
@@ -20,10 +32,24 @@ function fakeTelegram() {
       new Response(JSON.stringify({ ok: true, result }), { status: 200 });
     if (method === "getMe") return reply({ username: "sahkarmi_test_bot" });
     if (method === "sendMessage") {
-      sent.push({ chat_id: body.chat_id, text: body.text });
-      return reply({});
+      if (options.failSend?.()) {
+        return new Response(JSON.stringify({ ok: false, description: "chat not found" }), {
+          status: 400,
+        });
+      }
+      sent.push({ chat_id: body.chat_id, text: body.text, reply_markup: body.reply_markup });
+      nextMessage += 1;
+      return reply({ message_id: nextMessage });
     }
     if (method === "sendChatAction") return reply(true);
+    if (method === "answerCallbackQuery") {
+      answered.push(body.callback_query_id);
+      return reply(true);
+    }
+    if (method === "editMessageText") {
+      edits.push({ message_id: body.message_id, text: body.text });
+      return reply({});
+    }
     if (method === "getUpdates") {
       const ready = inbox.filter((update) => update.update_id >= body.offset);
       if (ready.length) return reply(ready);
@@ -41,21 +67,79 @@ function fakeTelegram() {
   return {
     fetcher,
     sent,
-    say(chat: typeof OWNER, text: string) {
-      inbox.push({ update_id: nextId++, message: { text, chat } });
+    edits,
+    answered,
+    /** A tap on an inline button. */
+    tap(chat: typeof OWNER, data: string, as?: { id: number }) {
+      const id = nextId++;
+      inbox.push({
+        update_id: id,
+        callback_query: {
+          id: `tap-${id}`,
+          from: as ?? { id: chat.id },
+          data,
+          message: { message_id: 1, chat },
+        },
+      } as never);
+    },
+    /** A real Telegram message always names its sender; `as` spoofs a different one. */
+    say(chat: typeof OWNER, text: string, as?: { id: number; is_bot?: boolean }) {
+      inbox.push({ update_id: nextId++, message: { text, chat, from: as ?? { id: chat.id } } });
     },
   };
 }
 
-function fakeAgent() {
+/**
+ * The approval half of the fake agent is backed by the real ApprovalStore and mirrors what
+ * AgentService.decideApproval does, so these tests exercise the actual rules (expiry, the
+ * duplicate-decision guard) rather than a mock that agrees with the bridge.
+ */
+function approvalHarness(store: ApprovalStore) {
+  const told: Array<{ botId: string; text: string }> = [];
+  const released: Array<{ id: string; outcome: string }> = [];
+  const waiters = new Set<string>();
+  return {
+    told,
+    released,
+    waiters,
+    methods: {
+      listApprovals: () => store.list(),
+      decideApproval: async (input: DecideApprovalInput) => {
+        const approval = await store.decide(input);
+        if (approval.kind === "permission") {
+          if (waiters.delete(approval.id)) {
+            released.push({ id: approval.id, outcome: approval.status });
+          }
+          return approval;
+        }
+        told.push({
+          botId: approval.botId,
+          text: `[Approval ${approval.status === "approved" ? "APPROVED" : "REJECTED"}] "${approval.title}"`,
+        });
+        return approval;
+      },
+      permissionPolicy: () => ({
+        levels: { payments: "ask" } as never,
+        grants: [],
+        autoMode: false,
+      }),
+      sweepExpiredApprovals: () => store.sweepExpired(),
+      recordApprovalDelivery: (approvalId: string, error: string | null) =>
+        store.recordDelivery(approvalId, error),
+      workspaceName: (id: string) => (id === "my-business" ? "My Business" : null),
+    } satisfies Partial<TelegramAgent>,
+  };
+}
+
+function fakeAgent(extra: Partial<TelegramAgent> = {}) {
   const listeners = new Set<(event: AgentEvent) => void>();
   const messages: ConversationMessage[] = [];
   const asked: Array<{ botId: string; text: string }> = [];
   let delivery = 0;
   const agent: TelegramAgent = {
     listBots: () => [
-      { id: "bot-a", name: "Asha", role: "Sales" },
-      { id: "bot-b", name: "1xl reporting", role: "Reports" },
+      { id: "bot-a", name: "Asha", role: "Sales", workspaceId: "my-business" },
+      { id: "bot-b", name: "1xl reporting", role: "Reports", workspaceId: "my-business" },
     ],
     sendMessage: async (input) => {
       asked.push(input);
@@ -81,6 +165,7 @@ function fakeAgent() {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    ...extra,
   };
   return {
     agent,
@@ -126,7 +211,9 @@ function fakeAgent() {
 }
 
 async function until(check: () => boolean): Promise<void> {
-  const deadline = Date.now() + 3_000;
+  // Generous: the whole suite runs these in parallel, and a long-poll round trip plus a
+  // persisted write is slow on a loaded machine.
+  const deadline = Date.now() + 15_000;
   while (!check()) {
     if (Date.now() > deadline) throw new Error("Timed out.");
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -139,18 +226,58 @@ afterEach(async () => {
   bridges.length = 0;
 });
 
-async function connected() {
+async function connected(
+  options: { approvals?: boolean; ownerUserId?: number; failSend?: () => boolean } = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), "sahkarmi-telegram-"));
-  const telegram = fakeTelegram();
-  const coworkers = fakeAgent();
+  const telegram = fakeTelegram({ failSend: options.failSend });
+  const store = new ApprovalStore(dir);
+  await store.initialize();
+  const harness = approvalHarness(store);
+  const coworkers = fakeAgent(options.approvals === false ? {} : harness.methods);
   const bridge = new TelegramBridge({
     userDataPath: dir,
     agent: coworkers.agent,
     fetch: telegram.fetcher,
+    envOwnerUserId: options.ownerUserId ?? null,
   });
   bridges.push(bridge);
   const status = await bridge.setToken(TOKEN);
-  return { dir, telegram, coworkers, bridge, status };
+  return { dir, telegram, coworkers, bridge, status, store, harness };
+}
+
+/** Pairs the owner's chat and returns once the bridge confirms it. */
+async function paired(options: Parameters<typeof connected>[0] = {}) {
+  const context = await connected(options);
+  context.telegram.say(OWNER, `/start ${context.status.pairingCode}`);
+  await until(() => context.telegram.sent.some((item) => item.text.startsWith("Paired.")));
+  return context;
+}
+
+/** The newest message the bridge sent, once it has sent one more than `before`. */
+async function nextReply(
+  telegram: { sent: Array<{ text: string }> },
+  before: number,
+): Promise<string> {
+  await until(() => telegram.sent.length > before);
+  return telegram.sent.at(-1)?.text ?? "";
+}
+
+async function pendingApproval(
+  store: ApprovalStore,
+  overrides: Parameters<ApprovalStore["create"]>[0] extends infer T ? Partial<T> : never = {},
+) {
+  return store.create({
+    botId: "bot-a",
+    title: "Pay the GST invoice",
+    details: "Vendor: Acme. Invoice 42.",
+    category: "payment",
+    amount: "Rs. 18,000",
+    kind: "permission",
+    permissionCategory: "payments",
+    workspaceId: "my-business",
+    ...overrides,
+  } as Parameters<ApprovalStore["create"]>[0]);
 }
 
 describe("TelegramBridge", () => {
@@ -232,9 +359,320 @@ describe("TelegramBridge", () => {
     await until(() => telegram.sent.length === before + 1);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(telegram.sent.length).toBe(before + 1);
-    expect(telegram.sent.at(-1)?.text).toBe(
-      "Asha needs your approval: Pay the GST invoice (Rs. 18,000). Open Sahkarmi to allow or deny it.",
-    );
+    const text = telegram.sent.at(-1)?.text ?? "";
+    expect(text).toContain("Asha needs your approval.");
+    expect(text).toContain("Action: Pay the GST invoice");
+    expect(text).toContain("Amount: Rs. 18,000");
+  });
+
+  it("lists, details and decides an approval from Telegram, reaching the coworker", async () => {
+    const { telegram, store, harness } = await paired();
+    const approval = await pendingApproval(store, {
+      kind: "action",
+      permissionCategory: undefined,
+    });
+
+    let before = telegram.sent.length;
+    telegram.say(OWNER, "/pending");
+    const list = await nextReply(telegram, before);
+    const handle = approval.id.replaceAll("-", "").slice(0, 8);
+    expect(list).toContain(handle);
+    expect(list).toContain("Pay the GST invoice");
+    expect(list).toContain("My Business");
+    expect(list).toContain("Rs. 18,000");
+
+    before = telegram.sent.length;
+    telegram.say(OWNER, `/details ${handle}`);
+    const details = await nextReply(telegram, before);
+    expect(details).toContain("Vendor: Acme");
+    expect(details).toContain("Asha");
+
+    before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${handle}`);
+    const done = await nextReply(telegram, before);
+    expect(done).toContain("Approved");
+    // The decision went through the same call the desktop makes, and reached the coworker.
+    expect(store.get(approval.id)).toMatchObject({
+      status: "approved",
+      decidedBy: "telegram:42",
+    });
+    expect(harness.told).toEqual([
+      { botId: "bot-a", text: '[Approval APPROVED] "Pay the GST invoice"' },
+    ]);
+  });
+
+  it("releases a parked tool call when the owner approves from Telegram", async () => {
+    const { telegram, store, harness } = await paired();
+    const approval = await pendingApproval(store);
+    harness.waiters.add(approval.id);
+    const handle = approval.id.replaceAll("-", "").slice(0, 8);
+
+    const before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${handle}`);
+    await nextReply(telegram, before);
+    expect(harness.released).toEqual([{ id: approval.id, outcome: "approved" }]);
+    // A parked tool call gets no chat message; it simply continues.
+    expect(harness.told).toEqual([]);
+  });
+
+  it("rejects, and tells the coworker not to act", async () => {
+    const { telegram, store, harness } = await paired();
+    const approval = await pendingApproval(store, {
+      kind: "action",
+      permissionCategory: undefined,
+    });
+    const handle = approval.id.replaceAll("-", "").slice(0, 8);
+
+    const before = telegram.sent.length;
+    telegram.say(OWNER, `/reject ${handle}`);
+    const reply = await nextReply(telegram, before);
+    expect(reply).toContain("Refused");
+    expect(store.get(approval.id)?.status).toBe("rejected");
+    expect(harness.told[0]?.text).toContain("REJECTED");
+  });
+
+  it("refuses an approval command from anyone but the paired numeric user id", async () => {
+    const { telegram, store, harness } = await paired();
+    const approval = await pendingApproval(store);
+    const handle = approval.id.replaceAll("-", "").slice(0, 8);
+
+    // Same chat, different sender: a group member, or someone who got hold of the chat.
+    const before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${handle}`, { id: 99 });
+    const reply = await nextReply(telegram, before);
+    expect(reply).toBe("Not allowed.");
+    expect(store.get(approval.id)?.status).toBe("pending");
+    expect(harness.released).toEqual([]);
+
+    // A bot in the chat cannot decide either, even with the owner's id.
+    const second = telegram.sent.length;
+    telegram.say(OWNER, `/pending`, { id: 42, is_bot: true });
+    expect(await nextReply(telegram, second)).toBe("Not allowed.");
+  });
+
+  it("approves and rejects from the buttons, updating the store and the message", async () => {
+    const { telegram, status, store, coworkers } = await connected();
+    telegram.say(OWNER, `/start ${status.pairingCode}`);
+    await until(() => telegram.sent.some((item) => item.text.startsWith("Paired.")));
+
+    for (const [button, outcome] of [
+      ["approve", "approved"],
+      ["reject", "rejected"],
+    ] as const) {
+      const approval = await store.create({
+        botId: "asha",
+        title: `Request to ${button}`,
+        details: "",
+        category: "payment",
+      });
+      coworkers.emit({ type: "approvals-changed", approvals: store.list() } as never);
+      await until(() =>
+        telegram.sent.some(
+          (item) => item.text.includes(`Request to ${button}`) && item.reply_markup,
+        ),
+      );
+      const card = telegram.sent.find((item) => item.text.includes(`Request to ${button}`));
+      expect(JSON.stringify(card?.reply_markup)).toContain(`${button}:${approval.id}`);
+
+      const edited = telegram.edits.length;
+      telegram.tap(OWNER, `${button}:${approval.id}`);
+      await until(() => store.get(approval.id)?.status === outcome);
+      expect(store.get(approval.id)?.decidedBy).toBe(`telegram:${OWNER.id}`);
+      expect(telegram.answered.length).toBeGreaterThan(0);
+      coworkers.emit({ type: "approvals-changed", approvals: store.list() } as never);
+      await until(() => telegram.edits.length > edited);
+      expect(telegram.edits.at(-1)?.text).toContain(`Outcome: ${outcome}`);
+    }
+  });
+
+  it("ignores a button from anyone but the owner", async () => {
+    const { telegram, status, store } = await connected();
+    telegram.say(OWNER, `/start ${status.pairingCode}`);
+    await until(() => telegram.sent.some((item) => item.text.startsWith("Paired.")));
+    const approval = await pendingApproval(store);
+    const before = telegram.sent.length;
+    telegram.tap(OWNER, `approve:${approval.id}`, { id: STRANGER.id });
+    expect(await nextReply(telegram, before)).toBe("Not allowed.");
+    telegram.tap(STRANGER, `approve:${approval.id}`);
+    await until(() => telegram.answered.length >= 2);
+    expect(store.get(approval.id)?.status).toBe("pending");
+  });
+
+  it("shows on Telegram when a request is decided on the desktop", async () => {
+    const { telegram, status, store, coworkers } = await connected();
+    telegram.say(OWNER, `/start ${status.pairingCode}`);
+    await until(() => telegram.sent.some((item) => item.text.startsWith("Paired.")));
+    const approval = await store.create({
+      botId: "asha",
+      title: "Decided elsewhere",
+      details: "",
+      category: "data",
+    });
+    coworkers.emit({ type: "approvals-changed", approvals: store.list() } as never);
+    await until(() => telegram.sent.some((item) => item.text.includes("Decided elsewhere")));
+    await store.decide({ approvalId: approval.id, decision: "rejected", decidedBy: "desktop" });
+    coworkers.emit({ type: "approvals-changed", approvals: store.list() } as never);
+    await until(() => telegram.edits.length > 0);
+    expect(telegram.edits[0]?.text).toContain("on your computer");
+  });
+
+  it("recognises the owner of a private chat paired before user ids were recorded", async () => {
+    const { dir, telegram, bridge, status, store } = await connected();
+    telegram.say(OWNER, `/start ${status.pairingCode}`);
+    await until(() => telegram.sent.some((item) => item.text.startsWith("Paired.")));
+    await bridge.stop();
+    // Simulate the old on-disk shape, which had no ownerUserId.
+    const legacy = JSON.parse(readFileSync(join(dir, "telegram.json"), "utf8"));
+    delete legacy.ownerUserId;
+    writeFileSync(join(dir, "telegram.json"), JSON.stringify(legacy));
+
+    const revived = new TelegramBridge({
+      userDataPath: dir,
+      agent: fakeAgent(approvalHarness(store).methods).agent,
+      fetch: telegram.fetcher,
+    });
+    bridges.push(revived);
+    await revived.initialize();
+    expect(revived.status().ownerIdVerified).toBe(false);
+    const approval = await pendingApproval(store);
+    // Someone else cannot use the upgrade: in a private chat the chat id is the user's id.
+    const stranger = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${approval.id.replaceAll("-", "").slice(0, 8)}`, { id: 7 });
+    expect(await nextReply(telegram, stranger)).toMatch(/pair again/i);
+    expect(store.get(approval.id)?.status).toBe("pending");
+
+    const before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${approval.id.replaceAll("-", "").slice(0, 8)}`);
+    expect(await nextReply(telegram, before)).toMatch(/^Approved/);
+    expect(store.get(approval.id)?.status).toBe("approved");
+    expect(revived.status().ownerIdVerified).toBe(true);
+  });
+
+  it("refuses to pair anyone but the configured OWNER_TELEGRAM_ID", async () => {
+    const { telegram, status } = await connected({ ownerUserId: 1234 });
+    telegram.say(OWNER, `/start ${status.pairingCode}`);
+    const reply = await nextReply(telegram, 0);
+    expect(reply).toMatch(/different Telegram account/);
+  });
+
+  it("will not approve an expired request", async () => {
+    const { telegram, store } = await paired();
+    const approval = await pendingApproval(store, {
+      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+    const handle = approval.id.replaceAll("-", "").slice(0, 8);
+
+    const before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${handle}`);
+    const reply = await nextReply(telegram, before);
+    expect(reply).toMatch(/expired/i);
+    expect(store.get(approval.id)?.status).toBe("expired");
+  });
+
+  it("decides once, however many times the command arrives", async () => {
+    const { telegram, store, harness } = await paired();
+    const approval = await pendingApproval(store, {
+      kind: "action",
+      permissionCategory: undefined,
+    });
+    const handle = approval.id.replaceAll("-", "").slice(0, 8);
+
+    let before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${handle}`);
+    expect(await nextReply(telegram, before)).toContain("Approved");
+
+    before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${handle}`);
+    expect(await nextReply(telegram, before)).toMatch(/Already handled/);
+    // The coworker was told exactly once.
+    expect(harness.told).toHaveLength(1);
+  });
+
+  it("never guesses between two requests with the same short id", async () => {
+    const { telegram, store } = await paired();
+    const first = await pendingApproval(store);
+    const second = await pendingApproval(store, { title: "Pay the rent" });
+    // Ask with a prefix both ids share.
+    const shared = first.id.slice(0, 1);
+    const before = telegram.sent.length;
+    telegram.say(OWNER, `/approve ${shared}`);
+    const reply = await nextReply(telegram, before);
+    if (second.id.startsWith(shared)) {
+      expect(reply).toMatch(/matches 2 requests/);
+      expect(store.get(first.id)?.status).toBe("pending");
+      expect(store.get(second.id)?.status).toBe("pending");
+    }
+  });
+
+  it("reports an unknown id instead of acting", async () => {
+    const { telegram, store } = await paired();
+    await pendingApproval(store);
+    const before = telegram.sent.length;
+    telegram.say(OWNER, "/approve deadbeef");
+    expect(await nextReply(telegram, before)).toMatch(/No request matches/);
+  });
+
+  it("says approvals are unavailable rather than failing silently", async () => {
+    const { telegram } = await paired({ approvals: false });
+    const before = telegram.sent.length;
+    telegram.say(OWNER, "/pending");
+    expect(await nextReply(telegram, before)).toMatch(/not available/i);
+  });
+
+  it("shows the policy read-only and offers no way to change it", async () => {
+    const { telegram } = await paired();
+    const before = telegram.sent.length;
+    telegram.say(OWNER, "/policy");
+    const reply = await nextReply(telegram, before);
+    expect(reply).toMatch(/Read-only here/);
+    expect(reply).toMatch(/payments: ask/);
+  });
+
+  it("reports status including who decided it", async () => {
+    const { telegram, store } = await paired();
+    const approval = await pendingApproval(store, { kind: "action" });
+    const handle = approval.id.replaceAll("-", "").slice(0, 8);
+    // Decided at the computer, then asked about from Telegram.
+    await store.decide({ approvalId: approval.id, decision: "approved", decidedBy: "desktop" });
+    const before = telegram.sent.length;
+    telegram.say(OWNER, `/status ${handle}`);
+    const reply = await nextReply(telegram, before);
+    expect(reply).toContain("Status: approved");
+    expect(reply).toContain("By: desktop");
+  });
+
+  it("records a failed notification and never counts it as approval", async () => {
+    // Pairing must succeed first; the outage starts after it.
+    let failing = false;
+    const { telegram, coworkers, store } = await paired({ failSend: () => failing });
+    failing = true;
+    const approval = await pendingApproval(store);
+    coworkers.emit({ type: "approvals-changed", approvals: store.list() });
+    await until(() => store.get(approval.id)?.deliveryError != null);
+    expect(store.get(approval.id)).toMatchObject({
+      status: "pending",
+      notifiedAt: null,
+    });
+    expect(store.get(approval.id)?.deliveryError).toMatch(/chat not found/);
+
+    // When Telegram recovers, the owner still learns about it.
+    failing = false;
+    const before = telegram.sent.length;
+    coworkers.emit({ type: "approvals-changed", approvals: store.list() });
+    const reply = await nextReply(telegram, before);
+    expect(reply).toContain("needs your approval");
+    await until(() => store.get(approval.id)?.notifiedAt != null);
+    expect(store.get(approval.id)?.deliveryError).toBeNull();
+  });
+
+  it("offers the approve command in the notification, with risk and consequence", async () => {
+    const { telegram, coworkers, store } = await paired();
+    const approval = await pendingApproval(store);
+    coworkers.emit({ type: "approvals-changed", approvals: store.list() });
+    const reply = await nextReply(telegram, telegram.sent.length - 1);
+    expect(reply).toContain("Risk: HIGH");
+    expect(reply).toContain("Money may leave your account.");
+    expect(reply).toContain(`/approve ${approval.id.replaceAll("-", "").slice(0, 8)}`);
   });
 
   it("splits long replies at line breaks within Telegram's limit", () => {

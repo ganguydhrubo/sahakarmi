@@ -6,6 +6,31 @@ import { workspaceBn, workspaceEn, workspaceHi } from "./i18n-workspace";
 import { type LanguageCode, language } from "./preferences";
 
 const en = {
+  workspaceTeam: "Team and CEO",
+  workspaceCeo: "CEO of this workspace",
+  workspaceNoCeo: "No CEO",
+  workspaceCeoHint:
+    "The CEO hands out work to everyone else here, collects their results and reports to you. You stay in charge.",
+  approvalAuthority: "Approvals the CEO may decide",
+  approvalAuthorityHint:
+    "Nothing unless you tick it, for 24 hours at a time. The CEO can pass part of this to an employee, never more. You can still decide everything yourself.",
+  approvalAuthorityGrant: "Give this authority",
+  approvalAuthorityRevoke: "Take back",
+  approvalRouted: "A coworker with your authority was told about this. You can still decide.",
+  approvalDecidedByCoworker: "Decided by a coworker with your authority.",
+  publishingAccounts: "Accounts coworkers may publish as",
+  publishingAccountsUnbind: "Remove",
+  deleteWorkspace: "Delete workspace",
+  deleteWorkspaceOnlyOne: "This is your only workspace, so it cannot be deleted.",
+  deleteWorkspaceHint: "Files coworkers saved stay on your computer in every case.",
+  deleteWorkspaceCoworkers: "Its coworkers",
+  deleteWorkspaceMoveTo: "Move to",
+  deleteWorkspaceDeleteCoworkers: "Delete them too",
+  deleteWorkspaceConfirmMove:
+    "Delete this workspace and move its coworkers? The CEO role and approval authority given here end.",
+  deleteWorkspaceConfirmDelete:
+    "Delete this workspace and its coworkers? Their chats, schedules, routines and browser sign-ins are removed for good.",
+  deleteWorkspaceConfirm: "Yes, delete",
   brandName: "Sahkarmi",
   brandNative: "सहकर्मी",
   tagline: "Your AI team. Made in India.",
@@ -157,6 +182,7 @@ const en = {
   reject: "Reject",
   approved: "Approved",
   rejected: "Rejected",
+  expired: "Expired",
   addNote: "Add a note (optional)",
   categoryPayment: "Payment",
   categoryMessage: "Message to customer/vendor",
@@ -239,6 +265,31 @@ type Dictionary = typeof en;
 export type MessageKey = keyof Dictionary;
 
 const hi: Dictionary = {
+  workspaceTeam: "टीम और सीईओ",
+  workspaceCeo: "इस वर्कस्पेस का सीईओ",
+  workspaceNoCeo: "कोई सीईओ नहीं",
+  workspaceCeoHint:
+    "सीईओ यहाँ बाकी सबको काम देता है, उनके नतीजे जमा करता है और आपको रिपोर्ट करता है। आखिरी फैसला आपका रहता है।",
+  approvalAuthority: "सीईओ किन मंज़ूरियों का फैसला कर सकता है",
+  approvalAuthorityHint:
+    "आप जो चुनें सिर्फ़ वही, एक बार में 24 घंटे के लिए। सीईओ इसका हिस्सा किसी कर्मचारी को दे सकता है, इससे ज़्यादा नहीं। फैसला आप खुद भी कर सकते हैं।",
+  approvalAuthorityGrant: "यह अधिकार दें",
+  approvalAuthorityRevoke: "वापस लें",
+  approvalRouted: "आपके अधिकार वाले सहकर्मी को बता दिया गया है। आप अभी भी फैसला कर सकते हैं।",
+  approvalDecidedByCoworker: "आपके अधिकार वाले सहकर्मी ने फैसला किया।",
+  publishingAccounts: "सहकर्मी किन खातों से पोस्ट कर सकते हैं",
+  publishingAccountsUnbind: "हटाएँ",
+  deleteWorkspace: "वर्कस्पेस हटाएँ",
+  deleteWorkspaceOnlyOne: "यह आपका अकेला वर्कस्पेस है, इसे हटाया नहीं जा सकता।",
+  deleteWorkspaceHint: "सहकर्मियों की सहेजी फ़ाइलें हर हाल में आपके कंप्यूटर पर रहती हैं।",
+  deleteWorkspaceCoworkers: "इसके सहकर्मी",
+  deleteWorkspaceMoveTo: "यहाँ ले जाएँ:",
+  deleteWorkspaceDeleteCoworkers: "उन्हें भी हटाएँ",
+  deleteWorkspaceConfirmMove:
+    "यह वर्कस्पेस हटाएँ और सहकर्मियों को ले जाएँ? यहाँ दिया सीईओ पद और मंज़ूरी का अधिकार खत्म हो जाएगा।",
+  deleteWorkspaceConfirmDelete:
+    "यह वर्कस्पेस और इसके सहकर्मी हटाएँ? उनकी चैट, शेड्यूल, रूटीन और ब्राउज़र लॉगिन हमेशा के लिए हट जाएँगे।",
+  deleteWorkspaceConfirm: "हाँ, हटाएँ",
   brandName: "सहकर्मी",
   brandNative: "Sahkarmi",
   tagline: "आपकी AI टीम. भारत में बनी.",
@@ -389,6 +440,7 @@ const hi: Dictionary = {
   reject: "नामंज़ूर",
   approved: "मंज़ूर",
   rejected: "नामंज़ूर",
+  expired: "समय समाप्त",
   addNote: "नोट जोड़ें (वैकल्पिक)",
   categoryPayment: "भुगतान",
   categoryMessage: "ग्राहक/विक्रेता को संदेश",
@@ -467,6 +519,30 @@ const hi: Dictionary = {
 };
 
 const bn: Dictionary = {
+  workspaceTeam: "টিম ও সিইও",
+  workspaceCeo: "এই ওয়ার্কস্পেসের সিইও",
+  workspaceNoCeo: "কোনো সিইও নেই",
+  workspaceCeoHint: "সিইও এখানে বাকি সবাইকে কাজ দেয়, তাদের ফলাফল জড়ো করে আপনাকে জানায়। শেষ কথা আপনারই।",
+  approvalAuthority: "সিইও কোন অনুমোদনের সিদ্ধান্ত নিতে পারে",
+  approvalAuthorityHint:
+    "আপনি যা বাছবেন শুধু সেটুকুই, একবারে ২৪ ঘণ্টার জন্য। সিইও এর অংশ কোনো কর্মীকে দিতে পারে, এর বেশি নয়। আপনি নিজেও সিদ্ধান্ত নিতে পারবেন।",
+  approvalAuthorityGrant: "এই ক্ষমতা দিন",
+  approvalAuthorityRevoke: "ফিরিয়ে নিন",
+  approvalRouted: "আপনার ক্ষমতাপ্রাপ্ত সহকর্মীকে জানানো হয়েছে। আপনি এখনও সিদ্ধান্ত নিতে পারেন।",
+  approvalDecidedByCoworker: "আপনার ক্ষমতাপ্রাপ্ত সহকর্মী সিদ্ধান্ত নিয়েছে।",
+  publishingAccounts: "সহকর্মীরা কোন অ্যাকাউন্ট থেকে পোস্ট করতে পারে",
+  publishingAccountsUnbind: "সরান",
+  deleteWorkspace: "ওয়ার্কস্পেস মুছুন",
+  deleteWorkspaceOnlyOne: "এটি আপনার একমাত্র ওয়ার্কস্পেস, তাই মোছা যাবে না।",
+  deleteWorkspaceHint: "সহকর্মীদের সেভ করা ফাইল সব ক্ষেত্রে আপনার কম্পিউটারে থাকে।",
+  deleteWorkspaceCoworkers: "এর সহকর্মীরা",
+  deleteWorkspaceMoveTo: "এখানে সরান:",
+  deleteWorkspaceDeleteCoworkers: "তাদেরও মুছুন",
+  deleteWorkspaceConfirmMove:
+    "এই ওয়ার্কস্পেস মুছে সহকর্মীদের সরাবেন? এখানে দেওয়া সিইও পদ ও অনুমোদনের ক্ষমতা শেষ হবে।",
+  deleteWorkspaceConfirmDelete:
+    "এই ওয়ার্কস্পেস ও সহকর্মীদের মুছবেন? তাদের চ্যাট, শিডিউল, রুটিন ও ব্রাউজার সাইন-ইন চিরতরে মুছে যাবে।",
+  deleteWorkspaceConfirm: "হ্যাঁ, মুছুন",
   brandName: "সহকর্মী",
   brandNative: "Sahkarmi",
   tagline: "আপনার AI টিম. ভারতে তৈরি.",
@@ -617,6 +693,7 @@ const bn: Dictionary = {
   reject: "প্রত্যাখ্যান",
   approved: "অনুমোদিত",
   rejected: "প্রত্যাখ্যাত",
+  expired: "সময় শেষ",
   addNote: "নোট যোগ করুন (ঐচ্ছিক)",
   categoryPayment: "পেমেন্ট",
   categoryMessage: "গ্রাহক/বিক্রেতাকে বার্তা",

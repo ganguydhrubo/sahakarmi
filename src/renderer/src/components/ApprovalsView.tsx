@@ -162,6 +162,9 @@ export function ApprovalCard(props: {
       <Show when={props.approval.details}>
         <p class="approval-details">{props.approval.details}</p>
       </Show>
+      <Show when={pending() && props.approval.routedToBotId}>
+        <p class="approval-routed">{t("approvalRouted")}</p>
+      </Show>
       <Show when={props.approval.technical}>
         {(technical) => (
           <details class="approval-technical">
@@ -175,8 +178,15 @@ export function ApprovalCard(props: {
         fallback={
           <p class="approval-outcome">
             <span class={`approval-outcome-pill approval-outcome-${props.approval.status}`}>
-              {props.approval.status === "approved" ? t("approved") : t("rejected")}
+              {props.approval.status === "approved"
+                ? t("approved")
+                : props.approval.status === "expired"
+                  ? t("expired")
+                  : t("rejected")}
             </span>
+            <Show when={props.approval.decidedBy?.startsWith("coworker:")}>
+              <span>{t("approvalDecidedByCoworker")}</span>
+            </Show>
             <Show when={props.approval.note}>{(value) => <span>“{value()}”</span>}</Show>
           </p>
         }

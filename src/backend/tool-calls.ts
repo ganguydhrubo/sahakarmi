@@ -108,6 +108,9 @@ const FRIENDLY_NAMES: Record<string, string> = {
   create_coworker: "Create coworker",
   send_message: "Message coworker",
   request_approval: "Ask for approval",
+  list_approvals: "Check approvals",
+  decide_approval: "Decide an approval",
+  delegate_approval_authority: "Delegate approvals",
   request_browser_takeover: "Ask you to take over",
   request_secure_input: "Ask you for a password or OTP",
 };

@@ -8,6 +8,7 @@ import type {
   AiToolId,
   AppInfo,
   CoworkerStatus,
+  DeleteWorkspaceInput,
   UpdateStatus,
   WorkspaceState,
 } from "../../../shared/ipc";
@@ -20,6 +21,7 @@ import { LogoMark } from "./Logo";
 import { type ProviderRefresh, ProviderUpdates } from "./ProviderUpdates";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { UsageRings } from "./UsageRings";
+import { WorkspaceTeamDialog } from "./WorkspaceTeamDialog";
 
 export type CenterView =
   | "coworker"
@@ -73,6 +75,8 @@ interface SidebarProps {
   onSelectWorkspace: (workspaceId: string) => void;
   onCreateWorkspace: (name: string) => Promise<void>;
   onRenameWorkspace: (workspaceId: string, name: string) => Promise<void>;
+  onDeleteWorkspace?: (input: DeleteWorkspaceInput) => Promise<void>;
+  onSetWorkspaceCeo?: (workspaceId: string, botId: string | null) => Promise<void>;
   onCollapse: () => void;
   /** Shown as a compact bar at the bottom of the sidebar while an update is on its way. */
   updateStatus?: UpdateStatus;
@@ -361,6 +365,7 @@ export function Sidebar(props: SidebarProps) {
   const [deleting, setDeleting] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal<string | null>(null);
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = createSignal(false);
+  const [teamDialogOpen, setTeamDialogOpen] = createSignal(false);
   const [workspaceEditor, setWorkspaceEditor] = createSignal<
     { mode: "create" } | { mode: "rename"; workspaceId: string } | null
   >(null);
@@ -597,6 +602,17 @@ export function Sidebar(props: SidebarProps) {
                     onClick={() => startWorkspaceEditor("rename")}
                   >
                     <EditIcon /> {t("renameWorkspace")}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="workspace-menu-item"
+                    onClick={() => {
+                      setWorkspaceMenuOpen(false);
+                      setTeamDialogOpen(true);
+                    }}
+                  >
+                    <EditIcon /> {t("workspaceTeam")}
                   </button>
                 </>
               }
@@ -881,6 +897,17 @@ export function Sidebar(props: SidebarProps) {
             </div>
           </Portal>
         )}
+      </Show>
+      <Show when={teamDialogOpen()}>
+        <WorkspaceTeamDialog
+          workspaces={props.workspaces}
+          bots={props.bots}
+          onClose={() => setTeamDialogOpen(false)}
+          onSetCeo={(workspaceId, botId) =>
+            props.onSetWorkspaceCeo?.(workspaceId, botId) ?? Promise.resolve()
+          }
+          onDelete={(input) => props.onDeleteWorkspace?.(input) ?? Promise.resolve()}
+        />
       </Show>
     </aside>
   );

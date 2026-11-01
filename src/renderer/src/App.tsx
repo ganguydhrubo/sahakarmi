@@ -34,6 +34,7 @@ import type {
   ConversationMessage,
   ConversationSnapshot,
   CoworkerStatus,
+  DeleteWorkspaceInput,
   QueueSnapshot,
   RoutinesState,
   ScheduleCadence,
@@ -46,6 +47,7 @@ import type {
 } from "../../shared/ipc";
 import type { MarketplaceAgent } from "../../shared/marketplace";
 import { vocab } from "./activity-vocab";
+import { stableApprovals } from "./approval-list";
 import { ApprovalsView } from "./components/ApprovalsView";
 import { Conversation, REVEAL_MESSAGE_EVENT } from "./components/Conversation";
 import { GlobalSearch } from "./components/GlobalSearch";
@@ -486,7 +488,7 @@ export function App() {
         setWorkspaces(event.state);
         return;
       case "approvals-changed":
-        setApprovals(event.approvals);
+        setApprovals((current) => stableApprovals(current, event.approvals));
         return;
       case "schedules-changed":
         setSchedules(event.schedules);
@@ -1031,6 +1033,17 @@ export function App() {
     setView("coworker");
   }
 
+  async function deleteWorkspace(input: DeleteWorkspaceInput) {
+    const state = await window.sahkarmi.team.deleteWorkspace(input);
+    setWorkspaces(state);
+    const first = botList().find((bot) => bot.workspaceId === state.activeWorkspaceId);
+    if (activeBot()?.workspaceId !== state.activeWorkspaceId) setActiveBotId(first?.id ?? "");
+  }
+
+  async function setWorkspaceCeo(workspaceId: string, botId: string | null) {
+    setWorkspaces(await window.sahkarmi.team.setWorkspaceCeo(workspaceId, botId));
+  }
+
   async function renameWorkspace(workspaceId: string, name: string) {
     setWorkspaces(await window.sahkarmi.team.renameWorkspace(workspaceId, name));
   }
@@ -1041,7 +1054,8 @@ export function App() {
     note: string,
   ) {
     await window.sahkarmi.approvals.decide({ approvalId, decision, note: note.trim() || null });
-    setApprovals(await window.sahkarmi.approvals.list());
+    const latest = await window.sahkarmi.approvals.list();
+    setApprovals((current) => stableApprovals(current, latest));
   }
 
   /** Errors propagate so the Routines view can show them next to the form. */
@@ -1288,6 +1302,8 @@ export function App() {
                 onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
                 onCreateWorkspace={createWorkspace}
                 onRenameWorkspace={renameWorkspace}
+                onDeleteWorkspace={deleteWorkspace}
+                onSetWorkspaceCeo={setWorkspaceCeo}
                 onCollapse={() => setSidebarCollapsed(true)}
                 updateStatus={updateStatus()}
                 onUpdateAction={runUpdateAction}
@@ -1636,6 +1652,7 @@ function toBotProfile(stored: BotSummary): BotProfile {
     preview: cleanPreview(stored.preview),
     updatedAt: stored.updatedAt,
     template: stored.template,
+    publishingAccounts: stored.publishingAccounts,
   };
 }
 

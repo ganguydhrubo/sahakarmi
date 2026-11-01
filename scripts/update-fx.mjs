@@ -17,7 +17,11 @@ try {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(j.date)) throw new Error("bad date");
   const old = JSON.parse(readFileSync(FILE, "utf8"));
   if (old.date > j.date) throw new Error(`service date ${j.date} is older than ${old.date}`);
-  const out = { date: j.date, source: "European Central Bank reference rates, via Frankfurter", rates };
+  const out = {
+    date: j.date,
+    source: "European Central Bank reference rates, via Frankfurter",
+    rates,
+  };
   writeFileSync(FILE, `${JSON.stringify(out, null, 2)}\n`);
   console.log(`fx.json: rates of ${j.date}, 1 USD = ${rates.INR} INR`);
 } catch (err) {

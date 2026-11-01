@@ -309,7 +309,10 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         additionalDirectories: config.additionalDirectories,
         canUseTool,
         mcpServers,
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "sahkarmi/0.1.0" },
+        env: {
+          ...cleanClaudeEnvironment(process.env),
+          CLAUDE_AGENT_SDK_CLIENT_APP: "sahkarmi/0.1.0",
+        },
       },
     });
     const runtime: ThreadRuntime = {
@@ -838,6 +841,32 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             (args) => call("sahkarmi", "request_approval", args),
           ),
           tool(
+            "list_approvals",
+            "List the coworkers' approval requests you hold authority to decide.",
+            {},
+            (args) => call("sahkarmi", "list_approvals", args),
+          ),
+          tool(
+            "decide_approval",
+            "Approve or reject a coworker's request, only if the owner gave you authority for its kind. Never for your own requests.",
+            {
+              approvalId: z.string().min(1),
+              decision: z.enum(["approved", "rejected"]),
+              note: z.string().max(2_000).optional(),
+            },
+            (args) => call("sahkarmi", "decide_approval", args),
+          ),
+          tool(
+            "delegate_approval_authority",
+            "CEO only: pass part of the approval authority the owner gave you to one employee. An empty categories list takes it back.",
+            {
+              botId: z.string().min(1),
+              categories: z.array(z.enum(["payment", "message", "submission", "data", "other"])),
+              hours: z.number().positive().optional(),
+            },
+            (args) => call("sahkarmi", "delegate_approval_authority", args),
+          ),
+          tool(
             "request_browser_takeover",
             "Ask the owner to take over the browser for login, OTP/2FA, CAPTCHA or a payment page. Returns immediately; you are messaged when control is handed back.",
             { reason: z.string().min(1).max(4_000) },
@@ -1297,4 +1326,19 @@ function thinkingTokens(effort: string): number {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+/**
+ * Sahkarmi started from inside a Claude Code session inherits that session's variables, which
+ * make a coworker's Claude think it is nested in it. Its own login settings are kept.
+ */
+export function cleanClaudeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([name]) =>
+        name !== "CLAUDECODE" &&
+        name !== "CLAUDE_CODE_ENTRYPOINT" &&
+        !name.startsWith("CLAUDE_CODE_SSE"),
+    ),
+  );
 }

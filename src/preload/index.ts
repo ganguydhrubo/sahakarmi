@@ -135,10 +135,19 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.teamRenameWorkspace, { workspaceId, name }),
     setActiveWorkspace: (workspaceId) =>
       ipcRenderer.invoke(IPC_CHANNELS.teamSetActiveWorkspace, workspaceId),
+    deleteWorkspace: (input) => ipcRenderer.invoke(IPC_CHANNELS.teamDeleteWorkspace, input),
+    setWorkspaceCeo: (workspaceId, botId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamSetWorkspaceCeo, { workspaceId, botId }),
+    unbindPublishingAccount: (botId, platform, source) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamUnbindPublishingAccount, { botId, platform, source }),
   },
   approvals: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.approvalsList),
     decide: (input) => ipcRenderer.invoke(IPC_CHANNELS.approvalsDecide, input),
+    listAuthority: () => ipcRenderer.invoke(IPC_CHANNELS.approvalsListAuthority),
+    grantAuthority: (input) => ipcRenderer.invoke(IPC_CHANNELS.approvalsGrantAuthority, input),
+    revokeAuthority: (grantId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.approvalsRevokeAuthority, grantId),
   },
   permissions: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.permissionsGet),

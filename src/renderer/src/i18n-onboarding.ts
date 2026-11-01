@@ -1,5 +1,16 @@
 /** Welcome card, Help panel, Getting started checklist and the Show me around tour. */
 export const onboardingEn = {
+  helpTeamTitle: "Your team",
+  helpTipCeo:
+    "CEO: open the workspace menu at the top left, choose Team and CEO, and pick a coworker. Give it a task; it hands out the work, collects the results and reports to you. It decides approvals only for the kinds you tick, for 24 hours.",
+  helpTipTelegram:
+    "Telegram: after pairing in Settings, tap Approve or Reject on a request, or send /pending to see what is waiting. Sahkarmi must be open on your computer. Telling the bot /ceo sends your chat to the CEO.",
+  helpTipBrowser:
+    "Browser: every coworker has its own browser and sign-ins, so sign in once inside each coworker that needs a site. Pages not used for a while sleep to keep the app light; they wake when opened, still signed in.",
+  helpTipPublishing:
+    "Posting: the first time a coworker posts to Facebook, Instagram or LinkedIn, you approve the account it is signed in to. After that it stops if a different account is signed in or the account cannot be confirmed. You can remove a tied account in Team and CEO.",
+  helpTipDeleteWorkspace:
+    "Delete a workspace: in Team and CEO, choose to move its coworkers or delete them too, then confirm. Files they saved stay on your computer.",
   welcomeTitle: "Welcome to Sahkarmi",
   welcomeBody:
     "Your AI coworkers can help you work with information, use tools, and automate tasks.",
@@ -49,7 +60,8 @@ export const onboardingEn = {
   tourComposerTitle: "Start a task here",
   tourComposerBody: "Type what you need and press Send. Your coworker starts working on it.",
   tourBrowserTitle: "Watch your coworker work",
-  tourBrowserBody: "Open the browser to see the websites your coworker uses, or take over.",
+  tourBrowserBody:
+    "Open this coworker's own browser to see the websites it uses, sign in for it, or take over.",
   tourApprovalsTitle: "Check what needs you",
   tourApprovalsBody: "Before paying, sending or posting, a coworker asks for your OK here.",
   screenCoworker: "Type a task in the box below. Replies, steps and files appear in this chat.",
@@ -58,7 +70,8 @@ export const onboardingEn = {
   screenMemory:
     "Facts your coworkers should always remember, like prices or how you like work done.",
   screenFiles: "One folder every coworker can read and write. Put files here to share them.",
-  screenApprovals: "Coworkers ask here before paying, sending, posting or submitting. You decide.",
+  screenApprovals:
+    "Coworkers ask here before paying, sending, posting or submitting. You decide, here or on Telegram, and each decision shows who made it.",
   screenSchedules: "Tasks set to run later or repeat, like a daily report. Switch them on or off.",
   screenRoutines:
     "A routine runs steps across coworkers in order. Import a saved workflow to reuse it.",
@@ -72,6 +85,17 @@ export const onboardingEn = {
 };
 
 export const onboardingHi: typeof onboardingEn = {
+  helpTeamTitle: "आपकी टीम",
+  helpTipCeo:
+    "सीईओ: ऊपर बाईं ओर वर्कस्पेस मेनू खोलें, टीम और सीईओ चुनें और एक सहकर्मी चुनें। उसे काम दें; वह काम बाँटता है, नतीजे जमा करता है और आपको बताता है। मंज़ूरी का फैसला वह सिर्फ़ उन्हीं तरह के कामों में करता है जो आप चुनें, 24 घंटे के लिए।",
+  helpTipTelegram:
+    "टेलीग्राम: सेटिंग्स में जोड़ने के बाद अनुरोध पर Approve या Reject दबाएँ, या /pending भेजकर देखें क्या बाकी है। आपके कंप्यूटर पर सहकर्मी खुला होना चाहिए। बॉट को /ceo भेजने से आपकी चैट सीईओ से जुड़ती है।",
+  helpTipBrowser:
+    "ब्राउज़र: हर सहकर्मी का अपना ब्राउज़र और लॉगिन है, इसलिए जिस सहकर्मी को जो साइट चाहिए उसमें एक बार लॉगिन करें। कुछ देर इस्तेमाल न हुए पेज ऐप को हल्का रखने के लिए सो जाते हैं; खोलने पर जाग जाते हैं, लॉगिन बना रहता है।",
+  helpTipPublishing:
+    "पोस्ट करना: सहकर्मी जब पहली बार फ़ेसबुक, इंस्टाग्राम या लिंक्डइन पर पोस्ट करता है, तो आप उसके लॉगिन खाते को मंज़ूरी देते हैं। उसके बाद दूसरा खाता लॉगिन होने या खाते की पुष्टि न होने पर वह रुक जाता है। जुड़ा खाता टीम और सीईओ में हटाया जा सकता है।",
+  helpTipDeleteWorkspace:
+    "वर्कस्पेस हटाना: टीम और सीईओ में चुनें कि सहकर्मियों को ले जाना है या उन्हें भी हटाना है, फिर पुष्टि करें। उनकी सहेजी फ़ाइलें आपके कंप्यूटर पर रहती हैं।",
   welcomeTitle: "सहकर्मी में आपका स्वागत है",
   welcomeBody: "आपके AI सहकर्मी जानकारी पर काम करने, टूल इस्तेमाल करने और काम अपने-आप करने में मदद करते हैं।",
   welcomeNeedsProvider: "अपने AI सहकर्मी से काम शुरू करने के लिए कोई AI प्रदाता जोड़ें।",
@@ -120,7 +144,8 @@ export const onboardingHi: typeof onboardingEn = {
   tourComposerTitle: "काम यहाँ से शुरू करें",
   tourComposerBody: "जो चाहिए वह लिखें और भेजें दबाएँ। सहकर्मी उस पर काम शुरू कर देगा।",
   tourBrowserTitle: "सहकर्मी को काम करते देखें",
-  tourBrowserBody: "ब्राउज़र खोलकर देखें कि सहकर्मी कौन-सी वेबसाइट चला रहा है, या ख़ुद संभालें।",
+  tourBrowserBody:
+    "इस सहकर्मी का अपना ब्राउज़र खोलकर देखें कि वह कौन-सी वेबसाइट चला रहा है, उसके लिए लॉगिन करें या ख़ुद संभालें।",
   tourApprovalsTitle: "देखें किसमें आपकी ज़रूरत है",
   tourApprovalsBody: "भुगतान, भेजने या पोस्ट करने से पहले सहकर्मी यहाँ आपकी मंज़ूरी माँगता है।",
   screenCoworker: "नीचे के बॉक्स में काम लिखें। जवाब, कदम और फ़ाइलें इसी चैट में दिखेंगी।",
@@ -128,7 +153,8 @@ export const onboardingHi: typeof onboardingEn = {
   screenOrchestrator: "सहकर्मियों की टीम को एक बड़ा लक्ष्य दें। वे काम आपस में बाँट लेते हैं।",
   screenMemory: "बातें जो सहकर्मियों को हमेशा याद रहनी चाहिए, जैसे दाम या आपके काम करने का तरीक़ा।",
   screenFiles: "एक फ़ोल्डर जिसे हर सहकर्मी पढ़-लिख सकता है। बाँटने के लिए फ़ाइलें यहाँ रखें।",
-  screenApprovals: "भुगतान, भेजने, पोस्ट करने या जमा करने से पहले सहकर्मी यहाँ पूछते हैं। फ़ैसला आपका।",
+  screenApprovals:
+    "भुगतान, भेजने, पोस्ट करने या जमा करने से पहले सहकर्मी यहाँ पूछते हैं। फ़ैसला आपका, यहाँ या टेलीग्राम पर, और हर फ़ैसले में लिखा रहता है कि किसने किया।",
   screenSchedules: "बाद में या बार-बार चलने वाले काम, जैसे रोज़ की रिपोर्ट। इन्हें चालू या बंद करें।",
   screenRoutines: "रूटीन सहकर्मियों के कदम क्रम से चलाता है। सेव किया वर्कफ़्लो इम्पोर्ट करके दोबारा चलाएँ।",
   screenUsage: "आपके सहकर्मियों ने हर AI प्रदाता की सीमा का कितना हिस्सा इस्तेमाल किया।",
@@ -139,6 +165,17 @@ export const onboardingHi: typeof onboardingEn = {
 };
 
 export const onboardingBn: typeof onboardingEn = {
+  helpTeamTitle: "আপনার টিম",
+  helpTipCeo:
+    "সিইও: উপরে বাঁয়ে ওয়ার্কস্পেস মেনু খুলে টিম ও সিইও বেছে একজন সহকর্মী ঠিক করুন। তাকে কাজ দিন; সে কাজ ভাগ করে, ফলাফল জড়ো করে আপনাকে জানায়। অনুমোদনের সিদ্ধান্ত সে শুধু আপনার বাছা ধরনের কাজেই নেয়, ২৪ ঘণ্টার জন্য।",
+  helpTipTelegram:
+    "টেলিগ্রাম: সেটিংসে যুক্ত করার পর অনুরোধে Approve বা Reject চাপুন, অথবা /pending পাঠিয়ে দেখুন কী বাকি আছে। আপনার কম্পিউটারে সহকর্মী খোলা থাকতে হবে। বটকে /ceo পাঠালে আপনার চ্যাট সিইও-র সঙ্গে যুক্ত হয়।",
+  helpTipBrowser:
+    "ব্রাউজার: প্রতিটি সহকর্মীর নিজের ব্রাউজার ও সাইন-ইন আছে, তাই যার যে সাইট দরকার তার মধ্যে একবার সাইন ইন করুন। কিছুক্ষণ ব্যবহার না হওয়া পাতা অ্যাপ হালকা রাখতে ঘুমিয়ে যায়; খুললে জেগে ওঠে, সাইন-ইন থাকে।",
+  helpTipPublishing:
+    "পোস্ট করা: সহকর্মী প্রথমবার ফেসবুক, ইনস্টাগ্রাম বা লিংকডইনে পোস্ট করলে আপনি তার সাইন-ইন করা অ্যাকাউন্ট অনুমোদন করেন। এরপর অন্য অ্যাকাউন্ট সাইন-ইন থাকলে বা অ্যাকাউন্ট নিশ্চিত না হলে সে থেমে যায়। যুক্ত অ্যাকাউন্ট টিম ও সিইও থেকে সরানো যায়।",
+  helpTipDeleteWorkspace:
+    "ওয়ার্কস্পেস মোছা: টিম ও সিইও-তে বেছে নিন সহকর্মীদের সরাবেন না কি তাদেরও মুছবেন, তারপর নিশ্চিত করুন। তাদের সেভ করা ফাইল আপনার কম্পিউটারে থাকে।",
   welcomeTitle: "সহকর্মীতে স্বাগতম",
   welcomeBody: "আপনার AI সহকর্মীরা তথ্য নিয়ে কাজ করতে, টুল ব্যবহার করতে আর কাজ নিজে থেকে করাতে সাহায্য করে।",
   welcomeNeedsProvider: "আপনার AI সহকর্মীকে দিয়ে কাজ শুরু করতে একটি AI প্রদানকারী যোগ করুন।",
@@ -186,7 +223,8 @@ export const onboardingBn: typeof onboardingEn = {
   tourComposerTitle: "কাজ এখান থেকে শুরু করুন",
   tourComposerBody: "যা দরকার লিখুন আর পাঠান চাপুন। সহকর্মী কাজ শুরু করে দেবে।",
   tourBrowserTitle: "সহকর্মীর কাজ দেখুন",
-  tourBrowserBody: "ব্রাউজার খুলে দেখুন সহকর্মী কোন ওয়েবসাইট ব্যবহার করছে, বা নিজে চালান।",
+  tourBrowserBody:
+    "এই সহকর্মীর নিজের ব্রাউজার খুলে দেখুন সে কোন ওয়েবসাইট ব্যবহার করছে, তার হয়ে সাইন ইন করুন বা নিজে চালান।",
   tourApprovalsTitle: "কোথায় আপনাকে দরকার দেখুন",
   tourApprovalsBody: "টাকা দেওয়া, পাঠানো বা পোস্ট করার আগে সহকর্মী এখানে আপনার অনুমতি চায়।",
   screenCoworker: "নিচের বক্সে কাজ লিখুন। উত্তর, ধাপ আর ফাইল এই চ্যাটেই দেখা যাবে।",
@@ -194,7 +232,8 @@ export const onboardingBn: typeof onboardingEn = {
   screenOrchestrator: "সহকর্মীদের একটি দলকে একটি বড় লক্ষ্য দিন। তারা কাজ ভাগ করে নেয়।",
   screenMemory: "যে কথা সহকর্মীদের সবসময় মনে রাখা উচিত, যেমন দাম বা আপনার কাজের ধরন।",
   screenFiles: "একটি ফোল্ডার যা প্রত্যেক সহকর্মী পড়তে ও লিখতে পারে। ভাগ করতে ফাইল এখানে রাখুন।",
-  screenApprovals: "টাকা দেওয়া, পাঠানো, পোস্ট বা জমা দেওয়ার আগে সহকর্মীরা এখানে জিজ্ঞেস করে। সিদ্ধান্ত আপনার।",
+  screenApprovals:
+    "টাকা দেওয়া, পাঠানো, পোস্ট বা জমা দেওয়ার আগে সহকর্মীরা এখানে জিজ্ঞেস করে। সিদ্ধান্ত আপনার, এখানে বা টেলিগ্রামে, আর প্রতিটি সিদ্ধান্তে লেখা থাকে কে নিয়েছে।",
   screenSchedules: "পরে বা বারবার চলার কাজ, যেমন রোজকার রিপোর্ট। এগুলো চালু বা বন্ধ করুন।",
   screenRoutines: "রুটিন সহকর্মীদের ধাপ ক্রমে চালায়। সেভ করা ওয়ার্কফ্লো ইমপোর্ট করে আবার চালান।",
   screenUsage: "আপনার সহকর্মীরা প্রতিটি AI প্রদানকারীর সীমার কতটা ব্যবহার করেছে।",

@@ -49,6 +49,7 @@ export class ComposioSecurityGuard {
     actionName: string,
     args: Record<string, unknown>,
     botId: string,
+    connectedAccountId?: string,
   ): Promise<ComposioExecuteResult> {
     const slug = actionName.toUpperCase().replace(/-/g, "_");
     const { approval_id: rawTicket, ...toolArgs } = args;
@@ -61,7 +62,9 @@ export class ComposioSecurityGuard {
       }
       this.#used.add(ticket);
     }
-    const result = await this.#client.executeAction(slug, toolArgs);
+    const result = connectedAccountId
+      ? await this.#client.executeAction(slug, toolArgs, connectedAccountId)
+      : await this.#client.executeAction(slug, toolArgs);
     if (result.data !== undefined) result.data = scrubValue(result.data);
     if (result.error) result.error = redactSecrets(result.error);
     return result;

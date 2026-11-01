@@ -173,6 +173,23 @@ export function HelpPanel(props: HelpPanelProps) {
         </p>
       </div>
 
+      <div class="help-panel-section help-panel-screen">
+        <h3>{t("helpTeamTitle")}</h3>
+        <For
+          each={
+            [
+              "helpTipCeo",
+              "helpTipTelegram",
+              "helpTipBrowser",
+              "helpTipPublishing",
+              "helpTipDeleteWorkspace",
+            ] as MessageKey[]
+          }
+        >
+          {(tip) => <p>{t(tip)}</p>}
+        </For>
+      </div>
+
       <div class="help-panel-section">
         <div class="help-panel-section-head">
           <h3>{t("helpGettingStarted")}</h3>

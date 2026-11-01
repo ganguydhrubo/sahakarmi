@@ -106,6 +106,7 @@ export class MailboxStore {
   readonly #transfersRoot: string;
   #state: StoredState = structuredClone(EMPTY_STATE);
   #writeQueue: Promise<void> = Promise.resolve();
+  #nextWrite: Promise<void> | null = null;
   readonly #messageIndex = new Map<string, StoredMessage>();
   readonly #sourceTurnIndex = new Map<string, string>();
 
@@ -836,16 +837,24 @@ export class MailboxStore {
     }
   }
 
+  /** Serialized when its turn comes: changes made meanwhile share one write of the whole file. */
   async #persist(): Promise<void> {
-    const serialized = `${JSON.stringify(this.#state)}\n`;
-    const temporaryPath = `${this.#statePath}.${process.pid}.${randomUUID()}.tmp`;
-    this.#writeQueue = this.#writeQueue
+    if (this.#nextWrite) {
+      await this.#nextWrite;
+      return;
+    }
+    const write = this.#writeQueue
       .catch(() => undefined)
       .then(async () => {
+        this.#nextWrite = null;
+        const serialized = `${JSON.stringify(this.#state)}\n`;
+        const temporaryPath = `${this.#statePath}.${process.pid}.${randomUUID()}.tmp`;
         await writeFile(temporaryPath, serialized, { encoding: "utf8", mode: 0o600 });
         await rename(temporaryPath, this.#statePath);
       });
-    await this.#writeQueue;
+    this.#nextWrite = write;
+    this.#writeQueue = write;
+    await write;
   }
 }
 

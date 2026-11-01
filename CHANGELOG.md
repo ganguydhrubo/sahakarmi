@@ -5,6 +5,53 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-01
+
+### Added
+
+- Approve or reject from Telegram: a notification has Approve, Reject and Details buttons, plus
+  `/pending`, `/approve`, `/reject`, `/details`, `/cancel`, `/status`, `/policy` and `/ceo` commands.
+  The decision reaches Sahkarmi at once, and the Telegram message updates when a request is decided
+  on the computer, runs out of time or is cancelled. Only the paired owner can decide. Chats paired
+  before this version are recognised without pairing again.
+- Delete a workspace from its menu (Team and CEO): move its coworkers to another workspace, or
+  delete them with it, after a confirmation. A workspace whose coworkers are working, and your only
+  workspace, cannot be deleted.
+- A CEO for a workspace: choose one coworker. It gives the others their work, collects their results
+  and reports to you in one reply, also on Telegram. The CEO has no extra permissions.
+- You can give the CEO authority to decide some kinds of approval, for 24 hours at a time. It can
+  pass part of that to an employee, never more; taking it back ends what was passed on. Nobody
+  decides their own request, and every decision records who made it.
+- Publishing accounts: a coworker is tied to one Facebook, Instagram or LinkedIn account after you
+  approve it. If another account is signed in, or the account cannot be confirmed, it stops; it
+  never falls back to a different account. Connected-app posting uses the tied connection too.
+
+### Fixed
+
+- Coworkers no longer interfere with each other's work: each can use only its own browser pages,
+  cannot read another's private folder or search another's chats, and messages stay inside the
+  workspace. Under a CEO, work goes through the CEO. Coworkers can still talk to each other.
+- Every coworker now has its own browser with its own sign-ins, so one coworker's sign-in or open
+  page no longer changes another's. Existing sign-ins (cookies) are copied once to the coworkers
+  that used those sites, and the old browser data is kept. Sites that keep their sign-in outside
+  cookies, such as WhatsApp Web, need signing in again.
+- The approval screen no longer flickers. Repeated updates no longer rebuild the cards, so a note
+  you are typing stays, and repeated identical requests show as one card.
+- A Telegram chat no longer changes coworker silently when a new coworker is added.
+- Saving a coworker's settings retries when Windows briefly holds the file.
+- Requests still waiting from before a restart now show straight away on the Approvals screen.
+- Less freezing with many browser pages. Pages changing their title or loading state no
+  longer flood the app, page pictures are small and paused while the window is hidden, and at most
+  six unused pages stay awake (each is a separate process). Sleeping pages stay in the list and wake
+  signed in. Saving chat, approval and file records no longer blocks the app in a burst.
+- AI servers no coworker uses no longer stay in memory. OpenCode and the other agent servers stop
+  after a minute if no coworker uses them, or after 15 quiet minutes, and start again when used.
+
+### Changed
+
+- Help now explains the CEO, Telegram approvals, each coworker's browser, publishing accounts and
+  deleting a workspace.
+
 ## [0.16.0] - 2026-10-28
 
 ### Fixed
