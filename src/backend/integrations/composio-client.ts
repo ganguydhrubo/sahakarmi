@@ -409,9 +409,24 @@ export class ComposioClient {
     return { toolkit, name };
   }
 
+  /** Every working connection of one app, so a coworker can be tied to exactly one of them. */
+  async activeConnectionIds(toolkitSlug: string): Promise<string[]> {
+    const key = await this.getApiKey();
+    if (!key) return [];
+    const connections = await this.#connectionsGet(key);
+    return connections
+      .filter(
+        (connection) =>
+          connection.toolkitSlug === toolkitSlug &&
+          connectionState(connection.status) === "connected",
+      )
+      .map((connection) => connection.id);
+  }
+
   async executeAction(
     toolSlug: string,
     args: Record<string, unknown>,
+    connectedAccountId?: string,
   ): Promise<ComposioExecuteResult> {
     const slug = toolSlug.toUpperCase().replace(/-/g, "_");
     const key = await this.getApiKey();
@@ -423,7 +438,9 @@ export class ComposioClient {
       };
     }
     try {
-      const account = await this.#accountForTool(slug, key);
+      const account = connectedAccountId
+        ? { id: connectedAccountId }
+        : await this.#accountForTool(slug, key);
       const body = account
         ? { connected_account_id: account.id, arguments: args }
         : { user_id: OWNER_USER_ID, arguments: args };

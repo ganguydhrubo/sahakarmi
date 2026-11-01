@@ -10,6 +10,32 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.17.0": [
+    {
+      icon: "✅",
+      badge: "Telegram",
+      title: "Approve and reject from Telegram",
+      desc: "Tap Approve or Reject in the notification. Sahkarmi updates at once, and so does the message when you decide on the computer.",
+    },
+    {
+      icon: "👔",
+      badge: "New",
+      title: "A CEO for your workspace",
+      desc: "Open a workspace's menu, choose Team and CEO. The CEO hands out work, collects results and reports to you. It decides approvals only if you allow it.",
+    },
+    {
+      icon: "🌐",
+      badge: "Browser",
+      title: "Each coworker has its own browser",
+      desc: "Sign-ins and pages stay with one coworker, and posting stops if the signed-in account is not the one you approved. Sites like WhatsApp Web may ask you to sign in once more.",
+    },
+    {
+      icon: "🗑️",
+      badge: "Fix",
+      title: "Delete a workspace, and a steady approval screen",
+      desc: "Workspaces can now be deleted safely, and approval cards no longer flicker or lose the note you are typing.",
+    },
+  ],
   "0.7.3": [
     {
       icon: "✨",

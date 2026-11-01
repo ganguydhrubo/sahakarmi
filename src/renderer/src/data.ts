@@ -9,6 +9,7 @@ import {
   type BotAvatarShape,
   type BotTemplateRef,
   type MessageReaction,
+  type PublishingAccount,
   type ToolCallSummary,
 } from "../../shared/ipc";
 
@@ -57,6 +58,7 @@ export interface BotProfile {
   preview: string;
   updatedAt?: string | null;
   template?: BotTemplateRef;
+  publishingAccounts?: PublishingAccount[];
 }
 
 export function accentForAvatarColor(color: BotAvatarColor): BotAccent {

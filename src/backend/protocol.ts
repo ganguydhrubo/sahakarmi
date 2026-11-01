@@ -32,6 +32,8 @@ export interface DynamicToolCallParams {
   namespace: string | null;
   tool: string;
   arguments: unknown;
+  /** The coworker making the call, set by the app from the thread. Never taken from the model. */
+  botId?: string;
 }
 
 export interface DynamicToolResult {

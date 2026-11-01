@@ -109,6 +109,15 @@ export class BusinessStore {
     return this.listTargets();
   }
 
+  /** A target stays when its coworker is deleted; it just no longer names them. */
+  async clearBot(botId: string): Promise<void> {
+    if (!this.#state.targets.some((target) => target.botId === botId)) return;
+    for (const target of this.#state.targets) {
+      if (target.botId === botId) target.botId = null;
+    }
+    await this.#file.write(this.#state);
+  }
+
   async deleteTarget(targetId: string): Promise<BusinessTarget[]> {
     this.#state.targets = this.#state.targets.filter((target) => target.id !== targetId);
     await this.#file.write(this.#state);

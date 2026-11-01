@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { app, BrowserWindow, clipboard, webContents } from "electron";
-import { BrowserHost } from "../src/backend/browser-host";
+import { app, BrowserWindow, clipboard, session, webContents } from "electron";
+import { BrowserHost, browserPartition } from "../src/backend/browser-host";
 
 let cachedPageVersion = 1;
 let savedDraft = "none";
@@ -588,6 +588,133 @@ async function main(): Promise<void> {
       throw new Error("A tab woken from sleep was signed out.");
     }
     process.stdout.write("BrowserHost: lazy restore, tab reuse and idle sleep passed.\n");
+
+    // Every coworker has its own browser. Sign-ins from the shared session go only to the coworker
+    // that used that site; the shared session is left intact.
+    const isolationRoot = await mkdtemp(join(tmpdir(), "sahkarmi-isolation-"));
+    const isolationStatePath = join(isolationRoot, "tabs.json");
+    await writeFile(
+      isolationStatePath,
+      JSON.stringify({
+        version: 1,
+        activeTabId: "owned-by-thread",
+        tabs: [
+          // An old tab: it only recorded the chat that opened it.
+          {
+            id: "owned-by-thread",
+            url: `${origin}/cookie`,
+            ownerThreadId: "thread-a",
+            ownerBotId: null,
+          },
+        ],
+      }),
+    );
+    const isolationWindow = new BrowserWindow({ show: false });
+    const isolated = new BrowserHost(isolationWindow, downloadsRoot, isolationStatePath);
+    await isolated.restore({
+      botOfThread: (thread) => (thread === "thread-a" ? "bot-a" : null),
+      botIds: ["bot-a", "bot-b"],
+    });
+    const adopted = isolated.listTabs().find((tab) => tab.id === "owned-by-thread");
+    if (adopted?.ownerBotId !== "bot-a") throw new Error("An old tab did not find its coworker.");
+    const signedIn = await isolated.snapshot("owned-by-thread");
+    if (!signedIn.text.includes("cookie:sahkarmi=shared")) {
+      throw new Error(
+        `A coworker lost the sign-in of a site it used: ${signedIn.text.slice(0, 80)}`,
+      );
+    }
+    const other = await isolated.open(`${origin}/cookie?b=1`, "thread-b", "bot-b");
+    const otherPage = await isolated.snapshot(other.id);
+    if (otherPage.text.includes("sahkarmi=shared")) {
+      throw new Error("A coworker inherited a sign-in it never used.");
+    }
+    if (isolated.activeTabId !== "owned-by-thread") {
+      throw new Error("One coworker's page replaced another's on the panel.");
+    }
+    const sharedCookies = await session
+      .fromPartition("persist:sahkarmi-browser")
+      .cookies.get({ name: "sahkarmi" });
+    if (sharedCookies.length === 0) throw new Error("The shared sign-ins were not left intact.");
+
+    // A sign-in made in one coworker's browser stays there, and survives a restart.
+    await session.fromPartition(browserPartition("bot-b")).cookies.set({
+      url: origin,
+      name: "only_b",
+      value: "yes",
+      expirationDate: Date.now() / 1000 + 3600,
+    });
+    const bReload = await isolated.snapshot(
+      (await isolated.open(`${origin}/cookie?b=2`, "thread-b", "bot-b")).id,
+    );
+    const aReload = await isolated.snapshot(
+      (await isolated.open(`${origin}/cookie?a=2`, "thread-a", "bot-a")).id,
+    );
+    if (!bReload.text.includes("only_b=yes") || aReload.text.includes("only_b")) {
+      throw new Error("Sign-ins leaked between coworkers' browsers.");
+    }
+    // The account is read from the tab's own browser: two coworkers, two different people.
+    for (const [bot, account] of [
+      ["bot-a", "111"],
+      ["bot-b", "222"],
+    ] as const) {
+      const cookies = session.fromPartition(browserPartition(bot)).cookies;
+      await cookies.set({ url: "https://www.facebook.com", name: "c_user", value: account });
+      await cookies.set({ url: "https://www.instagram.com", name: "ds_user_id", value: account });
+    }
+    const aTab = isolated.listTabs().find((tab) => tab.ownerBotId === "bot-a");
+    const bTab = isolated.listTabs().find((tab) => tab.ownerBotId === "bot-b");
+    if (
+      (await isolated.signedInAccount(aTab?.id ?? "", "facebook")) !== "111" ||
+      (await isolated.signedInAccount(bTab?.id ?? "", "facebook")) !== "222" ||
+      (await isolated.signedInAccount(bTab?.id ?? "", "instagram")) !== "222"
+    ) {
+      throw new Error("A coworker's account was read from someone else's browser.");
+    }
+    // Over the agent tool: a coworker cannot see or use a colleague's page.
+    const call = (tool: string, args: unknown) => ({
+      threadId: "thread-a",
+      turnId: "turn-iso",
+      callId: "call-iso",
+      namespace: "sahkarmi_browser",
+      tool,
+      arguments: args,
+      botId: "bot-a",
+    });
+    const refused = await isolated.handleDynamicTool(call("snapshot", { tabId: bTab?.id }));
+    const listed = await isolated.handleDynamicTool(call("list_tabs", {}));
+    if (refused.success || JSON.stringify(listed).includes(bTab?.id ?? "?")) {
+      throw new Error("A coworker reached a colleague's page.");
+    }
+    isolated.endControl("thread-a", "turn-iso");
+
+    const bTabsBefore = isolated.listTabs().filter((tab) => tab.ownerBotId === "bot-b").length;
+    await isolated.destroy();
+    const finalWindow = new BrowserWindow({ show: false });
+    const reopened = new BrowserHost(finalWindow, downloadsRoot, isolationStatePath);
+    await reopened.restore({ botOfThread: () => null, botIds: ["bot-a", "bot-b"] });
+    const bTabs = reopened.listTabs().filter((tab) => tab.ownerBotId === "bot-b");
+    if (bTabs.length !== bTabsBefore) {
+      throw new Error("A coworker's pages did not survive a restart.");
+    }
+    const afterRestart = await reopened.snapshot(bTabs[0]?.id ?? "");
+    if (!afterRestart.text.includes("only_b=yes")) {
+      throw new Error("A coworker's sign-in did not survive a restart.");
+    }
+    await reopened.releaseBot("bot-b");
+    if (reopened.listTabs().some((tab) => tab.ownerBotId === "bot-b")) {
+      throw new Error("A deleted coworker's pages stayed open.");
+    }
+    if (
+      (await session.fromPartition(browserPartition("bot-b")).cookies.get({ name: "only_b" }))
+        .length > 0
+    ) {
+      throw new Error("A deleted coworker's sign-ins stayed behind.");
+    }
+    await reopened.destroy();
+    finalWindow.destroy();
+    isolationWindow.destroy();
+    await rm(isolationRoot, { recursive: true, force: true }).catch(() => undefined);
+    process.stdout.write("BrowserHost: per-coworker browsers and sign-ins passed.\n");
     const restoredTabs = restoredBrowser.listTabs();
     const restoredTab = restoredTabs.find((candidate) => candidate.id === persistedTab.id);
     if (

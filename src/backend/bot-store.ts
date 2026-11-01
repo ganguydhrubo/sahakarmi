@@ -9,12 +9,14 @@ import {
   type BotAvatarColor,
   type BotAvatarShape,
   type BotSummary,
+  type DeleteWorkspaceInput,
   isAgentModel,
   isAvatarColor,
   isAvatarShape,
   isBotTemplateRef,
   isReasoningEffort,
   legacyModelReplacement,
+  type PublishingAccount,
   providerForModel,
   type UpdateBotInput,
   type WorkspaceState,
@@ -236,6 +238,56 @@ export class BotStore {
     return this.workspaces();
   }
 
+  /**
+   * Removes a workspace, moving its remaining coworkers to `moveCoworkersTo`. The service deletes
+   * the ones that go with it first; a coworker is never left pointing at a workspace that is gone.
+   */
+  async deleteWorkspace(input: DeleteWorkspaceInput): Promise<WorkspaceState> {
+    this.#requireWorkspace(input.workspaceId);
+    if (this.#state.workspaces.length <= 1) {
+      throw new Error("This is your only workspace, so it cannot be deleted.");
+    }
+    if (input.moveCoworkersTo === input.workspaceId) {
+      throw new Error("Choose a different workspace to move the coworkers to.");
+    }
+    const members = this.#state.bots.filter((bot) => bot.workspaceId === input.workspaceId);
+    if (input.moveCoworkersTo === null) {
+      if (members.length > 0) throw new Error("This workspace still has coworkers.");
+    } else {
+      this.#requireWorkspace(input.moveCoworkersTo);
+      for (const bot of members) bot.workspaceId = input.moveCoworkersTo;
+    }
+    this.#state.workspaces = this.#state.workspaces.filter(
+      (workspace) => workspace.id !== input.workspaceId,
+    );
+    if (this.#state.activeWorkspaceId === input.workspaceId) {
+      this.#state.activeWorkspaceId =
+        input.moveCoworkersTo ?? this.#state.workspaces[0]?.id ?? DEFAULT_WORKSPACE_ID;
+    }
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  async setWorkspaceCeo(workspaceId: string, botId: string | null): Promise<WorkspaceState> {
+    const workspace = this.#requireWorkspace(workspaceId);
+    if (botId !== null) {
+      const bot = this.#requireBot(botId);
+      if (bot.workspaceId !== workspaceId) {
+        throw new Error("Only a coworker in this workspace can be its CEO.");
+      }
+    }
+    workspace.ceoBotId = botId;
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  async setPublishingAccounts(botId: string, accounts: PublishingAccount[]): Promise<BotSummary> {
+    const bot = this.#requireBot(botId);
+    bot.publishingAccounts = accounts;
+    await this.#persist();
+    return { ...bot };
+  }
+
   async createBot(workspaceId = this.#state.activeWorkspaceId): Promise<BotSummary> {
     this.#requireWorkspace(workspaceId);
     const record = this.#createRecord(`bot-${randomUUID()}`, "New coworker", "", "", workspaceId);
@@ -268,6 +320,9 @@ export class BotStore {
   async deleteBot(id: string): Promise<BotSummary> {
     const bot = this.#requireBot(id);
     this.#state.bots = this.#state.bots.filter((candidate) => candidate.id !== id);
+    for (const workspace of this.#state.workspaces) {
+      if (workspace.ceoBotId === id) workspace.ceoBotId = null;
+    }
     await this.#persist();
     return { ...bot };
   }
@@ -369,7 +424,7 @@ export class BotStore {
       .catch(() => undefined)
       .then(async () => {
         await writeFile(temporaryPath, serialized, { encoding: "utf8", mode: 0o600 });
-        await rename(temporaryPath, this.#statePath);
+        await renameWithRetry(temporaryPath, this.#statePath);
       });
     await this.#writeQueue;
   }
@@ -425,6 +480,20 @@ function emptyState(): StoredState {
     workspaces: [defaultWorkspace()],
     bots: [],
   };
+}
+
+/** Windows refuses a rename for a moment while an antivirus or indexer holds the target. */
+async function renameWithRetry(source: string, target: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 4 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
 }
 
 function isStoredWorkspace(value: unknown): value is WorkspaceSummary {

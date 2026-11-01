@@ -29,6 +29,7 @@ import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attac
 import { BotStore } from "../backend/bot-store";
 import { createCoworkerBrowser } from "../backend/browser-factory";
 import type { CoworkerBrowser } from "../backend/browser-host";
+import { browserPagesFromAudit } from "../backend/browser-state";
 import { BusinessStore } from "../backend/business-store";
 import {
   resolveClaudeCli,
@@ -70,6 +71,7 @@ import {
   type AiRuntimeStatus,
   type AiToolId,
   type AppInfo,
+  type ApprovalCategory,
   type AppSetupState,
   type BrowserBounds,
   type BrowserOpenInput,
@@ -103,6 +105,8 @@ import {
   type SaveBusinessTargetInput,
   type SendMessageInput,
   type SetQueuePausedInput,
+  SOCIAL_PLATFORMS,
+  type SocialPlatform,
   type StartOrchestratorRunInput,
   type TargetPeriod,
   type UpdateBotInput,
@@ -344,14 +348,21 @@ function registerIpcHandlers(
         : requireString(workspaceId, "workspaceId"),
     ),
   );
+  /** A deleted coworker leaves nothing behind that still names it. */
+  async function removeBotRecords(id: string): Promise<void> {
+    await schedules.deleteBotData(id);
+    await routines.deleteBotData(id);
+    await business.clearBot(id);
+    await permissions.deleteBotData(id);
+  }
+
   handleTrusted(IPC_CHANNELS.agentUpdateBot, (input: unknown) =>
     service.updateBot(parseUpdateBot(input)),
   );
   handleTrusted(IPC_CHANNELS.agentDeleteBot, async (botId: unknown) => {
     const id = requireString(botId, "botId");
     await service.deleteBot(id);
-    await schedules.deleteBotData(id);
-    await routines.deleteBotData(id);
+    await removeBotRecords(id);
   });
   handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown) =>
     service.readConversation(requireString(botId, "botId")),
@@ -484,9 +495,59 @@ function registerIpcHandlers(
     service.setActiveWorkspace(requireString(workspaceId, "workspaceId")),
   );
 
+  handleTrusted(IPC_CHANNELS.teamDeleteWorkspace, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid workspace delete request.");
+    const { state, deletedBotIds } = await service.deleteWorkspace({
+      workspaceId: requireString(input.workspaceId, "workspaceId"),
+      moveCoworkersTo:
+        input.moveCoworkersTo === null
+          ? null
+          : requireString(input.moveCoworkersTo, "moveCoworkersTo"),
+    });
+    for (const id of deletedBotIds) await removeBotRecords(id);
+    return state;
+  });
+  handleTrusted(IPC_CHANNELS.teamSetWorkspaceCeo, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid CEO request.");
+    return service.setWorkspaceCeo(
+      requireString(input.workspaceId, "workspaceId"),
+      input.botId === null ? null : requireString(input.botId, "botId"),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.teamUnbindPublishingAccount, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    const platform = input.platform as SocialPlatform;
+    if (!SOCIAL_PLATFORMS.includes(platform)) throw new Error("Unknown platform.");
+    if (input.source !== "browser" && input.source !== "composio") {
+      throw new Error("Unknown account source.");
+    }
+    return service.unbindPublishingAccount(
+      requireString(input.botId, "botId"),
+      platform,
+      input.source,
+    );
+  });
+
+  handleTrusted(IPC_CHANNELS.approvalsListAuthority, () => service.listApprovalAuthority());
+  handleTrusted(IPC_CHANNELS.approvalsGrantAuthority, (input: unknown) => {
+    if (!isObject(input) || !Array.isArray(input.categories)) {
+      throw new Error("Invalid authority request.");
+    }
+    return service.grantApprovalAuthority({
+      workspaceId: requireString(input.workspaceId, "workspaceId"),
+      categories: input.categories as ApprovalCategory[],
+      hours: Number(input.hours),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.approvalsRevokeAuthority, (grantId: unknown) =>
+    service.revokeApprovalAuthority(requireString(grantId, "grantId")),
+  );
+
   handleTrusted(IPC_CHANNELS.approvalsList, () => service.listApprovals());
   handleTrusted(IPC_CHANNELS.approvalsDecide, (input: unknown) =>
-    service.decideApproval(parseDecideApproval(input)),
+    // Only the trusted renderer reaches this channel, so the decision-maker is the owner at
+    // this computer. Telegram supplies its own, verified, decidedBy.
+    service.decideApproval({ ...parseDecideApproval(input), decidedBy: "desktop" }),
   );
 
   handleTrusted(IPC_CHANNELS.permissionsGet, () => permissions.get());
@@ -1287,7 +1348,14 @@ if (!hasSingleInstanceLock) {
         join(app.getPath("userData"), BROWSER_STATE_FILE),
         join(app.getPath("userData"), BROWSER_PROFILE_DIR),
       );
-      await browserHost.restore();
+      await browserHost.restore({
+        botOfThread: (threadId) =>
+          store.list().find((bot) => bot.threadId === threadId)?.id ?? null,
+        botIds: store.list().map((bot) => bot.id),
+        usedPages: await browserPagesFromAudit(
+          join(app.getPath("userData"), "permission-audit.json"),
+        ),
+      });
       const setupFile = join(app.getPath("userData"), SETUP_FILE);
       const setupState = await readSetupState(setupFile);
       const permissions = new PermissionService(app.getPath("userData"));
@@ -1501,8 +1569,29 @@ if (!hasSingleInstanceLock) {
             service.on("event", listener);
             return () => service.off("event", listener);
           },
+          // Remote approvals reuse the desktop path exactly: same store, same policy, same
+          // audit trail. Telegram only ever decides requests the policy already raised.
+          listApprovals: () => service.listApprovals(),
+          decideApproval: (input) => service.decideApproval(input),
+          permissionPolicy: () => service.permissionPolicy(),
+          sweepExpiredApprovals: () => service.sweepExpiredApprovals(),
+          recordApprovalDelivery: (approvalId, error) =>
+            service.recordApprovalDelivery(approvalId, error),
+          ceos: () => {
+            const bots = service.listBots();
+            return store
+              .workspaces()
+              .workspaces.flatMap((space) => bots.filter((bot) => bot.id === space.ceoBotId));
+          },
+          workspaceName: (workspaceId) =>
+            store.workspaces().workspaces.find((space) => space.id === workspaceId)?.name ?? null,
         },
         log: (level, message, detail) => appLog.write(level, message, detail),
+        // Secure configuration. Nothing is written to source control and the token is never
+        // logged; it goes only to api.telegram.org.
+        envToken: process.env.TELEGRAM_BOT_TOKEN ?? null,
+        envOwnerUserId: Number.parseInt(process.env.OWNER_TELEGRAM_ID ?? "", 10) || null,
+        approvalsEnabled: process.env.SAHKARMI_TELEGRAM_APPROVALS !== "off",
       });
       telegramBridge = telegram;
       registerTelegramIpc(telegram);

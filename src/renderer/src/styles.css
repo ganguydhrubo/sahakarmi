@@ -13119,3 +13119,73 @@ fieldset.memory-filters {
     transition: none;
   }
 }
+
+/* The owner's controls for one workspace. */
+.workspace-team-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 45%);
+}
+.workspace-team-dialog {
+  display: grid;
+  gap: 10px;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  padding: 18px 20px;
+}
+.workspace-team-dialog h2,
+.workspace-team-dialog h3 {
+  margin: 6px 0 0;
+}
+.workspace-team-field {
+  display: grid;
+  gap: 4px;
+}
+.workspace-team-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.workspace-team-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.workspace-team-categories label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.workspace-team-grants {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workspace-team-grants li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.workspace-team-confirm {
+  margin: 0;
+  font-weight: 600;
+}
+.workspace-team-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+.approval-routed {
+  margin: 6px 0 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
