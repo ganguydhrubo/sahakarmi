@@ -35,6 +35,12 @@ const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
       title: "Delete a workspace, and a steady approval screen",
       desc: "Workspaces can now be deleted safely, and approval cards no longer flicker or lose the note you are typing.",
     },
+    {
+      icon: "⚡",
+      badge: "Faster",
+      title: "Lighter and no more freezes",
+      desc: "Unused pages sleep to free memory and wake when opened, still signed in. Busy web pages can no longer hold up the app.",
+    },
   ],
   "0.7.3": [
     {

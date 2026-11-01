@@ -138,7 +138,7 @@ export function BrowserPageList(props: {
                       <span class="browser-page-empty">{t("browserPreviewUnavailable")}</span>
                     }
                   >
-                    {(image) => <img src={image()} alt="" />}
+                    {(image) => <img src={image()} alt="" decoding="async" />}
                   </Show>
                 </span>
                 <span class="browser-page-title">{title()}</span>

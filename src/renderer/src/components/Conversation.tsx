@@ -183,6 +183,7 @@ const BROWSER_COMPACT_STORAGE_KEY = "sahkarmi:browser-compact";
 const BROWSER_PREVIEW_REFRESH_MS = 2_500;
 /** Pages other than the active one get a fresh picture every this many refreshes. */
 const BROWSER_BACKGROUND_PREVIEW_EVERY = 3;
+const BROWSER_FIRST_PREVIEWS = 6;
 const BROWSER_PANEL_DEFAULT = 380;
 const BROWSER_PANEL_MIN = 220;
 const BROWSER_PANEL_MAX = 1600;
@@ -1806,11 +1807,14 @@ export function Conversation(props: ConversationProps) {
         .catch(() => undefined);
     };
     const refresh = () => {
+      // Nobody is looking: pictures cost the whole app time, for nothing.
+      if (document.hidden) return;
       if (activeId) capture(activeId);
       const others = tabs.filter((tab) => tab.id !== activeId);
       if (others.length > 0) {
         if (tick === 0) {
-          for (const tab of others) capture(tab.id);
+          for (const tab of others.slice(0, BROWSER_FIRST_PREVIEWS)) capture(tab.id);
+          nextBackground = BROWSER_FIRST_PREVIEWS;
         } else if (tick % BROWSER_BACKGROUND_PREVIEW_EVERY === 0) {
           capture(others[nextBackground % others.length].id);
           nextBackground += 1;

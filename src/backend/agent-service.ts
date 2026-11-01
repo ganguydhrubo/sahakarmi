@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { renameSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type {
   AccountUsage,
@@ -416,6 +416,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     isBusy: () => this.#providerBusy("antigravity") || this.#providerStarts.has("antigravity"),
     onIdle: () => this.#sleepProvider("antigravity"),
   });
+  /**
+   * OpenCode and the other agent servers each hold hundreds of MB. One nobody uses stops soon after
+   * it answered the start-up check, one that went quiet a little later; using it starts it again.
+   * Codex and Claude stay up: they are small here and report the plan limits shown in the rail.
+   */
+  static PROVIDER_IDLE_MS = 15 * 60_000;
+  static UNUSED_PROVIDER_IDLE_MS = 60_000;
+  readonly #quietWatches = new Map<AgentProvider, IdleWatch>();
   #preferredProvider: AgentProvider;
   #initialized = false;
   #stopping = false;
@@ -504,8 +512,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** The app came to the front: wake a provider that was stopped while unused. */
   wakeIdleProviders(): void {
     if (!this.#initialized || this.#stopping) return;
-    for (const provider of this.#dormantClients.keys()) {
-      void this.ensureProvider(provider).catch(() => undefined);
+    // Gemini only: its start takes up to a minute. The others start in seconds, when used.
+    if (this.#dormantClients.has("antigravity")) {
+      void this.ensureProvider("antigravity").catch(() => undefined);
     }
   }
 
@@ -1407,7 +1416,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   /** Preferred provider when it is connected, otherwise the first connected one. */
   #defaultProvider(): AgentProvider {
-    if (this.#clients.has(this.#preferredProvider) || this.#clients.size === 0) {
+    if (
+      this.#clients.has(this.#preferredProvider) ||
+      this.#dormantClients.has(this.#preferredProvider) ||
+      this.#clients.size === 0
+    ) {
       return this.#preferredProvider;
     }
     return (
@@ -1584,6 +1597,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   async stop(): Promise<void> {
     this.#modelRefresh.stop();
     this.#geminiIdle.cancel();
+    for (const watch of this.#quietWatches.values()) watch.cancel();
     this.#dormantClients.clear();
     this.#stopping = true;
     this.#flushDeliverables();
@@ -1639,7 +1653,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         clearTimeout(timer);
       }
     }
-    if (provider === "antigravity" && this.#clients.has(provider)) this.#geminiIdle.touch();
+    if (this.#clients.has(provider)) this.#touchProvider(provider);
     const client = this.#clientForBot(bot) ?? dormant ?? null;
     if (!bot.threadId || !client || this.#status.phase !== "ready") {
       const snapshot = this.#ensureSnapshot(botId, bot.threadId);
@@ -2117,6 +2131,32 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
   }
 
+  /** A sign of use: starts over the quiet time after which this provider stops. */
+  #touchProvider(provider: AgentProvider): void {
+    if (provider === "antigravity") {
+      this.#geminiIdle.touch();
+      return;
+    }
+    if (provider !== "opencode" && !isAcpAgentProvider(provider)) return;
+    let watch = this.#quietWatches.get(provider);
+    if (!watch) {
+      watch = new IdleWatch({
+        // The last one running stays up: the app shows "starting" while it has no provider at all.
+        isBusy: () =>
+          this.#providerBusy(provider) ||
+          this.#providerStarts.has(provider) ||
+          this.#clients.size <= 1,
+        onIdle: () => this.#sleepProvider(provider),
+        delayMs: () =>
+          this.#store.list().some((bot) => providerForBot(bot) === provider)
+            ? AgentService.PROVIDER_IDLE_MS
+            : AgentService.UNUSED_PROVIDER_IDLE_MS,
+      });
+      this.#quietWatches.set(provider, watch);
+    }
+    watch.touch();
+  }
+
   /** Stops a provider that has been unused for a while; it starts again when next needed. */
   async #sleepProvider(provider: AgentProvider): Promise<void> {
     const client = this.#clients.get(provider);
@@ -2200,9 +2240,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#clients.set(provider, client);
       this.#dormantClients.delete(provider);
       this.#accounts.set(provider, account.account);
+      this.#touchProvider(provider);
       if (provider === "antigravity") {
         this.emit("log", `antigravity ready ${Date.now() - started.launchedAt} ms after launch`);
-        this.#geminiIdle.touch();
         void this.#prewarmGemini();
       }
       setProviderStatus(providerStatuses, provider, {
@@ -2339,9 +2379,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   #bindClient(client: AgentClient): void {
     client.on("notification", (notification) => {
-      if (client.provider === "antigravity" && this.#clients.get("antigravity") === client) {
-        this.#geminiIdle.touch();
-      }
+      if (this.#clients.get(client.provider) === client) this.#touchProvider(client.provider);
       this.#handleNotification(notification);
     });
     client.on("request", (request) => void this.#handleServerRequest(client, request));
@@ -3982,7 +4020,18 @@ ${carryOver}`
 
   #saveDeliverablesSoon(): void {
     if (this.#deliverablesSaveTimer) clearTimeout(this.#deliverablesSaveTimer);
-    this.#deliverablesSaveTimer = setTimeout(() => this.#flushDeliverables(), 150);
+    this.#deliverablesSaveTimer = setTimeout(() => void this.#writeDeliverables(), 1_000);
+  }
+
+  async #writeDeliverables(): Promise<void> {
+    this.#deliverablesSaveTimer = null;
+    try {
+      const path = this.#deliverablesPath();
+      await writeFile(`${path}.tmp`, JSON.stringify(Object.fromEntries(this.#deliverables)));
+      await rename(`${path}.tmp`, path);
+    } catch {
+      // best effort: the cards are rebuilt from the next turn's files anyway
+    }
   }
 
   /** Writes the deliverables file now (also on stop, so a restart keeps every file card). */

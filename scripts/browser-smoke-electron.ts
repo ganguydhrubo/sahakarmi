@@ -700,6 +700,50 @@ async function main(): Promise<void> {
     if (!afterRestart.text.includes("only_b=yes")) {
       throw new Error("A coworker's sign-in did not survive a restart.");
     }
+    process.stdout.write("BrowserHost: per-coworker browsers: restart passed.\n");
+    // A burst of page changes reaches the app a few times, not once per change.
+    const burst = await reopened.open(`${origin}/cookie?burst=1`, "thread-a", "bot-a");
+    await reopened.snapshot(burst.id);
+    const burstPage = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL().includes("burst=1"));
+    let announced = 0;
+    const stopListening = reopened.onChanged(() => {
+      announced += 1;
+    });
+    // Hidden pages have their timers slowed to once a second, so this does not use them.
+    await burstPage?.executeJavaScript(
+      `(async () => { for (let n = 0; n < 300; n += 1) { document.title = 'b' + n; await new Promise((next) => { const c = new MessageChannel(); c.port1.onmessage = next; c.port2.postMessage(0); }); } })()`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    stopListening();
+    if (announced === 0 || announced > 30) {
+      throw new Error(`300 title changes were announced ${announced} times.`);
+    }
+    if (
+      !reopened
+        .listTabs()
+        .find((tab) => tab.id === burst.id)
+        ?.title.startsWith("b29")
+    ) {
+      throw new Error("The last change of a burst was lost.");
+    }
+    process.stdout.write("BrowserHost: change bursts passed.\n");
+    // Only so many pages stay awake; the rest sleep and wake still signed in.
+    BrowserHost.MAX_AWAKE_TABS = 2;
+    BrowserHost.AWAKE_LIMIT_IDLE_MS = 0;
+    for (const n of [1, 2, 3])
+      await reopened.open(`${origin}/cookie?awake=${n}`, "thread-b", "bot-b");
+    await waitFor(async () => reopened.liveTabCount <= 2);
+    const allStillListed = reopened.listTabs().filter((tab) => tab.url.includes("awake=")).length;
+    if (allStillListed !== 3) throw new Error("A page put to sleep left the list.");
+    const stillSignedIn = await reopened.snapshot(
+      reopened.listTabs().find((tab) => tab.url.includes("awake=1"))?.id ?? "",
+    );
+    if (!stillSignedIn.text.includes("only_b=yes")) {
+      throw new Error("A page lost its sign-in by sleeping.");
+    }
+    BrowserHost.MAX_AWAKE_TABS = 1_000;
     await reopened.releaseBot("bot-b");
     if (reopened.listTabs().some((tab) => tab.ownerBotId === "bot-b")) {
       throw new Error("A deleted coworker's pages stayed open.");

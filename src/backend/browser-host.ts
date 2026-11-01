@@ -251,6 +251,11 @@ export const BROWSER_DYNAMIC_TOOLS = [
 
 /** A hidden page gets this long, this many times, to paint before its preview is taken. */
 const PREVIEW_PAINT_MS = 120;
+const PREVIEW_WIDTH = 480;
+const PREVIEW_JPEG_QUALITY = 70;
+/** Pages change their title and loading state many times a second; the app hears at most this often. */
+const CHANGE_EVENT_MIN_MS = 250;
+const PERSIST_DELAY_MS = 500;
 const PREVIEW_PAINT_ATTEMPTS = 12;
 /** A coworker waits at most this long for a page that just woke up or opened to load. */
 const FIRST_LOAD_WAIT_MS = 15_000;
@@ -259,7 +264,11 @@ const FIRST_LOAD_WAIT_MS = 15_000;
 async function captureIfPainted(view: WebContentsView): Promise<string | null> {
   try {
     const image = await withTimeout(view.webContents.capturePage(), 5_000, "Preview timed out.");
-    return image.isEmpty() ? null : image.toDataURL();
+    if (image.isEmpty()) return null;
+    // A page card is small. A full-size PNG is encoded on the main thread and blocks the whole app.
+    const small =
+      image.getSize().width > PREVIEW_WIDTH ? image.resize({ width: PREVIEW_WIDTH }) : image;
+    return `data:image/jpeg;base64,${small.toJPEG(PREVIEW_JPEG_QUALITY).toString("base64")}`;
   } catch {
     return null;
   }
@@ -289,7 +298,11 @@ export class BrowserHost implements CoworkerBrowser {
   /** A tab is reloaded by itself at most this often, however busy the coworker is. */
   static STALE_MIN_GAP_MS = 30_000;
   /** A hidden tab nobody used for this long sleeps: its page is freed, the tab stays listed. */
-  static IDLE_SLEEP_MS = 30 * 60_000;
+  static IDLE_SLEEP_MS = 15 * 60_000;
+  /** More pages than this are put to sleep, least recently used first. Each one is a process. */
+  static MAX_AWAKE_TABS = 6;
+  /** A page used more recently than this stays awake whatever the count: a coworker may be on it. */
+  static AWAKE_LIMIT_IDLE_MS = 2 * 60_000;
   /** How often idle tabs are looked for. */
   static SLEEP_CHECK_MS = 60_000;
   readonly takeoverHoldsShownTabOnly = true;
@@ -300,6 +313,9 @@ export class BrowserHost implements CoworkerBrowser {
   readonly #statePath: string;
   readonly #tabs = new Map<string, InternalTab>();
   readonly #listeners = new Set<(...args: BrowserHostEvents["changed"]) => void>();
+  #changeTimer: ReturnType<typeof setTimeout> | null = null;
+  #changePending = false;
+  #persistTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #control = new BrowserControlTracker();
   readonly #reservedDownloadPaths = new Set<string>();
   #activeTabId: string | null = null;
@@ -543,14 +559,29 @@ export class BrowserHost implements CoworkerBrowser {
   #sleepIdleTabs(): void {
     const now = Date.now();
     let slept = false;
+    const candidates: InternalTab[] = [];
+    let awake = 0;
     for (const tab of this.#tabs.values()) {
       const view = tab.view;
       if (!view) continue;
+      awake += 1;
       if (this.#visible && this.#attachedView === view) continue;
       if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) continue;
-      if (now - tab.lastUsed < BrowserHost.IDLE_SLEEP_MS) continue;
       if (view.webContents.isCurrentlyAudible()) continue;
+      if (now - tab.lastUsed < BrowserHost.IDLE_SLEEP_MS) {
+        candidates.push(tab);
+        continue;
+      }
       this.#sleep(tab);
+      awake -= 1;
+      slept = true;
+    }
+    candidates.sort((a, b) => a.lastUsed - b.lastUsed);
+    for (const tab of candidates) {
+      if (awake <= BrowserHost.MAX_AWAKE_TABS) break;
+      if (now - tab.lastUsed < BrowserHost.AWAKE_LIMIT_IDLE_MS) break;
+      this.#sleep(tab);
+      awake -= 1;
       slept = true;
     }
     if (slept) {
@@ -866,6 +897,10 @@ export class BrowserHost implements CoworkerBrowser {
   }
 
   async destroy(): Promise<void> {
+    if (this.#changeTimer) clearTimeout(this.#changeTimer);
+    if (this.#persistTimer) clearTimeout(this.#persistTimer);
+    this.#changeTimer = null;
+    this.#persistTimer = null;
     try {
       await this.#persistState();
     } finally {
@@ -1127,15 +1162,33 @@ export class BrowserHost implements CoworkerBrowser {
     return settled;
   }
 
+  /** The first change goes out at once; a burst after it is sent once, with the latest state. */
   #emitChanged(): void {
+    if (this.#changeTimer) {
+      this.#changePending = true;
+      return;
+    }
+    this.#sendChanged();
+    this.#changeTimer = setTimeout(() => {
+      this.#changeTimer = null;
+      if (this.#changePending) this.#emitChanged();
+    }, CHANGE_EVENT_MIN_MS);
+    this.#changePending = false;
+  }
+
+  #sendChanged(): void {
     const tabs = this.listTabs();
     for (const listener of this.#listeners) listener(tabs, this.#activeTabId);
   }
 
   #schedulePersist(): void {
-    void this.#persistState().catch((error) => {
-      console.error("Unable to persist browser tabs:", error);
-    });
+    if (this.#persistTimer) return;
+    this.#persistTimer = setTimeout(() => {
+      this.#persistTimer = null;
+      void this.#persistState().catch((error) => {
+        console.error("Unable to persist browser tabs:", error);
+      });
+    }, PERSIST_DELAY_MS);
   }
 
   #persistState(): Promise<void> {

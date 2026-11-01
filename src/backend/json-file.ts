@@ -7,6 +7,7 @@ import { isRecord } from "./protocol";
 export class JsonFile<T> {
   readonly #path: string;
   #writeQueue: Promise<void> = Promise.resolve();
+  #next: { value: T; done: Promise<void> } | null = null;
 
   constructor(path: string) {
     this.#path = path;
@@ -25,16 +26,26 @@ export class JsonFile<T> {
     }
   }
 
+  /** Writes waiting behind one in progress collapse into one, so a burst costs two at most. */
   async write(value: T): Promise<void> {
-    const serialized = `${JSON.stringify(value, null, 2)}\n`;
-    const temporaryPath = `${this.#path}.${process.pid}.${randomUUID()}.tmp`;
-    this.#writeQueue = this.#writeQueue
+    if (this.#next) {
+      this.#next.value = value;
+      await this.#next.done;
+      return;
+    }
+    const job = { value, done: Promise.resolve() };
+    job.done = this.#writeQueue
       .catch(() => undefined)
       .then(async () => {
+        this.#next = null;
+        const serialized = `${JSON.stringify(job.value, null, 2)}\n`;
+        const temporaryPath = `${this.#path}.${process.pid}.${randomUUID()}.tmp`;
         await mkdir(dirname(this.#path), { recursive: true, mode: 0o700 });
         await writeFile(temporaryPath, serialized, { encoding: "utf8", mode: 0o600 });
         await rename(temporaryPath, this.#path);
       });
-    await this.#writeQueue;
+    this.#next = job;
+    this.#writeQueue = job.done;
+    await job.done;
   }
 }
