@@ -79,7 +79,7 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     await waitFor(() => service?.listApprovals().length === 1);
     expect(service.listApprovals()[0]).toMatchObject({
       botId: "asha-accounts",
-      title: "Pay Sharma Traders",
+      title: "Pay invoice INV-482 to Sharma Traders",
       category: "payment",
     });
     await waitFor(async () =>
@@ -824,7 +824,7 @@ async function handle(message) {
       await mcpCall("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "fake" } });
       const tools = await mcpCall("tools/list", {});
       log({ method: "mcp-tools", tools: tools.result.tools.map((tool) => tool.name) });
-      const result = await mcpCall("tools/call", { name: "request_approval", arguments: { title: "Pay Sharma Traders", details: "INV-482", category: "payment", amount: "₹18,500" } });
+      const result = await mcpCall("tools/call", { name: "request_approval", arguments: { title: "Pay invoice INV-482 to Sharma Traders", details: "Pay invoice INV-482 to Sharma Traders by bank transfer, as you asked. The money leaves your account as soon as this is approved.", category: "payment", amount: "₹18,500" } });
       log({ method: "mcp-result", result });
     }
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Namaste! " } });

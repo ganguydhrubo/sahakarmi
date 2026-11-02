@@ -1314,6 +1314,8 @@ describe("Sahkarmi connected desktop shell", () => {
     });
     expect(group).toHaveTextContent("bun test");
     expect(document.querySelectorAll(".tool-group-card")).toHaveLength(1);
+    // A running step never opens the list by itself; that moved the whole chat.
+    expect(group.querySelector(".tool-group-drawer")).toBeNull();
   });
 
   it("opens a long chat with its latest messages and shows earlier ones on request", async () => {

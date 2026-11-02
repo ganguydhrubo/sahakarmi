@@ -10,6 +10,20 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.17.1": [
+    {
+      icon: "📝",
+      badge: "Approvals",
+      title: "Approvals you can understand",
+      desc: "Every request now says what the coworker wants to do, why, on which site, what happens if you approve and what gets shared.",
+    },
+    {
+      icon: "🧘",
+      badge: "Fix",
+      title: "A chat that stays still",
+      desc: "The list of steps no longer opens and closes by itself while a coworker works. Click it whenever you want to look inside.",
+    },
+  ],
   "0.17.0": [
     {
       icon: "✅",

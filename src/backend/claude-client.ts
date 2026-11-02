@@ -18,6 +18,11 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
+import {
+  APPROVAL_DETAILS_HELP,
+  APPROVAL_TITLE_HELP,
+  APPROVAL_TOOL_DESCRIPTION,
+} from "./approval-wording";
 import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { isInterruptMarker, readTranscriptLines } from "./claude-transcript";
 import type { ClaudeCliInfo } from "./cli";
@@ -831,10 +836,10 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "request_approval",
-            "Ask the owner to approve an action BEFORE doing it (payments, messages to customers, publishing, form submissions, deleting or sharing data). Returns immediately; the decision arrives later as a message.",
+            APPROVAL_TOOL_DESCRIPTION,
             {
-              title: z.string().min(1).max(200),
-              details: z.string().max(8_000),
+              title: z.string().min(1).max(200).describe(APPROVAL_TITLE_HELP),
+              details: z.string().max(8_000).describe(APPROVAL_DETAILS_HELP),
               category: z.enum(["payment", "message", "submission", "data", "other"]),
               amount: z.string().max(60).nullable().optional(),
             },

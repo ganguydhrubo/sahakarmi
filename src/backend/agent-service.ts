@@ -68,7 +68,13 @@ import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
-import { describePermissionRequest } from "./approval-wording";
+import {
+  APPROVAL_DETAILS_HELP,
+  APPROVAL_TITLE_HELP,
+  APPROVAL_TOOL_DESCRIPTION,
+  approvalRequestProblem,
+  describePermissionRequest,
+} from "./approval-wording";
 import {
   attachmentPromptBlocks,
   deliverableFiles,
@@ -619,6 +625,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#composioClient = client;
     this.#composioSecurity = new ComposioSecurityGuard(client, this.#approvals, {
       nameFor: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name,
+      ownerAsked: (botId) => this.#ownerAsked(botId),
       onApprovalCreated: (approval) => {
         void this.#routeApproval(approval).finally(() => {
           if (this.#approvals) {
@@ -2726,6 +2733,17 @@ ${carryOver}`
     );
   }
 
+  /** The owner's latest real instruction in this chat, skipping "ok" and the app's own notes. */
+  #ownerAsked(botId: string): string | null {
+    const messages = this.#snapshots.get(botId)?.messages ?? [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.author !== "user" || message.text.startsWith("[")) continue;
+      if (message.text.trim().split(/\s+/).length >= 3) return message.text;
+    }
+    return null;
+  }
+
   /** Files an inbox request for a paused tool call and waits for the owner (or the timeout). */
   async #askOwner(
     request: PermissionRequest,
@@ -2749,10 +2767,15 @@ ${carryOver}`
     const defer = shortWait !== undefined && shortWait < this.#permissionTimeoutMs;
     const waitMs = defer ? shortWait : this.#permissionTimeoutMs;
     const bot = this.#store.list().find((candidate) => candidate.id === request.botId);
-    const wording = describePermissionRequest(request, bot?.name ?? "Your coworker", {
-      shared: this.#store.sharedRoot,
-      own: bot?.workspacePath ?? null,
-    });
+    const wording = describePermissionRequest(
+      request,
+      bot?.name ?? "Your coworker",
+      {
+        shared: this.#store.sharedRoot,
+        own: bot?.workspacePath ?? null,
+      },
+      this.#ownerAsked(request.botId),
+    );
     const approval = await this.#approvals.create({
       botId: request.botId,
       title: wording.title,
@@ -2838,6 +2861,7 @@ ${carryOver}`
               category: classifyCommand(command),
               paths: [],
               action: command || getString(request.params, "reason") || "Run a command",
+              reason: getString(request.params, "reason") ?? undefined,
             },
           );
           client.respond(request.id, { decision: verdict.allowed ? "accept" : "decline" });
@@ -2853,6 +2877,7 @@ ${carryOver}`
               category: "file_modify",
               paths,
               action: paths.length ? `Change ${paths.join(", ")}` : "Change files",
+              reason: getString(request.params, "reason") ?? undefined,
             },
           );
           client.respond(request.id, { decision: verdict.allowed ? "accept" : "decline" });
@@ -2980,8 +3005,10 @@ ${carryOver}`
     let category: PermissionRequest["category"] = "browser_navigation";
     let paths: string[] = [];
     let action: string;
+    let browser: PermissionRequest["browser"];
     if (params.tool === "open") {
       action = `Open ${getString(args, "url") ?? "a page"}`;
+      browser = { type: "open", label: "", url: getString(args, "url") ?? "" };
     } else {
       const browserAction = getRecord(args, "action") ?? {};
       const type = getString(browserAction, "type") ?? "";
@@ -3011,11 +3038,18 @@ ${carryOver}`
       ]
         .filter(Boolean)
         .join(" ");
+      browser = {
+        type,
+        label: target.label,
+        url: target.url,
+        text: getString(browserAction, "text") ?? undefined,
+      };
     }
     const verdict = await this.#authorize(provider, params.threadId, {
       category,
       paths,
       action,
+      browser,
     });
     return verdict.allowed
       ? null
@@ -3581,6 +3615,13 @@ ${carryOver}`
   ): Promise<{ success: boolean; contentItems: Array<{ type: "inputText"; text: string }> }> {
     if (!this.#approvals) throw new Error("Approvals are unavailable.");
     if (!isRecord(args) || typeof args.title !== "string") throw new Error("title is required.");
+    const problem = approvalRequestProblem(
+      args.title,
+      typeof args.details === "string" ? args.details : "",
+    );
+    if (problem) {
+      return { success: false, contentItems: [{ type: "inputText", text: problem }] };
+    }
     const category = APPROVAL_CATEGORIES.includes(args.category as ApprovalCategory)
       ? (args.category as ApprovalCategory)
       : "other";
@@ -5129,13 +5170,12 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "request_approval",
-      description:
-        "Ask the owner to approve an action BEFORE doing it: payments or money movement, sending anything to customers/vendors, publishing, submitting government or bank forms, deleting data, or sharing personal data. Returns immediately; the decision arrives later as a message.",
+      description: APPROVAL_TOOL_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
-          title: { type: "string", minLength: 1, maxLength: 200 },
-          details: { type: "string", maxLength: 8_000 },
+          title: { type: "string", minLength: 1, maxLength: 200, description: APPROVAL_TITLE_HELP },
+          details: { type: "string", maxLength: 8_000, description: APPROVAL_DETAILS_HELP },
           category: { type: "string", enum: ["payment", "message", "submission", "data", "other"] },
           amount: { type: ["string", "null"], maxLength: 60 },
         },
@@ -5479,7 +5519,7 @@ function developerInstructions(
     `The Shared folder every coworker and the owner can see is ${sharedRoot}. Put finished deliverables there.`,
     "You have local computer, filesystem, command, and network access as requested by the owner.",
     `For every browser task, use ${SAHKARMI_BROWSER_NAMESPACE} directly. It is Sahkarmi's embedded browser, visible to the owner beside your thread. Never use another browser plugin inside Sahkarmi.`,
-    "Approvals are mandatory: call sahkarmi.request_approval and then STOP before any payment or money movement, sending a message/email/WhatsApp to a customer or vendor, publishing content, submitting a government, tax, bank or marketplace form, deleting data, or sharing personal data. Never work around a rejection.",
+    "Approvals are mandatory: call sahkarmi.request_approval and then STOP before any payment or money movement, sending a message/email/WhatsApp to a customer or vendor, publishing content, submitting a government, tax, bank or marketplace form, deleting data, or sharing personal data. Write the request in everyday English for someone who cannot see your work: what you will do, why, which company or website, what happens if approved, and what gets shared. Never work around a rejection.",
     `To attach a local file to a web page (a photo for a post, a document for a form), use ${SAHKARMI_BROWSER_NAMESPACE}.act with type "upload", the ref of the page's Upload / Add photo / Attach button or file input, and the file's full path in paths. Do not ask the owner to take over just to pick a file.`,
     `To fill Google Sheets or another grid, select the cell (click it, or type its address in the Name box with submit), then use ${SAHKARMI_BROWSER_NAMESPACE}.act with type "paste" and tab-separated rows in text, or type "type" without ref (a tab moves to the next cell, a new line to the next row). Take a screenshot to check it landed. Do not ask the owner to take over just to type or paste.`,
     "Never type passwords, OTPs or card details yourself. When a page asks for a password, OTP or PIN, take a snapshot and call sahkarmi.request_secure_input with that field's ref, then end your turn. For CAPTCHA, payment pages or anything else only a human should do, call sahkarmi.request_browser_takeover with a short reason and end your turn.",

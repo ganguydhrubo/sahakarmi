@@ -230,7 +230,8 @@ describe.sequential("AgentService", () => {
       tool: "request_approval",
       arguments: {
         title: "Pay Sharma Traders invoice #482",
-        details: "Due 25/10. UPI to sharma@okaxis.",
+        details:
+          "Pay invoice #482 to Sharma Traders, due 25/10, by UPI to sharma@okaxis. Clearing it was part of this week's payables, and the money leaves your account once you approve.",
         category: "payment",
         amount: "₹18,500",
       },
@@ -1696,6 +1697,10 @@ describe.sequential("AgentService", () => {
 });
 
 /** Every conversation update for this service that carries a plan, in order. */
+const PAY_VENDOR_TITLE = "Pay the vendor for October";
+const PAY_VENDOR_DETAILS =
+  "Pay ₹500 to the vendor by UPI, because you asked me to clear October's bills. The money leaves your account once this is approved.";
+
 describe("AgentService team, authority and accounts", () => {
   /** What the app answered the fake runtime's one tool call, as text. */
   async function toolAnswer(): Promise<string> {
@@ -1823,7 +1828,7 @@ describe("AgentService team, authority and accounts", () => {
   it("sends an employee's request to the CEO only when the owner granted that kind", async () => {
     const { target, workspaceId } = await team({
       tool: "request_approval",
-      arguments: { title: "Pay vendor", details: "₹500", category: "payment" },
+      arguments: { title: PAY_VENDOR_TITLE, details: PAY_VENDOR_DETAILS, category: "payment" },
     });
     await target.setWorkspaceCeo(workspaceId, "mitra-lead");
     await target.grantApprovalAuthority({ workspaceId, categories: ["payment"], hours: 1 });
@@ -1841,13 +1846,29 @@ describe("AgentService team, authority and accounts", () => {
   it("keeps a request with the owner when the CEO was given nothing", async () => {
     const { target, workspaceId } = await team({
       tool: "request_approval",
-      arguments: { title: "Pay vendor", details: "₹500", category: "payment" },
+      arguments: { title: PAY_VENDOR_TITLE, details: PAY_VENDOR_DETAILS, category: "payment" },
     });
     await target.setWorkspaceCeo(workspaceId, "mitra-lead");
     await target.sendMessage({ botId: "asha-accounts", text: "Pay it" });
     await waitFor(() => target.listApprovals().length === 1);
     expect(target.listApprovals()[0]?.routedToBotId ?? null).toBeNull();
     expect(target.listQueue("mitra-lead").deliveries).toHaveLength(0);
+  });
+
+  it("sends a request that does not explain itself back to the coworker", async () => {
+    const { target } = await team({
+      tool: "request_approval",
+      arguments: { title: "Job Apply Once", details: "Please approve", category: "submission" },
+    });
+    await target.sendMessage({ botId: "asha-accounts", text: "Apply for me" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(JSON.stringify(reply?.result)).toContain("Not sent to the owner");
+    expect(target.listApprovals()).toHaveLength(0);
   });
 
   it("the CEO decides within its authority, and the decision is recorded as its own", async () => {

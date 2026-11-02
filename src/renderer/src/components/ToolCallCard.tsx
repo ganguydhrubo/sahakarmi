@@ -216,11 +216,11 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
   const isAnyFailed = () => props.tools.some((t) => t.status === "failed");
   const isAllDone = () => props.tools.every((t) => t.status === "completed");
 
-  const [manuallyToggled, setManuallyToggled] = createSignal<boolean | null>(null);
-  const isOpen = () => manuallyToggled() ?? isAnyRunning();
+  // Opens only when the owner opens it: flipping open with each running step moved the whole chat.
+  const [isOpen, setIsOpen] = createSignal(false);
 
   const toggleOpen = () => {
-    setManuallyToggled(!isOpen());
+    setIsOpen(!isOpen());
   };
 
   /** "2 commands, 1 file, 1 coworker message": what the steps were, never a bare "other". */
@@ -243,6 +243,8 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
       .map(([[one, many], count]) => t(count === 1 ? one : many, { count: String(count) }))
       .join(", ");
   };
+
+  const runningTool = () => props.tools.find((t) => t.status === "running");
 
   const activeToolIndex = () => {
     const idx = props.tools.findIndex((t) => t.status === "running");
@@ -304,7 +306,11 @@ export function ToolGroupCard(props: { tools: ToolCallSummary[] }) {
               })}
             </Show>
           </span>
-          <span class="tool-group-breakdown">{summaryBreakdown()}</span>
+          <span class="tool-group-breakdown">
+            <Show when={runningTool()} fallback={summaryBreakdown()}>
+              {(tool) => formatToolDisplay(tool()).title}
+            </Show>
+          </span>
         </div>
         <div class="tool-group-status-wrap">
           <span
