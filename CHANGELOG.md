@@ -5,6 +5,22 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-02
+
+### Fixed
+
+- The list of steps in a chat no longer opens and closes by itself while a coworker works, so the
+  chat stays still. It opens only when you click it; the running step's name shows on its header.
+
+### Changed
+
+- Every approval now explains itself in everyday English: what the coworker wants to do, why, which
+  website or service is involved, what happens if you approve and what gets shared. This also shows
+  in the Telegram notification. Technical detail stays folded away.
+- A coworker's approval request that does not explain itself is sent back to the coworker to rewrite
+  instead of reaching you.
+- A connected-app approval from an older version must be asked for again before the action can run.
+
 ## [0.17.0] - 2026-11-01
 
 ### Added

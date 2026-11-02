@@ -64,6 +64,10 @@ export interface PermissionRequest {
   action: string;
   /** Absolute paths the action touches, when known. */
   paths: string[];
+  /** Why, in the coworker's own words, when its runtime gives a reason. */
+  reason?: string;
+  /** The page and control a browser step touches, so the owner's card can name them. */
+  browser?: { type: string; label: string; url: string; text?: string };
 }
 
 export interface PermissionDecision {

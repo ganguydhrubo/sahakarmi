@@ -771,9 +771,7 @@ export class TelegramBridge {
       `Action: ${approval.title}`,
       approval.details ? approval.details : null,
       approval.amount ? `Amount: ${approval.amount}` : null,
-      `Risk: ${RISK_LABEL[approval.riskLevel ?? "medium"] ?? "medium"}${
-        approval.permissionCategory ? ` (${approval.permissionCategory})` : ""
-      }`,
+      `Risk: ${RISK_LABEL[approval.riskLevel ?? "medium"] ?? "medium"}`,
       consequence ? `Consequence: ${consequence}` : null,
       approval.technical ? `\nTechnical: ${approval.technical}` : null,
       "",
@@ -980,6 +978,7 @@ export class TelegramBridge {
         approval.workspaceId ? `Workspace: ${this.#workspaceLabel(approval.workspaceId)}` : null,
         "",
         `Action: ${approval.title}`,
+        approval.details ? approval.details : null,
         approval.amount ? `Amount: ${approval.amount}` : null,
         `Risk: ${RISK_LABEL[approval.riskLevel ?? "medium"] ?? "medium"}`,
         consequence ? `Consequence: ${consequence}` : null,

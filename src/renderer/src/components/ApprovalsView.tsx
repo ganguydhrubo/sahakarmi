@@ -141,7 +141,7 @@ export function ApprovalCard(props: {
             <small>{props.bot?.role}</small>
           </span>
         </button>
-        <Show when={!(props.approval.kind === "permission" && props.approval.category === "other")}>
+        <Show when={props.approval.category !== "other"}>
           <span class={`approval-category approval-category-${props.approval.category}`}>
             {t(CATEGORY_LABELS[props.approval.category])}
           </span>

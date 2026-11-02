@@ -18,6 +18,8 @@ const MAX_ARGS_CHARS = 6_000;
 export interface ComposioSecurityGuardOptions {
   /** The coworker's display name for the approval card; the id is used when unknown. */
   nameFor?: (botId: string) => string | undefined;
+  /** What the owner last asked this coworker for, so the card can say why. */
+  ownerAsked?: (botId: string) => string | null;
   /** Fired after an approval is filed, so the UI can refresh its list. */
   onApprovalCreated?: (approval: ApprovalRequest) => void;
   now?: () => number;
@@ -85,18 +87,25 @@ export class ComposioSecurityGuard {
     } catch {
       argsText = "(could not show the details)";
     }
+    const asked = this.#options.ownerAsked?.(botId);
+    const shared = sharedSummary(args);
     const approval = await this.#approvals.create({
       botId,
       title: `${who} wants to ${action} on ${toolkit}`,
       category: classifyActionCategory(slug),
       details: [
-        `${who} wants to run "${name}" on ${toolkit} through Composio.`,
-        "",
-        "With these details:",
-        argsText,
-        "",
-        `${ACTION_MARK} ${slug}`,
-      ].join("\n"),
+        `${who} is asking your permission to ${action} using your connected ${toolkit} account.`,
+        asked
+          ? `Why: it is working on what you asked for: "${clip(redactSecrets(asked), 160)}"`
+          : "Why: this changes something outside Sahkarmi, so it needs your OK first.",
+        "If you approve: this happens for real, straight away, and only once.",
+        shared.length ? `What is shared with ${toolkit}:\n${shared.join("\n")}` : null,
+        `Nothing happens until you choose. If you reject, ${who} will not do this.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      // The mark comes first: the store clips long technical text, and decisions depend on it.
+      technical: [`${ACTION_MARK} ${slug}`, argsText].join("\n"),
       amount: null,
     });
     this.#options.onApprovalCreated?.(approval);
@@ -114,7 +123,9 @@ export class ComposioSecurityGuard {
       return `No approval with id ${ticket} exists. Call the tool again without approval_id to ask for one.`;
     }
     if (approval.botId !== botId) return `Approval ${ticket} belongs to another coworker.`;
-    if (!approval.details.includes(`${ACTION_MARK} ${slug}`)) {
+    // Only this guard writes the technical field's first line, so a coworker's own request
+    // cannot pass for approval of a connected-app action.
+    if (approval.technical?.split("\n")[0] !== `${ACTION_MARK} ${slug}`) {
       return `Approval ${ticket} was for a different action, not ${slug}.`;
     }
     if (approval.status === "pending") {
@@ -133,6 +144,24 @@ export class ComposioSecurityGuard {
     }
     return null;
   }
+}
+
+/** The plain values an action sends, one per line; anything nested stays in the technical fold. */
+function sharedSummary(args: Record<string, unknown>): string[] {
+  const lines = Object.entries(args)
+    .filter(
+      ([key, value]) =>
+        ["string", "number", "boolean"].includes(typeof value) &&
+        String(value).trim() !== "" &&
+        !/token|secret|password|passwd|api_?key|auth/i.test(key),
+    )
+    .slice(0, 6)
+    .map(([key, value]) => {
+      const label = key.replaceAll("_", " ");
+      const text = clip(redactSecrets(String(value)), 160);
+      return `${label.charAt(0).toUpperCase()}${label.slice(1)}: ${text}`;
+    });
+  return lines;
 }
 
 function clip(text: string, max: number): string {
