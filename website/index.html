@@ -105,11 +105,11 @@
       {
         "@type": "VideoObject",
         "name": "Sahkarmi in under 3 minutes",
-        "description": "A walkthrough recorded from the released Sahkarmi desktop app on a clean Windows PC: first launch, the coworker team, a real task on the free built-in model, search, the built-in browser, approvals and permissions, AI providers, and how to download. Hindi narration; an English version is at /assets/sahkarmi-explainer-en.mp4.",
+        "description": "A beginner's walkthrough recorded from Sahkarmi 0.21.1 on a clean Windows PC: first launch, the coworker team, a real task on the free built-in model, approvals, Knowledge Bases with document search, permissions, Telegram, voice, the Marketplace, team runs and how to download. Simple Hindi narration; a simple English version is at /assets/sahkarmi-explainer-en.mp4.",
         "thumbnailUrl": "https://sahkarmi.site/assets/poster.jpg",
         "contentUrl": "https://sahkarmi.site/assets/sahkarmi-explainer.mp4",
-        "uploadDate": "2026-10-24",
-        "duration": "PT2M41S",
+        "uploadDate": "2026-11-03",
+        "duration": "PT3M09S",
         "inLanguage": "hi"
       },
       {
@@ -349,6 +349,11 @@
     .video-lang { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--text-2); }
     .video-lang button { background: var(--card); border: 1px solid var(--line-2); color: var(--text-2); border-radius: 999px; padding: 5px 14px; font: 700 14px var(--font-ui); cursor: pointer; }
     .video-lang button[aria-pressed="true"] { background: var(--saffron); color: #0f1220; border-color: transparent; }
+    .video-chapters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .video-chapters button { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line-2); color: var(--text-2); border-radius: 999px; padding: 5px 12px 5px 6px; font: 600 13px var(--font-ui); cursor: pointer; }
+    .video-chapters button b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 999px; background: var(--bg-3); color: var(--text-2); font-size: 11px; }
+    .video-chapters button[aria-current="true"] { background: var(--saffron); color: #0f1220; border-color: transparent; }
+    .video-chapters button[aria-current="true"] b { background: rgba(15, 18, 32, 0.18); color: #0f1220; }
     .gallery { display: grid; gap: 10px; }
     .gallery-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
     .gallery-tabs button { background: var(--card); border: 1px solid var(--line); color: var(--text-2); border-radius: 999px; padding: 7px 14px; font: 600 14px var(--font-ui); cursor: pointer; }
@@ -1070,7 +1075,7 @@
               </video>
               <button class="play" id="play" type="button" aria-label="Play the explainer video">
                 <span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4.5v15l13-7.5z"/></svg></span>
-                <small data-i18n="playLabel">Play: Sahkarmi in under 3 minutes</small>
+                <small data-i18n="playLabel">Play: Sahkarmi in about 3 minutes</small>
               </button>
             </div>
             <div class="video-lang" role="group" aria-label="Video language">
@@ -1078,7 +1083,20 @@
               <button type="button" data-video="hi" aria-pressed="true" lang="hi">हिन्दी</button>
               <button type="button" data-video="en" aria-pressed="false">English</button>
             </div>
-            <p class="video-note" data-i18n="videoNote">Recorded on a clean Windows PC with the free built-in model. Captions in Hindi and English.</p>
+            <div class="video-chapters" role="group" aria-label="Chapters" id="chapters">
+              <button type="button" data-seek="0.0"><b>01</b><span data-i18n="vc1">Start</span></button>
+              <button type="button" data-seek="11.98"><b>02</b><span data-i18n="vc2">Setup</span></button>
+              <button type="button" data-seek="24.61"><b>03</b><span data-i18n="vc3">Your team</span></button>
+              <button type="button" data-seek="43.12"><b>04</b><span data-i18n="vc4">Give a task</span></button>
+              <button type="button" data-seek="56.25"><b>05</b><span data-i18n="vc5">Approvals</span></button>
+              <button type="button" data-seek="75.7"><b>06</b><span data-i18n="vc6">Documents</span></button>
+              <button type="button" data-seek="108.16"><b>07</b><span data-i18n="vc7">Permissions</span></button>
+              <button type="button" data-seek="118.48"><b>08</b><span data-i18n="vc8">Telegram</span></button>
+              <button type="button" data-seek="137.49"><b>09</b><span data-i18n="vc9">More coworkers</span></button>
+              <button type="button" data-seek="148.1"><b>10</b><span data-i18n="vc10">Team runs</span></button>
+              <button type="button" data-seek="160.2"><b>11</b><span data-i18n="vc11">Download</span></button>
+            </div>
+            <p class="video-note" data-i18n="videoNote">Recorded from Sahkarmi 0.21.1 on a clean Windows PC with the free built-in model. Simple Hindi or simple English narration, captions in both. Tap a chapter to jump.</p>
           </div>
           <div class="gallery" id="gallery">
             <div class="gallery-tabs" role="tablist" aria-label="Screenshots">
@@ -1599,9 +1617,20 @@
         seeEyebrow: "See it working",
         seeH2: "See your AI team at work",
         seeLead: "The real app on a Windows PC, start to finish.",
-        playLabel: "Play: Sahkarmi in under 3 minutes",
+        playLabel: "Play: Sahkarmi in about 3 minutes",
         videoLangLabel: "Narration:",
-        videoNote: "Recorded on a clean Windows PC with the free built-in model. Captions in Hindi and English.",
+        videoNote: "Recorded from Sahkarmi 0.21.1 on a clean Windows PC with the free built-in model. Simple Hindi or simple English narration, captions in both. Tap a chapter to jump.",
+        vc1: "Start",
+        vc2: "Setup",
+        vc3: "Your team",
+        vc4: "Give a task",
+        vc5: "Approvals",
+        vc6: "Documents",
+        vc7: "Permissions",
+        vc8: "Telegram",
+        vc9: "More coworkers",
+        vc10: "Team runs",
+        vc11: "Download",
         gSetup: "First launch",
         gBrowser: "Built-in browser",
         gSearch: "Search",
@@ -1982,9 +2011,20 @@
         seeEyebrow: "इसे काम करते देखें",
         seeH2: "अपनी AI टीम को काम करते देखिए",
         seeLead: "Windows PC पर असली ऐप, शुरू से आख़िर तक.",
-        playLabel: "चलाएँ: 3 मिनट से कम में सहकर्मी",
+        playLabel: "चलाएँ: लगभग 3 मिनट में सहकर्मी",
         videoLangLabel: "नैरेशन:",
-        videoNote: "मुफ़्त बिल्ट-इन मॉडल के साथ एक नए Windows PC पर रिकॉर्ड किया गया. हिन्दी और English में कैप्शन.",
+        videoNote: "सहकर्मी 0.21.1 से, मुफ़्त बिल्ट-इन मॉडल के साथ एक नए Windows PC पर रिकॉर्ड किया गया. आसान हिन्दी या आसान English में नैरेशन, दोनों में कैप्शन. किसी chapter पर टैप करके वहाँ पहुँचिए.",
+        vc1: "शुरुआत",
+        vc2: "सेटअप",
+        vc3: "आपकी टीम",
+        vc4: "काम दीजिए",
+        vc5: "मंज़ूरी",
+        vc6: "दस्तावेज़",
+        vc7: "अनुमतियाँ",
+        vc8: "Telegram",
+        vc9: "और सहकर्मी",
+        vc10: "टीम रन",
+        vc11: "डाउनलोड",
         gSetup: "पहली बार खोलना",
         gBrowser: "बिल्ट-इन ब्राउज़र",
         gSearch: "खोज",
@@ -2318,14 +2358,31 @@
           other.setAttribute("aria-pressed", String(other === button));
         }
         const wasPlaying = !video.paused;
+        const at = video.currentTime;
         video.pause();
         video.querySelector("source").src = choice.src;
         const track = video.querySelector("track");
         track.src = choice.track; track.srclang = choice.lang; track.label = choice.label;
         video.load();
+        if (at > 0) video.addEventListener("loadedmetadata", () => { video.currentTime = at; }, { once: true });
         if (wasPlaying) video.play().catch(() => undefined);
       });
     }
+    // Chapters: a chip jumps to that part of the video; the current chapter is highlighted while it plays.
+    const chapters = [...document.querySelectorAll("#chapters button")];
+    for (const chip of chapters) {
+      chip.addEventListener("click", () => {
+        const seek = () => { video.currentTime = Number(chip.dataset.seek); };
+        if (video.readyState >= 1) seek(); else video.addEventListener("loadedmetadata", seek, { once: true });
+        play.hidden = true;
+        video.play().catch(() => { play.hidden = false; });
+      });
+    }
+    video.addEventListener("timeupdate", () => {
+      let current = null;
+      for (const chip of chapters) if (video.currentTime >= Number(chip.dataset.seek) - 0.25) current = chip;
+      for (const chip of chapters) chip.setAttribute("aria-current", String(chip === current));
+    });
 
     // Screenshot gallery tabs
     const tabs = [...document.querySelectorAll('#gallery [role="tab"]')];
