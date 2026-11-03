@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { KnowledgeCitation } from "../../shared/ipc";
+import type { KnowledgeCitation, KnowledgeHit } from "../../shared/ipc";
 import type { SearchRow } from "./knowledge-db";
 import {
   buildMatchQuery,
   citationLabel,
+  fuseHits,
   knowledgeContextLines,
   numberHits,
   queryTerms,
   rowsToHits,
+  vectorText,
+  wantsSemantic,
 } from "./knowledge-search";
 
 function row(overrides: Partial<SearchRow>): SearchRow {
@@ -119,5 +122,57 @@ describe("knowledge search helpers", () => {
     expect(body).not.toContain("</knowledge_base_context>");
     expect(body).toContain("ignore rules");
     expect(knowledgeContextLines([], [])).toEqual([]);
+  });
+});
+
+describe("hybrid search helpers", () => {
+  const hit = (chunkIndex: number, score: number): KnowledgeHit => ({
+    score,
+    citation: {
+      id: "",
+      kbId: "kb-1",
+      kbName: "HR",
+      documentId: `doc-${chunkIndex % 2}`,
+      fileName: "x.md",
+      path: "C:/x.md",
+      page: null,
+      slide: null,
+      sheet: null,
+      heading: null,
+      chunkIndex,
+      excerpt: `chunk ${chunkIndex}`,
+    },
+  });
+
+  it("fuses the lexical and semantic rankings by reciprocal rank", () => {
+    const lexical = [hit(1, 9), hit(2, 8), hit(3, 7)];
+    const semantic = [hit(3, 0.8), hit(4, 0.7)];
+    const fused = fuseHits(lexical, semantic, 10);
+    expect(fused.map((entry) => entry.citation.chunkIndex)).toEqual([3, 1, 2, 4]);
+    expect(fused[0]?.score).toBeCloseTo(1 / 63 + 1 / 61, 6);
+    expect(fused[0]?.citation.excerpt).toBe("chunk 3");
+    expect(fuseHits([], semantic, 1).map((entry) => entry.citation.chunkIndex)).toEqual([3]);
+    expect(fuseHits([], [], 5)).toEqual([]);
+  });
+
+  it("keeps the per-file cap after fusion", () => {
+    const lexical = [hit(2, 9), hit(4, 8), hit(6, 7), hit(8, 6)];
+    const fused = fuseHits(lexical, [], 10);
+    expect(fused).toHaveLength(3);
+  });
+
+  it("uses the English model only for Latin-script queries", () => {
+    expect(wantsSemantic("holiday entitlement")).toBe(true);
+    expect(wantsSemantic("chutti ke niyam")).toBe(true);
+    expect(wantsSemantic("GST late fee")).toBe(true);
+    expect(wantsSemantic("छुट्टी के नियम")).toBe(false);
+    expect(wantsSemantic("ছুটির নিয়ম")).toBe(false);
+    expect(wantsSemantic("to be")).toBe(false);
+    expect(wantsSemantic("")).toBe(false);
+  });
+
+  it("embeds a chunk from its heading and text, capped", () => {
+    expect(vectorText({ seq: 1, heading: "Leave", text: "24 days" })).toBe("Leave\n24 days");
+    expect(vectorText({ seq: 1, heading: null, text: "x".repeat(3_000) })).toHaveLength(2_000);
   });
 });

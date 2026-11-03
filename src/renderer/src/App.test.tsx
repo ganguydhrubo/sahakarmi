@@ -402,6 +402,9 @@ describe("Sahkarmi connected desktop shell", () => {
           sync: vi.fn().mockResolvedValue([]),
           search: vi.fn().mockResolvedValue({ hits: [], kbIds: [] }),
           openSource: vi.fn().mockResolvedValue(undefined),
+          semanticStatus: vi.fn().mockResolvedValue(null),
+          installSemantic: vi.fn().mockResolvedValue(null),
+          removeSemantic: vi.fn().mockResolvedValue(null),
         },
         update: {
           getStatus: vi.fn().mockResolvedValue({

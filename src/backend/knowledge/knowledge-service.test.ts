@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentEvent } from "../../shared/ipc";
 import { KnowledgeService } from "./knowledge-service";
+import type { Embedder } from "./static-embedder";
 
 let tmp: string;
 let service: KnowledgeService;
@@ -158,5 +159,94 @@ describe("KnowledgeService", () => {
     await service.initialize();
     expect(service.list()[0]?.sources.find((s) => s.name === "good.txt")?.status).toBe("ready");
     expect((await service.searchForBot(bot, "forty lakh")).length).toBe(1);
+  });
+});
+
+/** A four-axis "meaning" embedder: leave / notice / prices / nothing. */
+const CONCEPTS: Array<[RegExp, number]> = [
+  [/leave|holiday|vacation|time off/i, 0],
+  [/notice|quit|resign/i, 1],
+  [/price|cost|tea|rate/i, 2],
+];
+const fakeEmbedder: Embedder = {
+  dim: 4,
+  embed(text: string): Float32Array {
+    const out = new Float32Array(4);
+    for (const [pattern, axis] of CONCEPTS) if (pattern.test(text)) out[axis] = 1;
+    const norm = Math.hypot(...out);
+    return norm > 0 ? out.map((v) => v / norm) : out;
+  },
+};
+
+describe("KnowledgeService with the embedding model", () => {
+  it("finds passages by meaning, fuses them with word matches and reports its state", async () => {
+    service.close();
+    service = new KnowledgeService(join(tmp, "user-data-semantic"), { embedder: fakeEmbedder });
+    service.on("event", (event: AgentEvent) => events.push(event));
+    await service.initialize();
+    const [base] = await service.create({ name: "Company docs", workspaceId: "my-business" });
+    await service.addFolder(base?.id ?? "", await docsFolder());
+    await service.idle();
+
+    const status = await service.semanticStatus();
+    expect(status.state).toBe("ready");
+    expect(status.chunks).toBeGreaterThan(0);
+    expect(status.vectors).toBe(status.chunks);
+    expect(events.some((event) => event.type === "knowledge-semantic")).toBe(true);
+
+    // No document contains "holiday" or "entitlement": only meaning finds the leave policy.
+    const byMeaning = await service.searchForBot(bot, "holiday entitlement");
+    expect(byMeaning[0]?.citation.fileName).toBe("leave-policy.md");
+    expect(byMeaning[0]?.citation.excerpt).toContain("paid leave");
+
+    // Words and meaning agree: the notice-period passage is first, with its citation intact.
+    const both = await service.groundingFor(bot, "how much notice must a manager give");
+    expect(both?.citations[0]).toMatchObject({
+      id: "S1",
+      fileName: "leave-policy.md",
+      heading: "Notice period",
+    });
+
+    // Unrelated text matches nothing by meaning either, so no grounding is forced on the turn.
+    expect(await service.groundingFor(bot, "zebra quantum banana")).toBeNull();
+
+    // A Hindi query skips the English model and still searches by words.
+    expect(await service.searchForBot(bot, "छुट्टी")).toEqual([]);
+
+    // A re-indexed file gets its vectors again.
+    await service.sync(base?.id ?? "");
+    await service.idle();
+    const after = await service.semanticStatus();
+    expect(after.vectors).toBe(after.chunks);
+  });
+
+  it("reports a failed model download without keeping anything", async () => {
+    service.close();
+    const calls: string[] = [];
+    service = new KnowledgeService(join(tmp, "user-data-dl"), {
+      fetch: async (url) => {
+        calls.push(url);
+        return new Response("gone", { status: 404 });
+      },
+    });
+    service.on("event", (event: AgentEvent) => events.push(event));
+    await service.initialize();
+    expect((await service.semanticStatus()).state).toBe("absent");
+    await expect(service.installSemantic()).rejects.toThrow(/404/);
+    expect(calls[0]).toMatch(/^https:\/\/huggingface\.co\/minishlab\/potion-base-8M\//);
+    const status = await service.semanticStatus();
+    expect(status.state).toBe("error");
+    expect(status.error).toMatch(/404/);
+    expect(status.loaded).toBe(false);
+    expect(events.filter((event) => event.type === "knowledge-semantic").length).toBeGreaterThan(0);
+    // Without the model, searching is lexical and still works.
+    const [base] = await service.create({ name: "Docs", workspaceId: "my-business" });
+    await service.addFolder(base?.id ?? "", await docsFolder());
+    await service.idle();
+    expect((await service.searchForBot(bot, "notice period"))[0]?.citation.heading).toBe(
+      "Notice period",
+    );
+    expect(await service.searchForBot(bot, "holiday entitlement")).toEqual([]);
+    expect((await service.removeSemantic()).state).toBe("absent");
   });
 });

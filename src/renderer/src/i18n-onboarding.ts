@@ -70,7 +70,7 @@ export const onboardingEn = {
   screenMemory:
     "Facts your coworkers should always remember, like prices or how you like work done.",
   screenKnowledge:
-    "Your PDFs, Word, Excel, PowerPoint and text files, indexed on this computer. Coworkers search them and cite the page.",
+    "Your PDFs, Word, Excel, PowerPoint and text files, indexed on this computer. Coworkers search them and cite the page. Optional: download one small model for search by meaning.",
   screenFiles: "One folder every coworker can read and write. Put files here to share them.",
   screenApprovals:
     "Coworkers ask here before paying, sending, posting or submitting. You decide, here or on Telegram, and each decision shows who made it.",

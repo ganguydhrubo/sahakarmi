@@ -5,6 +5,28 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-03
+
+### Added
+
+- Smarter search (optional): the Knowledge page has a card to download one small embedding
+  model (potion-base-8M by The Minish Lab, MIT, about 30 MB, from huggingface.co) once. With it
+  installed, every passage gets a 256-byte vector and searches match by meaning too, so
+  "holiday rules" finds the leave policy even when the words differ. The model is a lookup table
+  that runs in plain JavaScript inside the app: no native code, no GPU, no cloud, and your
+  documents never leave the computer. It loads on the first search (a quarter of a second) and
+  is dropped from memory again after ten idle minutes. "Turn off and delete" removes the files
+  and every vector.
+- Word stemming in the full-text index: "registrations" now finds "registration", "running"
+  finds "run". Existing bases are upgraded on first open, no re-indexing needed.
+
+### Changed
+
+- Searches with the model installed fuse the word ranking and the meaning ranking (reciprocal
+  rank), keep the per-file cap, and only use the model for Latin-script queries (Hindi and
+  Bengali script stay on the word index). Weak meaning matches are dropped, so unrelated
+  messages still get no document excerpts.
+
 ## [0.20.0] - 2026-11-03
 
 ### Added

@@ -1,11 +1,12 @@
 import type { KnowledgeCitation, KnowledgeHit } from "../../shared/ipc";
 import { hideSecrets } from "../workflow-export";
-import type { SearchRow } from "./knowledge-db";
+import type { ChunkRow, ChunkText } from "./knowledge-db";
 
 /**
  * From the owner's words to an FTS5 expression, and from matching chunks to the citations a
- * coworker can quote. Search is lexical (BM25): a word the owner uses must appear in the
- * document, in any of English, Hindi or Bengali.
+ * coworker can quote. Search is lexical (BM25) first: a word the owner uses must appear in the
+ * document, in any of English, Hindi or Bengali. With the optional embedding model installed,
+ * a meaning-based search runs beside it and the two rankings are fused.
  */
 
 /** Words that carry no meaning for a search and would only widen it. */
@@ -119,9 +120,12 @@ export function buildMatchQuery(query: string): string | null {
   return parts.join(" OR ");
 }
 
-/** Rows ranked by one base, with the file cap, as hits with a comparable positive score. */
+/**
+ * Rows ranked by one base, with the file cap, as hits with a comparable positive score
+ * (minus the bm25 rank for lexical rows, the cosine for semantic rows).
+ */
 export function rowsToHits(
-  rows: SearchRow[],
+  rows: Array<ChunkRow & { rank?: number; score?: number }>,
   base: { id: string; name: string },
   limit: number,
 ): KnowledgeHit[] {
@@ -132,7 +136,7 @@ export function rowsToHits(
     if (count >= PER_DOCUMENT_CAP) continue;
     perDocument.set(row.documentId, count + 1);
     hits.push({
-      score: -row.rank,
+      score: row.score ?? -(row.rank ?? 0),
       citation: {
         id: "",
         kbId: base.id,
@@ -151,6 +155,51 @@ export function rowsToHits(
     if (hits.length >= limit) break;
   }
   return hits;
+}
+
+/** The embedding model is English (and Hinglish by subwords): only Latin-script queries use it. */
+export function wantsSemantic(query: string): boolean {
+  return /[a-z]{3,}/i.test(query);
+}
+
+/** What a chunk's vector is computed from: its heading and text, capped for odd inputs. */
+export function vectorText(chunk: ChunkText): string {
+  return `${chunk.heading ? `${chunk.heading}\n` : ""}${chunk.text}`.slice(0, 2_000);
+}
+
+const RRF_K = 60;
+
+/**
+ * Reciprocal-rank fusion of the lexical and semantic rankings of one base: a chunk near the top
+ * of both wins, a chunk only one of them found still counts, and the per-file cap holds.
+ */
+export function fuseHits(
+  lexical: KnowledgeHit[],
+  semantic: KnowledgeHit[],
+  limit: number,
+): KnowledgeHit[] {
+  const fused = new Map<string, KnowledgeHit>();
+  const add = (hits: KnowledgeHit[]) => {
+    for (const [rank, hit] of hits.entries()) {
+      const key = `${hit.citation.kbId}|${hit.citation.documentId}|${hit.citation.chunkIndex}`;
+      const gain = 1 / (RRF_K + rank + 1);
+      const known = fused.get(key);
+      if (known) known.score += gain;
+      else fused.set(key, { ...hit, score: gain });
+    }
+  };
+  add(lexical);
+  add(semantic);
+  const perDocument = new Map<string, number>();
+  const out: KnowledgeHit[] = [];
+  for (const hit of [...fused.values()].sort((a, b) => b.score - a.score)) {
+    const count = perDocument.get(hit.citation.documentId) ?? 0;
+    if (count >= PER_DOCUMENT_CAP) continue;
+    perDocument.set(hit.citation.documentId, count + 1);
+    out.push(hit);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /** Hits from several bases merged by score, numbered S1..Sn. */

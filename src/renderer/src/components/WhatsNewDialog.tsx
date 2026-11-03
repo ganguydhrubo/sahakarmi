@@ -10,6 +10,26 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.21.0": [
+    {
+      icon: "🧠",
+      badge: "Knowledge",
+      title: "Smarter search, if you want it",
+      desc: "On the Knowledge page, download one small model (30 MB, MIT) once and searches match by meaning: “holiday rules” finds the leave policy.",
+    },
+    {
+      icon: "💻",
+      badge: "Local",
+      title: "Still nothing leaves your computer",
+      desc: "The model is a lookup table that runs inside the app. No cloud, no native code, and it is unloaded again after ten idle minutes.",
+    },
+    {
+      icon: "✂️",
+      badge: "Search",
+      title: "Word forms match",
+      desc: "“registrations” finds “registration” and “running” finds “run”. Existing bases are upgraded on first open.",
+    },
+  ],
   "0.20.0": [
     {
       icon: "📚",

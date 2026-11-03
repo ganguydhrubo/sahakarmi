@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { KnowledgeBaseSummary, KnowledgeCitation } from "../../../shared/ipc";
+import type {
+  KnowledgeBaseSummary,
+  KnowledgeCitation,
+  KnowledgeSemanticStatus,
+} from "../../../shared/ipc";
 import { citationParts, citationTitle } from "./Conversation";
 import { formatBytes, KnowledgeView } from "./KnowledgeView";
 
@@ -51,6 +55,19 @@ const citation: KnowledgeCitation = {
   excerpt: "The notice period is sixty days.",
 };
 
+const semanticOff: KnowledgeSemanticStatus = {
+  state: "absent",
+  modelName: "potion-base-8M",
+  license: "MIT",
+  source: "huggingface.co/minishlab/potion-base-8M",
+  sizeBytes: 31_481_559,
+  received: 0,
+  error: null,
+  vectors: 0,
+  chunks: 0,
+  loaded: false,
+};
+
 afterEach(() => {
   Reflect.deleteProperty(window, "sahkarmi");
 });
@@ -71,6 +88,14 @@ describe("KnowledgeView", () => {
       sync: vi.fn().mockResolvedValue([base({})]),
       search: vi.fn().mockResolvedValue({ hits: [{ citation, score: 3 }], kbIds: ["kb-1"] }),
       openSource: vi.fn().mockResolvedValue(undefined),
+      semanticStatus: vi.fn().mockResolvedValue(semanticOff),
+      installSemantic: vi.fn().mockResolvedValue({
+        ...semanticOff,
+        state: "ready",
+        vectors: 3,
+        chunks: 3,
+      }),
+      removeSemantic: vi.fn().mockResolvedValue(semanticOff),
     };
     Object.defineProperty(window, "sahkarmi", {
       configurable: true,
@@ -98,6 +123,36 @@ describe("KnowledgeView", () => {
     );
     await waitFor(() => expect(screen.getByText("leave-policy.pdf, p. 2")).toBeTruthy());
     expect(screen.getByText("The notice period is sixty days.")).toBeTruthy();
+  });
+
+  it("offers the optional meaning search and shows its state after installing", async () => {
+    const api = {
+      list: vi.fn().mockResolvedValue([base({})]),
+      semanticStatus: vi.fn().mockResolvedValue(semanticOff),
+      installSemantic: vi
+        .fn()
+        .mockResolvedValue({ ...semanticOff, state: "ready", vectors: 3, chunks: 3 }),
+      removeSemantic: vi.fn().mockResolvedValue(semanticOff),
+    };
+    Object.defineProperty(window, "sahkarmi", {
+      configurable: true,
+      value: { knowledge: api, agent: { onEvent: vi.fn(() => () => undefined) } },
+    });
+    render(() => <KnowledgeView workspaceId="my-business" bots={[]} />);
+
+    await waitFor(() => expect(screen.getByText("Smarter search (optional)")).toBeTruthy());
+    expect(screen.getByText(/Off\. Model potion-base-8M \(MIT licence\)/)).toBeTruthy();
+    expect(screen.getByText(/30\.0 MB/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Download and turn on"));
+    await waitFor(() => expect(api.installSemantic).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByText("On. 3 of 3 passages prepared for meaning search.")).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByText("Turn off and delete"));
+    await waitFor(() => expect(api.removeSemantic).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("Download and turn on")).toBeTruthy());
   });
 
   it("formats sizes and citation titles", () => {
