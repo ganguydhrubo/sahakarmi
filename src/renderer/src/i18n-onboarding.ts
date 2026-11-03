@@ -69,6 +69,8 @@ export const onboardingEn = {
   screenOrchestrator: "Give one big goal to a team of coworkers. They share the work.",
   screenMemory:
     "Facts your coworkers should always remember, like prices or how you like work done.",
+  screenKnowledge:
+    "Your PDFs, Word, Excel, PowerPoint and text files, indexed on this computer. Coworkers search them and cite the page.",
   screenFiles: "One folder every coworker can read and write. Put files here to share them.",
   screenApprovals:
     "Coworkers ask here before paying, sending, posting or submitting. You decide, here or on Telegram, and each decision shows who made it.",
@@ -152,6 +154,8 @@ export const onboardingHi: typeof onboardingEn = {
   screenTasks: "हर सहकर्मी का हाल का काम। यहाँ से किसी भी सहकर्मी को नया काम दे सकते हैं।",
   screenOrchestrator: "सहकर्मियों की टीम को एक बड़ा लक्ष्य दें। वे काम आपस में बाँट लेते हैं।",
   screenMemory: "बातें जो सहकर्मियों को हमेशा याद रहनी चाहिए, जैसे दाम या आपके काम करने का तरीक़ा।",
+  screenKnowledge:
+    "आपकी PDF, Word, Excel, PowerPoint और टेक्स्ट फ़ाइलें, इसी कंप्यूटर पर इंडेक्स की हुई। सहकर्मी इनमें खोजते हैं और पेज का हवाला देते हैं।",
   screenFiles: "एक फ़ोल्डर जिसे हर सहकर्मी पढ़-लिख सकता है। बाँटने के लिए फ़ाइलें यहाँ रखें।",
   screenApprovals:
     "भुगतान, भेजने, पोस्ट करने या जमा करने से पहले सहकर्मी यहाँ पूछते हैं। फ़ैसला आपका, यहाँ या टेलीग्राम पर, और हर फ़ैसले में लिखा रहता है कि किसने किया।",
@@ -231,6 +235,8 @@ export const onboardingBn: typeof onboardingEn = {
   screenTasks: "প্রত্যেক সহকর্মীর সাম্প্রতিক কাজ। এখান থেকে যেকোনো সহকর্মীকে নতুন কাজ দিতে পারেন।",
   screenOrchestrator: "সহকর্মীদের একটি দলকে একটি বড় লক্ষ্য দিন। তারা কাজ ভাগ করে নেয়।",
   screenMemory: "যে কথা সহকর্মীদের সবসময় মনে রাখা উচিত, যেমন দাম বা আপনার কাজের ধরন।",
+  screenKnowledge:
+    "আপনার PDF, Word, Excel, PowerPoint ও টেক্সট ফাইল, এই কম্পিউটারেই ইনডেক্স করা। সহকর্মীরা এতে খোঁজে এবং পাতার উল্লেখ দেয়।",
   screenFiles: "একটি ফোল্ডার যা প্রত্যেক সহকর্মী পড়তে ও লিখতে পারে। ভাগ করতে ফাইল এখানে রাখুন।",
   screenApprovals:
     "টাকা দেওয়া, পাঠানো, পোস্ট বা জমা দেওয়ার আগে সহকর্মীরা এখানে জিজ্ঞেস করে। সিদ্ধান্ত আপনার, এখানে বা টেলিগ্রামে, আর প্রতিটি সিদ্ধান্তে লেখা থাকে কে নিয়েছে।",

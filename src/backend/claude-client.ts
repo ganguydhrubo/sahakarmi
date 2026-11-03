@@ -27,8 +27,11 @@ import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from ".
 import { isInterruptMarker, readTranscriptLines } from "./claude-transcript";
 import type { ClaudeCliInfo } from "./cli";
 import {
+  LIST_KNOWLEDGE_BASES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
+  READ_DOCUMENT_SECTION_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
+  SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import { claudeMcpServers, type McpServerWire, readCustomMcpServers } from "./mcp-servers";
@@ -996,6 +999,30 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
               limit: z.number().int().min(1).max(20).optional(),
             },
             (args) => call("sahkarmi", "search_past_chats", args),
+          ),
+          tool("list_knowledge_bases", LIST_KNOWLEDGE_BASES_DESCRIPTION, {}, (args) =>
+            call("sahkarmi", "list_knowledge_bases", args),
+          ),
+          tool(
+            "search_knowledge_base",
+            SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
+            {
+              query: z.string().min(2).max(300),
+              knowledgeBaseId: z.string().optional(),
+              limit: z.number().int().min(1).max(20).optional(),
+            },
+            (args) => call("sahkarmi", "search_knowledge_base", args),
+          ),
+          tool(
+            "read_document_section",
+            READ_DOCUMENT_SECTION_DESCRIPTION,
+            {
+              knowledgeBaseId: z.string().min(1),
+              documentId: z.string().min(1),
+              page: z.number().int().min(1).optional(),
+              chunkIndex: z.number().int().min(0).optional(),
+            },
+            (args) => call("sahkarmi", "read_document_section", args),
           ),
           tool("list_skills", LIST_SKILLS_DESCRIPTION, {}, (args) =>
             call("sahkarmi", "list_skills", args),

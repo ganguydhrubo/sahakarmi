@@ -27,6 +27,7 @@ import type {
   CoworkerInstructionsView,
   CoworkerStatus,
   DraftAttachment,
+  KnowledgeCitation,
   MessageReaction,
   QueueSnapshot,
   ScheduleCadence,
@@ -687,6 +688,7 @@ function MessageBody(props: {
               <RichMessageText
                 body={props.message.body}
                 bots={props.bots}
+                citations={props.message.citations}
                 onSelectAgent={props.onSelectAgent}
                 onOpenLink={props.onOpenLink}
               />
@@ -700,6 +702,7 @@ function MessageBody(props: {
                 <RichMessageText
                   body={text}
                   bots={props.bots}
+                  citations={props.message.citations}
                   onSelectAgent={props.onSelectAgent}
                   onOpenLink={props.onOpenLink}
                 />
@@ -913,13 +916,30 @@ function MessageActions(props: {
 function RichMessageText(props: {
   body: string;
   bots: BotProfile[];
+  citations?: KnowledgeCitation[];
   onSelectAgent: (botId: string) => void;
   onOpenLink: (url: string) => void;
 }) {
-  const parts = createMemo(() => richMessageParts(props.body, props.bots));
+  const parts = createMemo(() => richMessageParts(props.body, props.bots, props.citations));
   return (
     <For each={parts()}>
       {(part) => {
+        if (part.citation) {
+          const citation = part.citation;
+          return (
+            <button
+              type="button"
+              class="citation-pill"
+              title={`${citationTitle(citation)}\n${citation.excerpt.slice(0, 280)}`}
+              aria-label={t("knowledgeCitationOpen", { name: citationTitle(citation) })}
+              onClick={() =>
+                void window.sahkarmi?.knowledge?.openSource(citation.kbId, citation.documentId)
+              }
+            >
+              {part.text}
+            </button>
+          );
+        }
         if (part.image) {
           return (
             <img
@@ -985,6 +1005,40 @@ interface RichMessagePart {
   url?: string;
   image?: string;
   emphasis?: "strong" | "code";
+  citation?: KnowledgeCitation;
+}
+
+/** "GST_Rules.pdf, p. 14": where a cited excerpt comes from. */
+export function citationTitle(citation: KnowledgeCitation): string {
+  const where =
+    citation.page !== null
+      ? `p. ${citation.page}`
+      : citation.slide !== null
+        ? `slide ${citation.slide}`
+        : citation.sheet
+          ? `sheet ${citation.sheet}`
+          : citation.heading
+            ? citation.heading
+            : "";
+  return where ? `${citation.fileName}, ${where}` : citation.fileName;
+}
+
+/** "[S1]" and "[S1, S3]" become one pill per anchor that resolves to an excerpt. */
+export function citationParts(text: string, citations: KnowledgeCitation[]): RichMessagePart[] {
+  const byId = new Map(citations.map((citation) => [citation.id, citation]));
+  const parts: RichMessagePart[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(/\[(S\d{1,2}(?:\s*,\s*S\d{1,2})*)\]/g)) {
+    const ids = (match[1] ?? "").split(/\s*,\s*/);
+    const found = ids.map((id) => byId.get(id)).filter((c): c is KnowledgeCitation => Boolean(c));
+    if (found.length !== ids.length) continue;
+    const index = match.index ?? 0;
+    if (index > cursor) parts.push({ text: text.slice(cursor, index) });
+    for (const citation of found) parts.push({ text: citation.id, citation });
+    cursor = index + match[0].length;
+  }
+  if (cursor < text.length) parts.push({ text: text.slice(cursor) });
+  return parts;
 }
 
 /** Image sources a reply may show inline: web, Sahkarmi's attachment protocol, or a local file. */
@@ -1004,14 +1058,24 @@ function inlineImageSource(raw: string): string | null {
   return null;
 }
 
-function richMessageParts(body: string, bots: BotProfile[]): RichMessagePart[] {
+function richMessageParts(
+  body: string,
+  bots: BotProfile[],
+  citations?: KnowledgeCitation[],
+): RichMessagePart[] {
   const parts: RichMessagePart[] = [];
   for (const part of linkedMessageParts(body)) {
     if (part.url) parts.push(part);
     else {
       for (const tagged of taggedMessageParts(part.text, bots)) {
         if (tagged.bot) parts.push(tagged);
-        else parts.push(...emphasisParts(tagged.text));
+        else {
+          for (const styled of emphasisParts(tagged.text)) {
+            if (!styled.emphasis && citations?.length) {
+              parts.push(...citationParts(styled.text, citations));
+            } else parts.push(styled);
+          }
+        }
       }
     }
   }

@@ -278,6 +278,27 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     resumeRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResumeRun, runId),
     cancelRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorCancelRun, runId),
   },
+  knowledge: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),
+    create: (input) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeCreate, input),
+    update: (input) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeUpdate, input),
+    delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeDelete, id),
+    addFiles: (kbId, paths) =>
+      ipcRenderer.invoke(IPC_CHANNELS.knowledgeAddFiles, paths ? { kbId, paths } : kbId),
+    pathsForFiles: (files) =>
+      files.map((file) => webUtils.getPathForFile(file)).filter((path) => Boolean(path)),
+    addFolder: (kbId) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeAddFolder, kbId),
+    removeFolder: (kbId, folderId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.knowledgeRemoveFolder, { kbId, folderId }),
+    removeSource: (kbId, sourceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.knowledgeRemoveSource, { kbId, sourceId }),
+    setSourceEnabled: (kbId, sourceId, enabled) =>
+      ipcRenderer.invoke(IPC_CHANNELS.knowledgeSetSourceEnabled, { kbId, sourceId, enabled }),
+    sync: (kbId) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSync, kbId),
+    search: (input) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSearch, input),
+    openSource: (kbId, documentId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.knowledgeOpenSource, { kbId, documentId }),
+  },
   memory: {
     list: (category) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, category),
     save: (entry) => ipcRenderer.invoke(IPC_CHANNELS.memorySave, entry),

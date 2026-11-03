@@ -77,6 +77,14 @@ export function formatToolDisplay(tool: ToolCallSummary): {
   } else if (tool.name === "search_past_chats") {
     title = t("toolSearchChats");
     subtitle = typeof parsed?.query === "string" ? `“${parsed.query}”` : "";
+  } else if (tool.name === "list_knowledge_bases") {
+    title = t("toolListKnowledge");
+  } else if (tool.name === "search_knowledge_base") {
+    title = t("toolSearchKnowledge");
+    subtitle = typeof parsed?.query === "string" ? `“${parsed.query}”` : "";
+  } else if (tool.name === "read_document_section") {
+    title = t("toolReadDocument");
+    subtitle = typeof parsed?.page === "number" ? `p. ${parsed.page}` : "";
   } else if (tool.name === "list_skills") {
     title = t("toolListSkills");
   } else if (tool.name === "read_skill") {

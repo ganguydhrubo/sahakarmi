@@ -31,6 +31,7 @@ export type CenterView =
   | "tasks"
   | "orchestrator"
   | "memory"
+  | "knowledge"
   | "files"
   | "approvals"
   | "schedules"
@@ -50,6 +51,7 @@ const RAIL_ITEMS: Array<{
   { view: "tasks", label: "navTasks", feature: null, icon: TasksIcon },
   { view: "orchestrator", label: "navOrchestrator", feature: null, icon: OrchestratorIcon },
   { view: "memory", label: "navMemory", feature: null, icon: MemoryIcon },
+  { view: "knowledge", label: "navKnowledge", feature: "knowledge-base", icon: KnowledgeIcon },
   { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
   { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
   { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
@@ -197,6 +199,27 @@ function MemoryIcon() {
         d="M7 7h6M7 10.5h6M7 14h4"
         stroke="currentColor"
         stroke-width="1.5"
+        stroke-linecap="round"
+      />
+    </svg>
+  );
+}
+
+function KnowledgeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="rail-nav-icon">
+      <path
+        d="M3.5 4.5A1.5 1.5 0 0 1 5 3h3.2c.8 0 1.5.4 1.8 1.1.3-.7 1-1.1 1.8-1.1H15a1.5 1.5 0 0 1 1.5 1.5v10.3a1 1 0 0 1-1 1h-3.7c-.8 0-1.5.4-1.8 1.1-.3-.7-1-1.1-1.8-1.1H4.5a1 1 0 0 1-1-1V4.5Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+      />
+      <path d="M10 4.5v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+      <path
+        d="M6 7.5h2M6 10h2M12 7.5h2M12 10h2"
+        stroke="currentColor"
+        stroke-width="1.2"
         stroke-linecap="round"
       />
     </svg>

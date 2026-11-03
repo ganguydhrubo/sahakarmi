@@ -38,6 +38,18 @@ export const IPC_CHANNELS = {
   agentSaveInstructions: "agent:save-instructions",
   agentRevealInstructions: "agent:reveal-instructions",
   agentBranchConversation: "agent:branch-conversation",
+  knowledgeList: "knowledge:list",
+  knowledgeCreate: "knowledge:create",
+  knowledgeUpdate: "knowledge:update",
+  knowledgeDelete: "knowledge:delete",
+  knowledgeAddFiles: "knowledge:add-files",
+  knowledgeAddFolder: "knowledge:add-folder",
+  knowledgeRemoveFolder: "knowledge:remove-folder",
+  knowledgeRemoveSource: "knowledge:remove-source",
+  knowledgeSetSourceEnabled: "knowledge:set-source-enabled",
+  knowledgeSync: "knowledge:sync",
+  knowledgeSearch: "knowledge:search",
+  knowledgeOpenSource: "knowledge:open-source",
   agentListQueue: "agent:list-queue",
   agentCancelQueuedMessage: "agent:cancel-queued-message",
   agentSendQueuedNow: "agent:send-queued-now",
@@ -1297,6 +1309,8 @@ export interface ConversationMessage {
   exchange?: AgentExchangeSummary;
   reaction?: MessageReaction | null;
   tool?: ToolCallSummary;
+  /** Knowledge Base excerpts this message was grounded with; answers cite them as [S1], [S2]. */
+  citations?: KnowledgeCitation[];
 }
 
 export const MESSAGE_REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "😮"] as const;
@@ -1595,7 +1609,9 @@ export type AgentEvent =
   | { type: "orchestrator-handoff"; message: AgentCollaborationMessage }
   | { type: "error"; botId?: string; code: string; message: string }
   /** Something worth a line in the chat that is not a failure. */
-  | { type: "notice"; botId: string; code: string; message: string };
+  | { type: "notice"; botId: string; code: string; message: string }
+  | { type: "knowledge-changed"; bases: KnowledgeBaseSummary[] }
+  | { type: "knowledge-progress"; progress: KnowledgeProgress };
 
 export interface BrowserTab {
   id: string;
@@ -1876,6 +1892,7 @@ export interface SahkarmiDesktopApi {
   maintenance: MaintenanceDesktopApi;
   orchestrator: OrchestratorDesktopApi;
   memory: MemoryDesktopApi;
+  knowledge: KnowledgeDesktopApi;
   composio: ComposioDesktopApi;
   telegram: TelegramDesktopApi;
   customSkills: CustomSkillsDesktopApi;
@@ -2160,6 +2177,143 @@ export interface AgentMemory {
 }
 
 export type AgentMemoryCategory = AgentMemory["category"];
+
+// ---------------------------------------------------------------------------------------------
+// Knowledge Bases ("Granthagar"): the owner's documents, indexed locally for grounded answers.
+
+export type KnowledgeSourceKind =
+  | "pdf"
+  | "docx"
+  | "pptx"
+  | "xlsx"
+  | "csv"
+  | "markdown"
+  | "text"
+  | "json"
+  | "html";
+
+export type KnowledgeSourceStatus = "pending" | "indexing" | "ready" | "failed" | "missing";
+
+/** "coworkers": coworkers may read excerpts. "owner": only the owner's own searches in the app. */
+export type KnowledgePrivacy = "coworkers" | "owner";
+
+export interface KnowledgeSourceSummary {
+  id: string;
+  path: string;
+  name: string;
+  kind: KnowledgeSourceKind;
+  size: number;
+  pages: number | null;
+  chunkCount: number;
+  status: KnowledgeSourceStatus;
+  error: string | null;
+  enabled: boolean;
+  /** Set when the file came in through a linked folder. */
+  folderId: string | null;
+  indexedAt: string | null;
+}
+
+export interface KnowledgeFolderSummary {
+  id: string;
+  path: string;
+  fileCount: number;
+}
+
+export interface KnowledgeBaseSummary {
+  id: string;
+  name: string;
+  workspaceId: string;
+  /** Empty means every coworker of the workspace. */
+  botIds: string[];
+  privacy: KnowledgePrivacy;
+  createdAt: string;
+  updatedAt: string;
+  sources: KnowledgeSourceSummary[];
+  folders: KnowledgeFolderSummary[];
+  chunkCount: number;
+  /** A file of this base is being indexed right now. */
+  indexing: boolean;
+}
+
+export interface KnowledgeCitation {
+  /** Turn-local anchor the coworker cites: "S1", "S2", ... */
+  id: string;
+  kbId: string;
+  kbName: string;
+  documentId: string;
+  fileName: string;
+  path: string;
+  page: number | null;
+  slide: number | null;
+  sheet: string | null;
+  heading: string | null;
+  chunkIndex: number;
+  excerpt: string;
+}
+
+export interface KnowledgeHit {
+  citation: KnowledgeCitation;
+  /** Higher is better; comparable only within one search. */
+  score: number;
+}
+
+export interface KnowledgeSearchInput {
+  query: string;
+  kbIds?: string[];
+  limit?: number;
+}
+
+export interface KnowledgeSearchResult {
+  hits: KnowledgeHit[];
+  /** The bases that were searched. */
+  kbIds: string[];
+}
+
+export interface KnowledgeProgress {
+  kbId: string;
+  documentId: string;
+  name: string;
+  status: KnowledgeSourceStatus;
+  /** Files finished and files queued for this base, for a progress bar. */
+  done: number;
+  total: number;
+}
+
+export interface CreateKnowledgeBaseInput {
+  name: string;
+  workspaceId: string;
+}
+
+export interface UpdateKnowledgeBaseInput {
+  id: string;
+  name?: string;
+  botIds?: string[];
+  privacy?: KnowledgePrivacy;
+}
+
+export interface KnowledgeDesktopApi {
+  list: () => Promise<KnowledgeBaseSummary[]>;
+  create: (input: CreateKnowledgeBaseInput) => Promise<KnowledgeBaseSummary[]>;
+  update: (input: UpdateKnowledgeBaseInput) => Promise<KnowledgeBaseSummary[]>;
+  delete: (id: string) => Promise<KnowledgeBaseSummary[]>;
+  /** Opens a file picker; the chosen files are added and indexed. */
+  /** Without paths, a file picker opens; with paths (dropped files), they are added directly. */
+  addFiles(kbId: string, paths?: string[]): Promise<KnowledgeBaseSummary[]>;
+  /** Local paths of files dropped on the window (empty for pasted data). */
+  pathsForFiles(files: File[]): string[];
+  /** Opens a folder picker; the folder is linked and kept in sync. */
+  addFolder: (kbId: string) => Promise<KnowledgeBaseSummary[]>;
+  removeFolder: (kbId: string, folderId: string) => Promise<KnowledgeBaseSummary[]>;
+  removeSource: (kbId: string, sourceId: string) => Promise<KnowledgeBaseSummary[]>;
+  setSourceEnabled: (
+    kbId: string,
+    sourceId: string,
+    enabled: boolean,
+  ) => Promise<KnowledgeBaseSummary[]>;
+  sync: (kbId: string) => Promise<KnowledgeBaseSummary[]>;
+  search: (input: KnowledgeSearchInput) => Promise<KnowledgeSearchResult>;
+  openSource: (kbId: string, documentId: string) => Promise<void>;
+}
 
 export interface MemoryDesktopApi {
   list: (category?: string) => Promise<AgentMemory[]>;
