@@ -1646,7 +1646,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(screen.getByLabelText("Message Chief")).toHaveAttribute("contenteditable", "false");
   });
 
-  it("locks the header model picker during active work", async () => {
+  it("lets the owner pick a model during active work and marks it for the next turn", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     const trigger = screen.getByRole("button", { name: "Agent model: Luna" });
@@ -1657,11 +1657,27 @@ describe("Sahkarmi connected desktop shell", () => {
       threadId: "thread-chief",
       turnId: "turn-1",
     });
-    await waitFor(() => expect(trigger).toBeDisabled());
-    expect(trigger).toHaveAttribute(
-      "title",
-      "Work is in progress. Change the model after it finishes.",
+    await screen.findByRole("button", { name: "Stop coworker" });
+    expect(trigger).toBeEnabled();
+
+    await fireEvent.click(trigger);
+    await fireEvent.click(screen.getByRole("option", { name: "Sol" }));
+    await waitFor(() =>
+      expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith(
+        expect.objectContaining({ botId: "chief", model: "gpt-5.6-sol" }),
+      ),
     );
+
+    // The backend keeps the choice for the next turn and says so in the header.
+    emitAgentEvent?.({
+      type: "bots-changed",
+      bots: BOTS.map((bot) =>
+        bot.id === "chief"
+          ? { ...bot, pendingRuntime: { model: "gpt-5.6-sol", reasoningEffort: "high" } }
+          : bot,
+      ),
+    });
+    expect(await screen.findByText("After this turn")).toBeInTheDocument();
 
     emitAgentEvent?.({
       type: "turn-completed",
@@ -1670,7 +1686,14 @@ describe("Sahkarmi connected desktop shell", () => {
       turnId: "turn-1",
       status: "completed",
     });
-    await waitFor(() => expect(trigger).toBeEnabled());
+    emitAgentEvent?.({
+      type: "bots-changed",
+      bots: BOTS.map((bot) =>
+        bot.id === "chief" ? { ...bot, model: "gpt-5.6-sol", pendingRuntime: null } : bot,
+      ),
+    });
+    await waitFor(() => expect(screen.queryByText("After this turn")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Agent model: Sol" })).toBeEnabled();
   });
 
   it("keeps Send next to Stop while working and stops on Esc in the box", async () => {

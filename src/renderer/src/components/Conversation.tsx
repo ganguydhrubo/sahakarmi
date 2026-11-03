@@ -24,6 +24,7 @@ import type {
   BrowserControlState,
   BrowserTab,
   BrowserTakeoverState,
+  CoworkerInstructionsView,
   CoworkerStatus,
   DraftAttachment,
   MessageReaction,
@@ -34,7 +35,12 @@ import type {
   TurnPlan,
   UpdateBotInput,
 } from "../../../shared/ipc";
-import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
+import {
+  MESSAGE_REACTIONS,
+  MORE_MESSAGE_REACTIONS,
+  PROVIDER_LABELS,
+  providerForModel,
+} from "../../../shared/ipc";
 import { deriveActivity, isActivePhase } from "../activity";
 import { format } from "../activity-hinglish";
 import { vocab } from "../activity-vocab";
@@ -72,6 +78,11 @@ import { TaskQueueStrip } from "./TaskQueueStrip";
 import { ToolCallCard, type ToolCallSummary, ToolGroupCard } from "./ToolCallCard";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { WorkflowExportMenu } from "./WorkflowExportMenu";
+
+/** After this long with no update from the provider, the chat says so. */
+const PROVIDER_SILENCE_MS = 60_000;
+/** With no network, the notice comes sooner. */
+const OFFLINE_NOTICE_MS = 5_000;
 
 interface ConversationProps {
   agentStatus: AgentStatus;
@@ -779,6 +790,9 @@ function MessageActions(props: {
   onCopyPlain: () => void;
   speaking: boolean;
   onReadAloud: () => void;
+  /** A new coworker that starts from this answer; off while the coworker works. */
+  onBranch?: () => void;
+  branchDisabled?: boolean;
 }) {
   return (
     <div
@@ -875,6 +889,18 @@ function MessageActions(props: {
               <button type="button" role="menuitem" onClick={props.onReadAloud}>
                 <SpeakerIcon />
                 <span>{props.speaking ? t("voiceStopReading") : t("voiceReadAloud")}</span>
+              </button>
+            </Show>
+            <Show when={props.message.author === "bot" && props.onBranch}>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={props.branchDisabled}
+                title={props.branchDisabled ? t("branchWait") : undefined}
+                onClick={props.onBranch}
+              >
+                <BranchIcon />
+                <span>{t("branchFromHere")}</span>
               </button>
             </Show>
           </div>
@@ -1179,6 +1205,20 @@ export function Conversation(props: ConversationProps) {
   /** "Luna · Medium": the model and reasoning this coworker runs on. */
   const headerModelLabel = () =>
     `${selectedModel()?.name ?? settingsModel()} · ${reasoningLabel(settingsReasoning())}`;
+  const runtimeLabel = (model: AgentModelId, effort: AgentReasoningEffort) =>
+    `${props.modelOptions.find((option) => option.id === model)?.name ?? model} · ${reasoningLabel(effort)}`;
+  /** A model or effort chosen during a turn: explains which runs now and which comes next. */
+  const pendingRuntimeDetail = () => {
+    const bot = props.bot;
+    const pending = bot?.pendingRuntime;
+    if (!bot || !pending) return null;
+    return t("afterThisTurnDetail", {
+      current: runtimeLabel(bot.model, bot.reasoningEffort),
+      next: runtimeLabel(pending.model, pending.reasoningEffort),
+    });
+  };
+  const providerName = () =>
+    props.bot ? PROVIDER_LABELS[providerForModel(props.bot.model)] : "The AI service";
   const onboardingActive = createMemo(() => {
     const botId = props.bot?.id;
     return Boolean(botId && onboardingBots()[botId]);
@@ -1348,6 +1388,58 @@ export function Conversation(props: ConversationProps) {
     const timer = window.setInterval(() => setActivityNow(Date.now()), 1_000);
     onCleanup(() => window.clearInterval(timer));
   });
+  // Silence from the provider: nothing of the running turn (text, a thought, a step) has arrived
+  // for a while. The count restarts after a question or an approval, which is not silence.
+  const [lastUpdateAt, setLastUpdateAt] = createSignal<number | null>(null);
+  createEffect(
+    on(
+      () => [
+        props.activeTurnId,
+        props.messages.length,
+        props.messages.at(-1)?.body.length ?? 0,
+        props.messages.at(-1)?.status ?? "",
+        props.messages.at(-1)?.tool?.status ?? "",
+        Boolean(props.prompt),
+        props.waitingForApproval === true,
+      ],
+      () => setLastUpdateAt(props.activeTurnId ? Date.now() : null),
+    ),
+  );
+  const [online, setOnline] = createSignal(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  onMount(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    onCleanup(() => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    });
+  });
+  const silenceMs = () => {
+    const since = lastUpdateAt();
+    if (!since || !props.activeTurnId || props.prompt || props.waitingForApproval) return 0;
+    return Math.max(0, activityNow() - since);
+  };
+  const noInternet = () => !online() && silenceMs() >= OFFLINE_NOTICE_MS;
+  const providerSilent = () => online() && silenceMs() >= PROVIDER_SILENCE_MS;
+  const silenceLabel = () => {
+    const minutes = Math.max(1, Math.floor(silenceMs() / 60_000));
+    return minutes === 1 ? t("minuteOne") : t("minutesMany", { count: String(minutes) });
+  };
+  const shownActivity = createMemo(() =>
+    providerSilent() || noInternet()
+      ? {
+          ...activity(),
+          phase: "waiting_provider" as const,
+          category: null,
+          detail: null,
+          key: `${activity().key}:waiting-provider`,
+        }
+      : activity(),
+  );
   const takeoverRequests = createMemo(() =>
     props.takeover.requests.map((request) => ({
       ...request,
@@ -1393,6 +1485,85 @@ export function Conversation(props: ConversationProps) {
         error instanceof Error ? error.message : "Could not save agent settings.",
       );
       return false;
+    }
+  }
+
+  async function branchFrom(message: BotMessage): Promise<void> {
+    const botId = props.bot?.id;
+    if (!botId) return;
+    setOpenMoreMessageId(null);
+    setComposerError(null);
+    try {
+      const created = await window.sahkarmi.agent.branchConversation({
+        botId,
+        messageId: message.id,
+      });
+      props.onSelectAgent(created.id);
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // The coworker's standing rules (AGENTS.md in its folder), shown and edited in Settings.
+  const [instructions, setInstructions] = createSignal<CoworkerInstructionsView | null>(null);
+  const [instructionsEditing, setInstructionsEditing] = createSignal(false);
+  const [instructionsDraft, setInstructionsDraft] = createSignal("");
+  const [instructionsError, setInstructionsError] = createSignal<string | null>(null);
+  const [instructionsConflict, setInstructionsConflict] = createSignal(false);
+  const [instructionsBusy, setInstructionsBusy] = createSignal(false);
+  let instructionsBotId: string | undefined;
+
+  async function loadInstructions(): Promise<void> {
+    const botId = props.bot?.id;
+    if (!botId) return;
+    try {
+      const view = await window.sahkarmi.agent.readInstructions(botId);
+      if (props.bot?.id !== botId) return;
+      setInstructions(view);
+      if (!instructionsEditing()) setInstructionsDraft(view.text);
+    } catch (error) {
+      setInstructionsError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  createEffect(() => {
+    const botId = props.bot?.id;
+    const open = activeRightPanel() === "settings";
+    // Re-read after each finished turn too: the coworker may have changed the file.
+    props.turnOutcome?.at;
+    if (!open || !botId) return;
+    if (botId !== instructionsBotId) {
+      instructionsBotId = botId;
+      setInstructions(null);
+      setInstructionsEditing(false);
+      setInstructionsError(null);
+      setInstructionsConflict(false);
+    }
+    void loadInstructions();
+  });
+
+  async function saveInstructionsDraft(force = false): Promise<void> {
+    const botId = props.bot?.id;
+    if (!botId) return;
+    setInstructionsBusy(true);
+    setInstructionsError(null);
+    try {
+      const saved = await window.sahkarmi.agent.saveInstructions({
+        botId,
+        text: instructionsDraft(),
+        expectedHash: force ? null : (instructions()?.hash ?? null),
+      });
+      setInstructions(saved);
+      setInstructionsDraft(saved.text);
+      setInstructionsEditing(false);
+      setInstructionsConflict(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // The coworker edited the file meanwhile: the owner's text stays; a second save replaces it.
+      if (/changed since/i.test(message)) setInstructionsConflict(true);
+      else setInstructionsError(message);
+    } finally {
+      setInstructionsBusy(false);
     }
   }
 
@@ -1629,6 +1800,8 @@ export function Conversation(props: ConversationProps) {
       String(bot.notifications),
       bot.model,
       bot.reasoningEffort,
+      bot.pendingRuntime?.model ?? "",
+      bot.pendingRuntime?.reasoningEffort ?? "",
       bot.avatarShape,
       bot.avatarColor,
     ].join("\u0000");
@@ -1638,8 +1811,9 @@ export function Conversation(props: ConversationProps) {
     setSettingsTitle(bot.role);
     setSettingsDescription(bot.description);
     setSettingsNotifications(bot.notifications);
-    setSettingsModel(bot.model);
-    setSettingsReasoning(bot.reasoningEffort);
+    // While a change waits for the turn to end, the pickers show what comes next.
+    setSettingsModel(bot.pendingRuntime?.model ?? bot.model);
+    setSettingsReasoning(bot.pendingRuntime?.reasoningEffort ?? bot.reasoningEffort);
     setAvatarShape(bot.avatarShape);
     setAvatarColor(bot.avatarColor);
     setAvatarPickerOpen(false);
@@ -2247,6 +2421,13 @@ export function Conversation(props: ConversationProps) {
                       onClick={() => setHeaderModelOpen((open) => !open)}
                     >
                       <span>{headerModelLabel()}</span>
+                      <Show when={pendingRuntimeDetail()}>
+                        {(detail) => (
+                          <span class="header-model-pending" title={detail()}>
+                            {t("afterThisTurn")}
+                          </span>
+                        )}
+                      </Show>
                       <svg aria-hidden="true" viewBox="0 0 20 20" class="header-model-chevron">
                         <path d="m6 8 4 4 4-4" />
                       </svg>
@@ -2284,10 +2465,11 @@ export function Conversation(props: ConversationProps) {
                             value={settingsModel()}
                             agentStatus={props.agentStatus}
                             modelOptions={props.modelOptions}
-                            disabled={agentActivity() === "Working"}
-                            disabledReason={t("modelLockedWhileWorking")}
                             onChange={(model) => void selectAndConfirmModel(model)}
                           />
+                          <Show when={pendingRuntimeDetail()}>
+                            <p class="header-model-pending-detail">{pendingRuntimeDetail()}</p>
+                          </Show>
                           <label class="header-model-reasoning">
                             <span>{t("headerReasoning")}</span>
                             <select
@@ -2436,6 +2618,30 @@ export function Conversation(props: ConversationProps) {
         }}
       >
         <Show when={!props.agentPickerOpen && props.loaded}>
+          <Show when={props.bot?.branchedFrom}>
+            {(origin) => {
+              const source = () => props.bots.find((bot) => bot.id === origin().botId);
+              return (
+                <div class="branch-banner" role="note">
+                  <BranchIcon />
+                  <span>
+                    {source()
+                      ? t("branchedFrom", { name: source()?.name ?? origin().name })
+                      : t("branchedFromDeleted")}
+                  </span>
+                  <Show when={source()}>
+                    <button
+                      type="button"
+                      class="link-button"
+                      onClick={() => props.onSelectAgent(origin().botId)}
+                    >
+                      {t("openSource")}
+                    </button>
+                  </Show>
+                </div>
+              );
+            }}
+          </Show>
           <Show when={!agentReady()}>
             <section class="agent-setup-card" role="status">
               <div>
@@ -2653,6 +2859,12 @@ export function Conversation(props: ConversationProps) {
                               onCopyPlain={() => void copyMessage(message, true)}
                               speaking={speakingId() === message.id}
                               onReadAloud={() => void readAloud(message)}
+                              onBranch={
+                                message.kind === "text" || !message.kind
+                                  ? () => void branchFrom(message)
+                                  : undefined
+                              }
+                              branchDisabled={agentActivity() === "Working"}
                             />
                           </div>
                           <Show when={message.reaction}>
@@ -2708,7 +2920,7 @@ export function Conversation(props: ConversationProps) {
           </For>
           <ActivityIndicator
             bot={props.bot}
-            activity={activity()}
+            activity={shownActivity()}
             now={activityNow()}
             activeSince={activeSince()}
           />
@@ -2862,6 +3074,17 @@ export function Conversation(props: ConversationProps) {
             {scheduleNotice()}
           </div>
         </Show>
+        <Show when={noInternet() || providerSilent()}>
+          <div class="composer-notice composer-notice-waiting" role="status">
+            <Show
+              when={noInternet()}
+              fallback={t("providerSilent", { provider: providerName(), duration: silenceLabel() })}
+            >
+              <strong>{t("noInternet")}</strong>{" "}
+              {t("noInternetDetail", { provider: providerName() })}
+            </Show>
+          </div>
+        </Show>
         <div
           class="composer"
           classList={{ "composer-scheduling": scheduleMode() }}
@@ -2914,12 +3137,8 @@ export function Conversation(props: ConversationProps) {
                 value={settingsModel()}
                 modelOptions={props.modelOptions}
                 agentStatus={props.agentStatus}
-                disabled={!agentReady() || agentActivity() === "Working"}
-                disabledReason={
-                  agentActivity() === "Working"
-                    ? t("modelLockedWhileWorking")
-                    : t("modelConnectHint")
-                }
+                disabled={!agentReady()}
+                disabledReason={t("modelConnectHint")}
                 onChange={(model) => void selectAndConfirmModel(model)}
               />
               <Show when={!agentReady() && props.onOpenAiSettings}>
@@ -3473,6 +3692,119 @@ export function Conversation(props: ConversationProps) {
                 onBlur={() => saveBotPatch({ description: settingsDescription() })}
               />
             </label>
+            <section
+              class="agent-settings-instructions"
+              aria-labelledby="agent-instructions-heading"
+            >
+              <div class="agent-settings-section-heading">
+                <strong id="agent-instructions-heading">{t("instructions")}</strong>
+                <span>{t("instructionsHint")}</span>
+              </div>
+              <div class="agent-instructions-bar">
+                <code>{instructions()?.file ?? "AGENTS.md"}</code>
+                <span class="agent-instructions-folder" title={instructions()?.folder ?? ""}>
+                  {instructions()?.folder ?? ""}
+                </span>
+                <button
+                  type="button"
+                  class="link-button"
+                  onClick={() => {
+                    const botId = props.bot?.id;
+                    if (botId)
+                      void window.sahkarmi.agent
+                        .revealInstructions(botId)
+                        .catch((error) => setInstructionsError(String(error)));
+                  }}
+                >
+                  {t("showInFolder")}
+                </button>
+                <Show when={!instructionsEditing()}>
+                  <button
+                    type="button"
+                    class="link-button"
+                    onClick={() => {
+                      setInstructionsDraft(instructions()?.text ?? "");
+                      setInstructionsConflict(false);
+                      setInstructionsEditing(true);
+                    }}
+                  >
+                    {t("edit")}
+                  </button>
+                </Show>
+              </div>
+              <Show
+                when={instructionsEditing()}
+                fallback={
+                  <Show
+                    when={instructions()?.text.trim()}
+                    fallback={<p class="agent-instructions-empty">{t("instructionsEmpty")}</p>}
+                  >
+                    <div class="agent-instructions-body">
+                      <RichMarkdown
+                        body={instructions()?.text ?? ""}
+                        inline={(text) => (
+                          <RichMessageText
+                            body={text}
+                            bots={props.bots}
+                            onSelectAgent={props.onSelectAgent}
+                            onOpenLink={(url) => void openMessageLink(url)}
+                          />
+                        )}
+                      />
+                    </div>
+                  </Show>
+                }
+              >
+                <textarea
+                  class="agent-instructions-editor"
+                  rows="12"
+                  aria-label={t("instructions")}
+                  value={instructionsDraft()}
+                  onInput={(event) => setInstructionsDraft(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setInstructionsEditing(false);
+                      setInstructionsConflict(false);
+                    } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                      event.preventDefault();
+                      void saveInstructionsDraft(instructionsConflict());
+                    }
+                  }}
+                />
+                <Show when={instructionsConflict()}>
+                  <p class="agent-instructions-conflict" role="alert">
+                    {t("instructionsConflict")}
+                  </p>
+                </Show>
+                <div class="agent-instructions-actions">
+                  <button
+                    type="button"
+                    class="link-button"
+                    disabled={instructionsBusy()}
+                    onClick={() => {
+                      setInstructionsEditing(false);
+                      setInstructionsConflict(false);
+                    }}
+                  >
+                    {t("cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    class="primary-button"
+                    disabled={instructionsBusy()}
+                    onClick={() => void saveInstructionsDraft(instructionsConflict())}
+                  >
+                    {instructionsConflict() ? t("saveAnyway") : t("save")}
+                  </button>
+                </div>
+              </Show>
+              <Show when={instructionsError()}>
+                <p class="agent-instructions-conflict" role="alert">
+                  {instructionsError()}
+                </p>
+              </Show>
+            </section>
             <section class="agent-settings-model" aria-labelledby="agent-model-heading">
               <div class="agent-settings-section-heading">
                 <strong id="agent-model-heading">Runtime</strong>
@@ -3486,12 +3818,8 @@ export function Conversation(props: ConversationProps) {
                     value={settingsModel()}
                     agentStatus={props.agentStatus}
                     modelOptions={props.modelOptions}
-                    disabled={!agentReady() || agentActivity() === "Working"}
-                    disabledReason={
-                      agentActivity() === "Working"
-                        ? t("modelLockedWhileWorking")
-                        : t("modelConnectHint")
-                    }
+                    disabled={!agentReady()}
+                    disabledReason={t("modelConnectHint")}
                     onChange={(model) => void selectAndConfirmModel(model)}
                   />
                   <Show when={selectedModel()} keyed>
@@ -3586,6 +3914,17 @@ export function Conversation(props: ConversationProps) {
 function reasoningLabel(effort: AgentReasoningEffort): string {
   if (effort === "xhigh") return "Extra high";
   return `${effort.slice(0, 1).toUpperCase()}${effort.slice(1)}`;
+}
+
+function BranchIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" width="16" height="16">
+      <circle cx="6" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="6" cy="15" r="2" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="14" cy="9" r="2" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path d="M6 7v6M6 13c0-3 8-1 8-4" fill="none" stroke="currentColor" stroke-width="1.5" />
+    </svg>
+  );
 }
 
 function ThinkingIcon() {

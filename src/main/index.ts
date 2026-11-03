@@ -38,6 +38,7 @@ import {
   setRuntimeDirectory,
   setToolsDirectory,
 } from "../backend/cli";
+import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills } from "../backend/custom-skills";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
@@ -412,6 +413,33 @@ function registerIpcHandlers(
     const error = await shell.openPath(attachment.path);
     if (error) throw new Error(error);
   });
+  handleTrusted(IPC_CHANNELS.agentReadInstructions, (botId: unknown) =>
+    service.readInstructions(requireString(botId, "botId")),
+  );
+  handleTrusted(IPC_CHANNELS.agentSaveInstructions, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid instructions request.");
+    const text = typeof input.text === "string" ? input.text : "";
+    if (text.length > MAX_INSTRUCTIONS_CHARS) {
+      throw new Error(
+        `Instructions are limited to ${MAX_INSTRUCTIONS_CHARS.toLocaleString()} characters.`,
+      );
+    }
+    return service.saveInstructions({
+      botId: requireString(input.botId, "botId"),
+      text,
+      expectedHash: typeof input.expectedHash === "string" ? input.expectedHash.slice(0, 64) : null,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.agentRevealInstructions, async (botId: unknown) => {
+    shell.showItemInFolder(await service.instructionsFilePath(requireString(botId, "botId")));
+  });
+  handleTrusted(IPC_CHANNELS.agentBranchConversation, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid branch request.");
+    return service.branchConversation({
+      botId: requireString(input.botId, "botId"),
+      messageId: requireString(input.messageId, "messageId"),
+    });
+  });
   handleTrusted(IPC_CHANNELS.agentListQueue, (botId: unknown) =>
     service.listQueue(requireString(botId, "botId")),
   );
@@ -506,6 +534,46 @@ function registerIpcHandlers(
     });
     for (const id of deletedBotIds) await removeBotRecords(id);
     return state;
+  });
+  handleTrusted(IPC_CHANNELS.teamCreateFolder, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid folder request.");
+    return service.createFolder({
+      workspaceId: requireString(input.workspaceId, "workspaceId"),
+      name: requireString(input.name, "name"),
+      parentId:
+        input.parentId === null || input.parentId === undefined
+          ? null
+          : requireString(input.parentId, "parentId"),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.teamRenameFolder, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid folder request.");
+    return service.renameFolder(
+      requireString(input.folderId, "folderId"),
+      requireString(input.name, "name"),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.teamMoveFolder, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid folder request.");
+    return service.moveFolder(
+      requireString(input.folderId, "folderId"),
+      input.parentId === null ? null : requireString(input.parentId, "parentId"),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.teamReorderFolder, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid folder request.");
+    if (input.direction !== "up" && input.direction !== "down") throw new Error("Bad direction.");
+    return service.reorderFolder(requireString(input.folderId, "folderId"), input.direction);
+  });
+  handleTrusted(IPC_CHANNELS.teamDeleteFolder, (folderId: unknown) =>
+    service.deleteFolder(requireString(folderId, "folderId")),
+  );
+  handleTrusted(IPC_CHANNELS.teamSetBotFolder, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid folder request.");
+    return service.setBotFolder(
+      requireString(input.botId, "botId"),
+      input.folderId === null ? null : requireString(input.folderId, "folderId"),
+    );
   });
   handleTrusted(IPC_CHANNELS.teamSetWorkspaceCeo, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid CEO request.");
@@ -1411,6 +1479,7 @@ if (!hasSingleInstanceLock) {
       registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
+      service.configureContinuation(() => features.isEnabled("auto-continue"));
       await features.initialize().catch((error) => {
         appLog.write("error", "feature settings unreadable; using defaults", String(error));
       });

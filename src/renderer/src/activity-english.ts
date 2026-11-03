@@ -19,6 +19,7 @@ export const PRIMARY: Record<ActivityPhase, string> = {
   processing_result: "Reading the result…",
   waiting_approval: "Waiting for your approval",
   waiting_user: "Waiting for your answer",
+  waiting_provider: "Waiting for the AI service…",
   retrying: "Trying again…",
   finalizing: "Preparing the final reply…",
   completed: "Done!",
@@ -55,6 +56,10 @@ export const SECONDARY: Record<ActivityPhase, string[]> = {
     "This task is paused until you decide.",
   ],
   waiting_user: ["Answer the question above and the work will continue."],
+  waiting_provider: [
+    "No update has come for a while; the service may be slow.",
+    "The hold-up is on the internet or the service's side.",
+  ],
   retrying: ["The last attempt hit a problem…", "Retrying after a short pause…"],
   finalizing: ["Organising the results…", "Structuring the reply…"],
   completed: [],
@@ -108,6 +113,7 @@ export const LABELS = {
 
 export const ERROR_TITLES: Record<string, string> = {
   error: "Something went wrong",
+  notice: "Note from Sahkarmi",
   load: "Couldn't load the conversation",
   create: "Couldn't create the coworker",
   settings: "Couldn't save settings",

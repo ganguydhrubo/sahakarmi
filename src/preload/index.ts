@@ -95,6 +95,10 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     discardDraftAttachment: (attachmentId) =>
       ipcRenderer.invoke(IPC_CHANNELS.agentDiscardDraftAttachment, attachmentId),
     openAttachment: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentOpenAttachment, input),
+    readInstructions: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentReadInstructions, botId),
+    saveInstructions: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSaveInstructions, input),
+    revealInstructions: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentRevealInstructions, botId),
+    branchConversation: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentBranchConversation, input),
     sendMessage: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSendMessage, input),
     setMessageReaction: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSetMessageReaction, input),
     listQueue: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentListQueue, botId),
@@ -138,6 +142,16 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     deleteWorkspace: (input) => ipcRenderer.invoke(IPC_CHANNELS.teamDeleteWorkspace, input),
     setWorkspaceCeo: (workspaceId, botId) =>
       ipcRenderer.invoke(IPC_CHANNELS.teamSetWorkspaceCeo, { workspaceId, botId }),
+    createFolder: (input) => ipcRenderer.invoke(IPC_CHANNELS.teamCreateFolder, input),
+    renameFolder: (folderId, name) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamRenameFolder, { folderId, name }),
+    moveFolder: (folderId, parentId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamMoveFolder, { folderId, parentId }),
+    reorderFolder: (folderId, direction) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamReorderFolder, { folderId, direction }),
+    deleteFolder: (folderId) => ipcRenderer.invoke(IPC_CHANNELS.teamDeleteFolder, folderId),
+    setBotFolder: (botId, folderId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.teamSetBotFolder, { botId, folderId }),
     unbindPublishingAccount: (botId, platform, source) =>
       ipcRenderer.invoke(IPC_CHANNELS.teamUnbindPublishingAccount, { botId, platform, source }),
   },

@@ -9,6 +9,8 @@ import {
   type BotAvatarColor,
   type BotAvatarShape,
   type BotSummary,
+  type BranchOrigin,
+  type CreateFolderInput,
   type DeleteWorkspaceInput,
   isAgentModel,
   isAvatarColor,
@@ -16,8 +18,11 @@ import {
   isBotTemplateRef,
   isReasoningEffort,
   legacyModelReplacement,
+  MAX_FOLDER_DEPTH,
+  type PendingBotRuntime,
   type PublishingAccount,
   providerForModel,
+  type SidebarFolder,
   type UpdateBotInput,
   type WorkspaceState,
   type WorkspaceSummary,
@@ -31,8 +36,11 @@ interface StoredState {
   examplesInitialized: boolean;
   activeWorkspaceId: string;
   workspaces: WorkspaceSummary[];
+  folders: SidebarFolder[];
   bots: StoredBot[];
 }
+
+const MAX_FOLDERS = 200;
 
 export const DEFAULT_WORKSPACE_ID = "my-business";
 
@@ -209,7 +217,141 @@ export class BotStore {
     return {
       workspaces: this.#state.workspaces.map((workspace) => ({ ...workspace })),
       activeWorkspaceId: this.#state.activeWorkspaceId,
+      folders: this.#state.folders.map((folder) => ({ ...folder })),
     };
+  }
+
+  // ---- Sidebar folders: nest to MAX_FOLDER_DEPTH inside one workspace ----
+
+  async createFolder(input: CreateFolderInput): Promise<WorkspaceState> {
+    this.#requireWorkspace(input.workspaceId);
+    if (this.#state.folders.length >= MAX_FOLDERS) throw new Error("That is enough folders.");
+    const parent = input.parentId ? this.#requireFolder(input.parentId) : null;
+    if (parent && parent.workspaceId !== input.workspaceId) {
+      throw new Error("A folder stays inside its own workspace.");
+    }
+    if (parent && this.#folderDepth(parent.id) >= MAX_FOLDER_DEPTH) {
+      throw new Error(`Folders go ${MAX_FOLDER_DEPTH} levels deep at most.`);
+    }
+    this.#state.folders.push({
+      id: `folder-${randomUUID()}`,
+      workspaceId: input.workspaceId,
+      name: requiredText(input.name, "Folder name", 60),
+      parentId: parent?.id ?? null,
+    });
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  async renameFolder(folderId: string, name: string): Promise<WorkspaceState> {
+    this.#requireFolder(folderId).name = requiredText(name, "Folder name", 60);
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  /** Puts a folder (with everything in it) inside another folder, or at the top with null. */
+  async moveFolder(folderId: string, parentId: string | null): Promise<WorkspaceState> {
+    const folder = this.#requireFolder(folderId);
+    if (parentId === folderId) throw new Error("A folder cannot go inside itself.");
+    if (parentId) {
+      const parent = this.#requireFolder(parentId);
+      if (parent.workspaceId !== folder.workspaceId) {
+        throw new Error("A folder stays inside its own workspace.");
+      }
+      if (this.#folderAncestors(parent.id).includes(folderId)) {
+        throw new Error("A folder cannot go inside one of its own folders.");
+      }
+      if (this.#folderDepth(parent.id) + this.#subtreeHeight(folderId) > MAX_FOLDER_DEPTH) {
+        throw new Error(`Folders go ${MAX_FOLDER_DEPTH} levels deep at most.`);
+      }
+    }
+    folder.parentId = parentId;
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  /** Moves a folder before or after its neighbour among the folders of the same parent. */
+  async reorderFolder(folderId: string, direction: "up" | "down"): Promise<WorkspaceState> {
+    const folder = this.#requireFolder(folderId);
+    const siblings = this.#state.folders.filter(
+      (candidate) =>
+        candidate.workspaceId === folder.workspaceId && candidate.parentId === folder.parentId,
+    );
+    const at = siblings.indexOf(folder);
+    const swapWith = siblings[direction === "up" ? at - 1 : at + 1];
+    if (!swapWith) return this.workspaces();
+    const all = this.#state.folders;
+    const from = all.indexOf(folder);
+    const to = all.indexOf(swapWith);
+    all[from] = swapWith;
+    all[to] = folder;
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  /** Removes one folder; its coworkers and folders move up to where it was. */
+  async deleteFolder(folderId: string): Promise<WorkspaceState> {
+    const folder = this.#requireFolder(folderId);
+    for (const child of this.#state.folders) {
+      if (child.parentId === folderId) child.parentId = folder.parentId;
+    }
+    for (const bot of this.#state.bots) {
+      if (bot.folderId === folderId) bot.folderId = folder.parentId;
+    }
+    this.#state.folders = this.#state.folders.filter((candidate) => candidate.id !== folderId);
+    await this.#persist();
+    return this.workspaces();
+  }
+
+  async setBotFolder(botId: string, folderId: string | null): Promise<BotSummary> {
+    const bot = this.#requireBot(botId);
+    if (folderId) {
+      const folder = this.#requireFolder(folderId);
+      if (folder.workspaceId !== bot.workspaceId) {
+        throw new Error("A coworker goes into a folder of its own workspace.");
+      }
+      bot.folderId = folderId;
+    } else {
+      delete bot.folderId;
+    }
+    await this.#persist();
+    return { ...bot };
+  }
+
+  #requireFolder(id: string): SidebarFolder {
+    const folder = this.#state.folders.find((candidate) => candidate.id === id);
+    if (!folder) throw new Error(`Unknown folder: ${id}`);
+    return folder;
+  }
+
+  #folderAncestors(id: string): string[] {
+    const chain: string[] = [];
+    let current = this.#state.folders.find((candidate) => candidate.id === id);
+    while (current?.parentId && chain.length < 10) {
+      chain.push(current.parentId);
+      const parentId = current.parentId;
+      current = this.#state.folders.find((candidate) => candidate.id === parentId);
+    }
+    return chain;
+  }
+
+  /** 1 for a top-level folder, 2 for one inside it, and so on. */
+  #folderDepth(id: string): number {
+    return this.#folderAncestors(id).length + 1;
+  }
+
+  /** 1 for a folder with no folders inside, 2 with one level of folders, and so on. */
+  #subtreeHeight(id: string): number {
+    const children = this.#state.folders.filter((candidate) => candidate.parentId === id);
+    return 1 + Math.max(0, ...children.map((child) => this.#subtreeHeight(child.id)));
+  }
+
+  /** Remembers where a branched coworker came from. */
+  async setBranchOrigin(botId: string, origin: BranchOrigin): Promise<BotSummary> {
+    const bot = this.#requireBot(botId);
+    bot.branchedFrom = { ...origin };
+    await this.#persist();
+    return { ...bot };
   }
 
   async createWorkspace(name: string): Promise<WorkspaceState> {
@@ -255,8 +397,14 @@ export class BotStore {
       if (members.length > 0) throw new Error("This workspace still has coworkers.");
     } else {
       this.#requireWorkspace(input.moveCoworkersTo);
-      for (const bot of members) bot.workspaceId = input.moveCoworkersTo;
+      for (const bot of members) {
+        bot.workspaceId = input.moveCoworkersTo;
+        delete bot.folderId;
+      }
     }
+    this.#state.folders = this.#state.folders.filter(
+      (folder) => folder.workspaceId !== input.workspaceId,
+    );
     this.#state.workspaces = this.#state.workspaces.filter(
       (workspace) => workspace.id !== input.workspaceId,
     );
@@ -342,6 +490,15 @@ export class BotStore {
     return { ...record };
   }
 
+  /** Remembers (or clears) a model or effort to apply once the coworker's current work ends. */
+  async setPendingRuntime(id: string, runtime: PendingBotRuntime | null): Promise<void> {
+    const bot = this.#requireBot(id);
+    if (runtime) bot.pendingRuntime = { ...runtime };
+    else delete bot.pendingRuntime;
+    bot.updatedAt = new Date().toISOString();
+    await this.#persist();
+  }
+
   async setThreadId(id: string, threadId: string): Promise<void> {
     const bot = this.#requireBot(id);
     bot.threadId = threadId;
@@ -403,12 +560,27 @@ export class BotStore {
         typeof parsed.activeWorkspaceId === "string" && workspaceIds.has(parsed.activeWorkspaceId)
           ? parsed.activeWorkspaceId
           : fallbackWorkspaceId;
+      // A damaged or old folder list loses nothing: every folder is kept where it can be.
+      const folders = (Array.isArray(parsed.folders) ? parsed.folders : [])
+        .filter(isStoredFolder)
+        .filter((folder) => workspaceIds.has(folder.workspaceId))
+        .map((folder) => ({ ...folder }));
+      const folderIds = new Set(folders.map((folder) => folder.id));
+      for (const folder of folders) {
+        if (folder.parentId && !folderIds.has(folder.parentId)) folder.parentId = null;
+      }
+      const filedBots = storedBots.map((bot) => {
+        const copy = { ...bot };
+        if (copy.folderId && !folderIds.has(copy.folderId)) delete copy.folderId;
+        return copy;
+      });
       return {
         version: 2,
         examplesInitialized: parsed.examplesInitialized,
         activeWorkspaceId,
         workspaces,
-        bots: storedBots.map((bot) => ({ ...bot })),
+        folders,
+        bots: filedBots,
       };
     } catch (error) {
       if (isRecord(error) && error.code === "ENOENT") return emptyState();
@@ -478,8 +650,20 @@ function emptyState(): StoredState {
     examplesInitialized: false,
     activeWorkspaceId: DEFAULT_WORKSPACE_ID,
     workspaces: [defaultWorkspace()],
+    folders: [],
     bots: [],
   };
+}
+
+function isStoredFolder(value: unknown): value is SidebarFolder {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    typeof value.workspaceId === "string" &&
+    typeof value.name === "string" &&
+    (value.parentId === null || typeof value.parentId === "string")
+  );
 }
 
 /** Windows refuses a rename for a moment while an antivirus or indexer holds the target. */
@@ -547,8 +731,31 @@ function isStoredBot(value: unknown): value is StoredBot {
     (typeof value.updatedAt === "string" || value.updatedAt === null) &&
     isAvatarShape(value.avatarShape) &&
     isAvatarColor(value.avatarColor) &&
-    (value.template === undefined || isBotTemplateRef(value.template))
+    (value.template === undefined || isBotTemplateRef(value.template)) &&
+    (value.pendingRuntime === undefined ||
+      value.pendingRuntime === null ||
+      isPendingRuntime(value.pendingRuntime)) &&
+    (value.folderId === undefined ||
+      value.folderId === null ||
+      typeof value.folderId === "string") &&
+    (value.branchedFrom === undefined ||
+      value.branchedFrom === null ||
+      isBranchOrigin(value.branchedFrom))
   );
+}
+
+function isBranchOrigin(value: unknown): value is BranchOrigin {
+  return (
+    isRecord(value) &&
+    typeof value.botId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.messageId === "string" &&
+    typeof value.createdAt === "string"
+  );
+}
+
+function isPendingRuntime(value: unknown): value is PendingBotRuntime {
+  return isRecord(value) && isAgentModel(value.model) && isReasoningEffort(value.reasoningEffort);
 }
 
 function avatarIndex(id: string): number {

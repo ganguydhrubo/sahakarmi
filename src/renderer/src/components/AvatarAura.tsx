@@ -47,6 +47,7 @@ export function phaseAura(phase: ActivityPhase): AuraState {
       return "working";
     case "waiting_approval":
     case "waiting_user":
+    case "waiting_provider":
     case "queued":
     case "paused":
       return "waiting";

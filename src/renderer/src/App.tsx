@@ -34,6 +34,7 @@ import type {
   ConversationMessage,
   ConversationSnapshot,
   CoworkerStatus,
+  CreateFolderInput,
   DeleteWorkspaceInput,
   QueueSnapshot,
   RoutinesState,
@@ -515,6 +516,9 @@ export function App() {
         return;
       case "prompt":
         setPendingPrompts((current) => ({ ...current, [event.botId]: event }));
+        return;
+      case "notice":
+        appendUiError(event.botId, event.message, vocab().ERROR_TITLES.notice ?? "Note");
         return;
       case "error":
         if (event.botId) appendUiError(event.botId, event.message, vocab().ERROR_TITLES.error);
@@ -1048,6 +1052,31 @@ export function App() {
     setWorkspaces(await window.sahkarmi.team.renameWorkspace(workspaceId, name));
   }
 
+  async function createFolder(input: CreateFolderInput) {
+    setWorkspaces(await window.sahkarmi.team.createFolder(input));
+  }
+
+  async function renameFolder(folderId: string, name: string) {
+    setWorkspaces(await window.sahkarmi.team.renameFolder(folderId, name));
+  }
+
+  async function moveFolder(folderId: string, parentId: string | null) {
+    setWorkspaces(await window.sahkarmi.team.moveFolder(folderId, parentId));
+  }
+
+  async function reorderFolder(folderId: string, direction: "up" | "down") {
+    setWorkspaces(await window.sahkarmi.team.reorderFolder(folderId, direction));
+  }
+
+  async function deleteFolder(folderId: string) {
+    setWorkspaces(await window.sahkarmi.team.deleteFolder(folderId));
+  }
+
+  async function setBotFolder(botId: string, folderId: string | null) {
+    // The bots-changed event carries the new placing to the list.
+    await window.sahkarmi.team.setBotFolder(botId, folderId);
+  }
+
   async function decideApproval(
     approvalId: string,
     decision: "approved" | "rejected",
@@ -1304,6 +1333,12 @@ export function App() {
                 onRenameWorkspace={renameWorkspace}
                 onDeleteWorkspace={deleteWorkspace}
                 onSetWorkspaceCeo={setWorkspaceCeo}
+                onCreateFolder={createFolder}
+                onRenameFolder={renameFolder}
+                onMoveFolder={moveFolder}
+                onReorderFolder={reorderFolder}
+                onDeleteFolder={deleteFolder}
+                onSetBotFolder={setBotFolder}
                 onCollapse={() => setSidebarCollapsed(true)}
                 updateStatus={updateStatus()}
                 onUpdateAction={runUpdateAction}
@@ -1652,6 +1687,9 @@ function toBotProfile(stored: BotSummary): BotProfile {
     preview: cleanPreview(stored.preview),
     updatedAt: stored.updatedAt,
     template: stored.template,
+    pendingRuntime: stored.pendingRuntime ?? null,
+    folderId: stored.folderId ?? null,
+    branchedFrom: stored.branchedFrom ?? null,
     publishingAccounts: stored.publishingAccounts,
   };
 }

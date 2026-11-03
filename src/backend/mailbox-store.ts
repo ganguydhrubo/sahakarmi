@@ -612,6 +612,15 @@ export class MailboxStore {
     await this.#updateDelivery(deliveryId, ["queued"], { status: "starting", error: null });
   }
 
+  /** Puts a delivery that could not start back in its place in the queue, to start later. */
+  async markQueuedAgain(deliveryId: string, reason: string | null = null): Promise<void> {
+    await this.#updateDelivery(deliveryId, ["starting"], {
+      status: "queued",
+      turnId: null,
+      error: reason,
+    });
+  }
+
   async markRunning(deliveryId: string, turnId: string): Promise<void> {
     await this.#updateDelivery(deliveryId, ["starting", "running"], {
       status: "running",
