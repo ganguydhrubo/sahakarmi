@@ -10,6 +10,20 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.21.2": [
+    {
+      icon: "🔁",
+      badge: "Updates",
+      title: "No more restart loop",
+      desc: "If an update did not install, Sahkarmi now says so and tells you to choose Yes when Windows asks for permission. After two tries it gives you the installer to run yourself.",
+    },
+    {
+      icon: "🚪",
+      badge: "Updates",
+      title: "Quiet on close",
+      desc: "A failed update no longer asks for permission every time you close the app.",
+    },
+  ],
   "0.21.1": [
     {
       icon: "📊",

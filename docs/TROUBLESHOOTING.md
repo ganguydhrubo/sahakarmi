@@ -35,6 +35,24 @@ Computer Use requires a compatible local Codex plugin plus macOS Screen Recordin
 permissions. Open **System Settings → Privacy & Security**, grant the permissions requested by the
 plugin, then restart Sahkarmi. Sahkarmi does not bypass macOS prompts or plugin safety hand-offs.
 
+## "Restart to update" does not update (Windows)
+
+Sahkarmi downloads each update itself and runs the installer when you click **Restart**. On some
+PCs Windows will not start that installer without asking for permission first, so a prompt appears
+that names `Sahkarmi-<version>-x64.exe` from an "unknown publisher" (Sahkarmi is free software and
+is not code-signed yet). Choose **Yes**. If you choose **No**, nothing is installed and the app
+offers the same restart again.
+
+From 0.21.2 the app notices a restart that changed nothing and says so under the Restart button.
+After two such attempts the **Download update** button hands the installer to your browser instead:
+open the file when it finishes, choose **More info → Run anyway** if SmartScreen warns, then
+**Yes**. Sahkarmi closes and installs itself. The Microsoft Store copy of Sahkarmi updates on its own
+and never shows these prompts.
+
+If the installer never starts at all, **Settings → Export diagnostics** includes the updater log
+(`sahkarmi.log`, lines tagged `updater`); antivirus software that quarantines the downloaded
+installer in `%LOCALAPPDATA%\sahkarmi-updater\pending` is the usual cause.
+
 ## Reset Sahkarmi
 
 Quit Sahkarmi before moving data. To reset application state and the shared browser profile while

@@ -5,6 +5,24 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-11-03
+
+### Fixed
+
+- "Restart to update" no longer loops on Windows PCs where the installer cannot start without a
+  permission prompt. Each Restart click is written down before the installer runs; if the same
+  version is still running at the next start, the app says that the last update did not install
+  and asks to choose Yes when Windows asks for permission (Sahkarmi is free software and not yet
+  signed, so Windows calls it an unknown publisher). After two such attempts the update is
+  handed to the browser as a normal download, which installs the way the first install did.
+- A failed attempt also switches off the silent install at quit, so closing Sahkarmi no longer
+  raises the same permission prompt every time.
+- An installer that cannot start at all (missing or blocked file) is reported at once instead of
+  leaving the app on "Installing update…" with every coworker stopped; the app restarts itself
+  so work can continue.
+- A copy installed from the Microsoft Store says so on the Updates page instead of the generic
+  "Updates are available in installed desktop builds."
+
 ## [0.21.1] - 2026-11-03
 
 ### Fixed
