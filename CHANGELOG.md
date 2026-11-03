@@ -5,6 +5,38 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-03
+
+### Added
+
+- Team runs now do real work. The Multi-Agent screen hands each task to one of your coworkers
+  through its normal queue, so permissions and approvals apply exactly as if you had typed the
+  task yourself. A run that needs your approval pauses by itself, costs nothing while it waits,
+  and continues when you decide on the computer or in Telegram. Close the app in the middle and
+  press Resume later: the run carries on from the last finished step. Each task shows its result
+  on its card. Settings > Features has a switch, "Team runs: durable engine"; off, the older
+  in-app planner is used. The engine loads only when a team run starts, so the app opens as fast
+  as before.
+
+### Changed
+
+- On Windows there is no menu bar any more, so the Alt key no longer opens one over the chat.
+  Ctrl+. still stops all coworkers.
+- Copying selected chat text gives plain text, so a paste into WhatsApp, a mail or a document
+  carries no app colours or layout.
+- Model names that do not fit now wrap in the model picker instead of being cut off.
+
+### Fixed
+
+- Queue changes no longer rewrite the queue file when nothing in it changed, and a save that
+  Windows briefly blocks (antivirus, indexing, sync) is retried instead of failing.
+- Custom MCP servers that start slowly (npx on Windows) now get 20 seconds to start in ChatGPT
+  (Codex) coworkers instead of ten.
+- Claude's model list and plan limits no longer inherit Claude Code's own session variables when
+  Sahkarmi is started from inside Claude Code.
+- Quitting never hangs: if a coworker process or a dialog holds the app, it closes after eight
+  seconds anyway.
+
 ## [0.17.1] - 2026-11-02
 
 ### Fixed

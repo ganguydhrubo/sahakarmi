@@ -1038,6 +1038,22 @@ function loadRenderer(window: BrowserWindow): Promise<void> {
 }
 
 function configureApplicationMenu(service: AgentService, updater: UpdateService): void {
+  if (process.platform !== "darwin") {
+    // No menu bar on Windows and Linux: nothing for the Alt key to pop up over the chat.
+    // Copy, paste and the usual editing keys work without one; "Stop all agents" keeps its key.
+    Menu.setApplicationMenu(null);
+    const stopAllShortcut = (window: BrowserWindow) => {
+      window.webContents.on("before-input-event", (event, input) => {
+        if (input.type === "keyDown" && input.control && !input.alt && input.key === ".") {
+          event.preventDefault();
+          void service.interruptAll();
+        }
+      });
+    };
+    if (mainWindow && !mainWindow.isDestroyed()) stopAllShortcut(mainWindow);
+    app.on("browser-window-created", (_event, window) => stopAllShortcut(window));
+    return;
+  }
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -1537,7 +1553,25 @@ if (!hasSingleInstanceLock) {
       registerVoiceHandlers(voiceService);
       const orchestratorStore = new OrchestratorStore(app.getPath("userData"));
       await orchestratorStore.initialize();
-      const orchestrator = new AdaptiveOrchestrator(orchestratorStore);
+      const orchestrator = new AdaptiveOrchestrator(
+        orchestratorStore,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          port: {
+            sendMessage: (input) => service.sendMessage(input),
+            listQueue: (botId) => service.listQueue(botId),
+            readConversation: (botId) => service.readConversation(botId),
+            on: (event, listener) => service.on(event, listener),
+            off: (event, listener) => service.off(event, listener),
+            listBots: () => service.listBots(),
+            listApprovals: () => service.listApprovals(),
+          },
+          enabled: () => features.isEnabled("team-run-engine"),
+        },
+      );
       orchestrator.onEvent((event) => forwardAgentEvent(event));
       const agentInitialization = new AgentInitializationGate(() => service.initialize());
       registerIpcHandlers(
@@ -1702,8 +1736,13 @@ app.on("before-quit", (event) => {
   isQuitting = true;
   if (shutdownStarted) return;
   event.preventDefault();
+  // A stuck agent process or dialog must never keep the app open after the owner quit it.
+  const backstop = setTimeout(() => app.exit(0), QUIT_BACKSTOP_MS);
+  backstop.unref?.();
   void prepareForShutdown().finally(() => app.quit());
 });
+
+const QUIT_BACKSTOP_MS = 8_000;
 
 async function prepareForShutdown(): Promise<void> {
   if (shutdownStarted) return;

@@ -247,6 +247,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             mcpServers: {},
             settingSources: [],
             persistSession: false,
+            env: cleanClaudeEnvironment(process.env),
           },
         });
         session = owned;
@@ -458,6 +459,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             mcpServers: {},
             settingSources: [],
             persistSession: false,
+            env: cleanClaudeEnvironment(process.env),
           },
         });
         session = owned;

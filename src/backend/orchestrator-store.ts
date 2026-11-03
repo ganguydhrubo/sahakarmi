@@ -37,6 +37,20 @@ export class OrchestratorStore {
     } catch {
       await this.#persist();
     }
+    // A run that was going when the app closed is paused, not lost: Resume continues it.
+    let changed = false;
+    for (const run of this.#state.runs) {
+      if (run.status === "running" || run.status === "planning") {
+        run.status = "paused";
+        changed = true;
+      }
+    }
+    if (changed) await this.#persist();
+  }
+
+  /** Folder for per-run checkpoint files, beside the state file. */
+  get checkpointDir(): string {
+    return join(dirname(this.#statePath), "orchestrator");
   }
 
   async getRuns(): Promise<OrchestratorRun[]> {

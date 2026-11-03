@@ -3,6 +3,23 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { isRecord } from "./protocol";
 
+/**
+ * Windows briefly holds a file that antivirus, search indexing or a sync client just opened; the
+ * rename then fails with EPERM, EBUSY or EACCES. A short retry gets through; any other error is real.
+ */
+export async function renameWithRetry(source: string, target: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 4 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+}
+
 /** Small atomic JSON document used by the approval and schedule stores. */
 export class JsonFile<T> {
   readonly #path: string;
@@ -42,7 +59,7 @@ export class JsonFile<T> {
         const temporaryPath = `${this.#path}.${process.pid}.${randomUUID()}.tmp`;
         await mkdir(dirname(this.#path), { recursive: true, mode: 0o700 });
         await writeFile(temporaryPath, serialized, { encoding: "utf8", mode: 0o600 });
-        await rename(temporaryPath, this.#path);
+        await renameWithRetry(temporaryPath, this.#path);
       });
     this.#next = job;
     this.#writeQueue = job.done;

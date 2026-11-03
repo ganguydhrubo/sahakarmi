@@ -357,6 +357,9 @@ export function acpMcpServers(servers: McpServerWire[], httpSupported: boolean):
   });
 }
 
+/** An npx-based server on Windows can take longer than Codex's 10 s default to start. */
+const MCP_STARTUP_SECONDS = 20;
+
 /** Codex thread `config` override: { mcp_servers: { name: {...} } }. */
 export function codexMcpConfig(servers: McpServerWire[]): Record<string, unknown> | undefined {
   if (servers.length === 0) return undefined;
@@ -365,7 +368,7 @@ export function codexMcpConfig(servers: McpServerWire[]): Record<string, unknown
     mcp[server.name] =
       server.transport === "http"
         ? { url: server.url, http_headers: server.headers }
-        : { ...launchCommand(server), env: server.env };
+        : { ...launchCommand(server), env: server.env, startup_timeout_sec: MCP_STARTUP_SECONDS };
   }
   return { mcp_servers: mcp };
 }

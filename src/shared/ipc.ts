@@ -1435,6 +1435,17 @@ export interface OrchestratorRun {
   error: string | null;
   startedAt: string;
   completedAt: string | null;
+  /** "graph": the durable team-run engine drives it; absent or "legacy": the older in-memory loop. */
+  engine?: "graph" | "legacy";
+  /** Set while the run is paused on an approval the owner has not decided yet. */
+  waitingOn?: OrchestratorWait | null;
+}
+
+export interface OrchestratorWait {
+  approvalId: string;
+  botId: string;
+  taskId: string;
+  title: string;
 }
 
 export interface StartOrchestratorRunInput {
