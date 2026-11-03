@@ -253,6 +253,9 @@ async function main() {
   );
   for (const ref of refs) {
     if (ref === "/" || ref.startsWith("//")) continue;
+    // Cloudflare rewrites mailto: links on the live site to its email-protection endpoint,
+    // which is not a file of ours.
+    if (ref.startsWith("/cdn-cgi/")) continue;
     const path = ref.split("#")[0];
     if (!path) continue;
     const asset = await load(path.startsWith("/") ? path : `/${path}`);
