@@ -8,6 +8,7 @@ import type {
   AttachmentSummary,
   ConversationMessage,
   DraftAttachment,
+  KnowledgeCitation,
   MessageReaction,
   QueueDelivery,
   QueueDeliveryStatus,
@@ -50,6 +51,8 @@ interface StoredDelivery {
   createdAt: string;
   /** Sent again automatically on another model; the failed copy is hidden from the chat. */
   retried?: boolean;
+  /** Knowledge Base excerpts this owner message was grounded on (for the [S1] pills). */
+  citations?: KnowledgeCitation[];
 }
 
 interface StoredState {
@@ -408,6 +411,7 @@ export class MailboxStore {
           senderBotId: message.sender.kind === "bot" ? message.sender.botId : undefined,
           attachments: message.attachments.map(toAttachmentSummary),
           replyToMessageId: message.replyToMessageId,
+          citations: storedDelivery.citations,
           delivery: {
             id: delivery.id,
             status: delivery.status,
@@ -610,6 +614,14 @@ export class MailboxStore {
 
   async markStarting(deliveryId: string): Promise<void> {
     await this.#updateDelivery(deliveryId, ["queued"], { status: "starting", error: null });
+  }
+
+  /** Remembers which document excerpts an owner message was sent with. */
+  async setCitations(deliveryId: string, citations: KnowledgeCitation[]): Promise<void> {
+    const delivery = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
+    if (!delivery) return;
+    delivery.citations = citations;
+    await this.#persist();
   }
 
   /** Puts a delivery that could not start back in its place in the queue, to start later. */
@@ -1061,6 +1073,7 @@ function isStoredDelivery(value: unknown): value is StoredDelivery {
       value.status === "cancelled") &&
     (typeof value.turnId === "string" || value.turnId === null) &&
     (typeof value.error === "string" || value.error === null) &&
+    (value.citations === undefined || Array.isArray(value.citations)) &&
     typeof value.createdAt === "string"
   );
 }

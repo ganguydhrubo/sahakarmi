@@ -24,6 +24,7 @@ import type {
   DeleteWorkspaceInput,
   DraftAttachment,
   GrantApprovalAuthorityInput,
+  KnowledgeCitation,
   PermissionPolicyState,
   PublishingAccount,
   QueuedMessageReceipt,
@@ -137,9 +138,14 @@ import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
 import { isActionSensitive } from "./integrations/composio-policy";
 import { ComposioSecurityGuard } from "./integrations/composio-security";
+import { citationLabel } from "./knowledge/knowledge-search";
+import type { KnowledgeService } from "./knowledge/knowledge-service";
 import {
+  LIST_KNOWLEDGE_BASES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
+  READ_DOCUMENT_SECTION_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
+  SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
@@ -193,6 +199,7 @@ import {
   isContinuationText,
 } from "./turn-continuation";
 import type { UsageService } from "./usage-service";
+import { hideSecrets } from "./workflow-export";
 
 interface AgentServiceEvents {
   event: [event: AgentEvent];
@@ -473,6 +480,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
+  #knowledge: KnowledgeService | null = null;
+  #knowledgeAutoContext: () => boolean = () => true;
   #routineHost: RoutineHost | null = null;
   #composioClient: ComposioClient | null = null;
   #mcpServers: McpServerStore | null = null;
@@ -986,6 +995,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       } catch {
         /* The branch file was removed: the coworker simply starts fresh. */
       }
+    }
+    const bases = this.#knowledge?.basesForBot(bot) ?? [];
+    if (bases.length > 0) {
+      extra.push(
+        `Knowledge Bases (the owner's indexed documents you may search): ${bases
+          .map((base) => `${base.name} (${base.sources.length} files)`)
+          .join(
+            ", ",
+          )}. For any question about the owner's documents, policies, prices, contracts or reports, call sahkarmi.search_knowledge_base first and cite the anchors ([S1]) in your answer; say plainly when the documents do not cover it.`,
+      );
     }
     return developerInstructions(bot, this.#store.sharedRoot, this.#ceoOf(bot), extra);
   }
@@ -3383,6 +3402,88 @@ ${carryOver}`
     throw new Error(`Unknown tool: ${params.tool}`);
   }
 
+  async #handleKnowledgeTool(
+    senderBotId: string,
+    params: DynamicToolCallParams,
+  ): Promise<{
+    success: boolean;
+    contentItems: Array<{ type: "inputText"; text: string }>;
+  }> {
+    const knowledge = this.#knowledge;
+    const bot = this.#store.list().find((candidate) => candidate.id === senderBotId);
+    if (!knowledge || !bot) throw new Error("Knowledge Bases are not available.");
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    const reply = (value: unknown) => ({
+      success: true,
+      contentItems: [{ type: "inputText" as const, text: JSON.stringify(value) }],
+    });
+    if (params.tool === "list_knowledge_bases") {
+      const bases = knowledge.basesForBot(bot).map((base) => ({
+        id: base.id,
+        name: base.name,
+        files: base.sources.filter((source) => source.enabled && source.status === "ready").length,
+        kinds: [...new Set(base.sources.map((source) => source.kind))],
+        indexing: base.indexing,
+      }));
+      return reply({ success: true, count: bases.length, knowledgeBases: bases });
+    }
+    if (params.tool === "search_knowledge_base") {
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      if (!query) throw new Error("Give search_knowledge_base a query.");
+      const kbId = typeof args.knowledgeBaseId === "string" ? args.knowledgeBaseId : undefined;
+      const limit = typeof args.limit === "number" ? args.limit : 8;
+      const hits = await knowledge.searchForBot(bot, query, { kbId, limit });
+      return reply({
+        success: true,
+        count: hits.length,
+        results: hits.map((hit) => ({
+          anchor: hit.citation.id,
+          knowledgeBaseId: hit.citation.kbId,
+          documentId: hit.citation.documentId,
+          file: hit.citation.fileName,
+          where: citationLabel(hit.citation),
+          page: hit.citation.page,
+          slide: hit.citation.slide,
+          sheet: hit.citation.sheet,
+          section: hit.citation.heading,
+          chunkIndex: hit.citation.chunkIndex,
+          excerpt: hideSecrets(hit.citation.excerpt),
+        })),
+        hint:
+          hits.length === 0
+            ? "Nothing matched. Try other words, a file name, or list_knowledge_bases."
+            : "Cite facts with their anchor, e.g. [S1].",
+      });
+    }
+    if (params.tool === "read_document_section") {
+      const kbId = typeof args.knowledgeBaseId === "string" ? args.knowledgeBaseId : "";
+      const documentId = typeof args.documentId === "string" ? args.documentId : "";
+      if (!kbId || !documentId) {
+        throw new Error("read_document_section needs knowledgeBaseId and documentId.");
+      }
+      if (!knowledge.basesForBot(bot).some((base) => base.id === kbId)) {
+        throw new Error("You may not read that knowledge base.");
+      }
+      const section = knowledge.readSection(kbId, documentId, {
+        page: typeof args.page === "number" ? args.page : null,
+        chunkIndex: typeof args.chunkIndex === "number" ? args.chunkIndex : null,
+      });
+      return reply({
+        success: true,
+        file: section.fileName,
+        passages: section.chunks.map((chunk) => ({
+          chunkIndex: chunk.chunkIndex,
+          page: chunk.page,
+          slide: chunk.slide,
+          sheet: chunk.sheet,
+          section: chunk.heading,
+          text: hideSecrets(chunk.text),
+        })),
+      });
+    }
+    throw new Error(`Unknown tool: ${params.tool}`);
+  }
+
   async #handleSahkarmiTool(params: DynamicToolCallParams): Promise<{
     success: boolean;
     contentItems: Array<{ type: "inputText"; text: string }>;
@@ -3548,6 +3649,25 @@ ${carryOver}`
           { type: "inputText", text: JSON.stringify({ success: true, shownToOwner: true }) },
         ],
       };
+    }
+
+    if (KNOWLEDGE_TOOLS.has(params.tool)) {
+      try {
+        return await this.#handleKnowledgeTool(senderBotId, params);
+      } catch (error) {
+        return {
+          success: false,
+          contentItems: [
+            {
+              type: "inputText",
+              text: JSON.stringify({
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            },
+          ],
+        };
+      }
     }
 
     if (LEARNING_TOOLS.has(params.tool)) {
@@ -3979,6 +4099,26 @@ ${carryOver}`
         // including free text-only ones, sees their content (images go as image input below).
         text += await attachmentPromptBlocks(managedAttachments);
       }
+      let citations: KnowledgeCitation[] | undefined;
+      if (
+        delivery.sender.kind === "user" &&
+        this.#knowledge &&
+        this.#knowledgeAutoContext() &&
+        delivery.text &&
+        !isContinuationText(delivery.text) &&
+        !delivery.text.startsWith("[")
+      ) {
+        try {
+          const grounding = await this.#knowledge.groundingFor(bot, delivery.text);
+          if (grounding) {
+            text += `\n\n${grounding.lines.join("\n")}`;
+            citations = grounding.citations;
+            await this.#mailbox.setCitations(delivery.id, citations);
+          }
+        } catch (error) {
+          this.emit("log", `knowledge grounding for ${bot.id} failed: ${String(error)}`);
+        }
+      }
       this.#turnStartedAt.set(bot.id, Date.now() - 1_000);
       const input: Array<Record<string, unknown>> = [{ type: "text", text }];
       for (const attachment of managedAttachments) {
@@ -3999,9 +4139,13 @@ ${carryOver}`
           attachments: delivery.attachments,
           delivery: { id: delivery.id, status: "starting", position: null },
           text: delivery.text,
+          citations,
           createdAt: delivery.createdAt,
           status: "completed",
         });
+      } else if (citations) {
+        const existing = snapshot.messages.find((message) => message.id === delivery.id);
+        if (existing) existing.citations = citations;
       }
       this.#emitConversation(snapshot);
 
@@ -4780,6 +4924,22 @@ ${carryOver}`
     this.#continuationEnabled = enabled;
   }
 
+  /**
+   * Gives coworkers the owner's Knowledge Bases: three tools, and (while `autoContext` says so)
+   * matching excerpts at the start of every owner message.
+   */
+  attachKnowledge(knowledge: KnowledgeService, autoContext: () => boolean): void {
+    this.#knowledge = knowledge;
+    this.#knowledgeAutoContext = autoContext;
+    knowledge.on("event", (event: AgentEvent) => {
+      if (event.type === "knowledge-changed") this.#reloadInstructions(this.#store.list());
+    });
+  }
+
+  get knowledge(): KnowledgeService | null {
+    return this.#knowledge;
+  }
+
   async #associateStartedTurn(
     botId: string,
     turnId: string,
@@ -5435,6 +5595,11 @@ function finiteNumberOrNull(value: unknown): number | null {
 }
 
 const LEARNING_TOOLS = new Set(["search_past_chats", "list_skills", "read_skill", "save_skill"]);
+const KNOWLEDGE_TOOLS = new Set([
+  "list_knowledge_bases",
+  "search_knowledge_base",
+  "read_document_section",
+]);
 
 const SAHKARMI_DYNAMIC_TOOLS = {
   type: "namespace",
@@ -5788,6 +5953,51 @@ const SAHKARMI_DYNAMIC_TOOLS = {
           changeNote: { type: "string", maxLength: 300 },
         },
         required: ["name", "whenToUse", "steps"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "list_knowledge_bases",
+      description: LIST_KNOWLEDGE_BASES_DESCRIPTION,
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    },
+    {
+      type: "function",
+      name: "search_knowledge_base",
+      description: SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", minLength: 2, maxLength: 300 },
+          knowledgeBaseId: {
+            type: "string",
+            description:
+              "Search one base only (from list_knowledge_bases). Default: all you may read.",
+          },
+          limit: { type: "integer", minimum: 1, maximum: 20 },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "read_document_section",
+      description: READ_DOCUMENT_SECTION_DESCRIPTION,
+      inputSchema: {
+        type: "object",
+        properties: {
+          knowledgeBaseId: { type: "string", minLength: 1 },
+          documentId: { type: "string", minLength: 1 },
+          page: { type: "integer", minimum: 1, description: "Read this whole page (PDF)." },
+          chunkIndex: {
+            type: "integer",
+            minimum: 0,
+            description: "Read the passages around this excerpt (from a search result).",
+          },
+        },
+        required: ["knowledgeBaseId", "documentId"],
         additionalProperties: false,
       },
     },

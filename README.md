@@ -56,6 +56,9 @@ Full steps, verification, troubleshooting and uninstall: **[sahkarmi.site/instal
 - **Task queue, schedules and routines**: queued / running / done with pause, resume, cancel
   and stop; run once, hourly, daily, weekdays or weekly.
 - **Shared files** folder for the whole team, one working folder per coworker, a memory page.
+- **Knowledge Bases**: your PDFs, Word, Excel, PowerPoint and text files indexed on this
+  computer (SQLite full-text search, nothing uploaded); coworkers answer from them and cite the
+  page, slide or sheet as [S1].
 - **Search everything** with Ctrl/Cmd+K; Ctrl+1–9 open a coworker, Ctrl+N makes one, Ctrl+,
   opens Settings.
 - **Backup model**: a paid provider that answers nothing or hits its quota hands the message

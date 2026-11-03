@@ -43,6 +43,7 @@ import { CustomSkills } from "../backend/custom-skills";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
+import { KnowledgeService } from "../backend/knowledge/knowledge-service";
 import { MailboxStore } from "../backend/mailbox-store";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -160,6 +161,7 @@ let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
 let aiRuntimeService: AiRuntimeService | null = null;
 let scheduleStore: ScheduleStore | null = null;
+let knowledgeService: KnowledgeService | null = null;
 let routineStore: RoutineStore | null = null;
 let telegramBridge: TelegramBridge | null = null;
 let usageService: UsageService | null = null;
@@ -241,6 +243,112 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   handleTrusted(IPC_CHANNELS.mcpRemove, (input: unknown) =>
     mcp.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
+}
+
+function registerKnowledgeIpc(knowledge: KnowledgeService): void {
+  const kbId = (value: unknown) => requireString(value, "knowledgeBaseId");
+  handleTrusted(IPC_CHANNELS.knowledgeList, () => knowledge.list());
+  handleTrusted(IPC_CHANNELS.knowledgeCreate, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid knowledge base.");
+    return knowledge.create({
+      name: requireString(input.name, "name"),
+      workspaceId: requireString(input.workspaceId, "workspaceId"),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeUpdate, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid knowledge base.");
+    return knowledge.update({
+      id: kbId(input.id),
+      name: typeof input.name === "string" ? input.name : undefined,
+      botIds: Array.isArray(input.botIds)
+        ? input.botIds.filter((id): id is string => typeof id === "string")
+        : undefined,
+      privacy:
+        input.privacy === "owner" || input.privacy === "coworkers" ? input.privacy : undefined,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeDelete, (id: unknown) => knowledge.delete(kbId(id)));
+  handleTrusted(IPC_CHANNELS.knowledgeAddFiles, async (input: unknown) => {
+    if (isObject(input) && Array.isArray(input.paths)) {
+      const paths = input.paths.filter((path): path is string => typeof path === "string");
+      return paths.length ? knowledge.addFiles(kbId(input.kbId), paths) : knowledge.list();
+    }
+    const id = input;
+    const options: OpenDialogOptions = {
+      properties: ["openFile", "multiSelections"],
+      filters: [
+        {
+          name: "Documents",
+          extensions: [
+            "pdf",
+            "docx",
+            "pptx",
+            "xlsx",
+            "csv",
+            "tsv",
+            "md",
+            "markdown",
+            "txt",
+            "log",
+            "json",
+            "html",
+            "htm",
+          ],
+        },
+        { name: "All files", extensions: ["*"] },
+      ],
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return knowledge.list();
+    return knowledge.addFiles(kbId(id), result.filePaths);
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeAddFolder, async (id: unknown) => {
+    const options: OpenDialogOptions = { properties: ["openDirectory"] };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    const folder = result.filePaths[0];
+    if (result.canceled || !folder) return knowledge.list();
+    return knowledge.addFolder(kbId(id), folder);
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeRemoveFolder, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    return knowledge.removeFolder(kbId(input.kbId), requireString(input.folderId, "folderId"));
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeRemoveSource, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    return knowledge.removeSource(kbId(input.kbId), requireString(input.sourceId, "sourceId"));
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeSetSourceEnabled, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    return knowledge.setSourceEnabled(
+      kbId(input.kbId),
+      requireString(input.sourceId, "sourceId"),
+      input.enabled === true,
+    );
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeSync, (id: unknown) => knowledge.sync(kbId(id)));
+  handleTrusted(IPC_CHANNELS.knowledgeSearch, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid search.");
+    return knowledge.search({
+      query: requireString(input.query, "query"),
+      kbIds: Array.isArray(input.kbIds)
+        ? input.kbIds.filter((id): id is string => typeof id === "string")
+        : undefined,
+      limit: typeof input.limit === "number" ? input.limit : undefined,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.knowledgeOpenSource, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    const path = knowledge.sourcePath(
+      kbId(input.kbId),
+      requireString(input.documentId, "documentId"),
+    );
+    const error = await shell.openPath(path);
+    if (error) throw new Error(error);
+  });
 }
 
 function registerTelegramIpc(telegram: TelegramBridge): void {
@@ -1480,6 +1588,18 @@ if (!hasSingleInstanceLock) {
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+      const knowledge = new KnowledgeService(app.getPath("userData"));
+      knowledgeService = knowledge;
+      await knowledge.initialize().catch((error) => {
+        appLog.write("error", "knowledge bases unreadable; starting empty", String(error));
+      });
+      knowledge.on("event", forwardAgentEvent);
+      knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
+      service.attachKnowledge(
+        knowledge,
+        () => features.isEnabled("knowledge-base") && features.isEnabled("knowledge-auto-context"),
+      );
+      registerKnowledgeIpc(knowledge);
       await features.initialize().catch((error) => {
         appLog.write("error", "feature settings unreadable; using defaults", String(error));
       });
@@ -1821,6 +1941,7 @@ async function prepareForShutdown(): Promise<void> {
   providerSetup?.stop();
   scheduleStore?.stop();
   routineStore?.stop();
+  knowledgeService?.close();
   const cleanupTasks = Promise.all([
     browserHost?.destroy().catch(() => {}),
     telegramBridge?.stop().catch(() => {}),

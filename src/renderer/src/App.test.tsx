@@ -388,6 +388,21 @@ describe("Sahkarmi connected desktop shell", () => {
           add: vi.fn(),
           open: vi.fn(),
         },
+        knowledge: {
+          list: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockResolvedValue([]),
+          update: vi.fn().mockResolvedValue([]),
+          delete: vi.fn().mockResolvedValue([]),
+          addFiles: vi.fn().mockResolvedValue([]),
+          pathsForFiles: vi.fn().mockReturnValue([]),
+          addFolder: vi.fn().mockResolvedValue([]),
+          removeFolder: vi.fn().mockResolvedValue([]),
+          removeSource: vi.fn().mockResolvedValue([]),
+          setSourceEnabled: vi.fn().mockResolvedValue([]),
+          sync: vi.fn().mockResolvedValue([]),
+          search: vi.fn().mockResolvedValue({ hits: [], kbIds: [] }),
+          openSource: vi.fn().mockResolvedValue(undefined),
+        },
         update: {
           getStatus: vi.fn().mockResolvedValue({
             phase: "idle",

@@ -10,6 +10,32 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.20.0": [
+    {
+      icon: "📚",
+      badge: "Knowledge",
+      title: "Knowledge Bases",
+      desc: "Add your PDFs, Word, Excel, PowerPoint and text files on the new Knowledge page. They are indexed on this computer and never uploaded.",
+    },
+    {
+      icon: "🔎",
+      badge: "Answers",
+      title: "Coworkers cite your documents",
+      desc: "Every message is matched against your documents first. Replies quote the page as [S1]; click the pill to open the file.",
+    },
+    {
+      icon: "🔐",
+      badge: "Access",
+      title: "You choose who may read what",
+      desc: "Open a base to the whole workspace or only to chosen coworkers, or hide it while you organise it.",
+    },
+    {
+      icon: "⚡",
+      badge: "Light",
+      title: "Nothing extra to download",
+      desc: "Search uses SQLite full-text indexing built into the app, so the installer, start-up and memory stay as they were.",
+    },
+  ],
   "0.19.0": [
     {
       icon: "🏃",

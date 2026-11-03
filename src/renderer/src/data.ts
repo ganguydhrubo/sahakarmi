@@ -9,6 +9,7 @@ import {
   type BotAvatarShape,
   type BotTemplateRef,
   type BranchOrigin,
+  type KnowledgeCitation,
   type MessageReaction,
   type PendingBotRuntime,
   type PublishingAccount,
@@ -41,6 +42,8 @@ export interface BotMessage {
   reaction?: MessageReaction | null;
   items?: string[];
   tool?: ToolCallSummary;
+  /** Document excerpts this message (or the owner message it answers) was grounded on. */
+  citations?: KnowledgeCitation[];
 }
 
 export interface BotProfile {

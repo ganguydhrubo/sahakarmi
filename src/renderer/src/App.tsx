@@ -102,6 +102,9 @@ const OrchestratorView = lazy(() =>
 const MemoryView = lazy(() =>
   import("./components/MemoryView").then((module) => ({ default: module.MemoryView })),
 );
+const KnowledgeView = lazy(() =>
+  import("./components/KnowledgeView").then((module) => ({ default: module.KnowledgeView })),
+);
 // Help and the tour are mounted only while open.
 const HelpPanel = lazy(() =>
   import("./components/HelpPanel").then((module) => ({ default: module.HelpPanel })),
@@ -1386,6 +1389,9 @@ export function App() {
                 <Match when={view() === "memory"}>
                   <MemoryView />
                 </Match>
+                <Match when={view() === "knowledge"}>
+                  <KnowledgeView workspaceId={workspaces().activeWorkspaceId} bots={botList()} />
+                </Match>
                 <Match when={view() === "approvals"}>
                   <ApprovalsView
                     approvals={approvals()}
@@ -1710,6 +1716,7 @@ function toBotMessage(message: ConversationMessage): BotMessage {
     attachments: message.attachments,
     exchange: message.exchange,
     reaction: message.reaction,
+    citations: message.citations,
     status: message.exchange
       ? undefined
       : message.delivery?.status === "queued"
@@ -1758,6 +1765,14 @@ function toBotMessages(messages: ConversationMessage[]): BotMessage[] {
     };
     thinkingByTurn.set(key, thinking);
     result.push(thinking);
+  }
+  // A reply quotes [S1]-style anchors from the excerpts its owner message was grounded on.
+  let grounding: BotMessage["citations"];
+  for (const message of result) {
+    if (message.author === "you") grounding = message.citations;
+    else if (grounding && !message.citations && message.kind === "text") {
+      message.citations = grounding;
+    }
   }
   return result;
 }

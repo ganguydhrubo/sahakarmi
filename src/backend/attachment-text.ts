@@ -147,11 +147,11 @@ function xmlParagraphs(xml: string, paragraphTag: string): string {
   return paragraphs.join("\n");
 }
 
-function stripTags(xml: string): string {
+export function stripTags(xml: string): string {
   return xml.replace(/<[^>]+>/g, "");
 }
 
-function decodeXml(text: string): string {
+export function decodeXml(text: string): string {
   return text
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

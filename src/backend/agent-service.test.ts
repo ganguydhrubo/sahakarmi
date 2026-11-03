@@ -16,6 +16,7 @@ import {
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
+import { KnowledgeService } from "./knowledge/knowledge-service";
 import { MailboxStore } from "./mailbox-store";
 import { PermissionService } from "./permission-service";
 import { RoutineStore } from "./routine-store";
@@ -865,6 +866,86 @@ describe.sequential("AgentService", () => {
     expect(payload.count).toBe(1);
     expect(payload.results[0]).toMatchObject({ author: "user" });
     expect(payload.results[0]?.excerpt).toContain("GSTR-1 for March");
+  });
+
+  it("lets a coworker search the owner's knowledge base and get cited excerpts", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "search_knowledge_base",
+      arguments: { query: "notice period managers" },
+    });
+    const { store, mailbox } = stores();
+    const knowledge = new KnowledgeService(join(root, "user-data"));
+    await knowledge.initialize();
+    const [base] = await knowledge.create({ name: "HR policies", workspaceId: "my-business" });
+    const policy = join(root, "leave-policy.md");
+    await writeFile(
+      policy,
+      "# Notice period\n\nThe notice period is sixty days for managers and thirty for others.\n",
+    );
+    await knowledge.addFiles(base?.id ?? "", [policy]);
+    await knowledge.idle();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.attachKnowledge(knowledge, () => false);
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Check the HR rules" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    const payload = JSON.parse(
+      (reply?.result as { contentItems?: Array<{ text: string }> } | undefined)?.contentItems?.[0]
+        ?.text ?? "{}",
+    ) as { count: number; results: Array<{ anchor: string; file: string; excerpt: string }> };
+    expect(payload.count).toBe(1);
+    expect(payload.results[0]).toMatchObject({ anchor: "S1", file: "leave-policy.md" });
+    expect(payload.results[0]?.excerpt).toContain("sixty days");
+    knowledge.close();
+  });
+
+  it("grounds an owner message in matching excerpts and keeps the citations on it", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Darjeeling tea costs 250 [S1].";
+    const { store, mailbox } = stores();
+    const knowledge = new KnowledgeService(join(root, "user-data"));
+    await knowledge.initialize();
+    const [base] = await knowledge.create({ name: "Prices", workspaceId: "my-business" });
+    const prices = join(root, "prices.csv");
+    await writeFile(prices, "item,price\nDarjeeling tea,250\nAssam tea,180\n");
+    await knowledge.addFiles(base?.id ?? "", [prices]);
+    await knowledge.idle();
+    const events: AgentEvent[] = [];
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.attachKnowledge(knowledge, () => true);
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "What does Darjeeling tea cost?" });
+    await waitFor(async () =>
+      (await protocolMessages()).some((message) => message.method === "turn/start"),
+    );
+    const turnStart = (await protocolMessages()).find((message) => message.method === "turn/start");
+    const prompt = JSON.stringify(turnStart);
+    expect(prompt).toContain("<knowledge_base_context");
+    expect(prompt).toContain("Darjeeling tea | 250");
+    expect(prompt).toContain("[S1] File: prices.csv");
+    await waitFor(() =>
+      events.some(
+        (event) =>
+          event.type === "conversation" &&
+          event.snapshot.messages.some((message) => (message.citations?.length ?? 0) > 0),
+      ),
+    );
+    const snapshot = [...events]
+      .reverse()
+      .find(
+        (event): event is Extract<AgentEvent, { type: "conversation" }> =>
+          event.type === "conversation",
+      );
+    const owner = snapshot?.snapshot.messages.find((message) => message.author === "user");
+    expect(owner?.text).toBe("What does Darjeeling tea cost?");
+    expect(owner?.citations?.[0]).toMatchObject({ id: "S1", fileName: "prices.csv" });
+    knowledge.close();
   });
 
   it("never sends streamed text again after a snapshot that already holds it", async () => {

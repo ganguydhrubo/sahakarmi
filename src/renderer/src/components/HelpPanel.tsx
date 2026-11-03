@@ -8,6 +8,7 @@ const SCREEN_HELP: Record<CenterView, { title: MessageKey; body: MessageKey }> =
   tasks: { title: "navTasks", body: "screenTasks" },
   orchestrator: { title: "navOrchestrator", body: "screenOrchestrator" },
   memory: { title: "navMemory", body: "screenMemory" },
+  knowledge: { title: "navKnowledge", body: "screenKnowledge" },
   files: { title: "sharedFiles", body: "screenFiles" },
   approvals: { title: "approvals", body: "screenApprovals" },
   schedules: { title: "navSchedules", body: "screenSchedules" },

@@ -5,6 +5,34 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-03
+
+### Added
+
+- Knowledge Bases: a new "Knowledge" page where you make a base (for example "Price lists" or
+  "Company policies") and add PDF, Word, PowerPoint, Excel, CSV, Markdown, text, JSON or HTML
+  files, single files or whole folders, or drop them on the page. Everything is read and indexed
+  on this computer, in a SQLite full-text index next to Sahkarmi's own data; nothing is uploaded.
+- Coworkers answer from your documents. Every message you send is first matched against the bases
+  the coworker may read, and the best passages go in with the message, so the coworker answers
+  from your own files and cites them as [S1], [S2]. A pill in the reply opens the file. Coworkers
+  also have three tools, list_knowledge_bases, search_knowledge_base and read_document_section,
+  on every provider (Codex, Claude, Gemini, OpenCode and the others).
+- Citations keep their place: page for PDFs, slide for PowerPoint (with speaker notes), sheet for
+  Excel (rows as "a | b | c", with the header row on every passage), and the heading for Word,
+  Markdown and HTML. Search works in English, Hindi and Bengali, including Hinglish.
+- Each base says who may search it: every coworker in the workspace, or only the ones you pick,
+  and a base can be hidden from coworkers while you organise it. The Knowledge page has a search
+  box to try what coworkers will find, and "Check for changes" re-indexes files that changed and
+  marks files that moved away.
+- Settings > Features has two switches: "Knowledge Bases" and "Documents in every message".
+
+### Changed
+
+- Nothing new is downloaded or bundled for this: the index uses the SQLite built into the app and
+  the PDF reader it already had, so the installer size, start-up time and memory use stay as they
+  were. Indexing runs one file at a time in the background and yields between files.
+
 ## [0.19.0] - 2026-11-03
 
 ### Added
