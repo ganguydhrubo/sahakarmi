@@ -48,6 +48,7 @@ import {
   ACP_AGENT_PROVIDERS,
   type AcpAgentProviderId,
   AGENT_PROVIDERS,
+  type AgentProviderState,
   APPROVAL_CATEGORIES,
   type AttachmentSummary,
   type ConversationMessage,
@@ -59,7 +60,9 @@ import {
   modelWireId,
   PROVIDER_LABELS,
   providerForModel,
+  type QueueDelivery,
   type SearchMessagesInput,
+  type TurnPlan,
 } from "../shared/ipc";
 import { createAcpAgentClient, resolveAcpAgentCli } from "./acp-agents";
 import { FREE_LIMIT_REACHED_HINT, NEXT_FREE_MODEL_HINT } from "./acp-client";
@@ -166,6 +169,12 @@ import {
   teamInstructions,
 } from "./team-rules";
 import { toolCallFromItem } from "./tool-calls";
+import {
+  type ContinuationState,
+  continuationNote,
+  decideContinuation,
+  isContinuationText,
+} from "./turn-continuation";
 import type { UsageService } from "./usage-service";
 
 interface AgentServiceEvents {
@@ -275,14 +284,14 @@ const FALLBACK_MODELS: AgentModelOption[] = [
     name: "Terra",
     description: "Balanced speed and capability for involved tasks.",
     defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
   },
   {
     id: "gpt-5.6-sol",
     name: "Sol",
     description: "Most capable for complex, long-running work.",
     defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
   },
   {
     id: "claude-fable-5",
@@ -365,6 +374,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #fallbackRetried = new Set<string>();
   /** The last error text each coworker's turn reported, to recognise a quota failure. */
   readonly #lastTurnError = new Map<string, string>();
+  /** Per coworker: how often the current request was continued, and the open steps last seen. */
+  readonly #continuations = new Map<string, ContinuationState>();
+  #continuationEnabled: () => boolean = () => true;
   readonly #threadToBot = new Map<string, string>();
   readonly #loadedThreads = new Set<string>();
   readonly #pendingPrompts = new Map<RequestId, PendingPrompt>();
@@ -802,7 +814,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const members = this.#store.list().filter((bot) => bot.workspaceId === input.workspaceId);
     const deletedBotIds: string[] = [];
     if (input.moveCoworkersTo === null) {
-      const busy = members.find((bot) => this.#hasPendingWork(bot.id));
+      const busy = members.find((bot) => this.#hasStartedWork(bot.id));
       if (busy) {
         throw new Error(
           `${busy.name} is still working. Stop it and cancel its queued messages first.`,
@@ -1473,6 +1485,22 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (input.model && previous && providerForModel(input.model) !== providerForBot(previous)) {
       await this.ensureProvider(providerForModel(input.model));
     }
+    if (previous && (input.model !== undefined || input.reasoningEffort !== undefined)) {
+      if (this.#hasStartedWork(previous.id)) {
+        // The running turn keeps its model; the new one starts with the next turn. Choosing the
+        // running model again drops the queued change.
+        const model = input.model ?? previous.pendingRuntime?.model ?? previous.model;
+        const reasoningEffort =
+          input.reasoningEffort ??
+          previous.pendingRuntime?.reasoningEffort ??
+          previous.reasoningEffort;
+        const same = model === previous.model && reasoningEffort === previous.reasoningEffort;
+        await this.#store.setPendingRuntime(previous.id, same ? null : { model, reasoningEffort });
+        const { model: _model, reasoningEffort: _effort, ...rest } = input;
+        return this.updateBot(rest);
+      }
+      if (previous.pendingRuntime) await this.#store.setPendingRuntime(previous.id, null);
+    }
     const profileChanged =
       input.name !== undefined ||
       input.role !== undefined ||
@@ -1502,20 +1530,24 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return bot;
   }
 
-  #hasPendingWork(botId: string): boolean {
+  /** Work that has begun: a turn in progress or a delivery that is starting. Queued messages wait. */
+  #hasStartedWork(botId: string): boolean {
     return (
       Boolean(this.#snapshots.get(botId)?.activeTurnId) ||
       this.#mailbox
         .listQueue(botId)
-        .deliveries.some((delivery) => ["queued", "starting", "running"].includes(delivery.status))
+        .deliveries.some(
+          (delivery) => delivery.status === "starting" || delivery.status === "running",
+        )
     );
   }
 
   async deleteBot(botId: string): Promise<void> {
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
     if (!bot) throw new Error(`Unknown bot: ${botId}`);
-    if (this.#hasPendingWork(botId)) {
-      throw new Error("Stop the agent and cancel its queued messages before deleting it.");
+    // Only started work blocks a delete; messages still waiting in the queue go with the coworker.
+    if (this.#hasStartedWork(botId)) {
+      throw new Error("Stop the coworker's running work before deleting it.");
     }
 
     await this.#browser.releaseBot?.(botId);
@@ -3687,8 +3719,11 @@ ${carryOver}`
       if (snapshot?.activeTurnId) return;
       const context = this.#mailbox.nextQueued(botId);
       if (!context) return;
-      attempted = true;
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
+      // A provider waiting for a sign-in: the message stays queued and starts after the owner
+      // signs in (the next provider check or message brings the provider back).
+      if (bot && this.#providerState(providerForBot(bot)) === "sign-in-required") return;
+      attempted = true;
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
         return;
@@ -3722,6 +3757,8 @@ ${carryOver}`
   async #startDelivery(context: DeliveryContext): Promise<void> {
     const { delivery, managedAttachments } = context;
     this.#startingDeliveries.add(delivery.id);
+    // A new request starts its own count of continuations.
+    if (!isContinuationText(delivery.text)) this.#continuations.delete(delivery.recipientBotId);
     try {
       await this.#mailbox.markStarting(delivery.id);
       this.#emitQueue(delivery.recipientBotId);
@@ -3858,16 +3895,29 @@ ${carryOver}`
         );
         return;
       }
-      await this.#mailbox.markTerminal(
-        delivery.id,
-        "failed",
-        error instanceof Error ? error.message : String(error),
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      const recipient = this.#store.list().find((bot) => bot.id === delivery.recipientBotId);
+      if (recipient && this.#providerState(providerForBot(recipient)) === "sign-in-required") {
+        // Not lost: the message waits in the queue and starts after the sign-in.
+        await this.#mailbox.markQueuedAgain(delivery.id, message);
+        this.#emitQueue(delivery.recipientBotId);
+        this.#emitError(
+          "delivery_waits_for_sign_in",
+          `${PROVIDER_LABELS[providerForBot(recipient)]} needs a sign-in. The message waits in the queue and starts once you are signed in.`,
+          delivery.recipientBotId,
+        );
+        return;
+      }
+      await this.#mailbox.markTerminal(delivery.id, "failed", message);
       this.#emitQueue(delivery.recipientBotId);
       this.#emitError("delivery_start_failed", error, delivery.recipientBotId);
     } finally {
       this.#startingDeliveries.delete(delivery.id);
     }
+  }
+
+  #providerState(provider: AgentProvider): AgentProviderState | null {
+    return this.#status.providers?.find((candidate) => candidate.id === provider)?.state ?? null;
   }
 
   async #refreshModelCatalog(): Promise<void> {
@@ -4473,8 +4523,72 @@ ${carryOver}`
     }
     this.#emit({ type: "turn-completed", botId, threadId, turnId, status });
     this.#emitConversation(snapshot);
+    await this.#applyPendingRuntime(botId);
+    if (delivery && status === "completed" && latestAssistant) {
+      await this.#continueIfStopped(
+        botId,
+        turnId,
+        delivery.delivery,
+        latestAssistant.text,
+        snapshot.plan ?? undefined,
+      );
+    }
     if (shouldCompact) await this.#requestContextCompaction(botId, threadId);
     else this.#scheduleDrain(botId);
+  }
+
+  /** A model or effort chosen during the turn takes effect now that the turn has ended. */
+  async #applyPendingRuntime(botId: string): Promise<void> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    const pending = bot?.pendingRuntime;
+    if (!bot || !pending || this.#hasStartedWork(botId)) return;
+    try {
+      await this.#store.setPendingRuntime(botId, null);
+      await this.updateBot({
+        botId,
+        model: pending.model,
+        reasoningEffort: pending.reasoningEffort,
+      });
+    } catch (error) {
+      this.#emitError("pending_runtime_failed", error, botId);
+    }
+  }
+
+  /**
+   * A coworker that ended its turn before its next step is told to carry on, within limits, so
+   * the owner does not have to. Off through the "auto-continue" feature.
+   */
+  async #continueIfStopped(
+    botId: string,
+    turnId: string,
+    delivery: QueueDelivery | { sender: { kind: string } },
+    finalText: string,
+    plan: TurnPlan | undefined,
+  ): Promise<void> {
+    if (!this.#continuationEnabled() || delivery.sender.kind !== "user") return;
+    // The owner already sent the next thing: nothing to prompt.
+    if (this.#mailbox.nextQueued(botId)) return;
+    const previous = this.#continuations.get(botId) ?? null;
+    const decision = decideContinuation({ finalText, plan, turnId, previous });
+    if (!decision) return;
+    const count = (previous?.count ?? 0) + 1;
+    this.#continuations.set(botId, {
+      count,
+      openSteps: decision.kind === "plan" ? decision.openSteps : (previous?.openSteps ?? null),
+    });
+    await this.#mailbox.enqueue({
+      sender: { kind: "user" },
+      recipientBotIds: [botId],
+      text: continuationNote(decision, count),
+      idempotencyKey: `auto-continue-${turnId}-${count}`,
+    });
+    this.emit("log", `${botId} stopped before its next step; continuing (${count})`);
+    this.#emitQueue(botId);
+  }
+
+  /** Lets the app switch automatic continuation off (Settings > Features). */
+  configureContinuation(enabled: () => boolean): void {
+    this.#continuationEnabled = enabled;
   }
 
   async #associateStartedTurn(

@@ -541,6 +541,13 @@ export interface BotSummary {
    * fallback: when the account in use is not one of these, publishing stops.
    */
   publishingAccounts?: PublishingAccount[];
+  /** A model or effort chosen while the coworker worked; it starts with the next turn. */
+  pendingRuntime?: PendingBotRuntime | null;
+}
+
+export interface PendingBotRuntime {
+  model: AgentModelId;
+  reasoningEffort: AgentReasoningEffort;
 }
 
 export const SOCIAL_PLATFORMS = ["facebook", "instagram", "linkedin"] as const;
@@ -593,7 +600,16 @@ export const AGENT_MODELS = [
 export type KnownAgentModelId = (typeof AGENT_MODELS)[number];
 export type AgentModelId = KnownAgentModelId | `${AgentProviderId}:${string}`;
 
-export const AGENT_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export const AGENT_REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+] as const;
 export type AgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
 
 export interface AgentModelOption {

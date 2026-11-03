@@ -16,6 +16,7 @@ import {
   isBotTemplateRef,
   isReasoningEffort,
   legacyModelReplacement,
+  type PendingBotRuntime,
   type PublishingAccount,
   providerForModel,
   type UpdateBotInput,
@@ -342,6 +343,15 @@ export class BotStore {
     return { ...record };
   }
 
+  /** Remembers (or clears) a model or effort to apply once the coworker's current work ends. */
+  async setPendingRuntime(id: string, runtime: PendingBotRuntime | null): Promise<void> {
+    const bot = this.#requireBot(id);
+    if (runtime) bot.pendingRuntime = { ...runtime };
+    else delete bot.pendingRuntime;
+    bot.updatedAt = new Date().toISOString();
+    await this.#persist();
+  }
+
   async setThreadId(id: string, threadId: string): Promise<void> {
     const bot = this.#requireBot(id);
     bot.threadId = threadId;
@@ -547,8 +557,15 @@ function isStoredBot(value: unknown): value is StoredBot {
     (typeof value.updatedAt === "string" || value.updatedAt === null) &&
     isAvatarShape(value.avatarShape) &&
     isAvatarColor(value.avatarColor) &&
-    (value.template === undefined || isBotTemplateRef(value.template))
+    (value.template === undefined || isBotTemplateRef(value.template)) &&
+    (value.pendingRuntime === undefined ||
+      value.pendingRuntime === null ||
+      isPendingRuntime(value.pendingRuntime))
   );
+}
+
+function isPendingRuntime(value: unknown): value is PendingBotRuntime {
+  return isRecord(value) && isAgentModel(value.model) && isReasoningEffort(value.reasoningEffort);
 }
 
 function avatarIndex(id: string): number {

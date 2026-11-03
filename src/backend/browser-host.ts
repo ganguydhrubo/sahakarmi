@@ -20,7 +20,7 @@ import type {
   BrowserVisibilityInput,
   SocialPlatform,
 } from "../shared/ipc";
-import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
+import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
@@ -163,6 +163,35 @@ export interface BrowserSnapshot {
   notice?: string;
 }
 
+/** What an action returns unless the coworker asks for a snapshot: enough to pick the next step. */
+export interface BrowserActStatus {
+  tabId: string;
+  revision: number;
+  title: string;
+  url: string;
+  /** The address changed, so this is a different page. */
+  navigated: boolean;
+  /** The page is still loading; a snapshot a moment later sees more. */
+  loading: boolean;
+  /** Whether refs from the last snapshot still work, or the page was replaced. */
+  refs: "valid" | "stale";
+  /** The focused element, so typing without a ref goes to a known place. */
+  focus: string | null;
+  notice?: string;
+}
+
+export interface BrowserActOptions {
+  /** true: read the page and new refs in the same call. false: a short status only. */
+  snapshot?: boolean;
+}
+
+/** A tab's ref bookkeeping, shared by both browser engines. */
+interface RefTab {
+  id: string;
+  revision: number;
+  labels: Map<string, string>;
+}
+
 export type BrowserAction =
   | { type: "click"; ref: string }
   /** Without a ref, types into whatever has focus (e.g. a spreadsheet cell). */
@@ -202,6 +231,7 @@ export const BROWSER_DYNAMIC_TOOLS = [
         properties: {
           tabId: { type: "string" },
           revision: { type: "integer" },
+          snapshot: { type: "boolean" },
           action: {
             type: "object",
             properties: {
@@ -233,9 +263,9 @@ export const BROWSER_DYNAMIC_TOOLS = [
         required: ["tabId", "revision", "action"],
         additionalProperties: false,
       }),
-      functionTool("screenshot", "Capture the visible page as an image.", {
+      functionTool("screenshot", SCREENSHOT_DESCRIPTION, {
         type: "object",
-        properties: { tabId: { type: "string" } },
+        properties: { tabId: { type: "string" }, ref: { type: "string" } },
         required: ["tabId"],
         additionalProperties: false,
       }),
@@ -786,13 +816,26 @@ export class BrowserHost implements CoworkerBrowser {
     });
   }
 
-  async act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot> {
+  act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot>;
+  act(
+    tabId: string,
+    revision: number,
+    action: BrowserAction,
+    options: BrowserActOptions,
+  ): Promise<BrowserSnapshot | BrowserActStatus>;
+  async act(
+    tabId: string,
+    revision: number,
+    action: BrowserAction,
+    options?: BrowserActOptions,
+  ): Promise<BrowserSnapshot | BrowserActStatus> {
     return this.#enqueue(tabId, async (tab) => {
       if (revision !== ANY_REVISION && revision !== tab.revision) {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
 
       const view = await this.#wakeLoaded(tab);
+      const beforeUrl = currentTabUrl(tab);
       // A hidden page must be painted to take input, but never over the app: it is shown with
       // only its corner pixel inside the window while the coworker acts on it.
       const restore = view.getVisible() ? null : this.#showOutOfSight(view);
@@ -818,13 +861,22 @@ export class BrowserHost implements CoworkerBrowser {
       if (CHANGING_ACTIONS.has(action.type)) this.#markSameSiteStale(tab);
       // A click has already waited for the page while watching for its file picker.
       if (action.type !== "click") await delay(250);
+      if (options?.snapshot === false) {
+        // The short answer: the page text and refs are read only when the coworker asks.
+        const raw = await withTimeout(
+          view.webContents.executeJavaScript(statusScript(), true),
+          10_000,
+          "Browser status timed out.",
+        );
+        return actStatusFrom(tab, raw, beforeUrl, currentTabUrl(tab), notice);
+      }
       const nextRevision = tab.revision + 1;
       const snapshot = await this.#readSnapshot(tab, nextRevision);
       return notice ? { ...snapshot, notice } : snapshot;
     });
   }
 
-  async screenshot(tabId: string): Promise<string> {
+  async screenshot(tabId: string, ref?: string): Promise<string> {
     return this.#enqueue(tabId, async (tab) => {
       // Chromium cannot capture a hidden page ("display surface not available"): paint it
       // out of sight first, as previews do.
@@ -832,8 +884,18 @@ export class BrowserHost implements CoworkerBrowser {
       const restore = view.getVisible() ? null : this.#showOutOfSight(view);
       try {
         if (restore) await delay(PREVIEW_PAINT_MS);
+        let clip: Electron.Rectangle | undefined;
+        if (ref) {
+          const raw = await withTimeout(
+            view.webContents.executeJavaScript(elementRectScript(ref), true),
+            10_000,
+            "Browser screenshot timed out.",
+          );
+          clip = elementClip(raw);
+          await delay(100);
+        }
         const image = await withTimeout(
-          view.webContents.capturePage(),
+          view.webContents.capturePage(clip),
           10_000,
           "Browser screenshot timed out.",
         );
@@ -1221,7 +1283,13 @@ export interface BrowserToolTarget {
   open(url: string, ownerThreadId?: string | null, ownerBotId?: string | null): Promise<BrowserTab>;
   snapshot(tabId: string): Promise<BrowserSnapshot>;
   act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot>;
-  screenshot(tabId: string): Promise<string>;
+  act(
+    tabId: string,
+    revision: number,
+    action: BrowserAction,
+    options: BrowserActOptions,
+  ): Promise<BrowserSnapshot | BrowserActStatus>;
+  screenshot(tabId: string, ref?: string): Promise<string>;
   close(tabId: string): Promise<void>;
 }
 
@@ -1368,24 +1436,37 @@ function textOffset(value: unknown): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
 }
 
+/** A snapshot as the coworker reads it: one short line per element instead of an object. */
+export type FittedSnapshot = Omit<BrowserSnapshot, "elements"> & {
+  elements: string[];
+  textOffset?: number;
+  textLength?: number;
+  nextOffset?: number;
+};
+
+/** "4:17 button[tab] (disabled) Inbox": what a coworker needs to pick a ref, nothing more. */
+export function elementLine(element: BrowserSnapshot["elements"][number], name: string): string {
+  const role = element.role && element.role !== element.tag ? `[${element.role}]` : "";
+  const disabled = element.disabled ? " (disabled)" : "";
+  return `${element.ref} ${element.tag}${role}${disabled}${name ? ` ${name}` : ""}`;
+}
+
 /**
- * Shortens a snapshot for a coworker. Every element stays (they are what it acts on), with
- * shorter names; the page text gets what is left and can be read on with offset.
+ * Shortens a snapshot for a coworker. Every element stays (they are what it acts on), as one
+ * line each with a shorter name; the page text gets what is left and can be read on with offset.
  */
-export function fitSnapshot(
-  snapshot: BrowserSnapshot,
-  offset: number,
-): BrowserSnapshot & { textOffset?: number; textLength?: number; nextOffset?: number } {
+export function fitSnapshot(snapshot: BrowserSnapshot, offset: number): FittedSnapshot {
   // Names get shorter only on a crowded page (hundreds of buttons), never below a readable label.
-  const unnamed = JSON.stringify(snapshot.elements.map((element) => ({ ...element, name: "" })));
+  const unnamed = JSON.stringify(snapshot.elements.map((element) => elementLine(element, "")));
   const perName = Math.floor(
     (SNAPSHOT_BUDGET - MIN_SNAPSHOT_TEXT - unnamed.length) / Math.max(1, snapshot.elements.length),
   );
   const nameChars = Math.min(ELEMENT_NAME_CHARS, Math.max(MIN_ELEMENT_NAME_CHARS, perName));
   const elements = snapshot.elements.map((element) =>
-    element.name.length > nameChars
-      ? { ...element, name: `${element.name.slice(0, nameChars)}…` }
-      : element,
+    elementLine(
+      element,
+      element.name.length > nameChars ? `${element.name.slice(0, nameChars)}…` : element.name,
+    ),
   );
   const room = Math.max(MIN_SNAPSHOT_TEXT, SNAPSHOT_BUDGET - JSON.stringify(elements).length);
   const start = Math.min(offset, snapshot.text.length);
@@ -1461,10 +1542,14 @@ export async function runBrowserTool(
         // without a ref (a key, a scroll) does not depend on it.
         const revision =
           typeof args.revision === "number" ? args.revision : revisionFromRef(action);
-        return textResult(fitSnapshot(await browser.act(tabId, revision, action), 0));
+        const result = await browser.act(tabId, revision, action, {
+          snapshot: args.snapshot === true,
+        });
+        return textResult("elements" in result ? fitSnapshot(result, 0) : result);
       }
       case "screenshot": {
-        const imageUrl = await browser.screenshot(browserTabId(args));
+        const ref = typeof args.ref === "string" && args.ref.trim() ? args.ref.trim() : undefined;
+        const imageUrl = await browser.screenshot(browserTabId(args), ref);
         return { success: true, contentItems: [{ type: "inputImage", imageUrl }] };
       }
       case "close_tab": {
@@ -1738,6 +1823,86 @@ export function snapshotScript(revision: number): string {
       elements,
     };
   })()`;
+}
+
+/** The little a coworker needs after an action: where the page is and whether its refs hold. */
+export function statusScript(): string {
+  return `(() => {
+    const active = document.activeElement;
+    const describe = (node) => {
+      if (!node || node === document.body || node === document.documentElement) return null;
+      const ref = node.getAttribute('data-sahkarmi-ref');
+      const name = (node.getAttribute('aria-label') || node.getAttribute('placeholder') || node.getAttribute('title') || node.innerText || '').trim().slice(0, 80);
+      return (ref ? ref + ' ' : '') + node.tagName.toLowerCase() + (name ? ' ' + name : '');
+    };
+    return {
+      title: document.title,
+      url: location.href,
+      loading: document.readyState !== 'complete',
+      refs: document.querySelectorAll('[data-sahkarmi-ref]').length,
+      focus: describe(active),
+    };
+  })()`;
+}
+
+const REF_PATTERN = /^\d+:\d+$/;
+
+/** Where one element of the last snapshot sits on screen, after scrolling it into view. */
+export function elementRectScript(ref: string): string {
+  if (!REF_PATTERN.test(ref)) throw new Error("ref must look like 4:17.");
+  return `(() => {
+    const node = document.querySelector('[data-sahkarmi-ref="${ref}"]');
+    if (!node) return null;
+    node.scrollIntoView({ block: 'center', inline: 'center' });
+    const rect = node.getBoundingClientRect();
+    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+  })()`;
+}
+
+/** The capture area for an element, inside the viewport and never empty. */
+export function elementClip(raw: unknown): { x: number; y: number; width: number; height: number } {
+  if (!isRecord(raw)) {
+    throw new Error(
+      "That element is no longer on the page (it changed). Take a fresh snapshot and use the new ref.",
+    );
+  }
+  const number = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const x = Math.max(0, Math.floor(number(raw.x)));
+  const y = Math.max(0, Math.floor(number(raw.y)));
+  const width = Math.max(1, Math.min(4_000, Math.ceil(number(raw.width) + number(raw.x) - x)));
+  const height = Math.max(1, Math.min(4_000, Math.ceil(number(raw.height) + number(raw.y) - y)));
+  return { x, y, width, height };
+}
+
+/** Builds the status an action returns; a page that lost its ref stamps makes old refs stale. */
+export function actStatusFrom(
+  tab: RefTab,
+  raw: unknown,
+  beforeUrl: string,
+  fallbackUrl: string,
+  notice: string | undefined,
+): BrowserActStatus {
+  const page = isRecord(raw) ? raw : {};
+  const url = typeof page.url === "string" ? page.url : fallbackUrl;
+  const stamped = typeof page.refs === "number" ? page.refs : 0;
+  // A reload or a new document drops the stamps: old refs must be refused, never misapplied.
+  const stale = stamped === 0;
+  if (stale && tab.labels.size > 0) {
+    tab.revision += 1;
+    tab.labels = new Map();
+  }
+  return {
+    tabId: tab.id,
+    revision: tab.revision,
+    title: typeof page.title === "string" ? page.title.slice(0, 500) : "",
+    url,
+    navigated: !sameAddress(beforeUrl, url),
+    loading: page.loading === true,
+    refs: stale ? "stale" : "valid",
+    focus: typeof page.focus === "string" ? page.focus.slice(0, 120) : null,
+    ...(notice ? { notice } : {}),
+  };
 }
 
 /** DevTools access to a built-in browser page, while its debugger is attached. */

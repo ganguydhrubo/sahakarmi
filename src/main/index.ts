@@ -1411,6 +1411,7 @@ if (!hasSingleInstanceLock) {
       registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
+      service.configureContinuation(() => features.isEnabled("auto-continue"));
       await features.initialize().catch((error) => {
         appLog.write("error", "feature settings unreadable; using defaults", String(error));
       });

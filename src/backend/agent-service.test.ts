@@ -1581,7 +1581,7 @@ describe.sequential("AgentService", () => {
     await service.sendMessage({ botId: "chief", text: "Keep working" });
     await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "running");
     await expect(service.deleteBot("chief")).rejects.toThrow(
-      "Stop the agent and cancel its queued messages before deleting it.",
+      "Stop the coworker's running work before deleting it.",
     );
     expect(service.listBots().some((bot) => bot.id === "chief")).toBe(true);
   });
@@ -2448,4 +2448,112 @@ describe("search excerpts", () => {
     expect(excerpt).toContain("needle");
     expect(excerpt.length).toBeLessThan(140);
   });
+});
+
+describe("0.19 parity: continuation, queued runtime change, delete, sign-in hold", () => {
+  it("tells a coworker that stopped before its next step to carry on, twice at most", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Step one is done. Shall I continue?";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "50";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "Write the invoice" });
+    await waitFor(() => service?.listQueue("chief").deliveries.length === 3);
+    await waitFor(() =>
+      service?.listQueue("chief").deliveries.every((item) => item.status === "completed"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const queue = service.listQueue("chief");
+    expect(queue.deliveries).toHaveLength(3);
+    const texts = (await service.readConversation("chief")).messages
+      .filter((message) => message.author === "user")
+      .map((message) => message.text);
+    expect(texts[1]?.startsWith("[Continue] You stopped before your next step.")).toBe(true);
+    expect(texts[2]).toContain("continuation 2 of 2");
+
+    // A fresh request starts a fresh count.
+    await service.sendMessage({ botId: "chief", text: "Now the reminder" });
+    await waitFor(() => service?.listQueue("chief").deliveries.length === 6);
+  }, 20_000);
+
+  it("keeps a model change chosen during a turn for the next turn", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "300";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "First" });
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "running");
+    const queued = await service.updateBot({ botId: "chief", reasoningEffort: "high" });
+    expect(queued.reasoningEffort).toBe("medium");
+    expect(queued.pendingRuntime).toEqual({ model: "gpt-5.6-luna", reasoningEffort: "high" });
+
+    // Choosing the running runtime again drops the queued change; choosing anew queues it again.
+    expect(
+      (await service.updateBot({ botId: "chief", reasoningEffort: "medium" })).pendingRuntime,
+    ).toBeUndefined();
+    await service.updateBot({ botId: "chief", model: "gpt-5.6-sol", reasoningEffort: "ultra" });
+
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "completed");
+    await waitFor(
+      () => service?.listBots().find((bot) => bot.id === "chief")?.reasoningEffort === "ultra",
+    );
+    const bot = service.listBots().find((candidate) => candidate.id === "chief");
+    expect(bot).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "ultra" });
+    expect(bot?.pendingRuntime).toBeUndefined();
+
+    await service.sendMessage({ botId: "chief", text: "Second" });
+    await waitFor(
+      async () =>
+        (await protocolMessages()).filter((item) => item.method === "turn/start").length === 2,
+    );
+    const starts = (await protocolMessages()).filter((item) => item.method === "turn/start");
+    expect(starts[0]?.params).toMatchObject({ effort: "medium" });
+    expect(starts[1]?.params).toMatchObject({ model: "gpt-5.6-sol", effort: "ultra" });
+  }, 20_000);
+
+  it("deletes a coworker whose only pending work is still queued", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await store.getOrCreate("sales-outbound");
+    await service.setQueuePaused("sales-outbound", true);
+    await mailbox.enqueue({
+      sender: { kind: "user" },
+      recipientBotIds: ["sales-outbound"],
+      text: "Later",
+    });
+    expect(service.listQueue("sales-outbound").deliveries[0]?.status).toBe("queued");
+
+    await service.deleteBot("sales-outbound");
+    expect(service.listBots().some((bot) => bot.id === "sales-outbound")).toBe(false);
+  });
+
+  it("keeps a queued message while its provider waits for a sign-in", async () => {
+    process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root, false);
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
+      "sign-in-required",
+    );
+    await store.getOrCreate("chief");
+    await store.updateBot({ botId: "chief", model: "claude-sonnet-5" });
+    await mailbox.enqueue({
+      sender: { kind: "user" },
+      recipientBotIds: ["chief"],
+      text: "Waits for the sign-in",
+    });
+    await service.setQueuePaused("chief", false);
+    // The drain sees the provider waiting for a sign-in and leaves the message in the queue.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(service.listQueue("chief").deliveries[0]?.status).toBe("queued");
+    expect(
+      events.filter((event) => event.type === "error" && event.code === "delivery_start_failed"),
+    ).toHaveLength(0);
+  }, 20_000);
 });

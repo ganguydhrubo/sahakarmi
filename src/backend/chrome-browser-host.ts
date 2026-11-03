@@ -13,7 +13,10 @@ import type {
 } from "../shared/ipc";
 import {
   ANY_REVISION,
+  actStatusFrom,
   type BrowserAction,
+  type BrowserActOptions,
+  type BrowserActStatus,
   BrowserControlTracker,
   type BrowserHostEvents,
   type BrowserSnapshot,
@@ -22,6 +25,8 @@ import {
   checkUploadFiles,
   clickCatchingFilePicker,
   delay,
+  elementClip,
+  elementRectScript,
   filePickerNotice,
   isInputPoint,
   isPersistableBrowserUrl,
@@ -31,6 +36,7 @@ import {
   runBrowserTool,
   type StoredBrowserState,
   snapshotScript,
+  statusScript,
   type UploadCdp,
   uploadThroughCdp,
   validateBounds,
@@ -453,12 +459,25 @@ export class ChromeBrowserHost implements CoworkerBrowser {
     });
   }
 
-  async act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot> {
+  act(tabId: string, revision: number, action: BrowserAction): Promise<BrowserSnapshot>;
+  act(
+    tabId: string,
+    revision: number,
+    action: BrowserAction,
+    options: BrowserActOptions,
+  ): Promise<BrowserSnapshot | BrowserActStatus>;
+  async act(
+    tabId: string,
+    revision: number,
+    action: BrowserAction,
+    options?: BrowserActOptions,
+  ): Promise<BrowserSnapshot | BrowserActStatus> {
     return this.#enqueue(tabId, async (tab) => {
       if (revision !== ANY_REVISION && revision !== tab.revision) {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
       const pipe = await this.#ensureTab(tab);
+      const beforeUrl = tab.url;
       const notice = await withTimeout(
         performCdpAction(pipe, tab, action),
         10_000,
@@ -466,6 +485,10 @@ export class ChromeBrowserHost implements CoworkerBrowser {
       );
       // A click has already waited for the page while watching for its file picker.
       if (action.type !== "click") await delay(300);
+      if (options?.snapshot === false) {
+        const raw = await evaluate(pipe, tab, statusScript(), 10_000);
+        return actStatusFrom(tab, raw, beforeUrl, tab.url, notice);
+      }
       const snapshot = await this.#readSnapshot(tab, tab.revision + 1);
       return notice ? { ...snapshot, notice } : snapshot;
     });
@@ -477,15 +500,23 @@ export class ChromeBrowserHost implements CoworkerBrowser {
     return this.screenshot(tabId).catch(() => null);
   }
 
-  async screenshot(tabId: string): Promise<string> {
+  async screenshot(tabId: string, ref?: string): Promise<string> {
     return this.#enqueue(tabId, async (tab) => {
       const pipe = await this.#ensureTab(tab);
       if (tab.targetId) {
         await pipe.send("Target.activateTarget", { targetId: tab.targetId }).catch(() => undefined);
       }
+      let clip: Record<string, number> | undefined;
+      if (ref) {
+        clip = {
+          ...elementClip(await evaluate(pipe, tab, elementRectScript(ref), 10_000)),
+          scale: 1,
+        };
+        await delay(100);
+      }
       const result = await pipe.send<{ data?: string }>(
         "Page.captureScreenshot",
-        { format: "png" },
+        clip ? { format: "png", clip } : { format: "png" },
         tab.sessionId,
         10_000,
       );

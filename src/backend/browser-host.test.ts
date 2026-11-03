@@ -7,6 +7,10 @@ const {
   BrowserControlTracker,
   SNAPSHOT_BUDGET,
   browserUserAgent,
+  actStatusFrom,
+  elementClip,
+  elementLine,
+  elementRectScript,
   fitSnapshot,
   runBrowserTool,
 } = await import("./browser-host");
@@ -60,6 +64,27 @@ describe("act arguments from runtimes that leave fields out", () => {
       "tab-9",
       7,
     ]);
+  });
+
+  it("asks for a status, not a page, unless snapshot is true", async () => {
+    const seen: unknown[] = [];
+    const browser = {
+      act: async (_tab: string, _revision: number, _action: unknown, options: unknown) => {
+        seen.push(options);
+        return { revision: 1, title: "", url: "", text: "", elements: [] };
+      },
+    };
+    const call = (args: Record<string, unknown>) =>
+      runBrowserTool(
+        browser as unknown as Parameters<typeof runBrowserTool>[0],
+        new BrowserControlTracker(),
+        { threadId: "t", turnId: "u", callId: "c", tool: "act", arguments: args } as Parameters<
+          typeof runBrowserTool
+        >[2],
+      );
+    await call({ tabId: "tab-9", action: { type: "key", key: "Escape" } });
+    await call({ tabId: "tab-9", snapshot: true, action: { type: "key", key: "Escape" } });
+    expect(seen).toEqual([{ snapshot: false }, { snapshot: true }]);
   });
 
   it("lets a key press without ref or revision through", async () => {
@@ -136,9 +161,18 @@ describe("snapshots sent to a coworker", () => {
     })),
   });
 
-  it("leaves a small page as it is", () => {
+  it("leaves a small page as it is, one line per element", () => {
     const small = page("Hello", ["Send"]);
-    expect(fitSnapshot(small, 0)).toEqual(small);
+    expect(fitSnapshot(small, 0)).toEqual({ ...small, elements: ["4:0 div[button] Send"] });
+  });
+
+  it("marks disabled controls and skips a role that repeats the tag", () => {
+    expect(
+      elementLine(
+        { ref: "1:2", tag: "button", role: "button", name: "Pay", disabled: true },
+        "Pay",
+      ),
+    ).toBe("1:2 button (disabled) Pay");
   });
 
   it("keeps every element and reads long text on in parts", () => {
@@ -150,8 +184,8 @@ describe("snapshots sent to a coworker", () => {
     const first = fitSnapshot(big, 0);
     expect(JSON.stringify(first).length).toBeLessThan(SNAPSHOT_BUDGET + 2_000);
     expect(first.elements).toHaveLength(500);
-    expect(first.elements[499]?.ref).toBe("4:499");
-    expect(first.elements[0]?.name.length).toBeLessThanOrEqual(121);
+    expect(first.elements[499]?.startsWith("4:499 ")).toBe(true);
+    expect(first.elements[0]?.length).toBeLessThanOrEqual(121 + "4:0 div[button] ".length);
     expect(first.text.length).toBeGreaterThanOrEqual(8_000);
     expect(first).toMatchObject({ textOffset: 0, textLength: 150_000 });
 
@@ -163,5 +197,65 @@ describe("snapshots sent to a coworker", () => {
       next = part.nextOffset;
     }
     expect(read).toBe(text.length);
+  });
+});
+
+describe("the status an action returns", () => {
+  const tab = () => ({ id: "tab", revision: 4, labels: new Map([["4:0", "Send"]]) });
+
+  it("keeps the refs and the revision while the page keeps its stamps", () => {
+    const current = tab();
+    const status = actStatusFrom(
+      current,
+      {
+        url: "https://a.test/inbox#x",
+        title: "Inbox",
+        loading: false,
+        refs: 12,
+        focus: "4:3 input To",
+      },
+      "https://a.test/inbox",
+      "https://a.test/inbox",
+      undefined,
+    );
+    expect(status).toMatchObject({
+      revision: 4,
+      refs: "valid",
+      navigated: false,
+      focus: "4:3 input To",
+    });
+    expect(current.revision).toBe(4);
+  });
+
+  it("makes old refs stale after a navigation that dropped the stamps", () => {
+    const current = tab();
+    const status = actStatusFrom(
+      current,
+      { url: "https://a.test/sent", title: "Sent", loading: true, refs: 0, focus: null },
+      "https://a.test/inbox",
+      "https://a.test/inbox",
+      "Opened 1 tab.",
+    );
+    expect(status).toMatchObject({
+      revision: 5,
+      refs: "stale",
+      navigated: true,
+      loading: true,
+      notice: "Opened 1 tab.",
+    });
+    expect(current.labels.size).toBe(0);
+  });
+});
+
+describe("element screenshots", () => {
+  it("clips to the element inside the viewport", () => {
+    expect(elementClip({ x: -5.5, y: 10.2, width: 100.4, height: 20 })).toEqual({
+      x: 0,
+      y: 10,
+      width: 95,
+      height: 21,
+    });
+    expect(() => elementClip(null)).toThrow("no longer on the page");
+    expect(() => elementRectScript("../x")).toThrow("ref must look like");
   });
 });

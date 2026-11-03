@@ -50,6 +50,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     false,
   ),
   feature("shared-files", "Shared files", "One folder every coworker can read and write.", "core"),
+  feature(
+    "auto-continue",
+    "Keep going without babysitting",
+    "A coworker that stops before its next step is told to carry on, a few times per request. Approvals are never skipped.",
+    "core",
+    [],
+    true,
+    true,
+  ),
   feature("schedules", "Schedules", "Run a task daily, weekly or once at a set time.", "core"),
   feature(
     "browser",

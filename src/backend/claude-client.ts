@@ -23,7 +23,7 @@ import {
   APPROVAL_TITLE_HELP,
   APPROVAL_TOOL_DESCRIPTION,
 } from "./approval-wording";
-import { ACT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
+import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { isInterruptMarker, readTranscriptLines } from "./claude-transcript";
 import type { ClaudeCliInfo } from "./cli";
 import {
@@ -260,12 +260,19 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         }),
       ]);
       if (models.length)
-        this.#catalog = models.map((model) => ({
-          model: model.resolvedModel ?? model.value,
-          displayName: model.displayName,
-          defaultReasoningEffort: "medium",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
-        }));
+        this.#catalog = models.map((model) => {
+          const id = model.resolvedModel ?? model.value;
+          // The CLI lists models, not efforts: a Claude model keeps every level it supports.
+          const known = CLAUDE_MODELS.find((candidate) => candidate.model === id);
+          return {
+            model: id,
+            displayName: model.displayName,
+            defaultReasoningEffort: known?.defaultReasoningEffort ?? "high",
+            supportedReasoningEfforts:
+              known?.supportedReasoningEfforts ??
+              CLAUDE_EFFORTS.map((reasoningEffort) => ({ reasoningEffort })),
+          };
+        });
     } catch {
       /* Retain the last catalog when an older/offline CLI cannot report models. */
     } finally {
@@ -799,6 +806,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             {
               tabId: z.string(),
               revision: z.number().int(),
+              snapshot: z.boolean().optional(),
               action: z.object({
                 type: z.enum([
                   "click",
@@ -821,8 +829,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             },
             (args) => call("sahkarmi_browser", "act", args),
           ),
-          tool("screenshot", "Capture the visible browser page.", { tabId: z.string() }, (args) =>
-            call("sahkarmi_browser", "screenshot", args),
+          tool(
+            "screenshot",
+            SCREENSHOT_DESCRIPTION,
+            { tabId: z.string(), ref: z.string().optional() },
+            (args) => call("sahkarmi_browser", "screenshot", args),
           ),
           tool("close_tab", "Close an Sahkarmi browser tab.", { tabId: z.string() }, (args) =>
             call("sahkarmi_browser", "close_tab", args),
@@ -1136,6 +1147,8 @@ class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
   }
 }
 
+const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
 const CLAUDE_MODELS = [
   {
     model: "claude-fable-5",
@@ -1321,14 +1334,30 @@ function normalizeClaudeModel(model: string): string {
   return modelWireId(model as AgentModelId);
 }
 
-function normalizeClaudeEffort(effort: string): "low" | "medium" | "high" | "xhigh" | "max" {
+type ClaudeEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+/** Claude takes five levels; the lighter and heavier ones other providers list map to the nearest. */
+export function normalizeClaudeEffort(effort: string): ClaudeEffort {
+  if (effort === "none" || effort === "minimal") return "low";
+  if (effort === "ultra") return "max";
   return ["low", "medium", "high", "xhigh", "max"].includes(effort)
-    ? (effort as "low" | "medium" | "high" | "xhigh" | "max")
+    ? (effort as ClaudeEffort)
     : "high";
 }
 
-function thinkingTokens(effort: string): number {
-  return { low: 2_000, medium: 8_000, high: 16_000, xhigh: 32_000, max: 64_000 }[effort] ?? 16_000;
+export function thinkingTokens(effort: string): number {
+  return (
+    {
+      none: 1_024,
+      minimal: 1_024,
+      low: 2_000,
+      medium: 8_000,
+      high: 16_000,
+      xhigh: 32_000,
+      max: 64_000,
+      ultra: 64_000,
+    }[effort] ?? 16_000
+  );
 }
 
 function isUuid(value: string): boolean {
