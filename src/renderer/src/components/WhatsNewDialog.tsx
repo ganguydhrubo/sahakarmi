@@ -10,6 +10,32 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.19.0": [
+    {
+      icon: "🏃",
+      badge: "Autopilot",
+      title: "Coworkers keep going",
+      desc: 'A coworker that stops at a plan or asks "shall I continue?" is told to continue for you. Switch it off in Settings > Features.',
+    },
+    {
+      icon: "📁",
+      badge: "Sidebar",
+      title: "Folders and branches",
+      desc: "File coworkers into folders three levels deep, and branch any answer into a copy of the coworker to try another direction.",
+    },
+    {
+      icon: "📝",
+      badge: "Rules",
+      title: "Instructions per coworker",
+      desc: "Each coworker keeps its standing rules in AGENTS.md. Read and edit them in Settings; the coworker updates them when you ask it to remember something.",
+    },
+    {
+      icon: "⚡",
+      badge: "Speed",
+      title: "Lighter browser work",
+      desc: "Browser steps return a short status instead of a whole page, and you can change the model mid-turn for the next turn.",
+    },
+  ],
   "0.18.0": [
     {
       icon: "🧩",

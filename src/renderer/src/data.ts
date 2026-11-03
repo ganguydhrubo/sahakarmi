@@ -8,7 +8,9 @@ import {
   type BotAvatarColor,
   type BotAvatarShape,
   type BotTemplateRef,
+  type BranchOrigin,
   type MessageReaction,
+  type PendingBotRuntime,
   type PublishingAccount,
   type ToolCallSummary,
 } from "../../shared/ipc";
@@ -59,6 +61,10 @@ export interface BotProfile {
   updatedAt?: string | null;
   template?: BotTemplateRef;
   publishingAccounts?: PublishingAccount[];
+  /** A model or effort chosen while the coworker worked; it starts with the next turn. */
+  pendingRuntime?: PendingBotRuntime | null;
+  folderId?: string | null;
+  branchedFrom?: BranchOrigin | null;
 }
 
 export function accentForAvatarColor(color: BotAvatarColor): BotAccent {

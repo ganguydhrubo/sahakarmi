@@ -2001,6 +2001,10 @@ describe("AgentService team, authority and accounts", () => {
     const second = target.listWorkspaces().workspaces[1]?.id ?? "";
     const worker = await store.createBot(second);
     await target.sendMessage({ botId: worker.id, text: "Keep working" });
+    // Queued-only work would not block the delete; wait until the turn has really started.
+    await waitFor(() =>
+      target.listQueue(worker.id).deliveries.some((delivery) => delivery.status !== "queued"),
+    );
     await expect(
       target.deleteWorkspace({ workspaceId: second, moveCoworkersTo: null }),
     ).rejects.toThrow("still working");

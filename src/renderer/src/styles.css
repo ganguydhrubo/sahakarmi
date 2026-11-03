@@ -5523,6 +5523,200 @@ body {
   letter-spacing: 0.01em;
 }
 
+.workspace-group-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.folder-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px 4px 16px;
+  border-radius: 8px;
+  color: rgb(var(--ink-rgb) / 0.72);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.folder-header:hover,
+.folder-header:focus-visible {
+  background: rgb(var(--ink-rgb) / 0.05);
+}
+.folder-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.folder-toggle:focus-visible {
+  outline: 2px solid rgb(var(--ink-rgb) / 0.35);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.folder-chevron {
+  display: inline-block;
+  width: 12px;
+  transition: transform 120ms ease;
+}
+.folder-collapsed .folder-chevron {
+  transform: rotate(-90deg);
+}
+.folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.folder-menu-button {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+}
+.folder-header:hover .folder-menu-button,
+.folder-header:focus-within .folder-menu-button,
+.workspace-group-header:hover .folder-menu-button,
+.folder-menu-button:focus-visible {
+  opacity: 1;
+}
+.folder-drop-target {
+  outline: 2px dashed rgb(var(--ink-rgb) / 0.35);
+  outline-offset: -2px;
+  background: rgb(var(--ink-rgb) / 0.06);
+}
+.folder-section + .folder-section {
+  margin-top: 4px;
+}
+.folder-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--shade-rgb) / 0.35);
+}
+.folder-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 16px;
+  border: 0.5px solid rgb(var(--ink-rgb) / 0.14);
+  border-radius: 12px;
+  background: rgb(var(--bg-rgb));
+  box-shadow: 0 18px 48px rgb(var(--shade-rgb) / 0.4);
+}
+.folder-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.folder-editor input {
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.2);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.folder-editor-actions,
+.agent-instructions-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.folder-editor-error,
+.agent-instructions-conflict {
+  margin: 0;
+  color: var(--danger, #ef4444);
+  font-size: 12px;
+}
+.sidebar-folder-error {
+  padding: 0 16px 6px;
+}
+.branch-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgb(var(--ink-rgb) / 0.05);
+  color: rgb(var(--ink-rgb) / 0.75);
+  font-size: 12.5px;
+}
+.agent-settings-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.agent-instructions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.agent-instructions-bar code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgb(var(--ink-rgb) / 0.08);
+}
+.agent-instructions-folder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgb(var(--ink-rgb) / 0.55);
+}
+.agent-instructions-body {
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.12);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.agent-instructions-empty {
+  margin: 0;
+  color: rgb(var(--ink-rgb) / 0.55);
+  font-size: 12.5px;
+}
+.agent-instructions-editor {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.2);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font:
+    13px / 1.5 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  resize: vertical;
+}
 .workspace-group-count {
   padding: 0 6px;
   border-radius: 999px;
@@ -9984,6 +10178,24 @@ ol.md-list {
   background: transparent;
   color: inherit;
   font-size: 0.88em;
+}
+.header-model-pending {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #e07a2f) 18%, transparent);
+  color: var(--accent, #e07a2f);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.header-model-pending-detail {
+  margin: 8px 0 0;
+  color: var(--muted, #6b7280);
+  font-size: 12px;
+}
+.composer-notice-waiting {
+  color: var(--muted, #6b7280);
+  font-weight: 500;
 }
 .header-model-button span {
   overflow: hidden;

@@ -237,4 +237,85 @@ describe("BotStore", () => {
     await restored.initialize();
     expect(restored.list()).toEqual([]);
   });
+
+  it("files coworkers into folders three levels deep and keeps them when a folder goes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
+    temporaryRoots.push(root);
+    const userData = join(root, "user-data");
+    const home = join(root, "home");
+    const store = new BotStore(userData, home);
+    await store.initialize();
+    const bot = await store.createBot();
+    const lastFolder = async (name: string, parentId: string | null) => {
+      const state = await store.createFolder({
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        name,
+        parentId,
+      });
+      const folder = state.folders?.at(-1);
+      if (!folder) throw new Error("folder missing");
+      return folder;
+    };
+
+    const clients = await lastFolder("Clients", null);
+    const acme = await lastFolder("Acme", clients.id);
+    const q4 = await lastFolder("Q4", acme.id);
+
+    await expect(
+      store.createFolder({ workspaceId: DEFAULT_WORKSPACE_ID, name: "Deeper", parentId: q4.id }),
+    ).rejects.toThrow(/3 levels/);
+    await expect(store.moveFolder(clients.id, acme.id)).rejects.toThrow(/own folders/);
+    await expect(store.moveFolder(q4.id, null)).resolves.toBeTruthy();
+    // Q4 > Clients > Acme is three levels: allowed; anything under Acme would be a fourth.
+    await expect(store.moveFolder(clients.id, q4.id)).resolves.toBeTruthy();
+    await expect(
+      store.createFolder({ workspaceId: DEFAULT_WORKSPACE_ID, name: "Deeper", parentId: acme.id }),
+    ).rejects.toThrow(/3 levels/);
+    await expect(store.moveFolder(q4.id, acme.id)).rejects.toThrow(/own folders/);
+    await expect(store.moveFolder(clients.id, null)).resolves.toBeTruthy();
+
+    expect((await store.setBotFolder(bot.id, acme.id)).folderId).toBe(acme.id);
+    expect((await store.renameFolder(acme.id, "Acme Robotics")).folders).toContainEqual(
+      expect.objectContaining({ id: acme.id, name: "Acme Robotics", parentId: clients.id }),
+    );
+
+    const restored = new BotStore(userData, home);
+    await restored.initialize();
+    expect(restored.workspaces().folders?.map((folder) => folder.name)).toEqual([
+      "Clients",
+      "Acme Robotics",
+      "Q4",
+    ]);
+    expect(restored.list().find((entry) => entry.id === bot.id)?.folderId).toBe(acme.id);
+
+    await restored.reorderFolder(q4.id, "up");
+    expect(restored.workspaces().folders?.map((folder) => folder.name)).toEqual([
+      "Q4",
+      "Acme Robotics",
+      "Clients",
+    ]);
+
+    // Deleting the middle folder lifts its coworker up to the parent, not out of the tree.
+    await restored.deleteFolder(acme.id);
+    expect(restored.list().find((entry) => entry.id === bot.id)?.folderId).toBe(clients.id);
+    await restored.deleteFolder(clients.id);
+    expect(restored.list().find((entry) => entry.id === bot.id)?.folderId ?? null).toBeNull();
+    expect(restored.workspaces().folders?.map((folder) => folder.name)).toEqual(["Q4"]);
+  });
+
+  it("keeps a folder inside its own workspace", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
+    temporaryRoots.push(root);
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    await store.initialize();
+    const bot = await store.createBot();
+    const other = (await store.createWorkspace("Side project")).workspaces.at(-1);
+    const folder = (
+      await store.createFolder({ workspaceId: other?.id ?? "", name: "Elsewhere", parentId: null })
+    ).folders?.at(-1);
+    if (!folder) throw new Error("folder missing");
+
+    await expect(store.setBotFolder(bot.id, folder.id)).rejects.toThrow(/own workspace/);
+    await expect(store.setBotFolder(bot.id, "folder-missing")).rejects.toThrow(/Unknown folder/);
+  });
 });

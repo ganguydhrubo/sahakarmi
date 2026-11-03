@@ -8,10 +8,13 @@ import type {
   AiToolId,
   AppInfo,
   CoworkerStatus,
+  CreateFolderInput,
   DeleteWorkspaceInput,
+  SidebarFolder,
   UpdateStatus,
   WorkspaceState,
 } from "../../../shared/ipc";
+import { MAX_FOLDER_DEPTH } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
@@ -77,6 +80,12 @@ interface SidebarProps {
   onRenameWorkspace: (workspaceId: string, name: string) => Promise<void>;
   onDeleteWorkspace?: (input: DeleteWorkspaceInput) => Promise<void>;
   onSetWorkspaceCeo?: (workspaceId: string, botId: string | null) => Promise<void>;
+  onCreateFolder?: (input: CreateFolderInput) => Promise<void>;
+  onRenameFolder?: (folderId: string, name: string) => Promise<void>;
+  onMoveFolder?: (folderId: string, parentId: string | null) => Promise<void>;
+  onReorderFolder?: (folderId: string, direction: "up" | "down") => Promise<void>;
+  onDeleteFolder?: (folderId: string) => Promise<void>;
+  onSetBotFolder?: (botId: string, folderId: string | null) => Promise<void>;
   onCollapse: () => void;
   /** Shown as a compact bar at the bottom of the sidebar while an update is on its way. */
   updateStatus?: UpdateStatus;
@@ -446,8 +455,306 @@ export function Sidebar(props: SidebarProps) {
 
   const deleteTarget = createMemo(() => props.bots.find((bot) => bot.id === deleteTargetId()));
 
+  // ---- Sidebar folders: three levels deep, inside the active workspace ----
+  const COLLAPSED_KEY = "sahkarmi:collapsed-folders";
+  const readCollapsed = (): string[] => {
+    try {
+      const raw = localStorage.getItem(COLLAPSED_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  };
+  const [collapsedFolders, setCollapsedFolders] = createSignal<string[]>(readCollapsed());
+  const collapsed = (id: string) => collapsedFolders().includes(id);
+  const toggleCollapsed = (id: string) => {
+    const next = collapsed(id)
+      ? collapsedFolders().filter((entry) => entry !== id)
+      : [...collapsedFolders(), id];
+    setCollapsedFolders(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+    } catch {
+      /* Remembering the fold is a convenience only. */
+    }
+  };
+  const allFolders = () => props.workspaces.folders ?? [];
+  const folderIds = createMemo(() => new Set(allFolders().map((folder) => folder.id)));
+  const childFolders = (workspaceId: string, parentId: string | null) =>
+    allFolders().filter(
+      (folder) => folder.workspaceId === workspaceId && folder.parentId === parentId,
+    );
+  const folderById = (id: string | null | undefined) =>
+    id ? allFolders().find((folder) => folder.id === id) : undefined;
+  const folderDepth = (id: string): number => {
+    let depth = 1;
+    let current = folderById(id);
+    while (current?.parentId && depth < 10) {
+      depth += 1;
+      current = folderById(current.parentId);
+    }
+    return depth;
+  };
+  /** "Clients / Acme Robotics": a nested folder shows its path. */
+  const folderPath = (folder: SidebarFolder): string => {
+    const names = [folder.name];
+    let current = folderById(folder.parentId);
+    while (current && names.length < 10) {
+      names.unshift(current.name);
+      current = folderById(current.parentId);
+    }
+    return names.join(" / ");
+  };
+  const countIn = (folderId: string, bots: BotProfile[]): number => {
+    const inside = new Set<string>([folderId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const folder of allFolders()) {
+        if (folder.parentId && inside.has(folder.parentId) && !inside.has(folder.id)) {
+          inside.add(folder.id);
+          grew = true;
+        }
+      }
+    }
+    return bots.filter((bot) => bot.folderId && inside.has(bot.folderId)).length;
+  };
+  const [folderMenu, setFolderMenu] = createSignal<{
+    folderId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [folderEditor, setFolderEditor] = createSignal<
+    | { mode: "create"; workspaceId: string; parentId: string | null }
+    | { mode: "rename"; folderId: string }
+    | null
+  >(null);
+  const [folderName, setFolderName] = createSignal("");
+  const [folderError, setFolderError] = createSignal<string | null>(null);
+  const [botMenuMode, setBotMenuMode] = createSignal<"main" | "move">("main");
+  const [dragBotId, setDragBotId] = createSignal<string | null>(null);
+  const [dragFolderId, setDragFolderId] = createSignal<string | null>(null);
+  const [dropFolderId, setDropFolderId] = createSignal<string | null>(null);
+  let folderInput: HTMLInputElement | undefined;
+  const clearDrag = () => {
+    setDragBotId(null);
+    setDragFolderId(null);
+    setDropFolderId(null);
+  };
+  const openFolderMenu = (folderId: string, x: number, y: number) => {
+    setContextMenu(null);
+    setFolderMenu({
+      folderId,
+      x: Math.max(8, Math.min(x, window.innerWidth - 200)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 220)),
+    });
+  };
+  const runFolderAction = async (action: () => Promise<void> | undefined) => {
+    setFolderMenu(null);
+    setFolderError(null);
+    try {
+      await action();
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const submitFolderEditor = async () => {
+    const editor = folderEditor();
+    const name = folderName().trim();
+    if (!editor || !name) return;
+    setFolderError(null);
+    try {
+      if (editor.mode === "create") {
+        await props.onCreateFolder?.({
+          workspaceId: editor.workspaceId,
+          name,
+          parentId: editor.parentId,
+        });
+      } else {
+        await props.onRenameFolder?.(editor.folderId, name);
+      }
+      setFolderEditor(null);
+      setFolderName("");
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  /** A coworker or a folder dropped on a folder header (or on the workspace header: null). */
+  const dropOn = async (folderId: string | null) => {
+    const botId = dragBotId();
+    const movedFolder = dragFolderId();
+    clearDrag();
+    try {
+      if (botId) await props.onSetBotFolder?.(botId, folderId);
+      else if (movedFolder && movedFolder !== folderId)
+        await props.onMoveFolder?.(movedFolder, folderId);
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  /** Right-click opens the folder menu; the header can also be dragged into another folder. */
+  const folderHeaderHandlers = (folderId: string) => ({
+    ...dragHandlers(folderId),
+    onContextMenu: (event: MouseEvent) => {
+      event.preventDefault();
+      openFolderMenu(folderId, event.clientX, event.clientY);
+    },
+    onDragStart: (event: DragEvent) => {
+      setDragFolderId(folderId);
+      event.dataTransfer?.setData("text/plain", folderId);
+    },
+    onDragEnd: clearDrag,
+  });
+  const dragHandlers = (folderId: string | null) => ({
+    onDragOver: (event: DragEvent) => {
+      if (!dragBotId() && !dragFolderId()) return;
+      event.preventDefault();
+      setDropFolderId(folderId);
+    },
+    onDragLeave: () => setDropFolderId((current) => (current === folderId ? null : current)),
+    onDrop: (event: DragEvent) => {
+      event.preventDefault();
+      void dropOn(folderId);
+    },
+  });
+
+  const folderTree = (
+    group: WorkspaceGroup,
+    parentId: string | null,
+    depth: number,
+  ): JSX.Element => (
+    <>
+      <For each={childFolders(group.id, parentId)}>
+        {(folder) => (
+          <div class="folder-section">
+            <div
+              class="folder-header"
+              classList={{
+                "folder-drop-target": dropFolderId() === folder.id,
+                "folder-collapsed": collapsed(folder.id),
+              }}
+              style={{ "padding-left": `${16 + depth * 14}px` }}
+              draggable={Boolean(props.onMoveFolder)}
+              {...folderHeaderHandlers(folder.id)}
+            >
+              <button
+                type="button"
+                class="folder-toggle"
+                aria-expanded={!collapsed(folder.id)}
+                aria-label={folderPath(folder)}
+                onClick={() => toggleCollapsed(folder.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                    event.preventDefault();
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    openFolderMenu(folder.id, bounds.left + 28, bounds.top + 28);
+                  }
+                }}
+              >
+                <span class="folder-chevron" aria-hidden="true">
+                  ▾
+                </span>
+                <span class="folder-name">{depth > 0 ? folderPath(folder) : folder.name}</span>
+                <span class="workspace-group-count">{countIn(folder.id, group.bots)}</span>
+              </button>
+              <button
+                type="button"
+                class="folder-menu-button"
+                aria-label={t("folderMenu")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  openFolderMenu(folder.id, bounds.left, bounds.bottom + 4);
+                }}
+              >
+                ⋯
+              </button>
+            </div>
+            <Show when={!collapsed(folder.id)}>
+              <For each={group.bots.filter((bot) => bot.folderId === folder.id)}>
+                {(bot) => botRow(bot, depth + 1)}
+              </For>
+              {folderTree(group, folder.id, depth + 1)}
+            </Show>
+          </div>
+        )}
+      </For>
+      <Show when={parentId === null}>
+        <For each={group.bots.filter((bot) => !bot.folderId || !folderIds().has(bot.folderId))}>
+          {(bot) => botRow(bot, depth)}
+        </For>
+      </Show>
+    </>
+  );
+
+  const botRow = (bot: BotProfile, depth: number): JSX.Element => {
+    const status = () => props.statuses[bot.id] ?? "idle";
+    const aura = statusAura(status);
+    const unread = () => props.unread[bot.id] ?? 0;
+    return (
+      <button
+        type="button"
+        class="bot-row team-row"
+        draggable={Boolean(props.onSetBotFolder)}
+        style={depth > 0 ? { "padding-left": `${8 + depth * 14}px` } : undefined}
+        onDragStart={(event) => {
+          setDragBotId(bot.id);
+          event.dataTransfer?.setData("text/plain", bot.id);
+        }}
+        onDragEnd={clearDrag}
+        classList={{
+          "bot-row-active": props.view === "coworker" && props.activeBotId === bot.id,
+          "bot-row-menu-open": contextMenu()?.botId === bot.id,
+        }}
+        aria-pressed={props.view === "coworker" && props.activeBotId === bot.id}
+        aria-label={`${bot.name}, ${bot.role || t("newCoworker")}, ${statusLabel(status())}`}
+        onClick={() => props.onSelectBot(bot.id)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openContextMenu(bot.id, event.clientX, event.clientY);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
+            return;
+          }
+          event.preventDefault();
+          const bounds = event.currentTarget.getBoundingClientRect();
+          openContextMenu(bot.id, bounds.left + 28, bounds.top + 32);
+        }}
+      >
+        <span class="bot-row-avatar">
+          <AvatarAura state={aura()}>
+            <AgentAvatar bot={bot} />
+          </AvatarAura>
+          <StatusDot status={status()} class="team-row-status" />
+        </span>
+        <span class="bot-row-copy">
+          <span class="bot-row-heading">
+            <span class="bot-row-title-wrap">
+              <strong>{bot.name}</strong>
+              <Show when={bot.role}>
+                <span class="team-row-role-pill">{bot.role}</span>
+              </Show>
+            </span>
+            <Show when={bot.time && bot.time !== "now"}>
+              <time class="bot-row-time">{bot.time}</time>
+            </Show>
+          </span>
+          <span class="team-row-role">{bot.preview || bot.role || "—"}</span>
+        </span>
+        <Show when={unread() > 0}>
+          <span class="team-row-unread" aria-hidden="true">
+            {unread()}
+          </span>
+        </Show>
+      </button>
+    );
+  };
+
   onMount(() => {
     const closeMenus = () => {
+      setFolderMenu(null);
       setContextMenu(null);
       setWorkspaceMenuOpen(false);
       setWorkspaceEditor(null);
@@ -469,6 +776,8 @@ export function Sidebar(props: SidebarProps) {
 
   function openContextMenu(botId: string, x: number, y: number) {
     setDeleteError(null);
+    setBotMenuMode("main");
+    setFolderMenu(null);
     setContextMenu({
       botId,
       x: Math.max(8, Math.min(x, window.innerWidth - 190)),
@@ -696,72 +1005,42 @@ export function Sidebar(props: SidebarProps) {
           <For each={workspaceGroups()}>
             {(group) => (
               <div class="workspace-group-section">
-                <div class="workspace-group-header">
+                <div
+                  class="workspace-group-header"
+                  classList={{
+                    "folder-drop-target":
+                      dropFolderId() === null && Boolean(dragBotId() || dragFolderId()),
+                  }}
+                  {...dragHandlers(null)}
+                >
                   <span>{group.name}</span>
-                  <span class="workspace-group-count">{group.bots.length}</span>
-                </div>
-                <For each={group.bots}>
-                  {(bot) => {
-                    const status = () => props.statuses[bot.id] ?? "idle";
-                    const aura = statusAura(status);
-                    const unread = () => props.unread[bot.id] ?? 0;
-                    return (
+                  <span class="workspace-group-header-end">
+                    <span class="workspace-group-count">{group.bots.length}</span>
+                    <Show when={props.onCreateFolder}>
                       <button
                         type="button"
-                        class="bot-row team-row"
-                        classList={{
-                          "bot-row-active":
-                            props.view === "coworker" && props.activeBotId === bot.id,
-                          "bot-row-menu-open": contextMenu()?.botId === bot.id,
-                        }}
-                        aria-pressed={props.view === "coworker" && props.activeBotId === bot.id}
-                        aria-label={`${bot.name}, ${bot.role || t("newCoworker")}, ${statusLabel(status())}`}
-                        onClick={() => props.onSelectBot(bot.id)}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          openContextMenu(bot.id, event.clientX, event.clientY);
-                        }}
-                        onKeyDown={(event) => {
-                          if (
-                            event.key !== "ContextMenu" &&
-                            !(event.shiftKey && event.key === "F10")
-                          ) {
-                            return;
-                          }
-                          event.preventDefault();
-                          const bounds = event.currentTarget.getBoundingClientRect();
-                          openContextMenu(bot.id, bounds.left + 28, bounds.top + 32);
+                        class="folder-menu-button"
+                        aria-label={t("newFolder")}
+                        title={t("newFolder")}
+                        onClick={() => {
+                          setFolderName("");
+                          setFolderError(null);
+                          setFolderEditor({
+                            mode: "create",
+                            workspaceId: group.id,
+                            parentId: null,
+                          });
+                          requestAnimationFrame(() => folderInput?.focus());
                         }}
                       >
-                        <span class="bot-row-avatar">
-                          <AvatarAura state={aura()}>
-                            <AgentAvatar bot={bot} />
-                          </AvatarAura>
-                          <StatusDot status={status()} class="team-row-status" />
-                        </span>
-                        <span class="bot-row-copy">
-                          <span class="bot-row-heading">
-                            <span class="bot-row-title-wrap">
-                              <strong>{bot.name}</strong>
-                              <Show when={bot.role}>
-                                <span class="team-row-role-pill">{bot.role}</span>
-                              </Show>
-                            </span>
-                            <Show when={bot.time && bot.time !== "now"}>
-                              <time class="bot-row-time">{bot.time}</time>
-                            </Show>
-                          </span>
-                          <span class="team-row-role">{bot.preview || bot.role || "—"}</span>
-                        </span>
-                        <Show when={unread() > 0}>
-                          <span class="team-row-unread" aria-hidden="true">
-                            {unread()}
-                          </span>
-                        </Show>
+                        +
                       </button>
-                    );
-                  }}
-                </For>
+                    </Show>
+                  </span>
+                </div>
+                <Show when={query().trim()} fallback={folderTree(group, null, 0)}>
+                  <For each={group.bots}>{(bot) => botRow(bot, 0)}</For>
+                </Show>
               </div>
             )}
           </For>
@@ -814,19 +1093,64 @@ export function Sidebar(props: SidebarProps) {
               style={{ left: `${menu().x}px`, top: `${menu().y}px` }}
               onPointerDown={(event) => event.stopPropagation()}
             >
-              <button
-                ref={(element) => (firstMenuItem = element)}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  const botId = menu().botId;
-                  setContextMenu(null);
-                  props.onEditBot(botId);
-                }}
+              <Show
+                when={botMenuMode() === "main"}
+                fallback={
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        const botId = menu().botId;
+                        setContextMenu(null);
+                        void runFolderAction(() => props.onSetBotFolder?.(botId, null));
+                      }}
+                    >
+                      <span>{t("noFolder")}</span>
+                    </button>
+                    <For
+                      each={allFolders().filter(
+                        (folder) =>
+                          folder.workspaceId ===
+                          (props.bots.find((bot) => bot.id === menu().botId)?.workspaceId ?? ""),
+                      )}
+                    >
+                      {(folder) => (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            const botId = menu().botId;
+                            setContextMenu(null);
+                            void runFolderAction(() => props.onSetBotFolder?.(botId, folder.id));
+                          }}
+                        >
+                          <span>{folderPath(folder)}</span>
+                        </button>
+                      )}
+                    </For>
+                  </>
+                }
               >
-                <EditIcon />
-                <span>{t("editCoworker")}</span>
-              </button>
+                <button
+                  ref={(element) => (firstMenuItem = element)}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const botId = menu().botId;
+                    setContextMenu(null);
+                    props.onEditBot(botId);
+                  }}
+                >
+                  <EditIcon />
+                  <span>{t("editCoworker")}</span>
+                </button>
+                <Show when={props.onSetBotFolder && allFolders().length > 0}>
+                  <button type="button" role="menuitem" onClick={() => setBotMenuMode("move")}>
+                    <span>{t("moveToFolder")}…</span>
+                  </button>
+                </Show>
+              </Show>
               <div class="bot-context-separator" />
               <button
                 type="button"
@@ -844,6 +1168,153 @@ export function Sidebar(props: SidebarProps) {
             </div>
           </Portal>
         )}
+      </Show>
+
+      <Show when={folderMenu()}>
+        {(menu) => {
+          const folder = () => folderById(menu().folderId);
+          return (
+            <Portal>
+              <div
+                class="bot-context-menu folder-context-menu"
+                role="menu"
+                aria-label={t("folderMenu")}
+                style={{ left: `${menu().x}px`, top: `${menu().y}px` }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <Show when={folderDepth(menu().folderId) < MAX_FOLDER_DEPTH}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const current = folder();
+                      setFolderMenu(null);
+                      if (!current) return;
+                      setFolderName("");
+                      setFolderError(null);
+                      setFolderEditor({
+                        mode: "create",
+                        workspaceId: current.workspaceId,
+                        parentId: current.id,
+                      });
+                      requestAnimationFrame(() => folderInput?.focus());
+                    }}
+                  >
+                    <span>{t("newFolderInside")}</span>
+                  </button>
+                </Show>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const current = folder();
+                    setFolderMenu(null);
+                    if (!current) return;
+                    setFolderName(current.name);
+                    setFolderError(null);
+                    setFolderEditor({ mode: "rename", folderId: current.id });
+                    requestAnimationFrame(() => folderInput?.focus());
+                  }}
+                >
+                  <span>{t("renameFolder")}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() =>
+                    void runFolderAction(() => props.onReorderFolder?.(menu().folderId, "up"))
+                  }
+                >
+                  <span>{t("moveUp")}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() =>
+                    void runFolderAction(() => props.onReorderFolder?.(menu().folderId, "down"))
+                  }
+                >
+                  <span>{t("moveDown")}</span>
+                </button>
+                <Show when={folder()?.parentId}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() =>
+                      void runFolderAction(() =>
+                        props.onMoveFolder?.(
+                          menu().folderId,
+                          folderById(folder()?.parentId)?.parentId ?? null,
+                        ),
+                      )
+                    }
+                  >
+                    <span>{t("moveOutOfFolder")}</span>
+                  </button>
+                </Show>
+                <div class="bot-context-separator" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="bot-context-danger"
+                  onClick={() =>
+                    void runFolderAction(() => props.onDeleteFolder?.(menu().folderId))
+                  }
+                >
+                  <DeleteIcon />
+                  <span>{t("deleteFolder")}</span>
+                </button>
+              </div>
+            </Portal>
+          );
+        }}
+      </Show>
+
+      <Show when={folderEditor()}>
+        <Portal>
+          <div class="folder-editor-backdrop" onPointerDown={() => setFolderEditor(null)}>
+            <form
+              class="folder-editor"
+              onPointerDown={(event) => event.stopPropagation()}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitFolderEditor();
+              }}
+            >
+              <label>
+                <span>{t("folderNamePrompt")}</span>
+                <input
+                  ref={(element) => (folderInput = element)}
+                  value={folderName()}
+                  maxLength={60}
+                  onInput={(event) => setFolderName(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setFolderEditor(null);
+                  }}
+                />
+              </label>
+              <Show when={folderError()}>
+                <p class="folder-editor-error" role="alert">
+                  {folderError()}
+                </p>
+              </Show>
+              <div class="folder-editor-actions">
+                <button type="button" class="link-button" onClick={() => setFolderEditor(null)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" class="primary-button" disabled={!folderName().trim()}>
+                  {t("save")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </Portal>
+      </Show>
+
+      <Show when={folderError() && !folderEditor()}>
+        <p class="folder-editor-error sidebar-folder-error" role="alert">
+          {folderError()}
+        </p>
       </Show>
 
       <Show when={deleteTarget()}>

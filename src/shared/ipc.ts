@@ -34,6 +34,10 @@ export const IPC_CHANNELS = {
   agentImportAttachments: "agent:import-attachments",
   agentDiscardDraftAttachment: "agent:discard-draft-attachment",
   agentOpenAttachment: "agent:open-attachment",
+  agentReadInstructions: "agent:read-instructions",
+  agentSaveInstructions: "agent:save-instructions",
+  agentRevealInstructions: "agent:reveal-instructions",
+  agentBranchConversation: "agent:branch-conversation",
   agentListQueue: "agent:list-queue",
   agentCancelQueuedMessage: "agent:cancel-queued-message",
   agentSendQueuedNow: "agent:send-queued-now",
@@ -63,6 +67,12 @@ export const IPC_CHANNELS = {
   teamDeleteWorkspace: "team:delete-workspace",
   teamSetWorkspaceCeo: "team:set-workspace-ceo",
   teamUnbindPublishingAccount: "team:unbind-publishing-account",
+  teamCreateFolder: "team:create-folder",
+  teamRenameFolder: "team:rename-folder",
+  teamMoveFolder: "team:move-folder",
+  teamReorderFolder: "team:reorder-folder",
+  teamDeleteFolder: "team:delete-folder",
+  teamSetBotFolder: "team:set-bot-folder",
   approvalsListAuthority: "approvals:list-authority",
   approvalsGrantAuthority: "approvals:grant-authority",
   approvalsRevokeAuthority: "approvals:revoke-authority",
@@ -543,6 +553,54 @@ export interface BotSummary {
   publishingAccounts?: PublishingAccount[];
   /** A model or effort chosen while the coworker worked; it starts with the next turn. */
   pendingRuntime?: PendingBotRuntime | null;
+  /** The sidebar folder this coworker sits in; none means the top of its workspace. */
+  folderId?: string | null;
+  /** Set on a coworker made by branching another one's chat. */
+  branchedFrom?: BranchOrigin | null;
+}
+
+export interface BranchOrigin {
+  botId: string;
+  name: string;
+  messageId: string;
+  createdAt: string;
+}
+
+export interface BranchConversationInput {
+  botId: string;
+  messageId: string;
+}
+
+/** A coworker's standing rules file, read from its folder. */
+export interface CoworkerInstructionsView {
+  file: "AGENTS.md" | "CLAUDE.md";
+  folder: string;
+  text: string;
+  hash: string;
+  exists: boolean;
+}
+
+export interface SaveInstructionsInput {
+  botId: string;
+  text: string;
+  /** The hash the editor loaded; null replaces whatever is there. */
+  expectedHash: string | null;
+}
+
+/** A folder in the sidebar; folders nest to three levels inside one workspace. */
+export interface SidebarFolder {
+  id: string;
+  workspaceId: string;
+  name: string;
+  parentId: string | null;
+}
+
+export const MAX_FOLDER_DEPTH = 3;
+
+export interface CreateFolderInput {
+  workspaceId: string;
+  name: string;
+  parentId: string | null;
 }
 
 export interface PendingBotRuntime {
@@ -783,6 +841,8 @@ export interface GrantApprovalAuthorityInput {
 export interface WorkspaceState {
   workspaces: WorkspaceSummary[];
   activeWorkspaceId: string;
+  /** Sidebar folders of every workspace, in display order (always sent by the app). */
+  folders?: SidebarFolder[];
 }
 
 /** Live status shown as a dot next to each coworker in the team list. */
@@ -1533,7 +1593,9 @@ export type AgentEvent =
   | { type: "orchestrator-run-updated"; run: OrchestratorRun }
   | { type: "orchestrator-task-updated"; runId: string; task: OrchestratorTask }
   | { type: "orchestrator-handoff"; message: AgentCollaborationMessage }
-  | { type: "error"; botId?: string; code: string; message: string };
+  | { type: "error"; botId?: string; code: string; message: string }
+  /** Something worth a line in the chat that is not a failure. */
+  | { type: "notice"; botId: string; code: string; message: string };
 
 export interface BrowserTab {
   id: string;
@@ -1612,6 +1674,11 @@ export interface AgentDesktopApi {
   onAttachmentImport: (listener: (event: AttachmentImportEvent) => void) => () => void;
   discardDraftAttachment: (attachmentId: string) => Promise<void>;
   openAttachment: (input: OpenAttachmentInput) => Promise<void>;
+  readInstructions: (botId: string) => Promise<CoworkerInstructionsView>;
+  saveInstructions: (input: SaveInstructionsInput) => Promise<CoworkerInstructionsView>;
+  revealInstructions: (botId: string) => Promise<void>;
+  /** A new coworker, a copy of this one, that starts from the chat through that message. */
+  branchConversation: (input: BranchConversationInput) => Promise<BotSummary>;
   sendMessage: (input: SendMessageInput) => Promise<QueuedMessageReceipt>;
   setMessageReaction: (input: SetMessageReactionInput) => Promise<void>;
   listQueue: (botId: string) => Promise<QueueSnapshot>;
@@ -1652,6 +1719,13 @@ export interface TeamDesktopApi {
   setActiveWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
   deleteWorkspace: (input: DeleteWorkspaceInput) => Promise<WorkspaceState>;
   setWorkspaceCeo: (workspaceId: string, botId: string | null) => Promise<WorkspaceState>;
+  createFolder: (input: CreateFolderInput) => Promise<WorkspaceState>;
+  renameFolder: (folderId: string, name: string) => Promise<WorkspaceState>;
+  moveFolder: (folderId: string, parentId: string | null) => Promise<WorkspaceState>;
+  reorderFolder: (folderId: string, direction: "up" | "down") => Promise<WorkspaceState>;
+  /** Removes the folder; its coworkers and folders move up one level. */
+  deleteFolder: (folderId: string) => Promise<WorkspaceState>;
+  setBotFolder: (botId: string, folderId: string | null) => Promise<BotSummary>;
   unbindPublishingAccount: (
     botId: string,
     platform: SocialPlatform,

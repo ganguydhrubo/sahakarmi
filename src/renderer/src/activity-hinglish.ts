@@ -18,6 +18,7 @@ export type ActivityPhase =
   | "processing_result"
   | "waiting_approval"
   | "waiting_user"
+  | "waiting_provider"
   | "retrying"
   | "finalizing"
   | "completed"
@@ -51,6 +52,7 @@ export const PRIMARY: Record<ActivityPhase, string> = {
   processing_result: "Tool se mila result process ho raha hai…",
   waiting_approval: "Aapki manzoori ka intezaar hai",
   waiting_user: "Aapke jawab ka intezaar hai",
+  waiting_provider: "AI service se jawab aana baaki hai…",
   retrying: "Ek baar phir try ho raha hai…",
   finalizing: "Final jawab taiyar ho raha hai…",
   completed: "Kaam poora ho gaya!",
@@ -120,6 +122,10 @@ export const SECONDARY: Record<ActivityPhase, string[]> = {
     "Aapke faisle tak yeh kaam ruka hua hai.",
   ],
   waiting_user: ["Upar diye sawaal ka jawab dein, phir kaam aage badhega."],
+  waiting_provider: [
+    "Kaafi der se koi update nahi aaya; service slow ho sakti hai.",
+    "Internet ya service ki taraf se rukawat lagti hai.",
+  ],
   retrying: ["Pichhli koshish mein dikkat aayi thi…", "Thoda ruk kar dobara koshish ho rahi hai…"],
   finalizing: [
     "Results organize ho rahe hain…",
@@ -243,6 +249,7 @@ export const LABELS = {
 /** Titles shown on in-conversation error notices. Keys are the app's internal codes. */
 export const ERROR_TITLES: Record<string, string> = {
   error: "Kuch gadbad ho gayi",
+  notice: "Sahkarmi ki taraf se",
   load: "Baatcheet load nahi ho payi",
   create: "Naya coworker nahi ban paya",
   settings: "Settings save nahi ho payi",

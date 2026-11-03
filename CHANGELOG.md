@@ -5,6 +5,41 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-03
+
+### Added
+
+- Coworkers keep going on their own. When a coworker stops after an answer that is only a plan,
+  or asks "shall I continue?" without a real question for you, Sahkarmi sends "Continue" for you
+  (up to eight times for a plan, twice for a next step). Settings > Features has the switch
+  "Keep going without babysitting".
+- Change the model or thinking level while a coworker works. The header and settings pickers stay
+  open during a turn; the choice is kept and starts with the next turn, and the header says
+  "After this turn" until then.
+- Thinking levels None, Minimal and Ultra are available on the models that support them.
+- Every coworker has an Instructions file (AGENTS.md in its own folder). Settings shows it,
+  you can edit it there or open it in the folder, and a coworker that is asked to remember a rule
+  writes it into that file. A save that would overwrite a change the coworker just made is
+  refused once so nothing is lost, and the chat notes when the coworker updated its rules.
+- Branch from here: any coworker answer has "Branch from here" in its menu. It makes a copy of
+  the coworker, with the conversation up to that answer as its starting point, so you can try a
+  different direction without losing the original.
+- Folders in the sidebar, three levels deep. Make one with the "+" on the workspace name, drag
+  coworkers and folders into each other, or use "Move to folder" in a coworker's menu. A nested
+  folder shows its path, and folded folders stay folded.
+- The chat says "Waiting for the AI service" when a working coworker has heard nothing from its
+  provider for a minute, and "No internet" when the computer is offline.
+
+### Changed
+
+- Messages that are only waiting in a coworker's queue no longer block deleting it; they go with
+  the coworker. Only work that has really started still blocks a delete.
+- A message sent while the provider needs a sign-in stays in the queue and starts by itself after
+  you sign in, instead of failing.
+- Browser steps return a one-line status instead of a whole page snapshot, so coworkers spend far
+  fewer tokens on web tasks. A coworker asks for the page only when it needs it, and can take a
+  screenshot of one element.
+
 ## [0.18.0] - 2026-11-03
 
 ### Added
