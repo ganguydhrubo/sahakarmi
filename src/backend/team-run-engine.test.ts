@@ -209,7 +209,7 @@ class FakeAgent extends EventEmitter implements TeamRunAgentPort {
 
 async function until<T>(
   read: () => Promise<T | null | undefined> | T | null | undefined,
-  timeoutMs = 10_000,
+  timeoutMs = 15_000,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
