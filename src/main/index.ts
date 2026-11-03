@@ -122,7 +122,12 @@ import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
 import { readSetupState, writeSetupState } from "./setup-store";
 import { handleTrusted } from "./trusted-ipc";
 import { isTrustedRendererUrl } from "./trusted-renderer";
-import { runningInstallerName, supportsInstalledUpdates, UpdateService } from "./update-service";
+import {
+  fileInstallAttemptStore,
+  runningInstallerName,
+  supportsInstalledUpdates,
+  UpdateService,
+} from "./update-service";
 
 if (!app.isPackaged) {
   // SAHKARMI_DEV_USER_DATA lets a test run use a throwaway profile instead of "Sahkarmi Dev".
@@ -1648,11 +1653,24 @@ if (!hasSingleInstanceLock) {
           supportsInstalledUpdates(process.platform) &&
           existsSync(join(process.resourcesPath, "app-update.yml")),
         beforeInstall: prepareForShutdown,
+        installAttempts: fileInstallAttemptStore(app.getPath("userData")),
+        afterFailedInstall: () => {
+          // beforeInstall already stopped the coworkers: start fresh so the owner can keep working.
+          if (!shutdownStarted) return;
+          appLog.write("warn", "updater", "Installer did not start; relaunching Sahkarmi");
+          app.relaunch();
+          app.exit(0);
+        },
+        unsupportedMessage: process.windowsStore
+          ? "This copy of Sahkarmi is updated by the Microsoft Store."
+          : undefined,
         autoDownload: () => permissions.get().levels.app_updates === "auto",
         manualInstall: () => cannotSelfUpdate(),
         openDownload: (version) =>
           shell.openExternal(
-            `https://github.com/ganguydhrubo/sahakarmi/releases/download/v${version}/Sahkarmi-${version}-arm64.dmg`,
+            process.platform === "win32"
+              ? `https://github.com/ganguydhrubo/sahakarmi/releases/download/v${version}/Sahkarmi-${version}-x64.exe`
+              : `https://github.com/ganguydhrubo/sahakarmi/releases/download/v${version}/Sahkarmi-${version}-arm64.dmg`,
           ),
       });
       service.on("event", forwardAgentEvent);

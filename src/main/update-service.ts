@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -25,10 +26,31 @@ interface UpdateServiceEvents {
   status: [status: UpdateStatus];
 }
 
+/** One "Restart to update" click, kept on disk so the next start can tell whether it worked. */
+export interface InstallAttempt {
+  version: string;
+  count: number;
+  at: string;
+}
+
+export interface InstallAttemptStore {
+  read(): InstallAttempt | null;
+  write(attempt: InstallAttempt | null): void;
+}
+
 interface UpdateServiceOptions {
   currentVersion: string;
   enabled: boolean;
+  /** Stops coworkers and background work; the installer ends whatever is still running. */
   beforeInstall: () => Promise<void>;
+  /** Remembers each install attempt across restarts so a failed one is noticed and explained. */
+  installAttempts?: InstallAttemptStore;
+  /** Called when the installer could not start although beforeInstall already ran. */
+  afterFailedInstall?: () => void;
+  /** How long the app may keep running after the installer was asked to start. */
+  installTimeoutMs?: number;
+  /** Replaces the generic "unsupported" text, e.g. for a copy that the Microsoft Store updates. */
+  unsupportedMessage?: string;
   initialCheckDelayMs?: number;
   checkIntervalMs?: number;
   stallTimeoutMs?: number;
@@ -44,6 +66,15 @@ interface UpdateServiceOptions {
 }
 
 const DEFAULT_CHECK_INTERVAL = 15 * 60 * 1_000;
+/** After this many Restart clicks that changed nothing, the update is handed to the browser. */
+const MANUAL_AFTER_FAILURES = 2;
+const UNSUPPORTED_MESSAGE = "Updates are available in installed desktop builds.";
+const PERMISSION_HINT =
+  "choose Yes when Windows asks for permission to run the Sahkarmi installer. (Sahkarmi is free software and not yet signed, so Windows calls it an unknown publisher.)";
+const READY_AFTER_FAILED_INSTALL = `The last update did not install. Click Restart again and ${PERMISSION_HINT}`;
+const INSTALL_DID_NOT_START = `Click Retry update, then Restart, and ${PERMISSION_HINT} Or get the installer from https://sahkarmi.site`;
+const MANUAL_INSTALL_HINT =
+  "Automatic install did not work on this PC. Download the update and run the file yourself; choose Yes if Windows asks for permission. The Microsoft Store copy of Sahkarmi updates on its own.";
 
 export function supportsInstalledUpdates(platform: NodeJS.Platform): boolean {
   return platform === "darwin" || platform === "win32";
@@ -51,8 +82,8 @@ export function supportsInstalledUpdates(platform: NodeJS.Platform): boolean {
 
 export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   readonly #updater: UpdateAdapter;
-  readonly #options: Required<Omit<UpdateServiceOptions, "beforeInstall" | "manualInstall">> &
-    Pick<UpdateServiceOptions, "beforeInstall" | "manualInstall">;
+  readonly #options: Required<Omit<UpdateServiceOptions, OptionalOption>> &
+    Pick<UpdateServiceOptions, OptionalOption>;
   #status: UpdateStatus;
   #checkTimer: ReturnType<typeof setTimeout> | null = null;
   #started = false;
@@ -63,6 +94,10 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   #retryCount = 0;
   #transferred = 0;
   #stopped = false;
+  #installing = false;
+  #installTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Restart clicks on this PC that left the old version running (from installAttempts). */
+  #failedInstalls = 0;
 
   constructor(updater: UpdateAdapter, options: UpdateServiceOptions) {
     super();
@@ -73,6 +108,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       checkIntervalMs: options.checkIntervalMs ?? DEFAULT_CHECK_INTERVAL,
       stallTimeoutMs: options.stallTimeoutMs ?? 45_000,
       retryDelayMs: options.retryDelayMs ?? 3_000,
+      installTimeoutMs: options.installTimeoutMs ?? 20_000,
       autoDownload: options.autoDownload ?? (() => true),
       openDownload: options.openDownload ?? (async () => undefined),
     };
@@ -82,7 +118,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       availableVersion: null,
       progress: null,
       checkedAt: null,
-      message: options.enabled ? null : "Updates are available in installed desktop builds.",
+      message: options.enabled ? null : (options.unsupportedMessage ?? UNSUPPORTED_MESSAGE),
     };
   }
 
@@ -93,6 +129,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#updater.autoDownload = false;
     this.#updater.autoInstallOnAppQuit = false;
     this.#updater.allowPrerelease = false;
+    this.#failedInstalls = this.#loadFailedInstalls();
 
     // Remove half-finished and already-installed update files; a newer finished download stays.
     const pending = pendingUpdatesDir();
@@ -107,7 +144,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         availableVersion: info.version,
         progress: null,
         checkedAt: new Date().toISOString(),
-        message: null,
+        message: this.#failedInstalls >= MANUAL_AFTER_FAILURES ? MANUAL_INSTALL_HINT : null,
       });
     });
     this.#updater.on("update-not-available", () => {
@@ -131,15 +168,21 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       this.#clearStallTimer();
       this.#retryCount = 0;
       // Downloaded and verified: if the owner never clicks Restart, it installs on the next quit.
-      this.#updater.autoInstallOnAppQuit = true;
+      // Not after a failed attempt on this PC: that would raise a permission prompt at every quit.
+      this.#updater.autoInstallOnAppQuit = this.#failedInstalls === 0;
       this.#setStatus({
         phase: "ready",
         availableVersion: info.version,
         progress: 100,
-        message: null,
+        message: this.#failedInstalls > 0 ? READY_AFTER_FAILED_INSTALL : null,
       });
     });
     this.#updater.on("error", (error: unknown) => {
+      // The installer could not be started (no file, blocked, or no permission).
+      if (this.#installing) {
+        this.#failInstall(error);
+        return;
+      }
       // downloadUpdate also rejects; its catch owns recovery during a transfer.
       if (!this.#downloadTask && !this.#stopped) this.#setError(error);
     });
@@ -209,13 +252,20 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     }
     if (!this.#status.availableVersion || !["available", "error"].includes(this.#status.phase))
       return this.getStatus();
-    if (this.#options.manualInstall && (await this.#needsManualInstall())) {
+    // No await unless a check is needed: a download starts in the same tick it was asked for.
+    if (
+      this.#failedInstalls >= MANUAL_AFTER_FAILURES ||
+      (this.#options.manualInstall && (await this.#needsManualInstall()))
+    ) {
       const version = this.#status.availableVersion;
       try {
         await this.#options.openDownload(version);
         this.#setStatus({
           phase: "available",
-          message: `Version ${version} is downloading in your browser. Open it and drag Sahkarmi into Applications to replace this version. (This Mac build is not Apple-signed yet, so it cannot install updates by itself.)`,
+          message:
+            this.#failedInstalls >= MANUAL_AFTER_FAILURES
+              ? `Version ${version} is downloading in your browser. Open the file when it finishes. If Windows warns, choose "More info" and "Run anyway", then Yes. Sahkarmi closes and installs itself.`
+              : `Version ${version} is downloading in your browser. Open it and drag Sahkarmi into Applications to replace this version. (This Mac build is not Apple-signed yet, so it cannot install updates by itself.)`,
         });
       } catch (error) {
         this.#setStatus({
@@ -278,7 +328,27 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   }
 
   async #needsManualInstall(): Promise<boolean> {
+    if (this.#failedInstalls >= MANUAL_AFTER_FAILURES) return true;
     return (await this.#options.manualInstall?.().catch(() => false)) ?? false;
+  }
+
+  /** Attempts recorded for a version newer than the one running never installed. */
+  #loadFailedInstalls(): number {
+    const store = this.#options.installAttempts;
+    if (!store) return 0;
+    let attempt: InstallAttempt | null = null;
+    try {
+      attempt = store.read();
+    } catch {
+      return 0;
+    }
+    if (!attempt) return 0;
+    if (compareVersions(attempt.version, this.#options.currentVersion) > 0) return attempt.count;
+    // The attempted version (or a newer one) is running: the update installed after all.
+    try {
+      store.write(null);
+    } catch {}
+    return 0;
   }
 
   #watchDownload(): void {
@@ -297,9 +367,45 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
 
   async installUpdate(): Promise<void> {
     if (this.#status.phase !== "ready") throw new Error("An update is not ready to install.");
+    const version = this.#status.availableVersion ?? "";
     this.#setStatus({ phase: "installing", message: null });
+    this.#installing = true;
+    // Written before the installer runs: if this version is still running at the next start,
+    // the install did not happen (Windows asked for permission and got No, or the file was
+    // blocked), and the next start says so instead of silently asking to restart again.
+    try {
+      this.#options.installAttempts?.write({
+        version,
+        count: this.#failedInstalls + 1,
+        at: new Date().toISOString(),
+      });
+    } catch {}
     await this.#options.beforeInstall();
     this.#updater.quitAndInstall(false, true);
+    // The updater reports "cannot start" at once through its error event; a spawned installer
+    // quits the app within a second or two. Anything else is a failure to show, not a hang.
+    if (!this.#installing) return;
+    this.#installTimer = setTimeout(() => this.#failInstall(null), this.#options.installTimeoutMs);
+    this.#installTimer.unref?.();
+  }
+
+  #failInstall(error: unknown): void {
+    if (!this.#installing) return;
+    this.#installing = false;
+    if (this.#installTimer) clearTimeout(this.#installTimer);
+    this.#installTimer = null;
+    this.#failedInstalls += 1;
+    this.#updater.autoInstallOnAppQuit = false;
+    this.#setStatus({
+      phase: "error",
+      progress: null,
+      message: `${
+        error
+          ? `Could not start the installer: ${reasonOf(error)}.`
+          : "The installer did not start."
+      } ${INSTALL_DID_NOT_START}`,
+    });
+    this.#options.afterFailedInstall?.();
   }
 
   stop(): void {
@@ -356,6 +462,44 @@ export function reasonOf(error: unknown): string {
 
 function clampProgress(value: number): number {
   return Math.max(0, Math.min(100, Number.isFinite(value) ? Math.round(value) : 0));
+}
+
+type OptionalOption =
+  | "beforeInstall"
+  | "manualInstall"
+  | "installAttempts"
+  | "afterFailedInstall"
+  | "unsupportedMessage";
+
+/** Keeps the last install attempt in `<dir>/update-attempt.json` (written before the app quits). */
+export function fileInstallAttemptStore(dir: string): InstallAttemptStore {
+  const file = join(dir, "update-attempt.json");
+  return {
+    read() {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(readFileSync(file, "utf8"));
+      } catch {
+        return null;
+      }
+      if (typeof parsed !== "object" || parsed === null) return null;
+      const { version, count, at } = parsed as Record<string, unknown>;
+      if (typeof version !== "string" || !/^\d+\.\d+\.\d+/.test(version)) return null;
+      return {
+        version,
+        count: typeof count === "number" && count > 0 ? Math.floor(count) : 1,
+        at: typeof at === "string" ? at : "",
+      };
+    },
+    write(attempt) {
+      if (!attempt) {
+        rmSync(file, { force: true });
+        return;
+      }
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(file, JSON.stringify(attempt));
+    },
+  };
 }
 
 /** Where electron-updater keeps downloaded installers on Windows. */

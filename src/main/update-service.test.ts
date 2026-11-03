@@ -9,6 +9,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   cleanPendingUpdates,
   compareVersions,
+  fileInstallAttemptStore,
+  type InstallAttempt,
+  type InstallAttemptStore,
   isFileInUse,
   reasonOf,
   runningInstallerName,
@@ -32,6 +35,33 @@ function createService(updater: FakeUpdater, beforeInstall = vi.fn(async () => u
     enabled: true,
     beforeInstall,
   });
+}
+
+function memoryAttempts(initial: InstallAttempt | null = null) {
+  let attempt = initial;
+  const store: InstallAttemptStore & { writes: (InstallAttempt | null)[] } = {
+    writes: [],
+    read: () => attempt,
+    write: (next) => {
+      attempt = next;
+      store.writes.push(next);
+    },
+  };
+  return store;
+}
+
+/** A fake updater whose download is already on disk: available and downloaded at once. */
+function readyUpdater(version = "0.1.1") {
+  const updater = new FakeUpdater();
+  updater.checkForUpdates.mockImplementation(async () => {
+    updater.emit("update-available", { version });
+    return null;
+  });
+  updater.downloadUpdate.mockImplementation(async () => {
+    updater.emit("update-downloaded", { version });
+    return [];
+  });
+  return updater;
 }
 
 describe("UpdateService", () => {
@@ -205,6 +235,164 @@ describe("UpdateService", () => {
     await service.installUpdate();
     expect(beforeInstall).toHaveBeenCalledOnce();
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    expect(service.getStatus().phase).toBe("installing");
+    service.stop();
+  });
+
+  it("records the attempt before the installer starts and notices next start that it failed", async () => {
+    const attempts = memoryAttempts();
+    const updater = readyUpdater();
+    const service = new UpdateService(updater as unknown as AppUpdater, {
+      currentVersion: "0.1.0",
+      enabled: true,
+      beforeInstall: vi.fn(async () => undefined),
+      installAttempts: attempts,
+    });
+    service.start(false);
+    await service.checkForUpdates();
+    await service.downloadUpdate();
+    expect(updater.autoInstallOnAppQuit).toBe(true);
+    expect(service.getStatus()).toMatchObject({ phase: "ready", message: null });
+
+    const order: string[] = [];
+    updater.quitAndInstall.mockImplementation(() => order.push("install"));
+    attempts.write = (next) => {
+      order.push("record");
+      attempts.writes.push(next);
+    };
+    await service.installUpdate();
+    expect(order).toEqual(["record", "install"]);
+    expect(attempts.writes.at(-1)).toMatchObject({ version: "0.1.1", count: 1 });
+    service.stop();
+
+    // Next start, still 0.1.0: Windows asked for permission and got No (or blocked the file).
+    const again = readyUpdater();
+    const second = new UpdateService(again as unknown as AppUpdater, {
+      currentVersion: "0.1.0",
+      enabled: true,
+      beforeInstall: vi.fn(async () => undefined),
+      installAttempts: memoryAttempts({ version: "0.1.1", count: 1, at: "" }),
+    });
+    second.start(false);
+    await second.checkForUpdates();
+    await second.downloadUpdate();
+    expect(second.getStatus().phase).toBe("ready");
+    expect(second.getStatus().message).toContain("did not install");
+    expect(second.getStatus().message).toContain("choose Yes");
+    // No silent install at quit either: that would raise the same prompt every time the app closes.
+    expect(again.autoInstallOnAppQuit).toBe(false);
+    second.stop();
+  });
+
+  it("hands the update to the browser after two attempts that changed nothing", async () => {
+    const updater = readyUpdater();
+    const openDownload = vi.fn(async () => undefined);
+    const service = new UpdateService(updater as unknown as AppUpdater, {
+      currentVersion: "0.1.0",
+      enabled: true,
+      beforeInstall: vi.fn(async () => undefined),
+      installAttempts: memoryAttempts({ version: "0.1.1", count: 2, at: "" }),
+      openDownload,
+    });
+    service.start(false);
+    await service.checkForUpdates();
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(service.getStatus()).toMatchObject({ phase: "available", availableVersion: "0.1.1" });
+    expect(service.getStatus().message).toContain("Download the update");
+
+    await service.downloadUpdate();
+    expect(openDownload).toHaveBeenCalledWith("0.1.1");
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(service.getStatus().message).toContain("Run anyway");
+    service.stop();
+  });
+
+  it("forgets the attempt once the new version is running", () => {
+    const attempts = memoryAttempts({ version: "0.1.1", count: 2, at: "" });
+    const service = new UpdateService(new FakeUpdater() as unknown as AppUpdater, {
+      currentVersion: "0.1.1",
+      enabled: true,
+      beforeInstall: vi.fn(async () => undefined),
+      installAttempts: attempts,
+    });
+    service.start(false);
+    expect(attempts.writes).toEqual([null]);
+    service.stop();
+  });
+
+  it("shows an installer that could not start instead of staying on Installing forever", async () => {
+    const updater = readyUpdater();
+    const afterFailedInstall = vi.fn();
+    const service = new UpdateService(updater as unknown as AppUpdater, {
+      currentVersion: "0.1.0",
+      enabled: true,
+      beforeInstall: vi.fn(async () => undefined),
+      afterFailedInstall,
+    });
+    service.start(false);
+    await service.checkForUpdates();
+    await service.downloadUpdate();
+    updater.quitAndInstall.mockImplementation(() => {
+      updater.emit("error", new Error("No update filepath provided, can't quit and install"));
+    });
+    await service.installUpdate();
+    expect(service.getStatus().phase).toBe("error");
+    expect(service.getStatus().message).toContain("Could not start the installer");
+    expect(service.getStatus().message).toContain("sahkarmi.site");
+    expect(updater.autoInstallOnAppQuit).toBe(false);
+    expect(afterFailedInstall).toHaveBeenCalledOnce();
+    service.stop();
+  });
+
+  it("gives up on an install that neither quit the app nor reported an error", async () => {
+    vi.useFakeTimers();
+    try {
+      const updater = readyUpdater();
+      const service = new UpdateService(updater as unknown as AppUpdater, {
+        currentVersion: "0.1.0",
+        enabled: true,
+        beforeInstall: vi.fn(async () => undefined),
+        installTimeoutMs: 5_000,
+      });
+      service.start(false);
+      await service.checkForUpdates();
+      await service.downloadUpdate();
+      await service.installUpdate();
+      expect(service.getStatus().phase).toBe("installing");
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(service.getStatus().phase).toBe("error");
+      expect(service.getStatus().message).toContain("did not start");
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the last install attempt in a small file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sahkarmi-attempt-"));
+    const store = fileInstallAttemptStore(join(dir, "nested"));
+    expect(store.read()).toBeNull();
+    store.write({ version: "0.1.1", count: 1, at: "2026-11-03T12:00:00.000Z" });
+    expect(store.read()).toEqual({ version: "0.1.1", count: 1, at: "2026-11-03T12:00:00.000Z" });
+    writeFileSync(join(dir, "nested", "update-attempt.json"), "{not json");
+    expect(store.read()).toBeNull();
+    writeFileSync(join(dir, "nested", "update-attempt.json"), JSON.stringify({ version: 3 }));
+    expect(store.read()).toBeNull();
+    store.write(null);
+    expect(readdirSync(join(dir, "nested"))).toEqual([]);
+  });
+
+  it("names the Microsoft Store as the updater of a Store copy", () => {
+    const service = new UpdateService(new FakeUpdater() as unknown as AppUpdater, {
+      currentVersion: "0.1.0",
+      enabled: false,
+      beforeInstall: vi.fn(async () => undefined),
+      unsupportedMessage: "This copy of Sahkarmi is updated by the Microsoft Store.",
+    });
+    expect(service.getStatus()).toMatchObject({
+      phase: "unsupported",
+      message: "This copy of Sahkarmi is updated by the Microsoft Store.",
+    });
   });
 
   it("surfaces up-to-date and recoverable error states", async () => {
