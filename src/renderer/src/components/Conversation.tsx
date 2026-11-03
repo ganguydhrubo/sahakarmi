@@ -38,7 +38,7 @@ import { MESSAGE_REACTIONS, MORE_MESSAGE_REACTIONS } from "../../../shared/ipc";
 import { deriveActivity, isActivePhase } from "../activity";
 import { format } from "../activity-hinglish";
 import { vocab } from "../activity-vocab";
-import { copyText } from "../clipboard";
+import { copySelectionAsPlainText, copyText } from "../clipboard";
 import type { BotMessage, BotProfile } from "../data";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
 import { featureOn } from "../features";
@@ -2174,6 +2174,7 @@ export function Conversation(props: ConversationProps) {
         "browser-panel-expanded": browserLive() && browserExpandedFrom() !== null,
       }}
       style={`--settings-panel-width: ${settingsPanelWidth()}px; --browser-panel-width: ${browserPanelWidth()}px`}
+      onCopy={copySelectionAsPlainText}
       onDragEnter={(event) => {
         if (event.dataTransfer?.types.includes("Files")) setDropActive(true);
       }}

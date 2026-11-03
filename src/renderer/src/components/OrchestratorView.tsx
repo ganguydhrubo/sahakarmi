@@ -489,6 +489,23 @@ export function OrchestratorView(props: {
                   </div>
                 </div>
 
+                <Show when={run().waitingOn}>
+                  {(wait) => (
+                    <div
+                      style={{
+                        padding: "10px 12px",
+                        "border-radius": "8px",
+                        background: "rgba(234, 179, 8, 0.12)",
+                        border: "1px solid rgba(234, 179, 8, 0.4)",
+                        "font-size": "13px",
+                      }}
+                    >
+                      Waiting for your approval: "{wait().title}". Decide it on the Approvals screen
+                      or in Telegram; the run continues on its own afterwards.
+                    </div>
+                  )}
+                </Show>
+
                 {/* Assigned Specialist Instances */}
                 <div>
                   <h4
@@ -646,6 +663,25 @@ export function OrchestratorView(props: {
                             >
                               {task.description}
                             </p>
+                            <Show when={typeof task.inputs.result === "string"}>
+                              <details style={{ "margin-bottom": "8px", "font-size": "12px" }}>
+                                <summary style={{ cursor: "pointer" }}>Result</summary>
+                                <p style={{ "white-space": "pre-wrap", margin: "6px 0 0 0" }}>
+                                  {String(task.inputs.result)}
+                                </p>
+                              </details>
+                            </Show>
+                            <Show when={task.error && task.status === "failed"}>
+                              <p
+                                style={{
+                                  margin: "0 0 8px 0",
+                                  "font-size": "12px",
+                                  color: "#ef4444",
+                                }}
+                              >
+                                {task.error}
+                              </p>
+                            </Show>
 
                             {/* Verification Evidence */}
                             <Show when={task.evidence.length > 0}>

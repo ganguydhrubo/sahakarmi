@@ -15,6 +15,7 @@ import type {
   QueueSnapshot,
 } from "../shared/ipc";
 import { isMessageReaction } from "../shared/ipc";
+import { renameWithRetry } from "./json-file";
 import { isRecord } from "./protocol";
 
 const MAX_ATTACHMENTS = 10;
@@ -107,6 +108,7 @@ export class MailboxStore {
   #state: StoredState = structuredClone(EMPTY_STATE);
   #writeQueue: Promise<void> = Promise.resolve();
   #nextWrite: Promise<void> | null = null;
+  #lastSerialized: string | null = null;
   readonly #messageIndex = new Map<string, StoredMessage>();
   readonly #sourceTurnIndex = new Map<string, string>();
 
@@ -848,9 +850,12 @@ export class MailboxStore {
       .then(async () => {
         this.#nextWrite = null;
         const serialized = `${JSON.stringify(this.#state)}\n`;
+        // Queue events fire often; the file is written only when its content changes.
+        if (serialized === this.#lastSerialized) return;
         const temporaryPath = `${this.#statePath}.${process.pid}.${randomUUID()}.tmp`;
         await writeFile(temporaryPath, serialized, { encoding: "utf8", mode: 0o600 });
-        await rename(temporaryPath, this.#statePath);
+        await renameWithRetry(temporaryPath, this.#statePath);
+        this.#lastSerialized = serialized;
       });
     this.#nextWrite = write;
     this.#writeQueue = write;

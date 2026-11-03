@@ -363,7 +363,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                           }
                         }}
                       >
-                        <span class="provider-model-option-name">
+                        <span class="provider-model-option-name" title={model.id}>
                           <span>{displayModelName(model.name, model.id)}</span>
                           <Show when={railProvider() === "opencode"}>
                             <small>{isFreeModel(model.id) ? "Free" : "Account / credits"}</small>

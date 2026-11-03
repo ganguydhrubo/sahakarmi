@@ -10,6 +10,20 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.18.0": [
+    {
+      icon: "🧩",
+      badge: "Team runs",
+      title: "Team runs that really run",
+      desc: "Each task goes to one of your coworkers. A run pauses for your approval and continues after a restart from the last finished step.",
+    },
+    {
+      icon: "🪟",
+      badge: "Windows",
+      title: "A cleaner window",
+      desc: "No menu bar pops up on Alt any more, copied chat text pastes as plain text, and quitting never hangs.",
+    },
+  ],
   "0.17.1": [
     {
       icon: "📝",

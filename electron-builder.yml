@@ -26,6 +26,13 @@ files:
   - package.json
   - LICENSE
   - NOTICE
+  # The team-run graph library ships its code only; types and source maps are a developer's.
+  - "!node_modules/@langchain/**/*.d.ts"
+  - "!node_modules/@langchain/**/*.d.cts"
+  - "!node_modules/@langchain/**/*.map"
+  - "!node_modules/langsmith/**/*.d.ts"
+  - "!node_modules/langsmith/**/*.d.cts"
+  - "!node_modules/langsmith/**/*.map"
 extraResources:
   - from: node_modules/electron/dist/LICENSE
     to: licenses/Electron-LICENSE
