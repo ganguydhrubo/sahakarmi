@@ -314,6 +314,7 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
 
             <Show when={selected()}>
               {(base) => (
+                // biome-ignore lint/a11y/noStaticElementInteractions: drop target for files; the "Add files" button is the keyboard path
                 <div
                   class="knowledge-detail"
                   classList={{ "knowledge-drop-active": dropActive() }}
