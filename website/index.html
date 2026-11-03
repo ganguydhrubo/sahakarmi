@@ -98,7 +98,7 @@
         "installUrl": "https://sahkarmi.site/install.html",
         "softwareHelp": { "@type": "CreativeWork", "url": "https://sahkarmi.site/install.html" },
         "screenshot": "https://sahkarmi.site/assets/shots/conversation-1440.webp",
-        "featureList": "Team of AI coworkers, each with its own workspace, memory and task queue; built-in browser per coworker with a human Take over button; approvals inbox; shared files; schedules and routines; search across coworkers and messages; free AI models built in through bundled OpenCode; reuses existing Claude Code, Codex CLI and Google Antigravity sign-ins; interface in English, Hindi, Bengali and more Indian languages",
+        "featureList": "Team of AI coworkers, each with its own workspace, memory and task queue; built-in browser per coworker with a human Take over button; approvals inbox; shared files; schedules and routines; search across coworkers and messages; free AI models built in through bundled OpenCode; reuses existing Claude Code, Codex CLI and Google Antigravity sign-ins; interface in English, Hindi, Bengali and more Indian languages; knowledge bases: local document search with page citations and an optional on-device meaning search; team runs that split one goal between coworkers with approvals and resume after a restart",
         "author": { "@id": "https://sahkarmi.site/#organization" },
         "url": "https://sahkarmi.site/"
       },
@@ -154,6 +154,16 @@
             "@type": "Question",
             "name": "Who makes Sahkarmi, and how do I report a problem?",
             "acceptedAnswer": { "@type": "Answer", "text": "Sahkarmi is built in India by the Sahkarmi Team and developed in the open on GitHub. Report bugs as GitHub issues with the app version and steps to reproduce, and report security problems privately through the repository's security policy." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can coworkers answer from my own documents?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Make a knowledge base on the Knowledge page and add files or a folder: PDF, Word, PowerPoint, Excel, CSV, Markdown, text, JSON and HTML. They are indexed on your computer in a SQLite full-text index and never uploaded. Coworkers you allow get the best passages with every message and cite them as [S1]; click a citation to open the file. Optionally download one small model (about 30 MB, MIT licence) so searches also match by meaning, still on your computer." }
+          },
+          {
+            "@type": "Question",
+            "name": "What is a team run, and what is LangGraph?",
+            "acceptedAnswer": { "@type": "Answer", "text": "A team run gives the whole team one goal on the Multi-Agent page. The goal is split into tasks, each task goes to a coworker through its normal queue, and your approvals apply as usual. LangGraph is the open-source library the run is built on: it keeps the run as a graph of steps with a saved checkpoint after each one, so a run waiting for your approval costs nothing and continues from the last finished step after a restart." }
           }
         ]
       }
@@ -615,6 +625,22 @@
     .js .tg-stage.in .m5 { animation-delay: 3s; }
     @keyframes tg-pop { to { opacity: 1; transform: none; } }
     .ln-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+    .kb-grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
+    .kb-panel { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 26px; display: flex; flex-direction: column; gap: 12px; }
+    .kb-panel h3 { font-size: 22px; }
+    .kb-panel > p { color: var(--text-2); font-size: 16px; }
+    .kb-flow { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 8px; }
+    .kb-flow li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg-3); border: 1px solid var(--line); font-weight: 600; font-size: 15px; }
+    .kb-flow li b { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 9px; background: var(--saffron); color: #0f1220; font: 800 14px var(--font-display); }
+    .kb-note { font-size: 15px; color: var(--text-2); border-left: 3px solid var(--leaf-ink); padding-left: 12px; }
+    .kb-tech { margin-top: auto; border-top: 1px solid var(--line); padding-top: 10px; }
+    .kb-tech summary { cursor: pointer; font-weight: 700; color: var(--saffron-ink); list-style: none; }
+    .kb-tech summary::-webkit-details-marker { display: none; }
+    .kb-tech summary::before { content: "+ "; }
+    .kb-tech[open] summary::before { content: "– "; }
+    .kb-tech p { margin-top: 10px; font-size: 15px; color: var(--text-2); }
+    .kb-chips { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+    .kb-chips li { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-3); color: var(--text); }
     .ln-card { position: relative; }
     .ln-icon { display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; margin-bottom: 12px; font-size: 20px; color: #0f1220; background: linear-gradient(135deg, var(--saffron), var(--turmeric)); }
     @media (max-width: 900px) {
@@ -750,6 +776,7 @@
       </a>
       <nav class="nav" id="nav" aria-label="Main navigation">
         <a href="#new" data-i18n="navNew">What's new</a>
+        <a href="#knowledge" data-i18n="navKnowledge">Documents</a>
         <a href="#see" data-i18n="navSee">See it working</a>
         <a href="#how" data-i18n="navHow">How it works</a>
         <a href="#features" data-i18n="navFeatures">Features</a>
@@ -870,6 +897,8 @@
           <li class="tile"><span class="tile-icon" aria-hidden="true">◎</span><h3 data-i18n="b5T">Its own browser</h3><p data-i18n="b5P">Every coworker browses in its own tab. Press Take over for logins and OTPs.</p></li>
           <li class="tile"><span class="tile-icon" aria-hidden="true">↻</span><h3 data-i18n="b6T">Routines on autopilot</h3><p data-i18n="b6P">Hourly, daily or weekly. Build a routine once and it runs on its own.</p></li>
           <li class="tile"><span class="tile-icon" aria-hidden="true">✓</span><h3 data-i18n="b7T">You approve the big moves</h3><p data-i18n="b7P">Payments, customer messages, posts and forms wait in your Approvals inbox.</p></li>
+          <li class="tile tile-wide"><span class="tile-icon" aria-hidden="true">▤</span><h3 data-i18n="b9T">Reads your own documents</h3><p data-i18n="b9P">Add PDFs, Word, Excel or a whole folder. Coworkers answer from them and cite the page as [S1]. Nothing is uploaded.</p></li>
+          <li class="tile tile-wide"><span class="tile-icon" aria-hidden="true">⇶</span><h3 data-i18n="b10T">One job, the whole team</h3><p data-i18n="b10P">Give one goal; it is split between coworkers, pauses for your approvals and resumes after a restart.</p></li>
           <li class="tile tile-wide tile-lang"><span class="tile-big" aria-hidden="true">अ · A · অ</span><h3 data-i18n="b8T">Speaks your language</h3><p data-i18n="b8P">English, हिन्दी and বাংলা. INR with lakh and crore, GST and IST built in.</p></li>
         </ul>
       </div>
@@ -976,6 +1005,51 @@
           <p class="lead" data-i18n="lnLead">Most AI tools forget you when the chat ends. Sahkarmi coworkers keep what they learn, on your own PC, and get faster at your work.</p>
         </div>
         <ul class="grid ln-grid reveal"><li class="card ln-card"><span class="ln-icon" aria-hidden="true">✦</span><h3 data-i18n="ln1T">Learns new skills by itself</h3><p data-i18n="ln1P">After a long task, a fix or a correction from you, the coworker writes the steps down as a skill. Next time it follows them, and improves them.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">⌕</span><h3 data-i18n="ln2T">Remembers what was decided</h3><p data-i18n="ln2P">Coworkers search earlier chats, their own or the whole team's, to recall what was sent or promised, instead of guessing.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">☾</span><h3 data-i18n="ln3T">Works while you sleep</h3><p data-i18n="ln3P">Routines run hourly, daily or weekly on their own. The results are waiting for you in the morning.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">✈</span><h3 data-i18n="ln4T">Reach it from anywhere</h3><p data-i18n="ln4P">Telegram on your phone talks to the same team, with the same memory, as the app on your PC.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">⌂</span><h3 data-i18n="ln5T">Your PC, your data</h3><p data-i18n="ln5P">Skills, memory and chats are plain files on your computer. Open, edit or delete any of them. Skills never keep passwords, OTPs or card numbers.</p></li><li class="card ln-card"><span class="ln-icon" aria-hidden="true">↑</span><h3 data-i18n="ln6T">Always the newest AI</h3><p data-i18n="ln6P">Sahkarmi keeps its own copy of OpenCode, Claude Code and Codex up to date, and switches to the new one when your coworkers are free.</p></li></ul>
+      </div>
+    </section>
+
+    <!-- Knowledge Bases and team runs -->
+    <section id="knowledge" class="kb-band" aria-labelledby="kb-h">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow" data-i18n="kbEyebrow">New: your documents, real teamwork</p>
+          <h2 id="kb-h" data-i18n="kbH2">A team that knows your documents and works as one</h2>
+          <p class="lead" data-i18n="kbLead">Hand your coworkers your price lists, policies, contracts and reports. They answer from those files and show the page they read, and they can share one big job between them. All of it on your own PC.</p>
+        </div>
+        <div class="kb-grid reveal">
+          <article class="kb-panel">
+            <span class="ln-icon" aria-hidden="true">▤</span>
+            <h3 data-i18n="kb1T">Answers from your own files, with the page shown</h3>
+            <p data-i18n="kb1P">Make a knowledge base, add PDFs, Word, Excel, PowerPoint or text files, or a whole folder. Ask anything: the coworker reads the matching passages first and cites them as [S1], [S2]. Click a pill and the file opens.</p>
+            <ol class="kb-flow" aria-label="How documents are used">
+              <li><b>1</b><span data-i18n="kb1s1">Add files or a folder</span></li>
+              <li><b>2</b><span data-i18n="kb1s2">Indexed on your PC, nothing uploaded</span></li>
+              <li><b>3</b><span data-i18n="kb1s3">Answers cite the page: [S1]</span></li>
+            </ol>
+            <p class="kb-note" data-i18n="kb1N">Optional: download one small model (30 MB) once and search by meaning too, so “holiday rules” finds the leave policy. Still on your PC, still no cloud.</p>
+            <details class="kb-tech">
+              <summary data-i18n="kbTechSum">For the technical reader</summary>
+              <p data-i18n="kb1Tech">Local RAG (retrieval-augmented generation). Files are split into passages and indexed in a SQLite FTS5 full-text index with BM25 ranking and word stemming, one database per knowledge base. Each turn is grounded with the best passages, and coworkers also get search and read tools. The optional meaning search is a static embedding model (potion-base-8M, MIT) run in plain TypeScript: int8 vectors per passage, cosine search, reciprocal-rank fusion with the word index. No native code, no GPU, no cloud.</p>
+              <ul class="kb-chips" aria-label="Technologies"><li>RAG</li><li>SQLite FTS5</li><li>BM25</li><li>Static embeddings</li><li>Rank fusion</li><li>Citations</li></ul>
+            </details>
+          </article>
+          <article class="kb-panel">
+            <span class="ln-icon" aria-hidden="true">⇶</span>
+            <h3 data-i18n="kb2T">One big job, shared by the whole team</h3>
+            <p data-i18n="kb2P">Give the team one goal, like “prepare the October GST filing”. It is split into tasks, each goes to the right coworker through its normal queue, and your approvals still apply. Close the app halfway and press Resume later: it carries on from the last finished step.</p>
+            <ol class="kb-flow" aria-label="How a team run works">
+              <li><b>1</b><span data-i18n="kb2s1">One goal in, a plan out</span></li>
+              <li><b>2</b><span data-i18n="kb2s2">Each task to the right coworker</span></li>
+              <li><b>3</b><span data-i18n="kb2s3">Pauses for your approval, resumes after a restart</span></li>
+            </ol>
+            <p class="kb-note" data-i18n="kb2N">Every task shows its result on its own card, so you see who did what.</p>
+            <details class="kb-tech">
+              <summary data-i18n="kbTechSum">For the technical reader</summary>
+              <p data-i18n="kb2Tech">Team runs are a durable LangGraph state graph. Each node hands a task to a coworker’s own queue, so permissions, tools and approvals apply exactly as for a typed message. State is checkpointed after every step: a run waiting for approval costs nothing, and after a crash or restart it resumes from the last completed node. The engine loads only when a run starts, so the app opens as fast as before.</p>
+              <ul class="kb-chips" aria-label="Technologies"><li>LangGraph</li><li>State graph</li><li>Checkpoints</li><li>Resume</li><li>Approvals</li><li>Queues</li></ul>
+            </details>
+          </article>
+        </div>
       </div>
     </section>
 
@@ -1120,6 +1194,8 @@
           <li class="card"><h3 data-i18n="f7">Free AI built in, your sign-ins reused</h3><p data-i18n="f7P">The bundled OpenCode runtime brings free models with no login. Claude Code, Codex (ChatGPT) and Google Antigravity connect with your existing accounts; tokens are never copied.</p></li>
           <li class="card"><h3 data-i18n="f8">Backup model</h3><p data-i18n="f8P">If a paid provider answers nothing or hits its quota, the coworker moves to the free model, tells you why, and sends your message again.</p></li>
           <li class="card"><h3 data-i18n="f9">Your language, your size</h3><p data-i18n="f9P">Interface in English, Hindi and Bengali, with nine more Indian languages partly translated. Light and dark themes, three interface sizes, Enter or Ctrl+Enter to send.</p></li>
+          <li class="card"><h3 data-i18n="f10">Knowledge Bases</h3><p data-i18n="f10P">Your PDFs, Word, Excel, PowerPoint and text files indexed on this computer. Coworkers answer from them and cite the page, slide or sheet as [S1]. Optional 30 MB model for search by meaning, also on your PC.</p></li>
+          <li class="card"><h3 data-i18n="f11">Team runs</h3><p data-i18n="f11P">One goal for the whole team on the Multi-Agent page: tasks go to coworkers through their normal queues, approvals apply, and a run resumes after a restart from the last finished step.</p></li>
         </ul>
       </div>
     </section>
@@ -1297,6 +1373,14 @@
             <summary data-i18n="q8">Who makes Sahkarmi, and how do I report a problem?</summary>
             <p data-i18n="a8">Sahkarmi is built in India by the Sahkarmi Team and developed in the open on GitHub. Report bugs as GitHub issues with the app version and steps to reproduce, and report security problems privately through the repository's security policy.</p>
           </details>
+          <details>
+            <summary data-i18n="q9">Can coworkers answer from my own documents?</summary>
+            <p data-i18n="a9">Yes. Make a knowledge base on the Knowledge page and add files or a folder: PDF, Word, PowerPoint, Excel, CSV, Markdown, text, JSON and HTML. They are indexed on your computer in a SQLite full-text index and never uploaded. Coworkers you allow get the best passages with every message and cite them as [S1]; click a citation to open the file. Optionally download one small model (about 30 MB, MIT licence) so searches also match by meaning, still on your computer.</p>
+          </details>
+          <details>
+            <summary data-i18n="q10">What is a team run, and what is LangGraph?</summary>
+            <p data-i18n="a10">A team run gives the whole team one goal on the Multi-Agent page. The goal is split into tasks, each task goes to a coworker through its normal queue, and your approvals apply as usual. LangGraph is the open-source library the run is built on: it keeps the run as a graph of steps with a saved checkpoint after each one, so a run waiting for your approval costs nothing and continues from the last finished step after a restart.</p>
+          </details>
         </div>
       </div>
     </section>
@@ -1379,6 +1463,7 @@
         navPrivacy: "Privacy",
         navFaq: "FAQ",
         navCommunity: "Community",
+        navKnowledge: "Documents",
         msAnnounce: "New: Sahkarmi is on the Microsoft Store, free",
         msFree: "FREE · ₹0",
         msTitle: "Now on the Microsoft Store",
@@ -1468,6 +1553,32 @@
         ln5P: "Skills, memory and chats are plain files on your computer. Open, edit or delete any of them. Skills never keep passwords, OTPs or card numbers.",
         ln6T: "Always the newest AI",
         ln6P: "Sahkarmi keeps its own copy of OpenCode, Claude Code and Codex up to date, and switches to the new one when your coworkers are free.",
+        kbEyebrow: "New: your documents, real teamwork",
+        kbH2: "A team that knows your documents and works as one",
+        kbLead: "Hand your coworkers your price lists, policies, contracts and reports. They answer from those files and show the page they read, and they can share one big job between them. All of it on your own PC.",
+        kb1T: "Answers from your own files, with the page shown",
+        kb1P: "Make a knowledge base, add PDFs, Word, Excel, PowerPoint or text files, or a whole folder. Ask anything: the coworker reads the matching passages first and cites them as [S1], [S2]. Click a pill and the file opens.",
+        kb1s1: "Add files or a folder",
+        kb1s2: "Indexed on your PC, nothing uploaded",
+        kb1s3: "Answers cite the page: [S1]",
+        kb1N: "Optional: download one small model (30 MB) once and search by meaning too, so “holiday rules” finds the leave policy. Still on your PC, still no cloud.",
+        kbTechSum: "For the technical reader",
+        kb1Tech: "Local RAG (retrieval-augmented generation). Files are split into passages and indexed in a SQLite FTS5 full-text index with BM25 ranking and word stemming, one database per knowledge base. Each turn is grounded with the best passages, and coworkers also get search and read tools. The optional meaning search is a static embedding model (potion-base-8M, MIT) run in plain TypeScript: int8 vectors per passage, cosine search, reciprocal-rank fusion with the word index. No native code, no GPU, no cloud.",
+        kb2T: "One big job, shared by the whole team",
+        kb2P: "Give the team one goal, like “prepare the October GST filing”. It is split into tasks, each goes to the right coworker through its normal queue, and your approvals still apply. Close the app halfway and press Resume later: it carries on from the last finished step.",
+        kb2s1: "One goal in, a plan out",
+        kb2s2: "Each task to the right coworker",
+        kb2s3: "Pauses for your approval, resumes after a restart",
+        kb2N: "Every task shows its result on its own card, so you see who did what.",
+        kb2Tech: "Team runs are a durable LangGraph state graph. Each node hands a task to a coworker’s own queue, so permissions, tools and approvals apply exactly as for a typed message. State is checkpointed after every step: a run waiting for approval costs nothing, and after a crash or restart it resumes from the last completed node. The engine loads only when a run starts, so the app opens as fast as before.",
+        b9T: "Reads your own documents",
+        b9P: "Add PDFs, Word, Excel or a whole folder. Coworkers answer from them and cite the page as [S1]. Nothing is uploaded.",
+        b10T: "One job, the whole team",
+        b10P: "Give one goal; it is split between coworkers, pauses for your approvals and resumes after a restart.",
+        f10: "Knowledge Bases",
+        f10P: "Your PDFs, Word, Excel, PowerPoint and text files indexed on this computer. Coworkers answer from them and cite the page, slide or sheet as [S1]. Optional 30 MB model for search by meaning, also on your PC.",
+        f11: "Team runs",
+        f11P: "One goal for the whole team on the Multi-Agent page: tasks go to coworkers through their normal queues, approvals apply, and a run resumes after a restart from the last finished step.",
         mini: "Download",
         chip: "Free · Open source · Version",
         h1a: "Hire an AI team.",
@@ -1657,6 +1768,10 @@
         a7: "Install from the Microsoft Store and there is no warning at all: Microsoft signs and certifies that package itself. The direct .exe from GitHub is not code-signed yet, so SmartScreen warns; choose More info, then Run anyway. Every release publishes SHA-256 checksums and a build provenance attestation so you can verify the file you downloaded was built from the public source by GitHub Actions.",
         q8: "Who makes Sahkarmi, and how do I report a problem?",
         a8: "Sahkarmi is built in India by the Sahkarmi Team and developed in the open on GitHub. Report bugs as GitHub issues with the app version and steps to reproduce, and report security problems privately through the repository's security policy.",
+        q9: "Can coworkers answer from my own documents?",
+        a9: "Yes. Make a knowledge base on the Knowledge page and add files or a folder: PDF, Word, PowerPoint, Excel, CSV, Markdown, text, JSON and HTML. They are indexed on your computer in a SQLite full-text index and never uploaded. Coworkers you allow get the best passages with every message and cite them as [S1]; click a citation to open the file. Optionally download one small model (about 30 MB, MIT licence) so searches also match by meaning, still on your computer.",
+        q10: "What is a team run, and what is LangGraph?",
+        a10: "A team run gives the whole team one goal on the Multi-Agent page. The goal is split into tasks, each task goes to a coworker through its normal queue, and your approvals apply as usual. LangGraph is the open-source library the run is built on: it keeps the run as a graph of steps with a saved checkpoint after each one, so a run waiting for your approval costs nothing and continues from the last finished step after a restart.",
         comEyebrow: "Community and feedback",
         comH2: "Tell us what to build next",
         comLead: "Report a bug or an idea with the app version (Settings, then About) and the steps you took. Code, translations and docs are welcome under the Apache License 2.0.",
@@ -1731,6 +1846,7 @@
         navPrivacy: "गोपनीयता",
         navFaq: "सवाल",
         navCommunity: "समुदाय",
+        navKnowledge: "दस्तावेज़",
         msAnnounce: "नया: Sahkarmi अब Microsoft Store पर है, मुफ़्त",
         msFree: "मुफ़्त · ₹0",
         msTitle: "अब Microsoft Store पर",
@@ -1820,6 +1936,32 @@
         ln5P: "स्किल, याददाश्त और चैट आपके कंप्यूटर पर साधारण फ़ाइलें हैं. किसी को भी खोलें, बदलें या हटाएँ. स्किल में कभी पासवर्ड, OTP या कार्ड नंबर नहीं रहते.",
         ln6T: "हमेशा सबसे नया AI",
         ln6P: "सहकर्मी OpenCode, Claude Code और Codex की अपनी कॉपी अपडेट रखता है, और सहकर्मी खाली होने पर नई कॉपी पर चला जाता है.",
+        kbEyebrow: "नया: आपके दस्तावेज़, असली टीमवर्क",
+        kbH2: "ऐसी टीम जो आपके दस्तावेज़ जानती है और एक होकर काम करती है",
+        kbLead: "अपने सहकर्मियों को अपनी प्राइस लिस्ट, नीतियाँ, कॉन्ट्रैक्ट और रिपोर्ट दें. वे उन्हीं फ़ाइलों से जवाब देते हैं, जो पन्ना पढ़ा वह दिखाते हैं, और एक बड़ा काम आपस में बाँट सकते हैं. सब कुछ आपके अपने PC पर.",
+        kb1T: "आपकी अपनी फ़ाइलों से जवाब, पन्ने के साथ",
+        kb1P: "एक ज्ञान-कोश बनाएँ, PDF, Word, Excel, PowerPoint या टेक्स्ट फ़ाइलें या पूरा फ़ोल्डर जोड़ें. कुछ भी पूछें: सहकर्मी पहले मिलते-जुलते अंश पढ़ता है और उन्हें [S1], [S2] के रूप में उद्धृत करता है. पिल पर क्लिक करें और फ़ाइल खुल जाती है.",
+        kb1s1: "फ़ाइलें या फ़ोल्डर जोड़ें",
+        kb1s2: "आपके PC पर इंडेक्स, कुछ अपलोड नहीं",
+        kb1s3: "जवाब में पन्ने का हवाला: [S1]",
+        kb1N: "वैकल्पिक: एक छोटा मॉडल (30 MB) एक बार डाउनलोड करें और अर्थ से भी खोजें, ताकि “holiday rules” से छुट्टी नीति मिल जाए. फिर भी आपके PC पर, फिर भी बिना क्लाउड.",
+        kbTechSum: "तकनीकी पाठकों के लिए",
+        kb1Tech: "लोकल RAG (retrieval-augmented generation). फ़ाइलें अंशों में बँटकर SQLite FTS5 फ़ुल-टेक्स्ट इंडेक्स में जाती हैं, BM25 रैंकिंग और वर्ड स्टेमिंग के साथ, हर ज्ञान-कोश का अपना डेटाबेस. हर टर्न सबसे अच्छे अंशों से ग्राउंड होता है, और सहकर्मियों को खोज और पढ़ने के टूल भी मिलते हैं. वैकल्पिक अर्थ-खोज एक स्टैटिक एम्बेडिंग मॉडल (potion-base-8M, MIT) है जो सादे TypeScript में चलता है: हर अंश के int8 वेक्टर, कोसाइन खोज, वर्ड इंडेक्स के साथ reciprocal-rank fusion. न नेटिव कोड, न GPU, न क्लाउड.",
+        kb2T: "एक बड़ा काम, पूरी टीम में बँटा",
+        kb2P: "टीम को एक लक्ष्य दें, जैसे “अक्टूबर की GST फ़ाइलिंग तैयार करो”. वह कामों में बँटता है, हर काम सही सहकर्मी की सामान्य कतार से जाता है, और आपकी मंज़ूरियाँ वैसे ही लागू रहती हैं. बीच में ऐप बंद करें और बाद में Resume दबाएँ: वह आख़िरी पूरे कदम से आगे बढ़ता है.",
+        kb2s1: "एक लक्ष्य अंदर, एक योजना बाहर",
+        kb2s2: "हर काम सही सहकर्मी को",
+        kb2s3: "आपकी मंज़ूरी के लिए रुकता है, रीस्टार्ट के बाद फिर चलता है",
+        kb2N: "हर काम का नतीजा उसके अपने कार्ड पर दिखता है, तो आप देखते हैं किसने क्या किया.",
+        kb2Tech: "टीम रन एक टिकाऊ LangGraph स्टेट ग्राफ़ हैं. हर नोड एक काम सहकर्मी की अपनी कतार में देता है, इसलिए अनुमतियाँ, टूल और मंज़ूरियाँ ठीक वैसे लागू होती हैं जैसे टाइप किए संदेश पर. हर कदम के बाद स्टेट चेकपॉइंट होता है: मंज़ूरी का इंतज़ार करता रन कुछ खर्च नहीं करता, और क्रैश या रीस्टार्ट के बाद आख़िरी पूरे नोड से फिर चलता है. इंजन तभी लोड होता है जब रन शुरू हो, तो ऐप पहले जितनी तेज़ी से खुलता है.",
+        b9T: "आपके अपने दस्तावेज़ पढ़ता है",
+        b9P: "PDF, Word, Excel या पूरा फ़ोल्डर जोड़ें. सहकर्मी उन्हीं से जवाब देते हैं और पन्ने का हवाला [S1] देते हैं. कुछ अपलोड नहीं होता.",
+        b10T: "एक काम, पूरी टीम",
+        b10P: "एक लक्ष्य दें; वह सहकर्मियों में बँटता है, आपकी मंज़ूरियों के लिए रुकता है और रीस्टार्ट के बाद फिर चलता है.",
+        f10: "ज्ञान-कोश",
+        f10P: "आपकी PDF, Word, Excel, PowerPoint और टेक्स्ट फ़ाइलें इसी कंप्यूटर पर इंडेक्स. सहकर्मी उनसे जवाब देते हैं और पन्ने, स्लाइड या शीट का हवाला [S1] देते हैं. अर्थ से खोज के लिए वैकल्पिक 30 MB मॉडल, वह भी आपके PC पर.",
+        f11: "टीम रन",
+        f11P: "मल्टी-एजेंट पेज पर पूरी टीम के लिए एक लक्ष्य: काम सहकर्मियों की सामान्य कतारों से जाते हैं, मंज़ूरियाँ लागू रहती हैं, और रीस्टार्ट के बाद रन आख़िरी पूरे कदम से फिर चलता है.",
         mini: "डाउनलोड",
         chip: "मुफ़्त · ओपन सोर्स · वर्ज़न",
         h1a: "AI टीम रखिए.",
@@ -2009,6 +2151,10 @@
         a7: "Microsoft Store से इंस्टॉल करें तो कोई चेतावनी नहीं आती: उस पैकेज को Microsoft खुद साइन और प्रमाणित करता है. GitHub वाली सीधी .exe पर अभी कोड-साइनिंग नहीं है, इसलिए SmartScreen चेतावनी दिखाता है; More info, फिर Run anyway चुनें. हर रिलीज़ के साथ SHA-256 चेकसम और बिल्ड प्रोवेनेंस अटेस्टेशन प्रकाशित होते हैं, ताकि आप जाँच सकें कि डाउनलोड की फ़ाइल GitHub Actions ने सार्वजनिक सोर्स से बनाई है.",
         q8: "सहकर्मी कौन बनाता है, और समस्या की रिपोर्ट कैसे करूँ?",
         a8: "सहकर्मी भारत में Sahkarmi Team बनाती है और इसका विकास GitHub पर खुले में होता है. बग GitHub issue के रूप में ऐप वर्ज़न और दोहराने के कदमों के साथ रिपोर्ट करें, और सुरक्षा की समस्याएँ रिपॉज़िटरी की सुरक्षा नीति के ज़रिए निजी तौर पर बताएँ.",
+        q9: "क्या सहकर्मी मेरे अपने दस्तावेज़ों से जवाब दे सकते हैं?",
+        a9: "हाँ. Knowledge पेज पर एक ज्ञान-कोश बनाएँ और फ़ाइलें या फ़ोल्डर जोड़ें: PDF, Word, PowerPoint, Excel, CSV, Markdown, टेक्स्ट, JSON और HTML. वे आपके कंप्यूटर पर SQLite फ़ुल-टेक्स्ट इंडेक्स में इंडेक्स होती हैं और कभी अपलोड नहीं होतीं. जिन सहकर्मियों को आप अनुमति दें, उन्हें हर संदेश के साथ सबसे अच्छे अंश मिलते हैं और वे [S1] के रूप में हवाला देते हैं; हवाले पर क्लिक करके फ़ाइल खोलें. चाहें तो एक छोटा मॉडल (लगभग 30 MB, MIT लाइसेंस) डाउनलोड करें ताकि खोज अर्थ से भी मिले, वह भी आपके कंप्यूटर पर.",
+        q10: "टीम रन क्या है, और LangGraph क्या है?",
+        a10: "टीम रन मल्टी-एजेंट पेज पर पूरी टीम को एक लक्ष्य देता है. लक्ष्य कामों में बँटता है, हर काम सहकर्मी की सामान्य कतार से जाता है, और आपकी मंज़ूरियाँ हमेशा की तरह लागू रहती हैं. LangGraph वह ओपन-सोर्स लाइब्रेरी है जिस पर रन बना है: यह रन को कदमों के ग्राफ़ की तरह रखती है और हर कदम के बाद चेकपॉइंट सहेजती है, इसलिए मंज़ूरी का इंतज़ार करता रन कुछ खर्च नहीं करता और रीस्टार्ट के बाद आख़िरी पूरे कदम से आगे बढ़ता है.",
         comEyebrow: "समुदाय और फ़ीडबैक",
         comH2: "बताइए, आगे क्या बनाएँ",
         comLead: "ऐप का वर्ज़न (Settings, फिर About) और आपने क्या किया, उसके साथ बग या आइडिया भेजिए. Apache License 2.0 के तहत कोड, अनुवाद और डॉक्स का स्वागत है.",

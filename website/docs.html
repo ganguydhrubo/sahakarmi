@@ -80,6 +80,8 @@
       <li><a href="#work">Give it work</a></li>
       <li><a href="#browser">Browser and approvals</a></li>
       <li><a href="#telegram">Telegram</a></li>
+      <li><a href="#knowledge">Knowledge Bases</a></li>
+      <li><a href="#team-runs">Team runs</a></li>
       <li><a href="#updates">Updates</a></li>
       <li><a href="#data">Where data lives</a></li>
     </ul>
@@ -149,10 +151,32 @@
     </ol>
     <p>Your message goes into the coworker's normal queue and the reply comes back to Telegram. Use <code>/coworkers</code> to list coworkers and <code>/use</code> to switch. New approvals are announced in Telegram, but you allow or deny them in the app. The <strong>Show me how</strong> guide in Settings walks through every step with pictures.</p>
 
-    <h2 id="updates">8. Updates</h2>
+    <h2 id="knowledge">8. Knowledge Bases: answers from your documents</h2>
+    <p>Coworkers can answer from your own files and show you where the answer came from. Everything is indexed on your computer; no file is uploaded.</p>
+    <ol>
+      <li>Open <strong>Knowledge</strong> in the left rail and click <strong>New knowledge base</strong>. Name it, for example “Price lists” or “Company policies”.</li>
+      <li>Click <strong>Add files</strong> or <strong>Add folder</strong>, or drop files on the page. PDF, Word, PowerPoint, Excel, CSV, Markdown, text, JSON and HTML work. A linked folder is kept in sync: <strong>Check for changes</strong> re-indexes files that changed and marks files that moved away.</li>
+      <li>Choose who may search it: every coworker in the workspace, or only the ones you pick. “Hide from coworkers for now” keeps a base to yourself while you organise it.</li>
+      <li>Ask a coworker anything. The best passages go in with your message and the reply cites them as <strong>[S1]</strong>, <strong>[S2]</strong>; click a pill to open the file. Citations keep the page for PDFs, the slide for PowerPoint, the sheet for Excel and the heading for Word, Markdown and HTML. Coworkers can also search and read your documents themselves. <strong>Try a search</strong> on the Knowledge page shows what they will find.</li>
+      <li><strong>Smarter search (optional):</strong> click <strong>Download and turn on</strong> to fetch one small model (about 30 MB, MIT licence, from huggingface.co) once. Searches then match by meaning as well as by words, still on your computer. <strong>Turn off and delete</strong> removes the model and every vector.</li>
+    </ol>
+    <p>Settings, <strong>Features</strong> has the switches <strong>Knowledge Bases</strong> and <strong>Documents in every message</strong>. Scanned PDFs without a text layer cannot be read yet.</p>
+    <div class="box"><strong>How it works, for the technical reader.</strong> Local retrieval-augmented generation (RAG): passages in a SQLite FTS5 full-text index (BM25, stemmed), one database per base under the app data folder; a grounding block plus search and read tools for the coworker; the optional meaning search is a static embedding model (potion-base-8M) with int8 vectors per passage, cosine search and reciprocal-rank fusion with the word index, all in plain TypeScript with no native code or GPU.</div>
+
+    <h2 id="team-runs">9. Team runs: one goal for the whole team</h2>
+    <p>On the <strong>Multi-Agent</strong> page, give the team one goal. It is split into tasks, each task goes to the right coworker through its normal queue, and your approvals apply exactly as if you had typed the task yourself.</p>
+    <ul>
+      <li>A run that needs your approval pauses by itself, costs nothing while it waits, and continues when you decide, in the app or in Telegram.</li>
+      <li>Close the app in the middle and press <strong>Resume</strong> later: the run carries on from the last finished step.</li>
+      <li>Each task shows its result on its own card. Export the whole run as Markdown, text or JSON.</li>
+      <li>Settings, <strong>Features</strong>: “Team runs: durable engine” switches between this engine and the older in-app planner.</li>
+    </ul>
+    <div class="box"><strong>How it works, for the technical reader.</strong> The engine is a durable LangGraph state graph: each node hands one task to a coworker’s queue, state is checkpointed after every step, a run waiting for approval holds no process, and after a restart it resumes from the last completed node. The engine loads only when a run starts, so the app opens as fast as before.</div>
+
+    <h2 id="updates">10. Updates</h2>
     <p>Sahkarmi updates itself. It checks GitHub Releases for a new version after launch and then from time to time. In Settings, <strong>Updates</strong>, choose whether updates download by themselves or ask first, or check now. A downloaded update installs when you quit or restart Sahkarmi. Your coworkers, chats and settings are kept. The <a href="/changelog.html">changelog</a> lists what changed in each version.</p>
 
-    <h2 id="data">9. Where your data lives</h2>
+    <h2 id="data">11. Where your data lives</h2>
     <p>Everything stays on your computer. App data is in <code>%APPDATA%\Sahkarmi</code>. Coworker folders, Shared files and Downloads are in <code>%USERPROFILE%\Sahkarmi</code>. There is no Sahkarmi account or cloud. The text a coworker works on goes to the AI provider you chose. The <a href="/privacy.html">privacy policy</a> explains what is stored, what is sent and how to delete it.</p>
 
     <h2 id="help">Need help?</h2>
