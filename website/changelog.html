@@ -79,6 +79,15 @@
     <p class="lead">Every released version of the Sahkarmi desktop app, newest first. Version 0.13.0 is the latest. Each version links to its GitHub release, where the installer, checksums and build attestation are attached.</p>
     <p>The same list is kept in <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">CHANGELOG.md</a> in the repository. The project follows <a href="https://semver.org/" target="_blank" rel="noopener noreferrer">Semantic Versioning</a>. Some early versions were tagged but not published, so a few numbers are missing.</p>
     <ul class="toc">
+      <li><a href="#v0-21-0">0.21.0</a></li>
+      <li><a href="#v0-20-0">0.20.0</a></li>
+      <li><a href="#v0-19-0">0.19.0</a></li>
+      <li><a href="#v0-18-0">0.18.0</a></li>
+      <li><a href="#v0-17-1">0.17.1</a></li>
+      <li><a href="#v0-17-0">0.17.0</a></li>
+      <li><a href="#v0-16-0">0.16.0</a></li>
+      <li><a href="#v0-15-0">0.15.0</a></li>
+      <li><a href="#v0-14-0">0.14.0</a></li>
       <li><a href="#v0-13-0">0.13.0</a></li>
       <li><a href="#v0-12-7">0.12.7</a></li>
       <li><a href="#v0-12-6">0.12.6</a></li>
@@ -134,6 +143,125 @@
       <li><a href="#v0-2-0">0.2.0</a></li>
     </ul>
 
+    <h2 id="v0-21-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.21.0" target="_blank" rel="noopener noreferrer">Version 0.21.0</a> <span class="date">3 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Smarter search (optional): the Knowledge page has a card to download one small embedding model (potion-base-8M by The Minish Lab, MIT, about 30 MB, from huggingface.co) once. With it installed, every passage gets a 256-byte vector and searches match by meaning too, so "holiday rules" finds the leave policy even when the words differ. The model is a lookup table that runs in plain JavaScript inside the app: no native code, no GPU, no cloud, and your documents never leave the computer. It loads on the first search (a quarter of a second) and is dropped from memory again after ten idle minutes. "Turn off and delete" removes the files and every vector.</li>
+      <li>Word stemming in the full-text index: "registrations" now finds "registration", "running" finds "run". Existing bases are upgraded on first open, no re-indexing needed.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Searches with the model installed fuse the word ranking and the meaning ranking (reciprocal rank), keep the per-file cap, and only use the model for Latin-script queries (Hindi and Bengali script stay on the word index). Weak meaning matches are dropped, so unrelated messages still get no document excerpts.</li>
+    </ul>
+    <h2 id="v0-20-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.20.0" target="_blank" rel="noopener noreferrer">Version 0.20.0</a> <span class="date">3 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Knowledge Bases: a new "Knowledge" page where you make a base (for example "Price lists" or "Company policies") and add PDF, Word, PowerPoint, Excel, CSV, Markdown, text, JSON or HTML files, single files or whole folders, or drop them on the page. Everything is read and indexed on this computer, in a SQLite full-text index next to Sahkarmi's own data; nothing is uploaded.</li>
+      <li>Coworkers answer from your documents. Every message you send is first matched against the bases the coworker may read, and the best passages go in with the message, so the coworker answers from your own files and cites them as [S1], [S2]. A pill in the reply opens the file. Coworkers also have three tools, list_knowledge_bases, search_knowledge_base and read_document_section, on every provider (Codex, Claude, Gemini, OpenCode and the others).</li>
+      <li>Citations keep their place: page for PDFs, slide for PowerPoint (with speaker notes), sheet for Excel (rows as "a | b | c", with the header row on every passage), and the heading for Word, Markdown and HTML. Search works in English, Hindi and Bengali, including Hinglish.</li>
+      <li>Each base says who may search it: every coworker in the workspace, or only the ones you pick, and a base can be hidden from coworkers while you organise it. The Knowledge page has a search box to try what coworkers will find, and "Check for changes" re-indexes files that changed and marks files that moved away.</li>
+      <li>Settings &gt; Features has two switches: "Knowledge Bases" and "Documents in every message".</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Nothing new is downloaded or bundled for this: the index uses the SQLite built into the app and the PDF reader it already had, so the installer size, start-up time and memory use stay as they were. Indexing runs one file at a time in the background and yields between files.</li>
+    </ul>
+    <h2 id="v0-19-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.19.0" target="_blank" rel="noopener noreferrer">Version 0.19.0</a> <span class="date">3 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Coworkers keep going on their own. When a coworker stops after an answer that is only a plan, or asks "shall I continue?" without a real question for you, Sahkarmi sends "Continue" for you (up to eight times for a plan, twice for a next step). Settings &gt; Features has the switch "Keep going without babysitting".</li>
+      <li>Change the model or thinking level while a coworker works. The header and settings pickers stay open during a turn; the choice is kept and starts with the next turn, and the header says "After this turn" until then.</li>
+      <li>Thinking levels None, Minimal and Ultra are available on the models that support them.</li>
+      <li>Every coworker has an Instructions file (AGENTS.md in its own folder). Settings shows it, you can edit it there or open it in the folder, and a coworker that is asked to remember a rule writes it into that file. A save that would overwrite a change the coworker just made is refused once so nothing is lost, and the chat notes when the coworker updated its rules.</li>
+      <li>Branch from here: any coworker answer has "Branch from here" in its menu. It makes a copy of the coworker, with the conversation up to that answer as its starting point, so you can try a different direction without losing the original.</li>
+      <li>Folders in the sidebar, three levels deep. Make one with the "+" on the workspace name, drag coworkers and folders into each other, or use "Move to folder" in a coworker's menu. A nested folder shows its path, and folded folders stay folded.</li>
+      <li>The chat says "Waiting for the AI service" when a working coworker has heard nothing from its provider for a minute, and "No internet" when the computer is offline.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Messages that are only waiting in a coworker's queue no longer block deleting it; they go with the coworker. Only work that has really started still blocks a delete.</li>
+      <li>A message sent while the provider needs a sign-in stays in the queue and starts by itself after you sign in, instead of failing.</li>
+      <li>Browser steps return a one-line status instead of a whole page snapshot, so coworkers spend far fewer tokens on web tasks. A coworker asks for the page only when it needs it, and can take a screenshot of one element.</li>
+    </ul>
+    <h2 id="v0-18-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.18.0" target="_blank" rel="noopener noreferrer">Version 0.18.0</a> <span class="date">3 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Team runs now do real work. The Multi-Agent screen hands each task to one of your coworkers through its normal queue, so permissions and approvals apply exactly as if you had typed the task yourself. A run that needs your approval pauses by itself, costs nothing while it waits, and continues when you decide on the computer or in Telegram. Close the app in the middle and press Resume later: the run carries on from the last finished step. Each task shows its result on its card. Settings &gt; Features has a switch, "Team runs: durable engine"; off, the older in-app planner is used. The engine loads only when a team run starts, so the app opens as fast as before.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>On Windows there is no menu bar any more, so the Alt key no longer opens one over the chat. Ctrl+. still stops all coworkers.</li>
+      <li>Copying selected chat text gives plain text, so a paste into WhatsApp, a mail or a document carries no app colours or layout.</li>
+      <li>Model names that do not fit now wrap in the model picker instead of being cut off.</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Queue changes no longer rewrite the queue file when nothing in it changed, and a save that Windows briefly blocks (antivirus, indexing, sync) is retried instead of failing.</li>
+      <li>Custom MCP servers that start slowly (npx on Windows) now get 20 seconds to start in ChatGPT (Codex) coworkers instead of ten.</li>
+      <li>Claude's model list and plan limits no longer inherit Claude Code's own session variables when Sahkarmi is started from inside Claude Code.</li>
+      <li>Quitting never hangs: if a coworker process or a dialog holds the app, it closes after eight seconds anyway.</li>
+    </ul>
+    <h2 id="v0-17-1"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.17.1" target="_blank" rel="noopener noreferrer">Version 0.17.1</a> <span class="date">2 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>The list of steps in a chat no longer opens and closes by itself while a coworker works, so the chat stays still. It opens only when you click it; the running step's name shows on its header.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Every approval now explains itself in everyday English: what the coworker wants to do, why, which website or service is involved, what happens if you approve and what gets shared. This also shows in the Telegram notification. Technical detail stays folded away.</li>
+      <li>A coworker's approval request that does not explain itself is sent back to the coworker to rewrite instead of reaching you.</li>
+      <li>A connected-app approval from an older version must be asked for again before the action can run.</li>
+    </ul>
+    <h2 id="v0-17-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.17.0" target="_blank" rel="noopener noreferrer">Version 0.17.0</a> <span class="date">1 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Approve or reject from Telegram: a notification has Approve, Reject and Details buttons, plus <code>/pending</code>, <code>/approve</code>, <code>/reject</code>, <code>/details</code>, <code>/cancel</code>, <code>/status</code>, <code>/policy</code> and <code>/ceo</code> commands. The decision reaches Sahkarmi at once, and the Telegram message updates when a request is decided on the computer, runs out of time or is cancelled. Only the paired owner can decide. Chats paired before this version are recognised without pairing again.</li>
+      <li>Delete a workspace from its menu (Team and CEO): move its coworkers to another workspace, or delete them with it, after a confirmation. A workspace whose coworkers are working, and your only workspace, cannot be deleted.</li>
+      <li>A CEO for a workspace: choose one coworker. It gives the others their work, collects their results and reports to you in one reply, also on Telegram. The CEO has no extra permissions.</li>
+      <li>You can give the CEO authority to decide some kinds of approval, for 24 hours at a time. It can pass part of that to an employee, never more; taking it back ends what was passed on. Nobody decides their own request, and every decision records who made it.</li>
+      <li>Publishing accounts: a coworker is tied to one Facebook, Instagram or LinkedIn account after you approve it. If another account is signed in, or the account cannot be confirmed, it stops; it never falls back to a different account. Connected-app posting uses the tied connection too.</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Coworkers no longer interfere with each other's work: each can use only its own browser pages, cannot read another's private folder or search another's chats, and messages stay inside the workspace. Under a CEO, work goes through the CEO. Coworkers can still talk to each other.</li>
+      <li>Every coworker now has its own browser with its own sign-ins, so one coworker's sign-in or open page no longer changes another's. Existing sign-ins (cookies) are copied once to the coworkers that used those sites, and the old browser data is kept. Sites that keep their sign-in outside cookies, such as WhatsApp Web, need signing in again.</li>
+      <li>The approval screen no longer flickers. Repeated updates no longer rebuild the cards, so a note you are typing stays, and repeated identical requests show as one card.</li>
+      <li>A Telegram chat no longer changes coworker silently when a new coworker is added.</li>
+      <li>Saving a coworker's settings retries when Windows briefly holds the file.</li>
+      <li>Requests still waiting from before a restart now show straight away on the Approvals screen.</li>
+      <li>Less freezing with many browser pages. Pages changing their title or loading state no longer flood the app, page pictures are small and paused while the window is hidden, and at most six unused pages stay awake (each is a separate process). Sleeping pages stay in the list and wake signed in. Saving chat, approval and file records no longer blocks the app in a burst.</li>
+      <li>AI servers no coworker uses no longer stay in memory. OpenCode and the other agent servers stop after a minute if no coworker uses them, or after 15 quiet minutes, and start again when used.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Help now explains the CEO, Telegram approvals, each coworker's browser, publishing accounts and deleting a workspace.</li>
+    </ul>
+    <h2 id="v0-16-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.16.0" target="_blank" rel="noopener noreferrer">Version 0.16.0</a> <span class="date">28 October 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Model usage showed far too many Claude tokens (more than 240 crore in a week) and a cost of over US$ 1,700. Claude Code reports a running total for each chat, and when a chat was reopened after a restart that total included everything from before, so the same work was counted again and again. Each chat is now counted once, across restarts. The old Claude counts were too high to keep, so they were removed and counting starts again from the update; a notice on the page says so for a week. ChatGPT (Codex) counts were correct and are kept.</li>
+      <li>Claude's plan limits now show real percentages: the 5-hour window, the weekly limit and any per-model weekly limit, each with its reset time. They are read when the app starts and when you open Model usage, without sending a prompt, and updated during each Claude task. Before, only a "Close to the limit" status was kept, and it could stay on screen days after the limit reset.</li>
+      <li>A limit window that has already reset no longer shows its old percentage.</li>
+      <li>Team memory showed "&amp;amp;" instead of "&amp;" in titles and notes, and long notes (file paths, commit hashes) spilled into the next card. Text now wraps inside the card, and long notes fold with a Show all button.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>The rings above Settings show each provider's logo and fill up as its real limit is used, for every provider that reports a limit (now Claude as well as ChatGPT).</li>
+      <li>Model usage has a cleaner layout: one card per provider with short numbers that fit (3.68Cr; the exact count is in the tooltip), clear status pills, and providers that report nothing listed in one row instead of empty cards. The cost is labelled as what the work would cost at API prices, not a bill, when you are on a fixed-price plan.</li>
+      <li>Team memory cards have a colour strip for each kind, a count on each filter, and the date each note was last updated.</li>
+    </ul>
+    <h2 id="v0-15-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.15.0" target="_blank" rel="noopener noreferrer">Version 0.15.0</a> <span class="date">28 October 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Getting started help that stays out of the way. A new install shows a small welcome card in the empty chat (Start a task, Explore features, Not now). It is not a popup: the message box keeps working, and once dismissed it does not come back. Anyone who already has chats never sees it.</li>
+      <li>A Help button (?) above Settings in the left rail. It explains the screen you are on, has a short Getting started list (a step shows Done only when the app can confirm it), a three-step "Show me around" tour, and Reset guidance. It works offline and in English, Hindi and Bengali.</li>
+    </ul>
+    <h2 id="v0-14-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.14.0" target="_blank" rel="noopener noreferrer">Version 0.14.0</a> <span class="date">28 October 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Chats with Claude coworkers keep their order. Before, switching to another coworker and back could move older replies to the bottom of the chat. This happened after a long chat was summarised, after you pressed Stop, or after a background task finished.</li>
+      <li>Claude Code's own notes (the "This session is being continued…" summary, "[Request interrupted by user]" and background-task notices) no longer show up as messages from you.</li>
+    </ul>
     <h2 id="v0-13-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.13.0" target="_blank" rel="noopener noreferrer">Version 0.13.0</a> <span class="date">27 October 2026</span></h2>
     <h3>Added</h3>
     <ul>
