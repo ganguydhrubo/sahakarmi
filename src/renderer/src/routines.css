@@ -442,8 +442,12 @@
   overflow: hidden;
 }
 .routines-view .center-view-intro {
-  padding: 12px 20px 0;
+  padding: 16px 24px 12px;
   margin: 0;
+}
+.routines-view .center-view-empty {
+  padding: 0 24px;
+  margin: 0 0 16px;
 }
 .routines-view .routines-layout {
   display: flex;
@@ -455,7 +459,7 @@
 }
 .routine-switcher {
   display: flex;
-  padding: 12px 20px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--border);
 }
 .routine-switcher select {

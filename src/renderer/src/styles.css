@@ -6948,8 +6948,18 @@ body {
 
 .center-view-empty,
 .center-view-intro {
-  max-width: 640px;
+  max-width: 760px;
+  margin: 0 0 16px;
   color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.center-view-empty {
+  margin: 12px 0 16px;
+}
+
+.center-view-intro + .center-view-empty {
+  margin-top: 0;
 }
 
 .center-view-intro code {
@@ -7340,6 +7350,524 @@ body {
 
 .telegram-token {
   width: min(420px, 100%);
+}
+
+/* The pairing code is the one thing to read on this screen: big, boxed, copyable. */
+.telegram-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, 100%);
+  margin: 4px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--primary-rgb) / 0.4);
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+}
+
+.telegram-pair-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.telegram-pair-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.telegram-pair-code {
+  padding: 8px 14px;
+  border: 1px dashed rgb(var(--primary-rgb) / 0.6);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  user-select: all;
+}
+
+.settings-card .telegram-pair-copy {
+  padding: 7px 14px;
+}
+
+/* Team runs (orchestrator): same paper, lines and saffron as the rest of the app. */
+.orch-view {
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+}
+
+.orch-header {
+  margin-bottom: 20px;
+}
+
+.orch-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.orch-header h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.orch-header p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.orch-badge {
+  padding: 2px 9px;
+  border: 1px solid rgb(var(--primary-rgb) / 0.3);
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.orch-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.orch-objective {
+  width: 100%;
+  min-height: 84px;
+  padding: 12px;
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.orch-objective::placeholder {
+  color: var(--text-muted);
+}
+
+.orch-objective:focus {
+  outline: 2px solid rgb(var(--primary-rgb) / 0.45);
+  outline-offset: 1px;
+}
+
+.orch-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.orch-modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.orch-mode {
+  padding: 5px 12px;
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.orch-mode:hover {
+  background: var(--surface-2);
+}
+
+.orch-mode.orch-mode-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.orch-launch:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.orch-empty {
+  padding: 48px 16px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.orch-empty p {
+  margin: 0;
+}
+
+.orch-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.orch-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.orch-section-title {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.orch-run {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.orch-run.orch-run-active {
+  border-color: rgb(var(--primary-rgb) / 0.6);
+  background: var(--primary-soft);
+}
+
+.orch-run-head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.orch-strategy {
+  color: var(--primary-ink);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.orch-strategy-single {
+  color: var(--text-secondary);
+}
+
+.orch-run-objective {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.orch-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.orch-status[data-status="completed"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.orch-status[data-status="failed"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.orch-status[data-status="running"],
+.orch-status[data-status="multi"] {
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+}
+
+.orch-status[data-status="repairing"] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.orch-status-strategy {
+  font-size: 11px;
+  text-transform: none;
+}
+
+.orch-detail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.orch-detail-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.orch-detail-title {
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
+.orch-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.orch-detail-time {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.orch-detail h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.orch-controls {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.orch-controls button {
+  border: 1px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+}
+
+.orch-controls .orch-resume {
+  border-color: var(--success-fill);
+  background: var(--success-fill);
+  color: #fff;
+}
+
+.orch-controls .orch-cancel {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+.orch-wait {
+  padding: 10px 12px;
+  border: 1px solid rgb(var(--warning-rgb) / 0.5);
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.orch-instances {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.orch-instance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
+  font-size: 12px;
+}
+
+.orch-instance-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.orch-instance-role {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.orch-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.orch-task {
+  padding: 12px 14px;
+  border: 1px solid var(--sahkarmi-line);
+  border-left: 4px solid var(--sahkarmi-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
+}
+
+.orch-task[data-status="completed"] {
+  border-left-color: var(--success-fill);
+}
+
+.orch-task[data-status="running"] {
+  border-left-color: var(--primary);
+}
+
+.orch-task[data-status="repairing"] {
+  border-left-color: var(--warning-fill);
+}
+
+.orch-task[data-status="failed"] {
+  border-left-color: var(--danger);
+}
+
+.orch-task-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.orch-task-title {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.orch-task-bot {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.orch-task p {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.orch-task-result {
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+
+.orch-task-result summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.orch-task-result p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.orch-task .orch-task-error {
+  color: var(--danger);
+}
+
+.orch-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.orch-evidence span {
+  padding: 2px 8px;
+  border: 1px solid rgb(var(--success-rgb) / 0.3);
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.orch-evidence span[data-passed="false"] {
+  border-color: rgb(var(--danger-rgb) / 0.3);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.orch-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.orch-msg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
+  font-size: 12.5px;
+}
+
+.orch-msg-type {
+  color: var(--primary-ink);
+  font-weight: 700;
+}
+
+.orch-msg-time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 960px) {
+  .orch-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings-grid {

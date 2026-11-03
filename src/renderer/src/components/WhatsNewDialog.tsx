@@ -10,6 +10,26 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.21.1": [
+    {
+      icon: "📊",
+      badge: "Knowledge",
+      title: "Cleaner spreadsheet passages",
+      desc: "Empty Excel and CSV cells no longer leave “| | |” in search results. Your existing bases re-read their files on their own after this update.",
+    },
+    {
+      icon: "📱",
+      badge: "Telegram",
+      title: "Pairing code you cannot miss",
+      desc: "The /start code sits in its own highlighted box with a Copy button.",
+    },
+    {
+      icon: "✨",
+      badge: "Polish",
+      title: "One look on every screen",
+      desc: "Multi-Agent now matches the rest of the app in light and dark, and page text shares one width and spacing everywhere.",
+    },
+  ],
   "0.21.0": [
     {
       icon: "🧠",

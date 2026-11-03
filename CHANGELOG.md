@@ -5,6 +5,27 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-11-03
+
+### Fixed
+
+- Spreadsheet passages no longer carry "| | | |" from empty cells: blank cells at either end of
+  a row are dropped and a run of blanks in the middle collapses to one, so Excel and CSV rows
+  read cleanly in search results and in what coworkers are given.
+- Existing Knowledge Bases pick up indexing improvements by themselves: the first time a newer
+  Sahkarmi opens a base, every file is read again in the background and vectors left by an
+  older embedding model are removed. Nothing to remove or add by hand.
+
+### Changed
+
+- Telegram: the pairing code is shown in its own highlighted box, large, with a Copy button,
+  so the one thing you have to send from your phone cannot be missed.
+- Multi-Agent (team runs) screen uses the same paper, lines, buttons and saffron as the rest of
+  the app, in light and dark, instead of its own grey styling.
+- Page introductions share one width and spacing on every screen (Knowledge, Memory, Routines,
+  Activity, Business, Shared files, Marketplace), and the Routines empty state sits in the same
+  gutter as everything else.
+
 ## [0.21.0] - 2026-11-03
 
 ### Added

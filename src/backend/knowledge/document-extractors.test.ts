@@ -5,6 +5,7 @@ import {
   extractDocument,
   htmlMarkdown,
   isKnowledgeFile,
+  joinCells,
   knowledgeKindFor,
   parseDelimited,
 } from "./document-extractors";
@@ -152,5 +153,16 @@ describe("document extractors", () => {
       "## Hours",
     );
     expect(htmlMarkdown("<p>a</p><script>evil()</script>")).not.toContain("evil");
+  });
+});
+
+describe("joinCells", () => {
+  it("drops empty cells at the ends and collapses runs in the middle", () => {
+    expect(joinCells(["", "a", "", "", "b", "", ""])).toBe("a |  | b");
+    expect(joinCells(["Analytics figures are demo data.", "", "", ""])).toBe(
+      "Analytics figures are demo data.",
+    );
+    expect(joinCells(["item", "price", "unit"])).toBe("item | price | unit");
+    expect(joinCells(["", "", ""])).toBe("");
   });
 });
