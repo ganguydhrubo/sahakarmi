@@ -14,6 +14,7 @@ import type {
   KnowledgePrivacy,
   KnowledgeSearchInput,
   KnowledgeSearchResult,
+  KnowledgeSemanticStatus,
   KnowledgeSourceStatus,
   KnowledgeSourceSummary,
   UpdateKnowledgeBaseInput,
@@ -22,8 +23,18 @@ import { JsonFile } from "../json-file";
 import { isRecord } from "../protocol";
 import { chunkDocument } from "./chunker";
 import { extractDocument, isKnowledgeFile, knowledgeKindFor } from "./document-extractors";
-import { type ChunkRow, KnowledgeDb } from "./knowledge-db";
-import { buildMatchQuery, knowledgeContextLines, numberHits, rowsToHits } from "./knowledge-search";
+import { EmbeddingModelStore, type FetchLike, POTION_BASE_8M } from "./embedding-model-store";
+import { type ChunkRow, KnowledgeDb, type VectorInput } from "./knowledge-db";
+import {
+  buildMatchQuery,
+  fuseHits,
+  knowledgeContextLines,
+  numberHits,
+  rowsToHits,
+  vectorText,
+  wantsSemantic,
+} from "./knowledge-search";
+import { type Embedder, quantize, StaticEmbedder } from "./static-embedder";
 
 /**
  * Knowledge Bases ("Granthagar"): named sets of the owner's documents, indexed on this computer
@@ -32,6 +43,10 @@ import { buildMatchQuery, knowledgeContextLines, numberHits, rowsToHits } from "
  *
  * Indexing runs one file at a time in the background of the main process and yields between
  * files; nothing is loaded until a base is first used, so the app starts as before.
+ *
+ * Search is lexical (FTS5 BM25). When the owner installs the optional embedding model, every
+ * chunk also gets a 256-byte vector and searches fuse both rankings; the model is a lookup
+ * table loaded on first use and dropped again after ten idle minutes.
  */
 
 const REGISTRY_FILE = "registry.json";
@@ -41,6 +56,20 @@ export const MAX_SOURCES_PER_BASE = 2_000;
 const SKIP_DIRECTORIES = new Set(["node_modules", ".git", ".cache", "__pycache__", "dist", "out"]);
 /** Excerpts a turn starts with. */
 const GROUNDING_HITS = 6;
+/** Cosine below which a semantic match is noise: casual chat scores up to 0.29 with potion. */
+const SEMANTIC_MIN_SCORE = 0.36;
+/** An explicit search (the owner typed it, or a coworker asked) may show weaker matches. */
+const SEMANTIC_MIN_SCORE_EXPLICIT = 0.3;
+const VECTOR_BATCH = 256;
+const EMBEDDER_IDLE_MS = 10 * 60_000;
+const SEMANTIC_EMIT_INTERVAL_MS = 250;
+
+export interface KnowledgeServiceOptions {
+  /** Replaces the network for the model download (tests). */
+  fetch?: FetchLike;
+  /** A ready embedder, instead of the downloaded model (tests). */
+  embedder?: Embedder;
+}
 
 interface StoredFolder {
   id: string;
@@ -83,16 +112,29 @@ export class KnowledgeService extends EventEmitter {
   readonly #root: string;
   readonly #registry: JsonFile<Registry>;
   readonly #dbs = new Map<string, KnowledgeDb>();
+  readonly #models: EmbeddingModelStore;
+  readonly #modelId: string;
   #bases: StoredBase[] = [];
   #initialized = false;
   #queue: IndexJob[] = [];
   #pumping = false;
   #closed = false;
+  #embedder: Embedder | null;
+  readonly #embedderInjected: boolean;
+  #embedderLoading: Promise<Embedder | null> | null = null;
+  #embedderTimer: NodeJS.Timeout | null = null;
+  #backfilled = false;
+  readonly #vectorizing = new Set<string>();
+  #lastSemanticEmit = 0;
 
-  constructor(userDataPath: string) {
+  constructor(userDataPath: string, options: KnowledgeServiceOptions = {}) {
     super();
     this.#root = join(userDataPath, "knowledge");
     this.#registry = new JsonFile<Registry>(join(this.#root, REGISTRY_FILE));
+    this.#models = new EmbeddingModelStore(this.#root, POTION_BASE_8M, options.fetch);
+    this.#modelId = POTION_BASE_8M.id;
+    this.#embedder = options.embedder ?? null;
+    this.#embedderInjected = Boolean(options.embedder);
   }
 
   async initialize(): Promise<void> {
@@ -109,6 +151,7 @@ export class KnowledgeService extends EventEmitter {
   close(): void {
     this.#closed = true;
     this.#queue = [];
+    this.#unloadEmbedder();
     for (const db of this.#dbs.values()) {
       try {
         db.close();
@@ -328,7 +371,10 @@ export class KnowledgeService extends EventEmitter {
         (!input.kbIds || input.kbIds.includes(base.id)) &&
         (!scope.workspaceId || base.workspaceId === scope.workspaceId),
     );
-    return { hits: this.#searchBases(bases, input.query, limit), kbIds: bases.map((b) => b.id) };
+    return {
+      hits: await this.#searchBases(bases, input.query, limit, SEMANTIC_MIN_SCORE_EXPLICIT),
+      kbIds: bases.map((b) => b.id),
+    };
   }
 
   /** The bases a coworker may read: its workspace's, open to it, and not owner-only. */
@@ -345,7 +391,12 @@ export class KnowledgeService extends EventEmitter {
     const bases = this.#basesForBot(bot).filter(
       (base) => !options.kbId || base.id === options.kbId,
     );
-    return this.#searchBases(bases, query, Math.max(1, Math.min(options.limit ?? 8, 20)));
+    return this.#searchBases(
+      bases,
+      query,
+      Math.max(1, Math.min(options.limit ?? 8, 20)),
+      SEMANTIC_MIN_SCORE_EXPLICIT,
+    );
   }
 
   /** The context block a user message starts with, or null when nothing matched. */
@@ -356,7 +407,7 @@ export class KnowledgeService extends EventEmitter {
     await this.initialize();
     const bases = this.#basesForBot(bot);
     if (bases.length === 0) return null;
-    const hits = this.#searchBases(bases, query, GROUNDING_HITS);
+    const hits = await this.#searchBases(bases, query, GROUNDING_HITS, SEMANTIC_MIN_SCORE);
     if (hits.length === 0) return null;
     const citations = hits.map((hit) => hit.citation);
     const names = [...new Set(citations.map((citation) => citation.kbName))];
@@ -396,26 +447,195 @@ export class KnowledgeService extends EventEmitter {
 
   /** Waits for the indexing queue to drain; tests and shutdown use it. */
   async idle(): Promise<void> {
-    while (this.#pumping || this.#queue.length > 0) {
+    while (this.#pumping || this.#queue.length > 0 || this.#vectorizing.size > 0) {
       await new Promise((resolveWait) => setTimeout(resolveWait, 20));
     }
   }
 
+  // ---- smarter search (optional embedding model) ----
+
+  async semanticStatus(): Promise<KnowledgeSemanticStatus> {
+    await this.initialize();
+    const store = await this.#models.status();
+    let vectors = 0;
+    let chunks = 0;
+    if (!this.#closed && (store.state === "ready" || this.#embedder)) {
+      for (const base of this.#bases) {
+        try {
+          const db = this.#db(base.id);
+          vectors += db.vectorCount(this.#modelId);
+          chunks += db.chunkCount();
+        } catch {
+          /* counted as zero */
+        }
+      }
+    }
+    return {
+      state: this.#embedderInjected ? "ready" : store.state,
+      modelName: this.#models.manifest.name,
+      license: this.#models.manifest.license,
+      source: this.#models.manifest.source,
+      sizeBytes: store.total,
+      received: store.received,
+      error: store.error,
+      vectors,
+      chunks,
+      loaded: this.#embedder !== null,
+    };
+  }
+
+  /** Downloads the model (once, with progress events), then prepares vectors for every base. */
+  async installSemantic(): Promise<KnowledgeSemanticStatus> {
+    await this.initialize();
+    try {
+      await this.#models.install((progress) => {
+        void this.#emitSemantic(false, progress.received);
+      });
+    } catch (error) {
+      await this.#emitSemantic(true);
+      throw error;
+    }
+    await this.#emitSemantic(true);
+    void this.#vectorizeAll();
+    return this.semanticStatus();
+  }
+
+  /** Deletes the model files and every vector; search is lexical again. */
+  async removeSemantic(): Promise<KnowledgeSemanticStatus> {
+    await this.initialize();
+    this.#unloadEmbedder();
+    await this.#models.remove();
+    for (const base of this.#bases) {
+      try {
+        this.#db(base.id).clearVectors();
+      } catch (error) {
+        this.emit("log", `knowledge vectors of ${base.name} not cleared: ${String(error)}`);
+      }
+    }
+    await this.#emitSemantic(true);
+    return this.semanticStatus();
+  }
+
   // ---- internals ----
 
-  #searchBases(bases: StoredBase[], query: string, limit: number): KnowledgeHit[] {
+  async #searchBases(
+    bases: StoredBase[],
+    query: string,
+    limit: number,
+    minScore: number,
+  ): Promise<KnowledgeHit[]> {
+    if (bases.length === 0) return [];
     const match = buildMatchQuery(query);
-    if (!match || bases.length === 0) return [];
+    const embedder = wantsSemantic(query) ? await this.#embedderReady() : null;
+    const vector = embedder ? embedder.embed(query) : null;
+    if (!match && !vector) return [];
     const groups: KnowledgeHit[][] = [];
     for (const base of bases) {
       try {
-        const rows = this.#db(base.id).search(match, limit * 3);
-        groups.push(rowsToHits(rows, base, limit));
+        const db = this.#db(base.id);
+        const lexical = match ? rowsToHits(db.search(match, limit * 3), base, limit) : [];
+        if (!vector) {
+          groups.push(lexical);
+          continue;
+        }
+        const semantic = rowsToHits(
+          db.semanticSearch(vector, this.#modelId, limit * 3, minScore),
+          base,
+          limit,
+        );
+        groups.push(fuseHits(lexical, semantic, limit));
       } catch (error) {
         this.emit("log", `knowledge search in ${base.name} failed: ${String(error)}`);
       }
     }
     return numberHits(groups, limit);
+  }
+
+  /** The embedder when the model is installed: loaded on first use, dropped when idle. */
+  async #embedderReady(): Promise<Embedder | null> {
+    if (this.#closed) return null;
+    if (this.#embedder) {
+      this.#touchEmbedder();
+      return this.#embedder;
+    }
+    if (this.#embedderLoading) return this.#embedderLoading;
+    if (!(await this.#models.isInstalled())) return null;
+    this.#embedderLoading = StaticEmbedder.fromFolder(this.#models.folder)
+      .then((embedder) => {
+        if (this.#closed) return null;
+        this.#embedder = embedder;
+        this.#touchEmbedder();
+        if (!this.#backfilled) {
+          this.#backfilled = true;
+          void this.#vectorizeAll();
+        }
+        return embedder;
+      })
+      .catch((error: unknown) => {
+        this.emit("log", `knowledge embedding model not loaded: ${String(error)}`);
+        return null;
+      })
+      .finally(() => {
+        this.#embedderLoading = null;
+      });
+    return this.#embedderLoading;
+  }
+
+  #touchEmbedder(): void {
+    if (this.#embedderInjected) return;
+    if (this.#embedderTimer) clearTimeout(this.#embedderTimer);
+    this.#embedderTimer = setTimeout(() => this.#unloadEmbedder(), EMBEDDER_IDLE_MS);
+    this.#embedderTimer.unref?.();
+  }
+
+  #unloadEmbedder(): void {
+    if (this.#embedderTimer) clearTimeout(this.#embedderTimer);
+    this.#embedderTimer = null;
+    if (!this.#embedderInjected) this.#embedder = null;
+    this.#backfilled = false;
+  }
+
+  async #vectorizeAll(): Promise<void> {
+    for (const base of [...this.#bases]) {
+      if (this.#closed) return;
+      await this.#vectorizeBase(base.id);
+    }
+  }
+
+  /** Vectors for every ready chunk of a base that lacks one, in small batches with pauses. */
+  async #vectorizeBase(kbId: string): Promise<void> {
+    if (this.#vectorizing.has(kbId)) return;
+    this.#vectorizing.add(kbId);
+    try {
+      const embedder = await this.#embedderReady();
+      if (!embedder) return;
+      while (!this.#closed) {
+        const db = this.#dbs.get(kbId) ?? this.#db(kbId);
+        const batch = db.chunksWithoutVectors(this.#modelId, VECTOR_BATCH);
+        if (batch.length === 0) break;
+        const vectors: VectorInput[] = batch.map((chunk) => {
+          const quantized = quantize(embedder.embed(vectorText(chunk)));
+          return { seq: chunk.seq, scale: quantized.scale, data: quantized.data };
+        });
+        db.putVectors(this.#modelId, vectors);
+        void this.#emitSemantic(false);
+        await new Promise((resolveWait) => setImmediate(resolveWait));
+      }
+    } catch (error) {
+      this.emit("log", `knowledge vectors failed: ${String(error)}`);
+    } finally {
+      this.#vectorizing.delete(kbId);
+    }
+  }
+
+  async #emitSemantic(force: boolean, received?: number): Promise<void> {
+    const now = Date.now();
+    if (!force && now - this.#lastSemanticEmit < SEMANTIC_EMIT_INTERVAL_MS) return;
+    this.#lastSemanticEmit = now;
+    if (this.#closed) return;
+    const status = await this.semanticStatus();
+    if (received !== undefined) status.received = received;
+    this.#emit({ type: "knowledge-semantic", status });
   }
 
   #basesForBot(bot: Pick<BotSummary, "id" | "workspaceId">): StoredBase[] {
@@ -604,6 +824,7 @@ export class KnowledgeService extends EventEmitter {
         pages: extracted.pages,
       });
       progress("ready");
+      await this.#vectorizeBase(base.id);
     } catch (error) {
       db.updateDocument(document.id, {
         status: "failed",

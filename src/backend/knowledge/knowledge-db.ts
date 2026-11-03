@@ -4,10 +4,13 @@ import type { KnowledgeSourceKind, KnowledgeSourceStatus } from "../../shared/ip
 /**
  * One SQLite file per Knowledge Base, through Node's built-in `node:sqlite` (no native addon).
  * Documents and their chunks live here; an FTS5 table over the chunks gives BM25-ranked search
- * that understands English, Hindi and Bengali words (unicode61 tokenizer, diacritics folded).
+ * that understands English, Hindi and Bengali words (unicode61 tokenizer, diacritics folded,
+ * English words stemmed so "registrations" finds "registration"). When the optional embedding
+ * model is installed, each chunk also gets a small int8 vector for meaning-based search.
  */
 
-const SCHEMA_VERSION = 1;
+/** v2: porter stemming on the FTS index and the `vectors` table. */
+const SCHEMA_VERSION = 2;
 
 export interface DocumentRow {
   id: string;
@@ -51,9 +54,36 @@ export interface SearchRow extends ChunkRow {
   snippet: string;
 }
 
+/** A chunk's text as the embedder sees it. */
+export interface ChunkText {
+  seq: number;
+  heading: string | null;
+  text: string;
+}
+
+export interface VectorInput {
+  seq: number;
+  scale: number;
+  data: Int8Array;
+}
+
+export interface VectorHit extends ChunkRow {
+  /** Cosine similarity, 0..1 for related text. */
+  score: number;
+}
+
+interface VectorCache {
+  model: string;
+  dim: number;
+  seqs: number[];
+  scales: Float32Array;
+  data: Int8Array;
+}
+
 export class KnowledgeDb {
   readonly #db: DatabaseSync;
   readonly path: string;
+  #vectorCache: VectorCache | null = null;
 
   constructor(path: string) {
     this.path = path;
@@ -66,8 +96,21 @@ export class KnowledgeDb {
   }
 
   #migrate(): void {
+    this.#db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    const row = this.#db.prepare("SELECT value FROM meta WHERE key = 'schema'").get() as
+      | { value: string }
+      | undefined;
+    const version = row ? Number(row.value) : 0;
+    const rebuildIndex = version > 0 && version < 2;
+    if (rebuildIndex) {
+      // v1 indexed without stemming: the search index is built again below with porter.
+      this.#db.exec(`
+        DROP TRIGGER IF EXISTS chunks_after_insert;
+        DROP TRIGGER IF EXISTS chunks_after_delete;
+        DROP TABLE IF EXISTS chunks_fts;
+      `);
+    }
     this.#db.exec(`
-      CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS documents (
         id TEXT PRIMARY KEY,
         path TEXT NOT NULL UNIQUE,
@@ -99,10 +142,16 @@ export class KnowledgeDb {
         text TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS chunks_by_document ON chunks(document_id, chunk_index);
+      CREATE TABLE IF NOT EXISTS vectors (
+        seq INTEGER PRIMARY KEY REFERENCES chunks(seq) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        scale REAL NOT NULL,
+        data BLOB NOT NULL
+      );
       CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
         name, heading, text,
         content='chunks', content_rowid='seq',
-        tokenize='unicode61 remove_diacritics 2'
+        tokenize='porter unicode61 remove_diacritics 2'
       );
       CREATE TRIGGER IF NOT EXISTS chunks_after_insert AFTER INSERT ON chunks BEGIN
         INSERT INTO chunks_fts(rowid, name, heading, text)
@@ -113,14 +162,20 @@ export class KnowledgeDb {
         VALUES ('delete', old.seq, old.name, coalesce(old.heading, ''), old.text);
       END;
     `);
+    if (rebuildIndex) this.#db.exec("INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')");
+    if (version !== SCHEMA_VERSION) {
+      this.#db
+        .prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', ?)")
+        .run(String(SCHEMA_VERSION));
+    }
+  }
+
+  /** For tests and diagnostics. */
+  get schemaVersion(): number {
     const row = this.#db.prepare("SELECT value FROM meta WHERE key = 'schema'").get() as
       | { value: string }
       | undefined;
-    if (!row) {
-      this.#db
-        .prepare("INSERT INTO meta (key, value) VALUES ('schema', ?)")
-        .run(String(SCHEMA_VERSION));
-    }
+    return row ? Number(row.value) : 0;
   }
 
   close(): void {
@@ -226,6 +281,7 @@ export class KnowledgeDb {
     if (assignments.length === 0) return;
     values.push(id);
     this.#db.prepare(`UPDATE documents SET ${assignments.join(", ")} WHERE id = ?`).run(...values);
+    if ("enabled" in patch) this.#vectorCache = null;
   }
 
   deleteDocument(id: string): void {
@@ -238,6 +294,7 @@ export class KnowledgeDb {
       this.#db.exec("ROLLBACK");
       throw error;
     }
+    this.#vectorCache = null;
   }
 
   deleteDocumentsInFolder(folderId: string): number {
@@ -297,6 +354,7 @@ export class KnowledgeDb {
       this.#db.exec("ROLLBACK");
       throw error;
     }
+    this.#vectorCache = null;
   }
 
   chunkCount(): number {
@@ -360,6 +418,128 @@ export class KnowledgeDb {
       rank: Number(row.rank),
       snippet: String(row.snippet ?? ""),
     }));
+  }
+
+  // ---- vectors (optional, when the embedding model is installed) ----
+
+  /** Chunks of ready documents that have no vector from this model yet. */
+  chunksWithoutVectors(model: string, limit: number): ChunkText[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT c.seq, c.heading, c.text FROM chunks c JOIN documents d ON d.id = c.document_id
+         WHERE d.status = 'ready'
+           AND NOT EXISTS (SELECT 1 FROM vectors v WHERE v.seq = c.seq AND v.model = ?)
+         ORDER BY c.seq LIMIT ?`,
+      )
+      .all(model, Math.max(1, Math.min(limit, 5_000))) as unknown as Array<{
+      seq: number;
+      heading: string | null;
+      text: string;
+    }>;
+    return rows.map((row) => ({ seq: Number(row.seq), heading: row.heading, text: row.text }));
+  }
+
+  putVectors(model: string, vectors: VectorInput[]): void {
+    if (vectors.length === 0) return;
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const insert = this.#db.prepare(
+        "INSERT OR REPLACE INTO vectors (seq, model, scale, data) VALUES (?, ?, ?, ?)",
+      );
+      for (const vector of vectors) {
+        insert.run(
+          vector.seq,
+          model,
+          vector.scale,
+          new Uint8Array(vector.data.buffer, vector.data.byteOffset, vector.data.byteLength),
+        );
+      }
+      this.#db.exec("COMMIT");
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
+    this.#vectorCache = null;
+  }
+
+  vectorCount(model: string): number {
+    const row = this.#db
+      .prepare("SELECT count(*) AS n FROM vectors WHERE model = ?")
+      .get(model) as { n: number };
+    return Number(row.n);
+  }
+
+  clearVectors(): void {
+    this.#db.exec("DELETE FROM vectors");
+    this.#vectorCache = null;
+  }
+
+  /**
+   * Brute-force cosine search over the vectors of enabled documents. The vectors stay cached in
+   * memory as int8 (256 bytes a chunk) until the base changes, so a search over tens of
+   * thousands of chunks is a few milliseconds.
+   */
+  semanticSearch(query: Float32Array, model: string, limit: number, minScore: number): VectorHit[] {
+    const cache = this.#vectors(model);
+    if (!cache || cache.seqs.length === 0 || cache.dim !== query.length) return [];
+    const scored: Array<{ index: number; score: number }> = [];
+    for (let row = 0; row < cache.seqs.length; row += 1) {
+      const offset = row * cache.dim;
+      let sum = 0;
+      for (let i = 0; i < cache.dim; i += 1) {
+        sum += (query[i] ?? 0) * (cache.data[offset + i] ?? 0);
+      }
+      const score = sum * (cache.scales[row] ?? 0);
+      if (score >= minScore) scored.push({ index: row, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    const top = scored.slice(0, Math.max(1, Math.min(limit, 200)));
+    if (top.length === 0) return [];
+    const seqs = top.map((entry) => cache.seqs[entry.index] ?? -1);
+    const rows = this.#db
+      .prepare(
+        `SELECT c.*, d.path AS path FROM chunks c JOIN documents d ON d.id = c.document_id
+         WHERE c.seq IN (${seqs.map(() => "?").join(", ")})`,
+      )
+      .all(...seqs) as unknown as RawChunk[];
+    const bySeq = new Map(rows.map((row) => [Number(row.seq), chunkFromRaw(row)]));
+    const hits: VectorHit[] = [];
+    for (const [position, entry] of top.entries()) {
+      const chunk = bySeq.get(seqs[position] ?? -1);
+      if (chunk) hits.push({ ...chunk, score: entry.score });
+    }
+    return hits;
+  }
+
+  #vectors(model: string): VectorCache | null {
+    if (this.#vectorCache && this.#vectorCache.model === model) return this.#vectorCache;
+    const rows = this.#db
+      .prepare(
+        `SELECT v.seq, v.scale, v.data FROM vectors v
+         JOIN chunks c ON c.seq = v.seq JOIN documents d ON d.id = c.document_id
+         WHERE d.enabled = 1 AND v.model = ? ORDER BY v.seq`,
+      )
+      .all(model) as unknown as Array<{ seq: number; scale: number; data: Uint8Array }>;
+    const dim = rows[0]?.data.byteLength ?? 0;
+    const seqs: number[] = [];
+    const scales = new Float32Array(rows.length);
+    const data = new Int8Array(rows.length * dim);
+    let kept = 0;
+    for (const row of rows) {
+      if (row.data.byteLength !== dim) continue;
+      seqs.push(Number(row.seq));
+      scales[kept] = Number(row.scale);
+      data.set(new Int8Array(row.data.buffer, row.data.byteOffset, dim), kept * dim);
+      kept += 1;
+    }
+    this.#vectorCache = {
+      model,
+      dim,
+      seqs,
+      scales: scales.subarray(0, kept),
+      data: data.subarray(0, kept * dim),
+    };
+    return this.#vectorCache;
   }
 }
 

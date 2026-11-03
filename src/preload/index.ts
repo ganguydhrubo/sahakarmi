@@ -298,6 +298,9 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     search: (input) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSearch, input),
     openSource: (kbId, documentId) =>
       ipcRenderer.invoke(IPC_CHANNELS.knowledgeOpenSource, { kbId, documentId }),
+    semanticStatus: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSemanticStatus),
+    installSemantic: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSemanticInstall),
+    removeSemantic: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSemanticRemove),
   },
   memory: {
     list: (category) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, category),

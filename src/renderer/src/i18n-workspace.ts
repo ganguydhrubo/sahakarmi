@@ -629,6 +629,15 @@ export const workspaceEn = {
   knowledgeNoHits: "Nothing matched. Try other words from the document.",
   knowledgeCitationOpen: "Open {name}",
   knowledgeDropHint: "Drop files to add them to this knowledge base",
+  knowledgeSemanticTitle: "Smarter search (optional)",
+  knowledgeSemanticHint:
+    "Also match by meaning, so “holiday rules” finds the leave policy even when the words differ. One small file ({size}) is downloaded once and runs on this computer; your documents never leave it.",
+  knowledgeSemanticInstall: "Download and turn on",
+  knowledgeSemanticRemove: "Turn off and delete",
+  knowledgeSemanticOff: "Off. Model {model} ({license} licence) from {source}.",
+  knowledgeSemanticDownloading: "Downloading… {percent}%",
+  knowledgeSemanticReady: "On. {vectors} of {chunks} passages prepared for meaning search.",
+  knowledgeSemanticError: "Could not download: {error}",
   navMemory: "Memory",
   memoryTitle: "Team memory",
   memorySubtitle:
@@ -1266,6 +1275,15 @@ export const workspaceHi: WorkspaceDictionary = {
   knowledgeNoHits: "कुछ नहीं मिला। दस्तावेज़ के दूसरे शब्द आज़माएँ।",
   knowledgeCitationOpen: "{name} खोलें",
   knowledgeDropHint: "इस ज्ञान-कोश में जोड़ने के लिए फ़ाइलें यहाँ छोड़ें",
+  knowledgeSemanticTitle: "समझदार खोज (वैकल्पिक)",
+  knowledgeSemanticHint:
+    "अर्थ से भी मिलान करें, ताकि “holiday rules” से छुट्टी नीति मिल जाए, शब्द अलग होने पर भी। एक छोटी फ़ाइल ({size}) एक बार डाउनलोड होती है और इसी कंप्यूटर पर चलती है; आपके दस्तावेज़ कहीं नहीं जाते।",
+  knowledgeSemanticInstall: "डाउनलोड करके चालू करें",
+  knowledgeSemanticRemove: "बंद करके हटाएँ",
+  knowledgeSemanticOff: "बंद। मॉडल {model} ({license} लाइसेंस), स्रोत {source}।",
+  knowledgeSemanticDownloading: "डाउनलोड हो रहा है… {percent}%",
+  knowledgeSemanticReady: "चालू। {chunks} में से {vectors} अंश अर्थ-खोज के लिए तैयार।",
+  knowledgeSemanticError: "डाउनलोड नहीं हो सका: {error}",
   navMemory: "स्मृति",
   memoryTitle: "टीम की याददाश्त",
   memorySubtitle:
@@ -1898,6 +1916,15 @@ export const workspaceBn: WorkspaceDictionary = {
   knowledgeNoHits: "কিছু মেলেনি। নথির অন্য শব্দ চেষ্টা করুন।",
   knowledgeCitationOpen: "{name} খুলুন",
   knowledgeDropHint: "এই জ্ঞানভাণ্ডারে যোগ করতে ফাইল এখানে ছাড়ুন",
+  knowledgeSemanticTitle: "বুদ্ধিমান খোঁজ (ঐচ্ছিক)",
+  knowledgeSemanticHint:
+    "অর্থ দিয়েও মেলান, যাতে “holiday rules” লিখলে ছুটির নীতি পাওয়া যায়, শব্দ আলাদা হলেও। একটি ছোট ফাইল ({size}) একবার ডাউনলোড হয় আর এই কম্পিউটারেই চলে; আপনার নথি কোথাও যায় না।",
+  knowledgeSemanticInstall: "ডাউনলোড করে চালু করুন",
+  knowledgeSemanticRemove: "বন্ধ করে মুছুন",
+  knowledgeSemanticOff: "বন্ধ। মডেল {model} ({license} লাইসেন্স), উৎস {source}।",
+  knowledgeSemanticDownloading: "ডাউনলোড হচ্ছে… {percent}%",
+  knowledgeSemanticReady: "চালু। {chunks}টির মধ্যে {vectors}টি অংশ অর্থ-খোঁজের জন্য প্রস্তুত।",
+  knowledgeSemanticError: "ডাউনলোড করা যায়নি: {error}",
   navMemory: "স্মৃতি",
   memoryTitle: "টিমের স্মৃতি",
   memorySubtitle:

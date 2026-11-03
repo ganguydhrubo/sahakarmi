@@ -349,6 +349,9 @@ function registerKnowledgeIpc(knowledge: KnowledgeService): void {
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
   });
+  handleTrusted(IPC_CHANNELS.knowledgeSemanticStatus, () => knowledge.semanticStatus());
+  handleTrusted(IPC_CHANNELS.knowledgeSemanticInstall, () => knowledge.installSemantic());
+  handleTrusted(IPC_CHANNELS.knowledgeSemanticRemove, () => knowledge.removeSemantic());
 }
 
 function registerTelegramIpc(telegram: TelegramBridge): void {

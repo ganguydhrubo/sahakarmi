@@ -3,6 +3,7 @@ import type {
   KnowledgeBaseSummary,
   KnowledgeHit,
   KnowledgeProgress,
+  KnowledgeSemanticStatus,
   KnowledgeSourceStatus,
   KnowledgeSourceSummary,
 } from "../../../shared/ipc";
@@ -65,6 +66,8 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
   const [hits, setHits] = createSignal<KnowledgeHit[] | null>(null);
   const [searching, setSearching] = createSignal(false);
   const [dropActive, setDropActive] = createSignal(false);
+  const [semantic, setSemantic] = createSignal<KnowledgeSemanticStatus | null>(null);
+  const [semanticBusy, setSemanticBusy] = createSignal(false);
 
   const dropFiles = (event: DragEvent, kbId: string) => {
     event.preventDefault();
@@ -102,14 +105,55 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
 
   onMount(() => {
     void run(() => api()?.list());
+    void api()
+      ?.semanticStatus?.()
+      .then((status) => setSemantic(status))
+      .catch(() => undefined);
     const unsubscribe = window.sahkarmi?.agent?.onEvent?.((event) => {
       if (event.type === "knowledge-changed") setBases(event.bases);
       else if (event.type === "knowledge-progress") {
         setProgress(event.progress.status === "indexing" ? event.progress : null);
-      }
+      } else if (event.type === "knowledge-semantic") setSemantic(event.status);
     });
     onCleanup(() => unsubscribe?.());
   });
+
+  const semanticAction = async (work: () => Promise<KnowledgeSemanticStatus> | undefined) => {
+    setSemanticBusy(true);
+    try {
+      const next = await work();
+      if (next) setSemantic(next);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      void api()
+        ?.semanticStatus?.()
+        .then((status) => setSemantic(status))
+        .catch(() => undefined);
+    } finally {
+      setSemanticBusy(false);
+    }
+  };
+
+  const semanticLine = (status: KnowledgeSemanticStatus): string => {
+    if (status.state === "downloading") {
+      const percent = status.sizeBytes > 0 ? (status.received / status.sizeBytes) * 100 : 0;
+      return t("knowledgeSemanticDownloading", {
+        percent: String(Math.min(99, Math.floor(percent))),
+      });
+    }
+    if (status.state === "ready") {
+      return t("knowledgeSemanticReady", {
+        vectors: String(status.vectors),
+        chunks: String(status.chunks),
+      });
+    }
+    return t("knowledgeSemanticOff", {
+      model: status.modelName,
+      license: status.license,
+      source: status.source,
+    });
+  };
 
   const create = async (event: Event) => {
     event.preventDefault();
@@ -262,6 +306,55 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
           <p class="approval-error" role="alert">
             {error()}
           </p>
+        </Show>
+        <Show when={semantic()}>
+          {(status) => (
+            <section class="knowledge-semantic" aria-labelledby="knowledge-semantic-heading">
+              <div class="knowledge-semantic-text">
+                <h3 id="knowledge-semantic-heading">{t("knowledgeSemanticTitle")}</h3>
+                <p>{t("knowledgeSemanticHint", { size: formatBytes(status().sizeBytes) })}</p>
+                <p class="knowledge-list-meta" aria-live="polite">
+                  {semanticLine(status())}
+                </p>
+                <Show when={status().state === "downloading"}>
+                  <progress
+                    class="knowledge-semantic-progress"
+                    max={Math.max(1, status().sizeBytes)}
+                    value={status().received}
+                  />
+                </Show>
+                <Show when={status().error}>
+                  <p class="knowledge-source-error">
+                    {t("knowledgeSemanticError", { error: status().error ?? "" })}
+                  </p>
+                </Show>
+              </div>
+              <div class="knowledge-actions">
+                <Show
+                  when={status().state !== "ready"}
+                  fallback={
+                    <button
+                      type="button"
+                      class="button-danger-quiet"
+                      disabled={semanticBusy()}
+                      onClick={() => void semanticAction(() => api()?.removeSemantic())}
+                    >
+                      {t("knowledgeSemanticRemove")}
+                    </button>
+                  }
+                >
+                  <button
+                    type="button"
+                    class="button-primary"
+                    disabled={semanticBusy() || status().state === "downloading"}
+                    onClick={() => void semanticAction(() => api()?.installSemantic())}
+                  >
+                    {t("knowledgeSemanticInstall")}
+                  </button>
+                </Show>
+              </div>
+            </section>
+          )}
         </Show>
         <Show when={creating()}>
           <form class="knowledge-create" onSubmit={(event) => void create(event)}>

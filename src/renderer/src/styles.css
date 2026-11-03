@@ -13529,6 +13529,40 @@ fieldset.memory-filters {
   opacity: 0.8;
 }
 
+.knowledge-semantic {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border-radius: 10px;
+}
+
+.knowledge-semantic-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.knowledge-semantic-text h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.knowledge-semantic-text p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.knowledge-semantic-progress {
+  width: 100%;
+  max-width: 320px;
+  height: 6px;
+}
+
 .knowledge-access {
   display: flex;
   flex-direction: column;

@@ -50,6 +50,9 @@ export const IPC_CHANNELS = {
   knowledgeSync: "knowledge:sync",
   knowledgeSearch: "knowledge:search",
   knowledgeOpenSource: "knowledge:open-source",
+  knowledgeSemanticStatus: "knowledge:semantic-status",
+  knowledgeSemanticInstall: "knowledge:semantic-install",
+  knowledgeSemanticRemove: "knowledge:semantic-remove",
   agentListQueue: "agent:list-queue",
   agentCancelQueuedMessage: "agent:cancel-queued-message",
   agentSendQueuedNow: "agent:send-queued-now",
@@ -1611,7 +1614,8 @@ export type AgentEvent =
   /** Something worth a line in the chat that is not a failure. */
   | { type: "notice"; botId: string; code: string; message: string }
   | { type: "knowledge-changed"; bases: KnowledgeBaseSummary[] }
-  | { type: "knowledge-progress"; progress: KnowledgeProgress };
+  | { type: "knowledge-progress"; progress: KnowledgeProgress }
+  | { type: "knowledge-semantic"; status: KnowledgeSemanticStatus };
 
 export interface BrowserTab {
   id: string;
@@ -2279,6 +2283,23 @@ export interface KnowledgeProgress {
   total: number;
 }
 
+/** The optional "smarter search" embedding model: downloaded once by the owner, local only. */
+export interface KnowledgeSemanticStatus {
+  state: "absent" | "downloading" | "ready" | "error";
+  modelName: string;
+  license: string;
+  source: string;
+  sizeBytes: number;
+  /** Bytes downloaded so far, while downloading. */
+  received: number;
+  error: string | null;
+  /** Passages with a vector, and passages in all, across every base. */
+  vectors: number;
+  chunks: number;
+  /** The model is in memory right now (it is dropped after idle minutes). */
+  loaded: boolean;
+}
+
 export interface CreateKnowledgeBaseInput {
   name: string;
   workspaceId: string;
@@ -2313,6 +2334,10 @@ export interface KnowledgeDesktopApi {
   sync: (kbId: string) => Promise<KnowledgeBaseSummary[]>;
   search: (input: KnowledgeSearchInput) => Promise<KnowledgeSearchResult>;
   openSource: (kbId: string, documentId: string) => Promise<void>;
+  semanticStatus: () => Promise<KnowledgeSemanticStatus>;
+  /** Downloads the embedding model (about 30 MB) and prepares vectors; resolves when installed. */
+  installSemantic: () => Promise<KnowledgeSemanticStatus>;
+  removeSemantic: () => Promise<KnowledgeSemanticStatus>;
 }
 
 export interface MemoryDesktopApi {
