@@ -61,6 +61,12 @@ const SEMANTIC_MIN_SCORE = 0.36;
 /** An explicit search (the owner typed it, or a coworker asked) may show weaker matches. */
 const SEMANTIC_MIN_SCORE_EXPLICIT = 0.3;
 const VECTOR_BATCH = 256;
+/**
+ * Bump when extraction or chunking improves: every base re-reads its files in the background
+ * the first time it is opened by the newer app, so better passages (and their vectors) arrive
+ * without anyone removing and adding files again.
+ */
+export const INDEXER_VERSION = "2";
 const EMBEDDER_IDLE_MS = 10 * 60_000;
 const SEMANTIC_EMIT_INTERVAL_MS = 250;
 
@@ -664,8 +670,23 @@ export class KnowledgeService extends EventEmitter {
       mkdirSync(this.#root);
       db = new KnowledgeDb(this.#dbPath(id));
       this.#dbs.set(id, db);
+      this.#upgradeIndex(id, db);
     }
     return db;
+  }
+
+  /** A base opened by a newer indexer re-reads its files; stale vectors go first. */
+  #upgradeIndex(id: string, db: KnowledgeDb): void {
+    try {
+      if (db.getMeta("indexer") === INDEXER_VERSION) return;
+      db.pruneVectors(this.#modelId);
+      const ids = db.markAllForReindex();
+      db.setMeta("indexer", INDEXER_VERSION);
+      for (const documentId of ids) this.#enqueue(id, documentId);
+      if (ids.length > 0) this.emit("log", `knowledge base ${id}: ${ids.length} files re-indexed`);
+    } catch (error) {
+      this.emit("log", `knowledge index upgrade failed: ${String(error)}`);
+    }
   }
 
   #inFolder(job: IndexJob, folderId: string): boolean {

@@ -170,6 +170,37 @@ export class KnowledgeDb {
     }
   }
 
+  getMeta(key: string): string | null {
+    const row = this.#db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as
+      | { value: string }
+      | undefined;
+    return row ? String(row.value) : null;
+  }
+
+  setMeta(key: string, value: string): void {
+    this.#db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(key, value);
+  }
+
+  /** Documents that were indexed (or failed) and should be read again by a newer indexer. */
+  markAllForReindex(): string[] {
+    const ids = (
+      this.#db
+        .prepare("SELECT id FROM documents WHERE status IN ('ready', 'failed')")
+        .all() as Array<{ id: string }>
+    ).map((row) => String(row.id));
+    if (ids.length > 0) {
+      this.#db.exec("UPDATE documents SET status = 'pending' WHERE status IN ('ready', 'failed')");
+    }
+    return ids;
+  }
+
+  /** Drops vectors of any model but the current one (left behind by a model change). */
+  pruneVectors(model: string): number {
+    const result = this.#db.prepare("DELETE FROM vectors WHERE model <> ?").run(model);
+    if (Number(result.changes) > 0) this.#vectorCache = null;
+    return Number(result.changes);
+  }
+
   /** For tests and diagnostics. */
   get schemaVersion(): number {
     const row = this.#db.prepare("SELECT value FROM meta WHERE key = 'schema'").get() as

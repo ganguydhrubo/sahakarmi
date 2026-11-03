@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { TelegramStatus } from "../../../shared/ipc";
+import { copyText } from "../clipboard";
 import type { BotProfile } from "../data";
 import { t } from "../i18n";
 import { TelegramGuide } from "./TelegramGuide";
@@ -12,6 +13,19 @@ export function TelegramSettings(props: { bots: BotProfile[] }) {
   const [token, setToken] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const [copied, setCopied] = createSignal(false);
+
+  async function copyPairingCode() {
+    const code = status()?.pairingCode;
+    if (!code) return;
+    try {
+      await copyText(`/start ${code}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   async function run(action: () => Promise<TelegramStatus>) {
     setBusy(true);
@@ -107,10 +121,21 @@ export function TelegramSettings(props: { bots: BotProfile[] }) {
                   </div>
                 )}
               </Show>
-              <p class="settings-meta">
-                {t("telegramPairManual", { bot: `@${status()?.botUsername ?? ""}` })}{" "}
-                <code>/start {status()?.pairingCode}</code>
-              </p>
+              <div class="telegram-pair">
+                <span class="telegram-pair-label">
+                  {t("telegramPairManual", { bot: `@${status()?.botUsername ?? ""}` })}
+                </span>
+                <div class="telegram-pair-row">
+                  <code class="telegram-pair-code">/start {status()?.pairingCode}</code>
+                  <button
+                    type="button"
+                    class="telegram-pair-copy"
+                    onClick={() => void copyPairingCode()}
+                  >
+                    {copied() ? t("copied") : t("mdCopyCode")}
+                  </button>
+                </div>
+              </div>
             </>
           }
         >

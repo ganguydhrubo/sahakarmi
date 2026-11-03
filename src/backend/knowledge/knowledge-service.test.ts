@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentEvent } from "../../shared/ipc";
-import { KnowledgeService } from "./knowledge-service";
+import { KnowledgeDb } from "./knowledge-db";
+import { INDEXER_VERSION, KnowledgeService } from "./knowledge-service";
 import type { Embedder } from "./static-embedder";
 
 let tmp: string;
@@ -248,5 +249,44 @@ describe("KnowledgeService with the embedding model", () => {
     );
     expect(await service.searchForBot(bot, "holiday entitlement")).toEqual([]);
     expect((await service.removeSemantic()).state).toBe("absent");
+  });
+});
+
+describe("KnowledgeService index upgrades", () => {
+  it("re-reads every file of a base the first time a newer indexer opens it", async () => {
+    const [base] = await service.create({ name: "Docs", workspaceId: "my-business" });
+    const id = base?.id ?? "";
+    await service.addFolder(id, await docsFolder());
+    await service.idle();
+    expect(service.list()[0]?.sources.every((source) => source.status === "ready")).toBe(true);
+    service.close();
+
+    // An older app wrote this base: mark it so, and leave a vector of a model that is gone.
+    const db = new KnowledgeDb(join(tmp, "user-data", "knowledge", `${id}.sqlite`));
+    expect(db.getMeta("indexer")).toBe(INDEXER_VERSION);
+    db.setMeta("indexer", "1");
+    const [chunk] = db.chunksWithoutVectors("old-model", 1);
+    db.putVectors("old-model", [
+      { seq: chunk?.seq ?? -1, scale: 1, data: new Int8Array([1, 2, 3, 4]) },
+    ]);
+    db.close();
+
+    service = new KnowledgeService(join(tmp, "user-data"));
+    events = [];
+    service.on("event", (event: AgentEvent) => events.push(event));
+    await service.initialize();
+    const reopened = service.list()[0];
+    expect(reopened?.indexing).toBe(true);
+    await service.idle();
+    const after = service.list()[0];
+    expect(after?.sources.every((source) => source.status === "ready")).toBe(true);
+    expect(after?.sources.length).toBe(3);
+    const check = new KnowledgeDb(join(tmp, "user-data", "knowledge", `${id}.sqlite`));
+    expect(check.getMeta("indexer")).toBe(INDEXER_VERSION);
+    expect(check.vectorCount("old-model")).toBe(0);
+    check.close();
+    expect((await service.searchForBot(bot, "notice period"))[0]?.citation.heading).toBe(
+      "Notice period",
+    );
   });
 });

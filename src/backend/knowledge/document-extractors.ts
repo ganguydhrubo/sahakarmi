@@ -38,6 +38,25 @@ export const MAX_SOURCE_BYTES = 60 * 1024 * 1024;
 /** Rows per spreadsheet chunk; the header row is repeated on each. */
 const SHEET_ROWS_PER_UNIT = 40;
 
+/**
+ * A table row as text: "a | b | c". Empty cells at either end are dropped (a formatted but
+ * empty spreadsheet row otherwise reads as "| | | |"), and a run of empty cells in the middle
+ * collapses to one, so the text stays readable and the search index is not full of pipes.
+ */
+export function joinCells(cells: string[]): string {
+  const trimmed = cells.map((cell) => cell.trim());
+  let start = 0;
+  let end = trimmed.length;
+  while (start < end && !trimmed[start]) start += 1;
+  while (end > start && !trimmed[end - 1]) end -= 1;
+  const kept: string[] = [];
+  for (const cell of trimmed.slice(start, end)) {
+    if (!cell && kept.at(-1) === "") continue;
+    kept.push(cell);
+  }
+  return kept.join(" | ");
+}
+
 export function knowledgeKindFor(path: string): KnowledgeSourceKind | null {
   return KINDS[extname(path).toLowerCase()] ?? null;
 }
@@ -118,7 +137,7 @@ export function docxMarkdown(buffer: Buffer): string {
           .join(" ")
           .trim(),
       );
-      if (cells.some(Boolean)) rows.push(`| ${cells.join(" | ")} |`);
+      if (cells.some(Boolean)) rows.push(`| ${joinCells(cells)} |`);
     }
     return rows.length ? `<w:p><w:t>${escapeXml(rows.join("\n"))}</w:t></w:p>` : "";
   });
@@ -264,7 +283,7 @@ function sheetRows(xml: string, shared: string[]): string[] {
       }
       cells.push(value.trim());
     }
-    if (cells.some(Boolean)) rows.push(cells.join(" | "));
+    if (cells.some(Boolean)) rows.push(joinCells(cells));
   }
   return rows;
 }
@@ -275,7 +294,7 @@ function sheetRows(xml: string, shared: string[]): string[] {
 function csvUnits(text: string, delimiter: string): ExtractedDocument {
   const rows = parseDelimited(stripBom(text), delimiter)
     .filter((row) => row.some((cell) => cell.trim()))
-    .map((row) => row.map((cell) => cell.trim()).join(" | "));
+    .map((row) => joinCells(row));
   const units: DocumentUnit[] = [];
   const header = rows[0] ?? "";
   for (let from = 0; from < rows.length; from += SHEET_ROWS_PER_UNIT) {
