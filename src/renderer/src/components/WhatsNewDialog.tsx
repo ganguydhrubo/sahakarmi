@@ -10,6 +10,20 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.22.1": [
+    {
+      icon: "📤",
+      badge: "Fix",
+      title: "Export works again",
+      desc: "The Export menu (and the model menu) in a chat now opens on top instead of hiding behind the task strip or the browser.",
+    },
+    {
+      icon: "🌐",
+      badge: "Browser",
+      title: "Pages fit the browser",
+      desc: "The page in the browser panel now always matches the panel's size, after resizing the window, changing text size or enlarging the browser.",
+    },
+  ],
   "0.22.0": [
     {
       icon: "✅",

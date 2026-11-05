@@ -11,8 +11,10 @@ const {
   elementClip,
   elementLine,
   elementRectScript,
+  fitInWindow,
   fitSnapshot,
   runBrowserTool,
+  validateBounds,
 } = await import("./browser-host");
 
 const sessionAgent =
@@ -257,5 +259,35 @@ describe("element screenshots", () => {
     });
     expect(() => elementClip(null)).toThrow("no longer on the page");
     expect(() => elementRectScript("../x")).toThrow("ref must look like");
+  });
+});
+
+describe("browser page bounds", () => {
+  it("does not round float noise up into an extra pixel", () => {
+    // The panel's right edge measured as 1236.0000122 in a 1236 wide window.
+    expect(
+      validateBounds({ x: 856.7999877, y: 73, width: 379.2000122, height: 690.2000122 }),
+    ).toEqual({ x: 856, y: 73, width: 380, height: 691 });
+    expect(validateBounds({ x: 10.5, y: 20.5, width: 100, height: 50 })).toEqual({
+      x: 10,
+      y: 20,
+      width: 101,
+      height: 51,
+    });
+  });
+
+  it("keeps the page inside the window", () => {
+    expect(fitInWindow({ x: 856, y: 73, width: 381, height: 691 }, [1236, 763])).toEqual({
+      x: 856,
+      y: 73,
+      width: 380,
+      height: 690,
+    });
+    expect(fitInWindow({ x: 0, y: 0, width: 50, height: 40 }, [1236, 763])).toEqual({
+      x: 0,
+      y: 0,
+      width: 50,
+      height: 40,
+    });
   });
 });
