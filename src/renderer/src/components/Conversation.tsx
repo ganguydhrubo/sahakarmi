@@ -2007,6 +2007,9 @@ export function Conversation(props: ConversationProps) {
         void window.sahkarmi.browser.setVisible({
           visible: true,
           bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+          // Only this coworker's pages may be shown on its panel.
+          botId: props.bot?.id ?? null,
+          threadId: props.bot?.threadId ?? null,
         });
       };
       syncBounds();

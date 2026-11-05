@@ -1,11 +1,10 @@
 import { render } from "solid-js/web";
+// Inter for every Latin letter; Mukta and Hind Siliguri only draw Hindi and Bengali.
+import "@fontsource-variable/inter/wght.css";
 import "@fontsource/mukta/400.css";
 import "@fontsource/mukta/500.css";
 import "@fontsource/mukta/600.css";
 import "@fontsource/mukta/700.css";
-import "@fontsource/baloo-2/500.css";
-import "@fontsource/baloo-2/600.css";
-import "@fontsource/baloo-2/700.css";
 import "@fontsource/hind-siliguri/400.css";
 import "@fontsource/hind-siliguri/500.css";
 import "@fontsource/hind-siliguri/600.css";

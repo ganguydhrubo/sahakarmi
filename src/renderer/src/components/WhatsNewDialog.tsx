@@ -10,6 +10,38 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.22.0": [
+    {
+      icon: "✅",
+      badge: "Approvals",
+      title: "One approval per task",
+      desc: "Approve a post or message once and the coworker finishes that task without asking again for every click. Deleting, payments and account changes still ask each time.",
+    },
+    {
+      icon: "🔑",
+      badge: "Claude",
+      title: "Sahkarmi has its own Claude sign-in",
+      desc: "Claude coworkers no longer get stuck in the queue. Sahkarmi keeps its Claude account apart from Claude Code: go to Settings > AI and models and click Connect next to Claude once.",
+    },
+    {
+      icon: "🌐",
+      badge: "Browser",
+      title: "Every coworker has its own browser",
+      desc: "Opening one coworker's browser never shows another's pages, and each keeps its own logins, now also after a restart. Approved posts go through even when Facebook redraws the page.",
+    },
+    {
+      icon: "🖱️",
+      badge: "Desktop",
+      title: "Coworkers can use your PC",
+      desc: "With your permission (Settings > Permissions > Control this PC), a coworker can open apps, click, type and read windows on your desktop. Never in password fields.",
+    },
+    {
+      icon: "⚡",
+      badge: "Speed",
+      title: "Lighter and quieter",
+      desc: "The window no longer repaints all the time, clicking into it no longer starts a burst of checks, and old copies of AI tools are removed by themselves.",
+    },
+  ],
   "0.21.2": [
     {
       icon: "🔁",

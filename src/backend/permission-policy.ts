@@ -23,6 +23,8 @@ export const DEFAULT_PERMISSION_LEVELS: Record<PermissionCategory, PermissionLev
   shell: "ask",
   browser_navigation: "auto",
   browser_interaction: "auto",
+  // Seeing the screen and driving any app: asked once per coworker per session (desktop-control.ts).
+  desktop_control: "ask",
   downloads: "workspace",
   external_messages: "ask",
   publication: "ask",
@@ -41,6 +43,7 @@ export function isSensitive(category: PermissionCategory): boolean {
 export function allowedLevels(category: PermissionCategory): PermissionLevel[] {
   if (isSensitive(category)) return ["ask", "deny"];
   if (category === "app_updates") return ["auto", "ask"];
+  if (category === "desktop_control") return ["ask", "auto", "deny"];
   return [...PERMISSION_LEVELS];
 }
 

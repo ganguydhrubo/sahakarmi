@@ -124,6 +124,38 @@ describe("ProviderSetup", () => {
     expect(final.phase).toBe("connected");
   });
 
+  it("finishes Claude's sign-in once the browser sign-in lands, even if the tool keeps waiting", async () => {
+    // Like the real CLI after the browser says "You're all set up": still running, waiting.
+    const path = join(root, process.platform === "win32" ? "claude-signed.cmd" : "claude-signed");
+    await writeFile(
+      path,
+      process.platform === "win32"
+        ? [
+            "@echo off",
+            'if "%1"=="auth" (echo {"loggedIn":true}) else (echo 2.1.0 ^(Claude Code^))',
+            "",
+          ].join("\r\n")
+        : [
+            "#!/bin/sh",
+            `if [ "$1" = auth ]; then echo '{"loggedIn":true}'; else echo "2.1.0 (Claude Code)"; fi`,
+            "",
+          ].join("\n"),
+    );
+    await chmod(path, 0o755);
+    process.env.SAHKARMI_CLAUDE_PATH = path;
+    const login = new FakeLogin();
+    const recheck = vi.fn(async () => undefined);
+    const setup = new ProviderSetup({
+      toolsDirectory: join(root, "tools"),
+      recheck,
+      spawnImpl: (() => login) as never,
+    });
+    const final = await setup.connect("claude");
+    expect(login.kill).toHaveBeenCalled();
+    expect(recheck).toHaveBeenCalledWith("claude");
+    expect(final.phase).toBe("connected");
+  }, 20_000);
+
   it("reports a failed sign-in with the provider's own message", async () => {
     process.env.SAHKARMI_CLAUDE_PATH = await fakeCli("claude", "2.1.0 (Claude Code)");
     const login = new FakeLogin();

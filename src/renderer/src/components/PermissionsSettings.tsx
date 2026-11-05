@@ -20,6 +20,7 @@ const CATEGORY_KEYS: Record<PermissionCategory, MessageKey> = {
   shell: "permShell",
   browser_navigation: "permBrowserNav",
   browser_interaction: "permBrowserAct",
+  desktop_control: "permDesktop",
   downloads: "permDownloads",
   external_messages: "permMessages",
   publication: "permPublication",
@@ -44,6 +45,7 @@ export function permissionCategoryLabel(category: PermissionCategory): string {
 function levelsFor(category: PermissionCategory): PermissionLevel[] {
   if (SENSITIVE_PERMISSION_CATEGORIES.includes(category)) return ["ask", "deny"];
   if (category === "app_updates") return ["auto", "ask"];
+  if (category === "desktop_control") return ["ask", "auto", "deny"];
   return [...PERMISSION_LEVELS];
 }
 

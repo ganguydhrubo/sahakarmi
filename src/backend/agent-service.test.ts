@@ -12,6 +12,7 @@ import {
   quotaNotice,
   SHORT_TOOL_WAIT_MS,
   searchExcerpt,
+  taskGrantKey,
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
@@ -369,6 +370,94 @@ describe.sequential("AgentService", () => {
     }
   });
 
+  it("lets an approved Post click through when the page's address and snapshot text changed", async () => {
+    const { store, mailbox } = stores();
+    await store.initialize();
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    const permissions = new PermissionService(join(root, "user-data"));
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      approvals,
+      permissions,
+    );
+    await service.initialize();
+    const saved = SHORT_TOOL_WAIT_MS.antigravity;
+    SHORT_TOOL_WAIT_MS.antigravity = 50;
+    const click = (label: string, url: string) => ({
+      botId: "kavya-content",
+      provider: "antigravity",
+      category: "publication" as const,
+      action: `click "${label}" on ${url}`,
+      paths: [],
+      browser: { type: "click", label, url },
+    });
+    try {
+      const first = await permissions.authorize(
+        click("Post button div", "https://www.facebook.com/reels/create?ref=1"),
+        [],
+      );
+      expect(first.allowed).toBe(false);
+      const [approval] = service.listApprovals();
+      await service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" });
+
+      // Facebook re-rendered: new query string, and the snapshot names the element differently.
+      const repeat = await permissions.authorize(
+        click("Post button", "https://www.facebook.com/reels/create/?ref=2&checkpoint_src=any"),
+        [],
+      );
+      expect(repeat.allowed).toBe(true);
+      expect(service.listApprovals().filter((item) => item.status === "pending")).toHaveLength(0);
+
+      // One approval per task: the next steps of the same post (Next, Share) do not ask again.
+      const next = await permissions.authorize(
+        click("Share now button", "https://www.facebook.com/reels/create/details"),
+        [],
+      );
+      expect(next.allowed).toBe(true);
+      expect(service.listApprovals()).toHaveLength(1);
+
+      // Deleting is never covered, and neither is another site.
+      const other = permissions.authorize(
+        click("Delete post button div", "https://www.facebook.com/reels/create"),
+        [],
+      );
+      expect((await other).allowed).toBe(false);
+      const elsewhere = await permissions.authorize(
+        click("Post button div", "https://www.instagram.com/create"),
+        [],
+      );
+      expect(elsewhere.allowed).toBe(false);
+    } finally {
+      SHORT_TOOL_WAIT_MS.antigravity = saved;
+    }
+  });
+
+  it("asks again for a new instruction, and every time for payments", () => {
+    const request = (category: "publication" | "payments", url = "https://www.facebook.com/x") => ({
+      botId: "kavya-content",
+      provider: "codex",
+      category,
+      action: `click "Post" on ${url}`,
+      paths: [],
+      browser: { type: "click", label: "Post", url },
+    });
+    const first = taskGrantKey(request("publication"), "Post today's reel on Facebook");
+    expect(first).not.toBeNull();
+    expect(
+      taskGrantKey(
+        request("publication", "https://m.facebook.com/y"),
+        "Post today's reel on Facebook",
+      ),
+    ).toBe(first);
+    expect(taskGrantKey(request("publication"), "Now post tomorrow's reel")).not.toBe(first);
+    expect(taskGrantKey(request("payments"), "Pay the invoice")).toBeNull();
+  });
+
   it("allows Codex file changes inside the coworker folder without asking", async () => {
     const { store, mailbox } = stores();
     await store.initialize();
@@ -669,6 +758,60 @@ describe.sequential("AgentService", () => {
     ]);
     const resumed = service.listQueue("asha-accounts").deliveries.at(-1);
     expect(resumed?.text).toContain("[Secure input entered]");
+    expect(resumed?.text).not.toContain("s3cret!");
+  });
+
+  it("finds the password field again on the same site after the page redrew it", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "request_secure_input",
+      arguments: { tabId: "tab-1", revision: 3, ref: "3:61", kind: "password", submit: true },
+    });
+    const { store, mailbox } = stores();
+    const fills: unknown[] = [];
+    let tabUrl = "https://www.facebook.com/login/";
+    let fail = false;
+    const browser = {
+      ...fakeBrowser(),
+      listTabs: () => [
+        { id: "tab-1", url: tabUrl, title: "", loading: false, ownerBotId: "asha-accounts" },
+      ],
+      act: async () => {
+        throw new Error("Stale browser references. Take a fresh snapshot before acting.");
+      },
+      fillSecureField: async (tabId: string, input: unknown) => {
+        if (fail) throw new Error("The field is no longer on the page.");
+        fills.push({ tabId, input });
+      },
+    } as unknown as BrowserHost;
+    service = new AgentService(store, mailbox, browser);
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Post the reel" });
+    await waitFor(() => service?.listSecureInputs().length === 1);
+    const [request] = service.listSecureInputs();
+
+    // Facebook changed the address in place (index.php?next=...): same origin, still filled.
+    tabUrl =
+      "https://www.facebook.com/index.php?next=https%3A%2F%2Fwww.facebook.com%2Freels%2Fcreate";
+    fail = true;
+    await expect(service.submitSecureInput(request?.id ?? "", "s3cret!")).rejects.toThrow(
+      "no longer on the page",
+    );
+    fail = false;
+    expect(await service.submitSecureInput(request?.id ?? "", "s3cret!")).toEqual([]);
+    expect(fills).toEqual([
+      {
+        tabId: "tab-1",
+        input: {
+          ref: "3:61",
+          kind: "password",
+          origin: "https://www.facebook.com",
+          text: "s3cret!",
+          submit: true,
+        },
+      },
+    ]);
+    const resumed = service.listQueue("asha-accounts").deliveries.at(-1);
     expect(resumed?.text).not.toContain("s3cret!");
   });
 
@@ -2139,7 +2282,28 @@ describe("AgentService team, authority and accounts", () => {
       await target.sendMessage({ botId: "kavya-content", text: "Post it" });
       expect(await toolAnswer()).toContain("signed in to Facebook as 222");
       expect(calls.browser).toBe(0);
-      expect(approvals.list()).toHaveLength(0);
+      // Never switches by itself: the owner gets one card to switch, nothing else is approved.
+      const cards = approvals.list();
+      expect(cards).toHaveLength(1);
+      expect(cards[0]).toMatchObject({ ownerOnly: true, status: "pending" });
+      expect(cards[0]?.bindsAccount).toMatchObject({ platform: "facebook", accountId: "222" });
+      expect(cards[0]?.title).toContain("Switch");
+      expect(
+        store.list().find((bot) => bot.id === "kavya-content")?.publishingAccounts?.[0],
+      ).toMatchObject({ accountId: "111" });
+    });
+
+    it("switches to the signed-in account once the owner approves the switch", async () => {
+      const { store, calls, target } = await publisher("222");
+      await bind(store, "111");
+      await target.sendMessage({ botId: "kavya-content", text: "Post it" });
+      expect(await toolAnswer()).toContain("asked whether to switch");
+      const [card] = target.listApprovals();
+      await target.decideApproval({ approvalId: card?.id ?? "", decision: "approved" });
+      expect(store.list().find((bot) => bot.id === "kavya-content")?.publishingAccounts).toEqual([
+        expect.objectContaining({ platform: "facebook", accountId: "222" }),
+      ]);
+      expect(calls.browser).toBe(0);
     });
 
     it("stops any click at all while the wrong account is signed in", async () => {

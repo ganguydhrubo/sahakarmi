@@ -926,6 +926,7 @@ export const PERMISSION_CATEGORIES = [
   "shell",
   "browser_navigation",
   "browser_interaction",
+  "desktop_control",
   "downloads",
   "external_messages",
   "publication",
@@ -1675,6 +1676,9 @@ export interface BrowserOpenInput {
 export interface BrowserVisibilityInput {
   visible: boolean;
   bounds?: BrowserBounds;
+  /** The coworker whose chat shows the panel: only its pages are shown there. */
+  botId?: string | null;
+  threadId?: string | null;
 }
 
 export interface AgentDesktopApi {
