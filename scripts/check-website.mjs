@@ -258,7 +258,8 @@ async function main() {
     const asset = await load(path.startsWith("/") ? path : `/${path}`);
     check(`local reference exists: ${ref}`, asset.status === 200, String(asset.status));
   }
-  // Secondary pages: indexable, canonical, titled.
+  // Secondary pages: indexable, canonical, titled, described, in the sitemap, valid JSON-LD.
+  const sitemapForPages = (await load("/sitemap.xml")).text;
   for (const page of [
     "/install.html",
     "/docs.html",
@@ -266,6 +267,11 @@ async function main() {
     "/changelog.html",
     "/privacy.html",
     "/terms.html",
+    "/computer-use.html",
+    "/use-cases.html",
+    "/open-source-ai-agent.html",
+    "/ai-agent-for-windows.html",
+    "/alternatives.html",
   ]) {
     const secondary = await load(page);
     check(`${page} returns 200`, secondary.status === 200, String(secondary.status));
@@ -280,6 +286,24 @@ async function main() {
       secondary.text.includes(`<link rel="canonical" href="${ORIGIN}${page}" />`),
     );
     check(`${page} has one h1`, (secondary.text.match(/<h1[\s>]/g) ?? []).length === 1);
+    const description = secondary.text.match(/<meta name="description" content="([^"]*)"/)?.[1];
+    check(
+      `${page} description present and at most 170 chars`,
+      description !== undefined && description.length >= 50 && description.length <= 170,
+      String(description?.length),
+    );
+    check(`${page} is in the sitemap`, sitemapForPages.includes(`<loc>${ORIGIN}${page}</loc>`));
+    for (const block of secondary.text.matchAll(
+      /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
+    )) {
+      let parses = true;
+      try {
+        JSON.parse(block[1]);
+      } catch {
+        parses = false;
+      }
+      check(`${page} JSON-LD parses`, parses);
+    }
   }
   check(
     "images declare width and height",

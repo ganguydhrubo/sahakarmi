@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Free Open-Source AI Agent for Windows — Sahkarmi</title>
+  <meta name="description" content="Sahkarmi is a free, Apache 2.0 open-source AI agent app for Windows: public source, verifiable builds, no telemetry, and coworkers that use your browser and apps." />
+  <link rel="canonical" href="https://sahkarmi.site/open-source-ai-agent.html" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="theme-color" content="#0F1220" />
+  <meta name="sahkarmi-download-notify" content="" />
+  <script src="/assets/download-notify.js" defer></script>
+  <meta name="color-scheme" content="dark light" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta property="og:site_name" content="Sahkarmi" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://sahkarmi.site/open-source-ai-agent.html" />
+  <meta property="og:title" content="Free Open-Source AI Agent for Windows — Sahkarmi" />
+  <meta property="og:description" content="Sahkarmi is a free, Apache 2.0 open-source AI agent app for Windows: public source, verifiable builds, no telemetry, and coworkers that use your browser and apps." />
+  <meta property="og:image" content="https://sahkarmi.site/assets/og.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preload" href="/assets/fonts/mukta-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/assets/guide.css" />
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://sahkarmi.site/open-source-ai-agent.html#page",
+      "url": "https://sahkarmi.site/open-source-ai-agent.html",
+      "name": "Free Open-Source AI Agent for Windows — Sahkarmi",
+      "description": "Sahkarmi is a free, Apache 2.0 open-source AI agent app for Windows: public source, verifiable builds, no telemetry, and coworkers that use your browser and apps.",
+      "isPartOf": {
+        "@id": "https://sahkarmi.site/#website"
+      },
+      "about": {
+        "@id": "https://sahkarmi.site/#software"
+      },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Sahkarmi",
+          "item": "https://sahkarmi.site/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Open-source AI agent",
+          "item": "https://sahkarmi.site/open-source-ai-agent.html"
+        }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is Sahkarmi really free?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The app is free and open source under the Apache License 2.0, with no account, subscription or in-app purchases. Paid AI providers you choose to connect bill you directly."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use it at work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The Apache 2.0 licence allows commercial use. Check your company's rules about which AI providers may see work data, because the coworkers send what they read to the provider you choose."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I build it myself?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The repository's README has the build steps (Bun and Node.js). The released installers are built from the same source in public GitHub Actions runs."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it work on macOS or Linux?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Not yet. Windows 10 and 11 (64-bit) is the released and tested build; macOS and Linux builds are paused until they can be tested on real hardware."
+          }
+        }
+      ]
+    }
+  ]
+}
+  </script>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Sahkarmi home">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><defs><clipPath id="l"><rect x="14" y="30" width="58" height="74" rx="29"/></clipPath></defs><rect x="14" y="30" width="58" height="74" rx="29" fill="#3b4a8c"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#E8772E"/><rect x="48" y="16" width="58" height="74" rx="29" fill="#8E3F1E" clip-path="url(#l)"/></svg>
+        Sahkarmi
+      </a>
+      <nav aria-label="Site"><a class="nav-wide" href="/computer-use.html">Computer use</a><a class="nav-wide" href="/use-cases.html">Use cases</a><a href="/#download">Download</a><a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p class="crumbs"><a href="/">Sahkarmi</a> › Open-source AI agent</p>
+    <p class="eyebrow">Free and open source</p>
+    <h1>A free, open-source AI agent for your Windows PC</h1>
+    <p class="lead">Sahkarmi is an open-source desktop AI agent app under the Apache License 2.0. All of its source code is public, every installer is built from that code by GitHub Actions, and it costs nothing to download or use. This page explains what is open, how to check a download, and how Sahkarmi differs from other kinds of AI agents.</p>
+    <ul class="toc">
+      <li><a href="#open">What is open</a></li>
+      <li><a href="#verify">Check a download</a></li>
+      <li><a href="#kinds">Kinds of AI agents</a></li>
+      <li><a href="#cost">What it costs</a></li>
+      <li><a href="#contribute">Contribute</a></li>
+      <li><a href="#faq">Questions</a></li>
+    </ul>
+
+    <h2 id="open">What is open</h2>
+    <ul>
+      <li><strong>The whole app.</strong> The desktop app, the coworker engine, the browser and desktop tools and the website are in one public repository: <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">github.com/ganguydhrubo/sahakarmi</a>.</li>
+      <li><strong>The licence.</strong> Apache 2.0: use it at home or at work, change it and redistribute it, including commercially, under the licence's terms.</li>
+      <li><strong>The builds.</strong> Releases are built in public GitHub Actions runs. Each release lists SHA-256 checksums and a software bill of materials (SPDX), and carries a GitHub build provenance attestation that links the installer to the commit and workflow that produced it.</li>
+      <li><strong>No telemetry.</strong> The app sends no analytics. Its own network traffic is the update check against GitHub Releases; everything else goes to the AI provider and the websites you use. See the <a href="/privacy.html">privacy policy</a>.</li>
+    </ul>
+
+    <h2 id="verify">Check a download</h2>
+    <p>Compare the installer's SHA-256 with the one on the release page and on the <a href="/#download">download section</a>. In PowerShell:</p>
+    <pre><code>Get-FileHash .\Sahkarmi-<span data-release-version>0.22.0</span>-x64.exe -Algorithm SHA256</code></pre>
+    <p>The current installer's SHA-256 is <code data-release-sha256="win">f26bcb4502308f2803b6c83e00f23e1b77dcfb7e449b87b0064b6fe8faa9999b</code>. With the GitHub CLI you can also check the provenance attestation:</p>
+    <pre><code>gh attestation verify .\Sahkarmi-<span data-release-version>0.22.0</span>-x64.exe --repo ganguydhrubo/sahakarmi</code></pre>
+    <p>The installer is not code-signed yet, so Windows SmartScreen warns on first run. The <a href="https://apps.microsoft.com/detail/9PD6BP3NGVST" target="_blank" rel="noopener noreferrer">Microsoft Store version</a> is signed by Microsoft and installs without the warning. More in the <a href="/install.html#verify">install guide</a>.</p>
+
+    <h2 id="kinds">How it differs from other kinds of AI agents</h2>
+    <p>"AI agent" covers very different products. This compares kinds of tools, not specific brands; individual products vary.</p>
+    <table>
+      <thead><tr><th scope="col"></th><th scope="col">Chat assistant</th><th scope="col">Cloud browser agent</th><th scope="col">Agent framework or library</th><th scope="col">Sahkarmi</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">What you get</th><td>Answers and drafts</td><td>A remote browser that does web tasks</td><td>Code to build your own agent</td><td>A ready desktop app with a team of agents</td></tr>
+        <tr><th scope="row">Where it runs</th><td>The vendor's cloud</td><td>The vendor's cloud</td><td>Wherever you deploy it</td><td>Your PC (the AI model runs at the provider you choose)</td></tr>
+        <tr><th scope="row">Your logins</th><td>Not used</td><td>Typed into the remote browser</td><td>Up to you</td><td>Kept in each coworker's own browser profile on your PC</td></tr>
+        <tr><th scope="row">Desktop apps</th><td>No</td><td>Usually no</td><td>If you build it</td><td>Yes, with the <em>Control this PC</em> permission</td></tr>
+        <tr><th scope="row">Your files</th><td>Uploads</td><td>Uploads</td><td>Up to you</td><td>Local folders and local knowledge bases</td></tr>
+        <tr><th scope="row">Needs coding</th><td>No</td><td>No</td><td>Yes</td><td>No</td></tr>
+        <tr><th scope="row">AI model</th><td>The vendor's</td><td>The vendor's</td><td>Any</td><td>Free built-in models, or Claude, ChatGPT, Gemini and others</td></tr>
+      </tbody>
+    </table>
+    <p>Sahkarmi's trade-offs: it is Windows-only for now, it is a development preview, and the quality of each task depends on the AI model you connect. It has not been evaluated on computer-use benchmarks, so it makes no score claims.</p>
+
+    <h2 id="cost">What it costs</h2>
+    <p>The app is free, with no account, subscription, ads or in-app purchases. Free AI models are built in through the bundled OpenCode runtime, which sets usage limits on its free models. If you connect a paid provider (Claude, ChatGPT, Gemini and others), that provider's plan and limits apply and it bills you directly. The <a href="/savings.html">savings calculator</a> helps decide whether a paid plan is worth it for you.</p>
+
+    <h2 id="contribute">Contribute</h2>
+    <p>Bug reports, translations and code are welcome. Read <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">CONTRIBUTING.md</a>, open an <a href="https://github.com/ganguydhrubo/sahakarmi/issues" target="_blank" rel="noopener noreferrer">issue</a>, or report a security problem privately as described in <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">SECURITY.md</a>.</p>
+
+    <h2 id="faq">Questions</h2>
+    <details><summary>Is Sahkarmi really free?</summary><p>Yes. The app is free and open source under the Apache License 2.0, with no account, subscription or in-app purchases. Paid AI providers you choose to connect bill you directly.</p></details>
+    <details><summary>Can I use it at work?</summary><p>Yes. The Apache 2.0 licence allows commercial use. Check your company's rules about which AI providers may see work data, because the coworkers send what they read to the provider you choose.</p></details>
+    <details><summary>Can I build it myself?</summary><p>Yes. The repository's README has the build steps (Bun and Node.js). The released installers are built from the same source in public GitHub Actions runs.</p></details>
+    <details><summary>Does it work on macOS or Linux?</summary><p>Not yet. Windows 10 and 11 (64-bit) is the released and tested build; macOS and Linux builds are paused until they can be tested on real hardware.</p></details>
+
+<div class="cta"><p>Sahkarmi is free and open source (Apache 2.0). No account, no card. Windows 10 and 11, 64-bit.</p><a class="btn" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">Download free for Windows</a><a class="btn btn-ghost" href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer">Source on GitHub</a></div>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <nav class="foot-nav" aria-label="Site pages"><a href="/computer-use.html">AI that uses your computer</a><a href="/use-cases.html">Use cases</a><a href="/ai-agent-for-windows.html">AI agent for Windows</a><a href="/alternatives.html">Alternatives</a><a href="/open-source-ai-agent.html">Open-source AI agent</a><a href="/install.html">Install guide</a><a href="/docs.html">Get started</a><a href="/changelog.html">Changelog</a><a href="/privacy.html">Privacy policy</a><a href="/terms.html">Terms of use</a><a data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">Download</a></nav>
+      © 2026 Sahkarmi Team · Apache License 2.0 · <a href="/">sahkarmi.site</a> · <a href="mailto:dhrubo@sahkarmi.site">dhrubo@sahkarmi.site</a> · <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer">WhatsApp +91 82408 01921</a></div>
+  </footer>
+</body>
+</html>

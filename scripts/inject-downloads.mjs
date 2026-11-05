@@ -7,7 +7,7 @@
 // GITHUB_TOKEN (no visitor-side API calls or rate limits). If GitHub cannot be reached the
 // page keeps its Releases-page fallback and the deploy continues.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +37,8 @@ function pick(list) {
           url: asset.browser_download_url,
           tag: release.tag_name,
           size: asset.size,
+          date: (release.published_at ?? "").slice(0, 10),
+          sha256: /^sha256:([0-9a-f]{64})$/i.exec(asset.digest ?? "")?.[1]?.toLowerCase() ?? null,
         };
         break;
       }
@@ -98,7 +100,11 @@ function setText(html, attribute, text) {
 const megabytes = (size) => `${Math.round(size / 1_000_000)} MB`;
 const version = files.win.tag.replace(/^v/, "");
 
-for (const name of ["index.html", "install.html"]) {
+// Every page: the home and install pages must carry the links, other pages may (guides, use cases).
+const pages = readdirSync(dirname(file)).filter(
+  (name) => name.endsWith(".html") && name !== "404.html",
+);
+for (const name of pages) {
   const target = join(dirname(file), name);
   let html = readFileSync(target, "utf8");
   const apply = (attribute, url, required) => {
@@ -109,10 +115,22 @@ for (const name of ["index.html", "install.html"]) {
   apply("data-download", files.win.url, name === "index.html");
   for (const [platform, asset] of Object.entries(files)) {
     apply(`data-platform="${platform}"`, asset.url, name === "index.html");
-    apply(`data-platform-tile="${platform}"`, asset.url, true);
+    apply(
+      `data-platform-tile="${platform}"`,
+      asset.url,
+      name === "index.html" || name === "install.html",
+    );
     html = setText(html, `data-release-size="${platform}"`, megabytes(asset.size));
+    if (asset.sha256) html = setText(html, `data-release-sha256="${platform}"`, asset.sha256);
   }
   html = setText(html, "data-release-version", version);
+  if (files.win.date) {
+    html = setText(html, "data-release-date", files.win.date);
+    html = html.replace(
+      /(<time\b[^>]*\sdata-release-date)(?:\sdatetime="[^"]*")?/g,
+      `$1 datetime="${files.win.date}"`,
+    );
+  }
   html = html.replace(/"softwareVersion": "[^"]*"/, `"softwareVersion": "${version}"`);
   writeFileSync(target, html);
 }

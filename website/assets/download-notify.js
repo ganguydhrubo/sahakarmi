@@ -62,6 +62,8 @@
     if (link.hasAttribute("data-platform-tile")) return "platform-card";
     if (link.hasAttribute("data-platform")) return "installer-list";
     if (link.closest(".sticky-cta, [class*='sticky']")) return "sticky-bar";
+    if (link.closest(".cta")) return "page-cta";
+    if (link.closest("footer")) return "footer";
     if (link.closest("section")) return "section:" + (link.closest("section").id || "unnamed");
     return "link";
   }

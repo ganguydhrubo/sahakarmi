@@ -73,7 +73,7 @@
 
   <main class="wrap">
     <h1>Install Sahkarmi</h1>
-    <p class="lead">Current version: <strong data-release-version>0.7.1</strong>. This page says exactly what is built, what is tested, and what to do when something goes wrong. Platform status was last checked by the project on 24 October 2026.</p>
+    <p class="lead">Current version: <strong data-release-version>0.22.0</strong>. This page says exactly what is built, what is tested, and what to do when something goes wrong. Platform status was last checked by the project on 24 October 2026.</p>
     <ul class="toc">
       <li><a href="#requirements">Requirements</a></li>
       <li><a href="#windows">Windows</a></li>
@@ -90,7 +90,7 @@
     <table>
       <thead><tr><th>Platform</th><th>File</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td>Windows 10 or 11, 64-bit (x64)</td><td><code>Sahkarmi-<span data-release-version>0.7.1</span>-x64.exe</code>, <span data-release-size="win">212 MB</span></td><td><span class="status tested">Built and tested</span> on Windows 11 by the project</td></tr>
+        <tr><td>Windows 10 or 11, 64-bit (x64)</td><td><code>Sahkarmi-<span data-release-version>0.22.0</span>-x64.exe</code>, <span data-release-size="win">240 MB</span></td><td><span class="status tested">Built and tested</span> on Windows 11 by the project</td></tr>
         <tr><td>Windows ARM and 32-bit systems</td><td>none</td><td><span class="status none">Not supported</span></td></tr>
       </tbody>
     </table>
@@ -98,7 +98,7 @@
 
     <h2 id="windows">Windows</h2>
     <ol>
-      <li>Download <a data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">the Windows installer</a> (the newest <code>-x64.exe</code> on <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Releases</a>).</li>
+      <li>Download <a data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">the Windows installer</a> (the newest <code>-x64.exe</code> on <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Releases</a>).</li>
       <li>Open the file. Windows SmartScreen will say "Windows protected your PC" because the installer is not code-signed yet. Click <strong>More info</strong>, then <strong>Run anyway</strong>. You can <a href="#verify">verify the file's checksum</a> first.</li>
       <li>The installer runs without further questions and installs for your user only (no administrator rights) under <code>%LOCALAPPDATA%\Programs\sahkarmi</code>, with a Desktop and Start Menu shortcut named Sahkarmi.</li>
       <li>Sahkarmi opens by itself after installing.</li>
@@ -125,7 +125,7 @@
       <thead><tr><th>Provider</th><th>What Sahkarmi needs</th><th>Cost</th></tr></thead>
       <tbody>
         <tr><td>OpenCode (built in)</td><td>Nothing. Bundled with the app.</td><td>Free, with OpenCode's usage limits</td></tr>
-        <tr><td>Claude</td><td>Claude Code CLI installed and signed in: <code>claude auth login</code>. Windows install: <code>irm https://claude.ai/install.ps1 | iex</code>.</td><td>Your Claude plan</td></tr>
+        <tr><td>Claude</td><td>Settings, AI and models, <strong>Connect</strong> next to Claude, then sign in in the browser window that opens. Since 0.22.0 Sahkarmi keeps its own Claude sign-in, separate from Claude Code on the same PC, so the two can use different accounts.</td><td>Your Claude plan</td></tr>
         <tr><td>ChatGPT (Codex)</td><td>Codex CLI installed and signed in: <code>npm install -g @openai/codex</code>, then <code>codex login</code>.</td><td>Your ChatGPT plan</td></tr>
         <tr><td>Google Antigravity</td><td>Click Connect. Sahkarmi downloads Google's Antigravity agent (you accept Google's terms first) and opens Log in with Google. A Google AI Studio API key also works.</td><td>Your Google plan</td></tr>
       </tbody>
@@ -148,11 +148,9 @@ bun run dev              # starts the app from source</code></pre>
     <h3>A coworker stays at "working" and never answers</h3>
     <p>On the free model this is almost always OpenCode's free usage limit for that model (see <a href="#first-launch">First launch</a>). Press Stop, then either try again later, switch the coworker's model, or connect another provider. If it happens on Claude, ChatGPT or Google Antigravity, check the provider's status page and that its CLI still works in a terminal.</p>
     <h3>"Sign in required" for Claude or ChatGPT</h3>
-    <p>Run <code>claude auth login</code> or <code>codex login</code> in a terminal, sign in, then click Check again in Settings, AI and models, or restart Sahkarmi. Sahkarmi only uses the CLI's own login; it cannot sign in for you.</p>
+    <p>Open Settings, AI and models and click <strong>Connect</strong> next to the provider, then finish the sign-in in the browser; Sahkarmi notices the sign-in by itself. While a provider is signed out, messages to its coworkers wait and the chat says why. For Claude, signing in to Claude Code in a terminal does not sign in Sahkarmi: since 0.22.0 they keep separate accounts.</p>
     <h3>"Could not start" next to a provider</h3>
     <p>The CLI was found but did not start. Run <code>claude --version</code> or <code>codex --version</code> in a new terminal to see the real error. If the CLI is installed in an unusual place, start Sahkarmi with <code>SAHKARMI_CLAUDE_PATH</code> or <code>SAHKARMI_CODEX_PATH</code> set to the executable's full path.</p>
-    <h3>AI updates shows "Could not update" after a download</h3>
-    <p>In 0.7.1 a leftover temporary folder on Windows can show this message even though the runtime was installed. Restart Sahkarmi; if the version under Settings, Updates is the new one, ignore the message. Fixed in the next release.</p>
     <h3>SmartScreen or Defender blocks the installer</h3>
     <p>Choose More info, then Run anyway. The installer is unsigned, not malicious; verify its checksum against the release page if in doubt. Do not disable Defender.</p>
     <h3>Where are the logs?</h3>
@@ -162,8 +160,8 @@ bun run dev              # starts the app from source</code></pre>
 
     <h2 id="uninstall">Uninstall and remove data</h2>
     <h3>Windows</h3>
-    <p>Settings, Apps, Installed apps, Sahkarmi, Uninstall (or run <code>Uninstall Sahkarmi.exe</code> in the install folder). This removes the program only. To also remove your data, delete <code>%APPDATA%\Sahkarmi</code> (coworkers, chats, settings, browser profile), <code>%LOCALAPPDATA%\sahkarmi-updater</code> (downloaded updates) and the <code>Sahkarmi</code> folder in your user profile (coworker workspaces, Shared files, Downloads).</p>
-    <p>Sahkarmi never touches <code>~/.codex</code> or <code>~/.claude</code>; those belong to the Codex and Claude CLIs. There is no Sahkarmi cloud account to close because none exists.</p>
+    <p>Settings, Apps, Installed apps, Sahkarmi, Uninstall (or run <code>Uninstall Sahkarmi.exe</code> in the install folder). Since 0.22.0 the uninstaller asks whether to delete your Sahkarmi data as well; the default is to keep it, and updates never delete it. To remove data by hand, delete <code>%APPDATA%\Sahkarmi</code> (coworkers, chats, settings, browser profile), <code>%LOCALAPPDATA%\sahkarmi-updater</code> (downloaded updates) and the <code>Sahkarmi</code> folder in your user profile (coworker workspaces, Shared files, Downloads).</p>
+    <p>Sahkarmi does not change your own <code>~/.codex</code> or <code>~/.claude</code> settings; those belong to the Codex and Claude CLIs. (Once, on the first start of 0.22.0, it moves its own coworkers' Claude chat history out of <code>~/.claude</code> into its own folder.) There is no Sahkarmi cloud account to close because none exists.</p>
 
     <p style="margin-top:40px"><a class="btn" href="/#download">Back to downloads</a></p>
   </main>
