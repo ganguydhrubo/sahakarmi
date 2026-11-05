@@ -1,5 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import type { WorkflowExportSource, WorkflowFormat } from "../../../shared/ipc";
+import { anchorBelow } from "../anchored-popover";
 import { type MessageKey, t } from "../i18n";
 
 const FORMATS: Array<{ format: WorkflowFormat; label: MessageKey }> = [
@@ -20,14 +22,26 @@ export function WorkflowExportMenu(props: {
   const [choice, setChoice] = createSignal(0);
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal<string | null>(null);
+  const [placement, setPlacement] = createSignal<Record<string, string>>({});
   let root: HTMLDivElement | undefined;
+  let popover: HTMLDivElement | undefined;
 
   onMount(() => {
     const close = (event: MouseEvent) => {
-      if (open() && root && !root.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (open() && !root?.contains(target) && !popover?.contains(target)) setOpen(false);
+    };
+    const reposition = () => {
+      if (open()) setPlacement(anchorBelow(root));
     };
     document.addEventListener("mousedown", close);
-    onCleanup(() => document.removeEventListener("mousedown", close));
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    onCleanup(() => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    });
   });
 
   async function save(format: WorkflowFormat) {
@@ -54,6 +68,7 @@ export function WorkflowExportMenu(props: {
         aria-haspopup="dialog"
         onClick={() => {
           setMessage(null);
+          setPlacement(anchorBelow(root));
           setOpen((value) => !value);
         }}
       >
@@ -73,49 +88,53 @@ export function WorkflowExportMenu(props: {
         <span>{t("exportButton")}</span>
       </button>
       <Show when={open()}>
-        <div
-          class="workflow-export-popover"
-          role="dialog"
-          aria-label={t("exportButton")}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setOpen(false);
-          }}
-        >
-          <Show when={props.options.length > 1}>
-            <div class="segmented">
-              <For each={props.options}>
-                {(option, index) => (
-                  <button
-                    type="button"
-                    aria-pressed={choice() === index()}
-                    classList={{ "segmented-active": choice() === index() }}
-                    onClick={() => setChoice(index())}
-                  >
-                    {t(option.label)}
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
-          <span class="workflow-export-label">{t("exportAs")}</span>
-          <For each={FORMATS}>
-            {(item) => (
-              <button
-                type="button"
-                class="workflow-export-format"
-                disabled={busy()}
-                onClick={() => void save(item.format)}
-              >
-                {t(item.label)}
-              </button>
-            )}
-          </For>
-          <Show when={message()} fallback={<small>{t("exportHint")}</small>}>
-            <small class="workflow-export-message" role="status">
-              {message()}
-            </small>
-          </Show>
-        </div>
+        <Portal>
+          <div
+            ref={popover}
+            class="workflow-export-popover no-drag"
+            style={placement()}
+            role="dialog"
+            aria-label={t("exportButton")}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setOpen(false);
+            }}
+          >
+            <Show when={props.options.length > 1}>
+              <div class="segmented">
+                <For each={props.options}>
+                  {(option, index) => (
+                    <button
+                      type="button"
+                      aria-pressed={choice() === index()}
+                      classList={{ "segmented-active": choice() === index() }}
+                      onClick={() => setChoice(index())}
+                    >
+                      {t(option.label)}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <span class="workflow-export-label">{t("exportAs")}</span>
+            <For each={FORMATS}>
+              {(item) => (
+                <button
+                  type="button"
+                  class="workflow-export-format"
+                  disabled={busy()}
+                  onClick={() => void save(item.format)}
+                >
+                  {t(item.label)}
+                </button>
+              )}
+            </For>
+            <Show when={message()} fallback={<small>{t("exportHint")}</small>}>
+              <small class="workflow-export-message" role="status">
+                {message()}
+              </small>
+            </Show>
+          </div>
+        </Portal>
       </Show>
     </div>
   );

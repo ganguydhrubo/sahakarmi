@@ -5,6 +5,18 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-11-05
+
+### Fixed
+
+- The Export menu in a coworker's chat opened behind the task strip ("queued / running / done")
+  and was cut off completely while the browser was open, so it could not be used. The Export
+  menu and the model menu next to it now open on top, under their button, in every layout.
+- The page in the browser panel now always fits the panel. It used to take the panel's size from
+  one step before (after resizing the window, changing the text size or enlarging the browser),
+  so pages were cut off or left a gap; and a rounding error made it a pixel wider than the
+  window, cutting off its right edge.
+
 ## [0.22.0] - 2026-11-05
 
 ### Fixed

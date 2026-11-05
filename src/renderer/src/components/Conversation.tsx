@@ -10,6 +10,7 @@ import {
   Show,
   untrack,
 } from "solid-js";
+import { Portal } from "solid-js/web";
 import type {
   AgentEvent,
   AgentModelId,
@@ -45,6 +46,7 @@ import {
 import { deriveActivity, isActivePhase } from "../activity";
 import { format } from "../activity-hinglish";
 import { vocab } from "../activity-vocab";
+import { anchorBelow } from "../anchored-popover";
 import { copySelectionAsPlainText, copyText } from "../clipboard";
 import type { BotMessage, BotProfile } from "../data";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
@@ -1218,6 +1220,8 @@ export function Conversation(props: ConversationProps) {
   const [settingsModel, setSettingsModel] = createSignal<AgentModelId>("gpt-5.6-luna");
   const [settingsReasoning, setSettingsReasoning] = createSignal<AgentReasoningEffort>("medium");
   const [headerModelOpen, setHeaderModelOpen] = createSignal(false);
+  const [headerModelPlacement, setHeaderModelPlacement] = createSignal<Record<string, string>>({});
+  let headerModelRoot: HTMLDivElement | undefined;
   const [onboardingBots, setOnboardingBots] = createSignal<Record<string, true>>({});
   const [modelConfirmedBots, setModelConfirmedBots] = createSignal<Record<string, true>>({});
   const [completedOnboardingBots, setCompletedOnboardingBots] = createSignal<Record<string, true>>(
@@ -1520,6 +1524,8 @@ export function Conversation(props: ConversationProps) {
   let browserWindowResizeHandler: (() => void) | undefined;
   let browserVisibilityFrame: number | undefined;
   let browserBoundsFrame: number | undefined;
+  let browserBoundsTimer: ReturnType<typeof setInterval> | undefined;
+  let browserSentBounds = "";
   let browserVisibilityGeneration = 0;
   let pickerInput: HTMLInputElement | undefined;
   let stickToLatest = true;
@@ -1783,7 +1789,7 @@ export function Conversation(props: ConversationProps) {
     };
     const closeMessageMenus = (event: MouseEvent) => {
       const target = event.target as Element | null;
-      if (!target?.closest(".header-model-root, .provider-model-popover")) {
+      if (!target?.closest(".header-model-root, .header-model-popover, .provider-model-popover")) {
         setHeaderModelOpen(false);
       }
       if (target?.closest(".message-actions")) return;
@@ -1793,6 +1799,11 @@ export function Conversation(props: ConversationProps) {
     };
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("pointerdown", closeMessageMenus);
+    // The model menu is drawn outside the header, so it follows its button when the window resizes.
+    const placeHeaderModel = () => {
+      if (headerModelOpen()) setHeaderModelPlacement(anchorBelow(headerModelRoot));
+    };
+    window.addEventListener("resize", placeHeaderModel);
     const scrollResizeObserver = new ResizeObserver(() => updateScrollFade());
     if (scrollElement) scrollResizeObserver.observe(scrollElement);
     requestAnimationFrame(() => updateScrollFade());
@@ -1801,6 +1812,7 @@ export function Conversation(props: ConversationProps) {
       unsubscribeImport();
       window.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("pointerdown", closeMessageMenus);
+      window.removeEventListener("resize", placeHeaderModel);
     });
   });
 
@@ -1980,6 +1992,9 @@ export function Conversation(props: ConversationProps) {
     browserWindowResizeHandler = undefined;
     if (browserBoundsFrame !== undefined) cancelAnimationFrame(browserBoundsFrame);
     browserBoundsFrame = undefined;
+    if (browserBoundsTimer !== undefined) clearInterval(browserBoundsTimer);
+    browserBoundsTimer = undefined;
+    browserSentBounds = "";
     if (!visible) {
       void window.sahkarmi.browser.setVisible({ visible: false });
       return;
@@ -1994,16 +2009,22 @@ export function Conversation(props: ConversationProps) {
       ) {
         return;
       }
-      const syncBounds = () => {
+      // Returns true when the panel moved or changed size since the page was last placed.
+      const syncBounds = (): boolean => {
         if (
           generation !== browserVisibilityGeneration ||
           props.bot?.id !== botId ||
           !browserLive() ||
           !browserSurface
         ) {
-          return;
+          return false;
         }
         const bounds = browserSurface.getBoundingClientRect();
+        const key = [bounds.x, bounds.y, bounds.width, bounds.height]
+          .map((value) => Math.round(value))
+          .join(",");
+        if (key === browserSentBounds) return false;
+        browserSentBounds = key;
         void window.sahkarmi.browser.setVisible({
           visible: true,
           bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
@@ -2011,15 +2032,29 @@ export function Conversation(props: ConversationProps) {
           botId: props.bot?.id ?? null,
           threadId: props.bot?.threadId ?? null,
         });
+        return true;
       };
       syncBounds();
+      // The panel slides and the layout settles over several frames (sidebar, header wrap, text
+      // size), so one measurement after a resize placed the page at the size it had a step before.
+      // Follow it every frame until it has stood still for a few frames.
       const scheduleBoundsSync = () => {
         if (browserBoundsFrame !== undefined) cancelAnimationFrame(browserBoundsFrame);
-        browserBoundsFrame = requestAnimationFrame(() => {
+        let still = 0;
+        let frames = 0;
+        const follow = () => {
           browserBoundsFrame = undefined;
-          syncBounds();
-        });
+          still = syncBounds() ? 0 : still + 1;
+          frames += 1;
+          if (still < 4 && frames < 90) browserBoundsFrame = requestAnimationFrame(follow);
+        };
+        browserBoundsFrame = requestAnimationFrame(follow);
       };
+      scheduleBoundsSync();
+      // Moves that change no size (text size, sidebar, a wrapping header) fire no ResizeObserver.
+      browserBoundsTimer = setInterval(() => {
+        if (!document.hidden && syncBounds()) scheduleBoundsSync();
+      }, 500);
       browserResizeObserver = new ResizeObserver(scheduleBoundsSync);
       browserResizeObserver.observe(browserSurface);
       browserWindowResizeHandler = scheduleBoundsSync;
@@ -2084,6 +2119,7 @@ export function Conversation(props: ConversationProps) {
     browserVisibilityGeneration += 1;
     if (browserVisibilityFrame !== undefined) cancelAnimationFrame(browserVisibilityFrame);
     if (browserBoundsFrame !== undefined) cancelAnimationFrame(browserBoundsFrame);
+    if (browserBoundsTimer !== undefined) clearInterval(browserBoundsTimer);
     browserResizeObserver?.disconnect();
     if (browserWindowResizeHandler)
       window.removeEventListener("resize", browserWindowResizeHandler);
@@ -2478,14 +2514,17 @@ export function Conversation(props: ConversationProps) {
               </Show>
               <div class="conversation-header-actions no-drag">
                 <Show when={props.bot}>
-                  <div class="header-model-root">
+                  <div class="header-model-root" ref={headerModelRoot}>
                     <button
                       type="button"
                       class="header-model-button"
                       aria-label={`${t("headerModel")}: ${headerModelLabel()}`}
                       aria-expanded={headerModelOpen()}
                       title={agentReady() ? t("headerModel") : t("modelConnectHint")}
-                      onClick={() => setHeaderModelOpen((open) => !open)}
+                      onClick={() => {
+                        setHeaderModelPlacement(anchorBelow(headerModelRoot));
+                        setHeaderModelOpen((open) => !open);
+                      }}
                     >
                       <span>{headerModelLabel()}</span>
                       <Show when={pendingRuntimeDetail()}>
@@ -2500,64 +2539,67 @@ export function Conversation(props: ConversationProps) {
                       </svg>
                     </button>
                     <Show when={headerModelOpen()}>
-                      <div
-                        class="header-model-popover"
-                        role="dialog"
-                        aria-label={t("headerModel")}
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") setHeaderModelOpen(false);
-                        }}
-                      >
-                        <Show
-                          when={agentReady()}
-                          fallback={
-                            <p class="header-model-connect">
-                              {t("modelConnectHint")}{" "}
-                              <button
-                                type="button"
-                                class="link-button"
-                                onClick={() => {
-                                  setHeaderModelOpen(false);
-                                  props.onOpenAiSettings?.();
+                      <Portal>
+                        <div
+                          class="header-model-popover no-drag"
+                          style={headerModelPlacement()}
+                          role="dialog"
+                          aria-label={t("headerModel")}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") setHeaderModelOpen(false);
+                          }}
+                        >
+                          <Show
+                            when={agentReady()}
+                            fallback={
+                              <p class="header-model-connect">
+                                {t("modelConnectHint")}{" "}
+                                <button
+                                  type="button"
+                                  class="link-button"
+                                  onClick={() => {
+                                    setHeaderModelOpen(false);
+                                    props.onOpenAiSettings?.();
+                                  }}
+                                >
+                                  {t("modelConnect")}
+                                </button>
+                              </p>
+                            }
+                          >
+                            <ProviderModelPicker
+                              variant="field"
+                              ariaLabel="Header model"
+                              value={settingsModel()}
+                              agentStatus={props.agentStatus}
+                              modelOptions={props.modelOptions}
+                              onChange={(model) => void selectAndConfirmModel(model)}
+                            />
+                            <Show when={pendingRuntimeDetail()}>
+                              <p class="header-model-pending-detail">{pendingRuntimeDetail()}</p>
+                            </Show>
+                            <label class="header-model-reasoning">
+                              <span>{t("headerReasoning")}</span>
+                              <select
+                                value={settingsReasoning()}
+                                aria-label={t("headerReasoning")}
+                                onChange={(event) => {
+                                  const reasoningEffort = event.currentTarget
+                                    .value as AgentReasoningEffort;
+                                  setSettingsReasoning(reasoningEffort);
+                                  void saveBotPatch({ reasoningEffort });
                                 }}
                               >
-                                {t("modelConnect")}
-                              </button>
-                            </p>
-                          }
-                        >
-                          <ProviderModelPicker
-                            variant="field"
-                            ariaLabel="Header model"
-                            value={settingsModel()}
-                            agentStatus={props.agentStatus}
-                            modelOptions={props.modelOptions}
-                            onChange={(model) => void selectAndConfirmModel(model)}
-                          />
-                          <Show when={pendingRuntimeDetail()}>
-                            <p class="header-model-pending-detail">{pendingRuntimeDetail()}</p>
+                                <For each={reasoningOptions()}>
+                                  {(effort) => (
+                                    <option value={effort}>{reasoningLabel(effort)}</option>
+                                  )}
+                                </For>
+                              </select>
+                            </label>
                           </Show>
-                          <label class="header-model-reasoning">
-                            <span>{t("headerReasoning")}</span>
-                            <select
-                              value={settingsReasoning()}
-                              aria-label={t("headerReasoning")}
-                              onChange={(event) => {
-                                const reasoningEffort = event.currentTarget
-                                  .value as AgentReasoningEffort;
-                                setSettingsReasoning(reasoningEffort);
-                                void saveBotPatch({ reasoningEffort });
-                              }}
-                            >
-                              <For each={reasoningOptions()}>
-                                {(effort) => (
-                                  <option value={effort}>{reasoningLabel(effort)}</option>
-                                )}
-                              </For>
-                            </select>
-                          </label>
-                        </Show>
-                      </div>
+                        </div>
+                      </Portal>
                     </Show>
                   </div>
                 </Show>

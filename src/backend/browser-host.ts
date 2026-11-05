@@ -1476,7 +1476,7 @@ export class BrowserHost implements CoworkerBrowser {
       this.#mountView(view);
       this.#attachedView = view;
     }
-    view.setBounds(this.#bounds);
+    view.setBounds(fitInWindow(this.#bounds, this.#window.getContentSize()));
     view.setVisible(true);
     view.webContents.invalidate();
   }
@@ -2127,11 +2127,26 @@ export function isPersistableBrowserUrl(value: string): boolean {
 
 export function validateBounds(bounds: BrowserBounds): BrowserBounds {
   if (!Object.values(bounds).every(Number.isFinite)) throw new Error("Invalid browser bounds.");
-  const x = Math.max(0, Math.floor(bounds.x));
-  const y = Math.max(0, Math.floor(bounds.y));
-  const right = Math.max(x + 1, Math.ceil(bounds.x + bounds.width));
-  const bottom = Math.max(y + 1, Math.ceil(bounds.y + bounds.height));
+  // Layout sizes carry float noise (1236.0000122): rounding that up made the page a pixel wider
+  // than the panel and the window, so its right edge was cut off.
+  const x = Math.max(0, Math.floor(bounds.x + 0.01));
+  const y = Math.max(0, Math.floor(bounds.y + 0.01));
+  const right = Math.max(x + 1, Math.ceil(bounds.x + bounds.width - 0.01));
+  const bottom = Math.max(y + 1, Math.ceil(bounds.y + bounds.height - 0.01));
   return { x, y, width: right - x, height: bottom - y };
+}
+
+/** Keeps the page inside the window, so no part of it is ever drawn past the edge. */
+export function fitInWindow(bounds: BrowserBounds, [width, height]: number[]): BrowserBounds {
+  if (!width || !height) return bounds;
+  const x = Math.min(bounds.x, width - 1);
+  const y = Math.min(bounds.y, height - 1);
+  return {
+    x,
+    y,
+    width: Math.max(1, Math.min(bounds.width, width - x)),
+    height: Math.max(1, Math.min(bounds.height, height - y)),
+  };
 }
 
 function toPublicTab(tab: InternalTab): BrowserTab {
