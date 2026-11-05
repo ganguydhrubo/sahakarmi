@@ -5,6 +5,36 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-06
+
+### Added
+
+- Messages you type while a coworker is working now join the task it is doing, as in Claude
+  Code: the coworker reads them at its next step and adjusts, without the work being stopped
+  and without the message waiting in line. This works for Codex and Claude coworkers with a
+  text message; other models, attachments and messages behind others in the queue still wait
+  their turn, and "Send now" still stops the task and starts the message.
+- A very long paste (over 5,000 characters) is attached as a text file instead of filling the
+  message box.
+- Settings > MCP servers warns when a local server's command is not on this PC, so a missing
+  install or wrong path no longer leaves coworkers silently without that server's tools.
+
+### Changed
+
+- A coworker whose Claude, Codex or OpenAI plan, quota or credit is used up moves the message to
+  the backup free model in more cases ("Credit balance is too low", "hit your usage limit",
+  "insufficient_quota", "out of extra usage"), so started work goes on.
+- Coworkers are told to read the page after submitting, sending, saving or paying in the
+  browser, and to report an error or no change plainly instead of reporting success.
+- Deleting a coworker now lets go of its Claude or Codex session, so it stops using memory.
+
+### Fixed
+
+- Errors in Settings > MCP servers and Settings > Skills no longer start with "Error invoking
+  remote method ...".
+- Searching the Marketplace's learned skills with no match said you had no learned skills; it
+  now says there are no matches.
+
 ## [0.22.1] - 2026-11-05
 
 ### Fixed

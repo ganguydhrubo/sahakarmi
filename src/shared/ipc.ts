@@ -2016,6 +2016,8 @@ export interface McpServerSummary {
   envKeys: string[];
   headerKeys: string[];
   source: string;
+  /** A local server whose command is not on this PC (not installed, or a wrong path). */
+  missingCommand?: boolean;
 }
 
 export interface McpServerInput {

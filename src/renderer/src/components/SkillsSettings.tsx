@@ -20,7 +20,13 @@ export function SkillsSettings() {
     try {
       return await action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      // Electron wraps main-process errors; the owner only needs the message itself.
+      setError(
+        (cause instanceof Error ? cause.message : String(cause)).replace(
+          /^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/,
+          "",
+        ),
+      );
       return undefined;
     } finally {
       setBusy(false);

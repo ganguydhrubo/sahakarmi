@@ -8,6 +8,7 @@ import { ACP_AGENT_PROVIDERS, type AgentEvent, type ConversationSnapshot } from 
 import {
   AgentService,
   isNoisyDiagnostic,
+  isQuotaError,
   previewText,
   quotaNotice,
   SHORT_TOOL_WAIT_MS,
@@ -50,6 +51,7 @@ afterEach(async () => {
   delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
   delete process.env.SAHKARMI_OPENCODE_PATH;
   delete process.env.SAHKARMI_FAKE_AGENT_TOOL;
+  delete process.env.SAHKARMI_FAKE_REFUSE_STEER;
   delete process.env.SAHKARMI_FAKE_TOOL_CALL;
   delete process.env.SAHKARMI_FAKE_SERVER_REQUEST;
   delete process.env.SAHKARMI_FAKE_TOOL_ITEM;
@@ -1344,7 +1346,32 @@ describe.sequential("AgentService", () => {
     expect(instructions).toContain("standing remit");
   });
 
-  it("queues FIFO instead of steering and pause/resume controls draining", async () => {
+  it("adds an owner message to the running turn, like Claude Code", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "Start" });
+    await waitFor(() => events.some((event) => event.type === "turn-started"));
+    const active = events.find((event) => event.type === "turn-started");
+    if (active?.type !== "turn-started") throw new Error("Turn did not start.");
+    await service.sendMessage({ botId: "chief", text: "Also check the footer" });
+
+    const steer = (await protocolMessages()).find((message) => message.method === "turn/steer");
+    const params = steer?.params as Record<string, unknown> | undefined;
+    expect(params?.expectedTurnId).toBe(active.turnId);
+    expect(params?.input).toEqual([{ type: "text", text: "Also check the footer" }]);
+    const queue = service.listQueue("chief");
+    expect(queue.deliveries.map((item) => item.status)).toEqual(["running", "completed"]);
+    expect(
+      (await protocolMessages()).filter((message) => message.method === "turn/start"),
+    ).toHaveLength(1);
+  });
+
+  it("queues FIFO when the running turn cannot take the message, and pause/resume controls draining", async () => {
+    process.env.SAHKARMI_FAKE_REFUSE_STEER = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     const events: AgentEvent[] = [];
@@ -1359,9 +1386,6 @@ describe.sequential("AgentService", () => {
 
     let queue = service.listQueue("chief");
     expect(queue.deliveries.map((item) => item.status)).toEqual(["running", "queued"]);
-    expect((await protocolMessages()).some((message) => message.method === "turn/steer")).toBe(
-      false,
-    );
 
     await service.interrupt("chief", active.turnId);
     await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "interrupted");
@@ -1813,6 +1837,7 @@ describe.sequential("AgentService", () => {
   it("keeps event loop running when a second message arrives mid-turn and drains after first turn completes", async () => {
     process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "First turn answer";
     process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "150";
+    process.env.SAHKARMI_FAKE_REFUSE_STEER = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
@@ -1889,6 +1914,7 @@ describe.sequential("AgentService", () => {
 
   it("starts queued messages after restart when provider process exits mid-turn", async () => {
     process.env.SAHKARMI_FAKE_EXIT_ON_TURN = "1";
+    process.env.SAHKARMI_FAKE_REFUSE_STEER = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     const events: AgentEvent[] = [];
@@ -2591,6 +2617,14 @@ process.stdin.on("data", (chunk) => {
         write({ method: "item/completed", params: { threadId: message.params.threadId, turnId, item } });
         write({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: turnId, status: "completed" } } });
       }
+      if (message.method === "turn/steer") {
+        const turn = turns.get(message.params.expectedTurnId);
+        if (turn && turn.status === "inProgress" && !process.env.SAHKARMI_FAKE_REFUSE_STEER) {
+          write({ id: message.id, result: { turnId: message.params.expectedTurnId } });
+        } else {
+          write({ id: message.id, error: { code: -32600, message: "no active turn to steer" } });
+        }
+      }
       if (message.method === "turn/interrupt") {
         write({ id: message.id, result: {} });
         const turn = turns.get(message.params.turnId);
@@ -2657,6 +2691,24 @@ describe("sidebar previews", () => {
       "first point link",
     );
     expect(previewText("   ")).toBe("");
+  });
+});
+
+describe("plan and credit limits", () => {
+  it("recognise every provider's used-up plan or credit, but not ordinary failures", () => {
+    for (const reason of [
+      "Claude AI usage limit reached|1762380000",
+      "Credit balance is too low",
+      "You've hit your usage limit. Upgrade to Pro or try again later.",
+      "insufficient_quota: You exceeded your current quota",
+      "Error 429 RESOURCE_EXHAUSTED",
+      "You're out of extra usage",
+    ]) {
+      expect(isQuotaError(reason), reason).toBe(true);
+    }
+    for (const reason of ["ENOENT: no such file", "Tool call failed: timeout", ""]) {
+      expect(isQuotaError(reason), reason).toBe(false);
+    }
   });
 });
 

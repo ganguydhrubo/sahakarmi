@@ -2,11 +2,12 @@ import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 import { setSendKey } from "../preferences";
-import { ComposerEditor } from "./ComposerEditor";
+import { ComposerEditor, LONG_PASTE_CHARS } from "./ComposerEditor";
 
 function renderComposer() {
   const onSubmit = vi.fn();
   const onValueChange = vi.fn();
+  const onLongPaste = vi.fn();
 
   render(() => {
     const [value, setValue] = createSignal("");
@@ -23,6 +24,7 @@ function renderComposer() {
           setValue(nextValue);
         }}
         onSubmit={onSubmit}
+        onLongPaste={onLongPaste}
       />
     );
   });
@@ -31,6 +33,7 @@ function renderComposer() {
     editor: screen.getByRole("textbox", { name: "Message Chief" }),
     onSubmit,
     onValueChange,
+    onLongPaste,
   };
 }
 
@@ -118,5 +121,17 @@ describe("ComposerEditor", () => {
 
     expect(onValueChange).toHaveBeenLastCalledWith("First line\nSecond line\nThird line");
     expect(editor.textContent).toBe("First line\nSecond line\nThird line");
+  });
+
+  it("hands a very long paste to the chat as a file instead of filling the box", async () => {
+    const { editor, onValueChange, onLongPaste } = renderComposer();
+    placeCaretAtEnd(editor);
+    const long = "x".repeat(LONG_PASTE_CHARS + 1);
+
+    await fireEvent.paste(editor, { clipboardData: { files: [], getData: () => long } });
+
+    expect(onLongPaste).toHaveBeenCalledWith(long);
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(editor.textContent).toBe("");
   });
 });

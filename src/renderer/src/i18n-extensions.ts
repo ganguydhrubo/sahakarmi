@@ -44,6 +44,8 @@ export const extensionsEn = {
   mcpServers: "Your servers",
   mcpNone: "No MCP servers added yet.",
   mcpOn: "On",
+  mcpCommandMissing:
+    "Windows can't find \"{command}\" on this PC, so coworkers won't get this server's tools. Install it, or edit the server and use the full path.",
   mcpRemove: "Remove",
   mcpRestartNote: "Coworkers get new or changed servers the next time Sahkarmi starts.",
   mcpTrustNote:
@@ -115,6 +117,8 @@ export const extensionsHi: ExtensionsDictionary = {
   mcpServers: "आपके सर्वर",
   mcpNone: "अभी कोई MCP सर्वर नहीं जोड़ा गया।",
   mcpOn: "चालू",
+  mcpCommandMissing:
+    'इस PC पर "{command}" नहीं मिला, इसलिए सहकर्मियों को इस सर्वर के टूल नहीं मिलेंगे। इसे इंस्टॉल करें, या सर्वर एडिट करके पूरा पाथ दें।',
   mcpRemove: "हटाएँ",
   mcpRestartNote: "नए या बदले हुए सर्वर सहकर्मियों को अगली बार सहकर्मी ऐप शुरू होने पर मिलेंगे।",
   mcpTrustNote:
@@ -184,6 +188,8 @@ export const extensionsBn: ExtensionsDictionary = {
   mcpServers: "আপনার সার্ভার",
   mcpNone: "এখনও কোনো MCP সার্ভার যোগ করা হয়নি।",
   mcpOn: "চালু",
+  mcpCommandMissing:
+    'এই PC-তে "{command}" পাওয়া যায়নি, তাই সহকর্মীরা এই সার্ভারের টুল পাবে না। এটি ইনস্টল করুন, বা সার্ভার এডিট করে পুরো পাথ দিন।',
   mcpRemove: "সরান",
   mcpRestartNote: "নতুন বা বদলানো সার্ভার সহকর্মীরা পরের বার সহকর্মী অ্যাপ চালু হলে পাবে।",
   mcpTrustNote:

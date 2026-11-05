@@ -515,7 +515,11 @@ export function MarketplaceView(props: {
             </header>
             <Show
               when={learnedShown().length > 0}
-              fallback={<p class="center-view-empty">{t("marketLearnedEmpty")}</p>}
+              fallback={
+                <p class="center-view-empty">
+                  {learned().length > 0 ? t("noMatches") : t("marketLearnedEmpty")}
+                </p>
+              }
             >
               <ul class="marketplace-grid">
                 <For each={learnedShown()}>

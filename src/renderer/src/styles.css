@@ -13432,6 +13432,10 @@ fieldset.memory-filters {
   white-space: nowrap;
 }
 
+.extension-item-text .extension-warning {
+  color: var(--warning);
+}
+
 .extension-badge {
   align-self: flex-start;
   border-radius: 999px;
