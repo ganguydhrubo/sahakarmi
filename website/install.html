@@ -103,7 +103,8 @@
       <li>The installer runs without further questions and installs for your user only (no administrator rights) under <code>%LOCALAPPDATA%\Programs\sahkarmi</code>, with a Desktop and Start Menu shortcut named Sahkarmi.</li>
       <li>Sahkarmi opens by itself after installing.</li>
     </ol>
-    <div class="box"><strong>winget:</strong> a manifest for <code>Sahkarmi.Sahkarmi</code> has been submitted to the Windows Package Manager community repository and is waiting for Microsoft's moderation. Until it is accepted, <code>winget install Sahkarmi.Sahkarmi</code> does not work; use the installer above.</div>
+    <div class="box" data-winget="live" hidden><strong>winget:</strong> <code>winget install Sahkarmi.Sahkarmi</code> installs the latest version from the Windows Package Manager community repository, and <code>winget upgrade Sahkarmi.Sahkarmi</code> updates it. New releases are submitted there automatically.</div>
+    <div class="box" data-winget="pending"><strong>winget:</strong> a manifest for <code>Sahkarmi.Sahkarmi</code> has been submitted to the Windows Package Manager community repository and is waiting for Microsoft's moderation. Until it is accepted, <code>winget install Sahkarmi.Sahkarmi</code> does not work; use the installer above.</div>
 
     <h2 id="verify">Verify the download</h2>
     <p>Every release attaches <code>SHA256SUMS.txt</code> and <code>SHA256SUMS-windows.txt</code>, plus a build provenance attestation created by GitHub Actions. Compare the hash of your file with the one on the <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer">release page</a>.</p>
@@ -133,7 +134,7 @@
     <p>After signing in to a CLI in a terminal, click <strong>Check again</strong> or restart Sahkarmi.</p>
 
     <h2 id="terminal">Terminal install and building from source</h2>
-    <p>There is no package in winget, Homebrew, AUR or Flathub yet, so there is no one-line installer. To build from source (any platform with <a href="https://bun.sh" target="_blank" rel="noopener noreferrer">Bun</a> 1.3.11 and Node.js 22.12 or newer):</p>
+    <p>On Windows, the Microsoft Store and Scoop (and winget, see above) install with one command. There is no Homebrew, AUR or Flathub package, because the macOS and Linux builds are paused. To build from source (any platform with <a href="https://bun.sh" target="_blank" rel="noopener noreferrer">Bun</a> 1.3.11 and Node.js 22.12 or newer):</p>
 <pre><code>git clone https://github.com/ganguydhrubo/sahakarmi.git
 cd sahakarmi
 bun install --frozen-lockfile

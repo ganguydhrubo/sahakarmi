@@ -100,6 +100,30 @@ function setText(html, attribute, text) {
 const megabytes = (size) => `${Math.round(size / 1_000_000)} MB`;
 const version = files.win.tag.replace(/^v/, "");
 
+// winget: once microsoft/winget-pkgs has accepted Sahkarmi.Sahkarmi the pages say so by themselves.
+// Elements marked data-winget="pending" are removed and the data-winget="live" ones are shown.
+async function wingetAccepted() {
+  const headers = { accept: "application/vnd.github+json", "user-agent": "sahkarmi-site" };
+  if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  try {
+    const response = await fetch(
+      "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/s/Sahkarmi/Sahkarmi",
+      { headers },
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+const winget = await wingetAccepted();
+console.log(`winget   ${winget ? "accepted in winget-pkgs" : "not accepted yet"}`);
+function applyWinget(html) {
+  if (!winget) return html;
+  return html
+    .replace(/<(div|span)\b[^>]*\sdata-winget="pending"[^>]*>[\s\S]*?<\/\1>\n?/g, "")
+    .replace(/(\sdata-winget="live")\s+hidden/g, "$1");
+}
+
 // Every page: the home and install pages must carry the links, other pages may (guides, use cases).
 const pages = readdirSync(dirname(file)).filter(
   (name) => name.endsWith(".html") && name !== "404.html",
@@ -132,6 +156,7 @@ for (const name of pages) {
     );
   }
   html = html.replace(/"softwareVersion": "[^"]*"/, `"softwareVersion": "${version}"`);
+  html = applyWinget(html);
   writeFileSync(target, html);
 }
 for (const [platform, asset] of Object.entries(files)) {
