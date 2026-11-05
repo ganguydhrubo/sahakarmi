@@ -12,6 +12,7 @@ const WANTS_TO: Record<PermissionCategory, string> = {
   shell: "run a command on your computer",
   browser_navigation: "open a web page",
   browser_interaction: "click or type on a web page",
+  desktop_control: "see your screen and use the mouse and keyboard in your apps",
   downloads: "download a file",
   external_messages: "send a message to someone outside Sahkarmi",
   publication: "publish or post something online",
@@ -32,6 +33,8 @@ const IF_APPROVED: Record<PermissionCategory, string> = {
   shell: "this runs on your computer at once. Commands can change files or settings.",
   browser_navigation: "the page opens in its browser, and the site sees a normal visit.",
   browser_interaction: "it will do this on the page, just as if you had done it yourself.",
+  desktop_control:
+    "until Sahkarmi restarts it can see your screen and click, type and open apps on this PC, just as if you were at the keyboard. It never types passwords and cannot touch Sahkarmi's own window.",
   downloads: "the file will be saved on your computer.",
   external_messages: "the message is sent straight away and cannot be taken back.",
   publication: "it goes live straight away, and other people can see it.",

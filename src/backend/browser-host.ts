@@ -111,17 +111,55 @@ export function staleReloadDelay(
 /**
  * Tabs that show the same site as the tab a coworker just changed. Their page was loaded
  * before the change, so it is out of date (a draft saved in one tab is not in the other).
+ * Only the same coworker's tabs: another coworker's browser is signed in separately (often as
+ * another account), so its pages are never reloaded because of a colleague's work.
  */
 export function sameSiteTabIds(
-  tabs: Array<{ id: string; url: string }>,
+  tabs: Array<{ id: string; url: string; ownerBotId?: string | null }>,
   actedTabId: string,
   actedUrl: string,
+  actedOwnerBotId?: string | null,
 ): string[] {
   const origin = webOrigin(actedUrl);
   if (!origin) return [];
   return tabs
-    .filter((tab) => tab.id !== actedTabId && webOrigin(tab.url) === origin)
+    .filter(
+      (tab) =>
+        tab.id !== actedTabId &&
+        webOrigin(tab.url) === origin &&
+        (actedOwnerBotId === undefined || (tab.ownerBotId ?? null) === actedOwnerBotId),
+    )
     .map((tab) => tab.id);
+}
+
+/**
+ * The tab the browser panel may show to the owner while they look at one coworker: the
+ * selected tab when it is that coworker's, otherwise that coworker's most recently used tab,
+ * otherwise none (the panel stays empty rather than showing a colleague's page).
+ * `viewer` undefined means nobody in particular is looking (the old behaviour).
+ */
+export function tabForViewer(
+  tabs: Array<{
+    id: string;
+    ownerBotId: string | null;
+    ownerThreadId: string | null;
+    lastUsed: number;
+  }>,
+  activeTabId: string | null,
+  viewer: { botId: string | null; threadId: string | null } | undefined,
+): string | null {
+  if (!viewer) return activeTabId;
+  const visible = (tab: (typeof tabs)[number]) =>
+    tab.ownerBotId
+      ? tab.ownerBotId === viewer.botId
+      : Boolean(viewer.threadId && tab.ownerThreadId === viewer.threadId);
+  const active = tabs.find((tab) => tab.id === activeTabId);
+  if (active && visible(active)) return active.id;
+  let best: (typeof tabs)[number] | null = null;
+  for (const tab of tabs) {
+    if (visible(tab) && (!best || tab.lastUsed > best.lastUsed)) best = tab;
+  }
+  return best?.id ?? null;
 }
 
 function webOrigin(url: string): string | null {
@@ -306,6 +344,71 @@ async function captureIfPainted(view: WebContentsView): Promise<string | null> {
 
 const SHARED_PARTITION = "persist:sahkarmi-browser";
 const SIGN_IN_SPLIT_MARKER = "browser-signins-split.json";
+/** Session cookies are kept this long past their last change (a site's own expiry wins sooner). */
+export const KEPT_SESSION_COOKIE_DAYS = 30;
+const COOKIE_KEEP_DELAY_MS = 1_000;
+
+/**
+ * The same cookie stored with an expiry, so it survives a restart; null for a cookie that is
+ * persistent already or has no usable host.
+ */
+export function keptSessionCookie(
+  cookie: Pick<
+    Electron.Cookie,
+    | "name"
+    | "value"
+    | "domain"
+    | "hostOnly"
+    | "path"
+    | "secure"
+    | "httpOnly"
+    | "session"
+    | "sameSite"
+  >,
+  now: number,
+): Electron.CookiesSetDetails | null {
+  if (!cookie.session) return null;
+  const host = (cookie.domain ?? "").replace(/^\./, "");
+  if (!host) return null;
+  return {
+    url: `${cookie.secure ? "https" : "http"}://${host}${cookie.path ?? "/"}`,
+    name: cookie.name,
+    value: cookie.value,
+    ...(cookie.hostOnly ? {} : { domain: cookie.domain }),
+    path: cookie.path,
+    secure: cookie.secure,
+    httpOnly: cookie.httpOnly,
+    sameSite: cookie.sameSite,
+    expirationDate: Math.floor(now / 1000) + KEPT_SESSION_COOKIE_DAYS * 24 * 60 * 60,
+  };
+}
+
+/**
+ * Which one coworker receives each site's sign-in when the old shared browser is split: the
+ * one with the most open pages of that site, then the most recorded uses, then the first seen.
+ */
+export function signInKeepers(
+  tabs: Array<{ botId: string; url: string }>,
+  usedPages: Array<{ botId: string; url: string }>,
+): Map<string, string> {
+  const score = new Map<string, Map<string, number>>();
+  const add = (botId: string, url: string, weight: number) => {
+    const site = siteOfUrl(url);
+    if (!site) return;
+    const bots = score.get(site) ?? new Map<string, number>();
+    bots.set(botId, (bots.get(botId) ?? 0) + weight);
+    score.set(site, bots);
+  };
+  for (const tab of tabs) add(tab.botId, tab.url, 1_000);
+  for (const used of usedPages) add(used.botId, used.url, 1);
+  const keepers = new Map<string, string>();
+  for (const [site, bots] of score) {
+    let best: [string, number] | null = null;
+    for (const entry of bots) if (!best || entry[1] > best[1]) best = entry;
+    if (best) keepers.set(site, best[0]);
+  }
+  return keepers;
+}
 
 /** Each coworker's browser data lives in a partition of its own. */
 export function browserPartition(botId: string): string {
@@ -335,6 +438,9 @@ export class BrowserHost implements CoworkerBrowser {
   static AWAKE_LIMIT_IDLE_MS = 2 * 60_000;
   /** How often idle tabs are looked for. */
   static SLEEP_CHECK_MS = 60_000;
+  /** A browser's page cache above this size is emptied once after start (sign-ins stay). */
+  static CACHE_TRIM_BYTES = 150 * 1024 * 1024;
+  static CACHE_TRIM_DELAY_MS = 90_000;
   readonly takeoverHoldsShownTabOnly = true;
   readonly #window: BrowserWindow;
   readonly #session: Session;
@@ -352,6 +458,8 @@ export class BrowserHost implements CoworkerBrowser {
   /** The owner has taken over: coworkers' new tabs open behind the tab the owner is using. */
   #ownerHolding = false;
   #visible = false;
+  /** The coworker whose chat the owner is looking at; the panel shows only that coworker's pages. */
+  #viewer: { botId: string | null; threadId: string | null } | undefined = undefined;
   #bounds: BrowserBounds | null = null;
   #attachedView: WebContentsView | null = null;
   readonly #mountedViews = new Set<WebContentsView>();
@@ -383,6 +491,7 @@ export class BrowserHost implements CoworkerBrowser {
       state.tabs.map((stored) => ({ ...stored, ownerBotId: ownerOf(stored) })),
       options,
     );
+    this.#scheduleCacheTrim(options.botIds ?? []);
     if (state.tabs.length === 0) return;
 
     const tabs = state.tabs.map((stored) => {
@@ -419,11 +528,20 @@ export class BrowserHost implements CoworkerBrowser {
     };
     for (const tab of tabs) if (tab.ownerBotId) addSite(tab.ownerBotId, tab.url);
     for (const used of options.usedPages ?? []) addSite(used.botId, used.url);
+    // A sign-in is one session on the website's side. Copied into several coworkers' browsers,
+    // the first one that logs out, logs in again or switches account ends it for all of them
+    // (Facebook then shows "Continue as ..." everywhere). Each site's sign-in goes to one coworker.
+    const keeper = signInKeepers(
+      tabs.flatMap((tab) => (tab.ownerBotId ? [{ botId: tab.ownerBotId, url: tab.url }] : [])),
+      options.usedPages ?? [],
+    );
     const onlyBot = options.botIds.length === 1 ? options.botIds[0] : null;
     for (const botId of options.botIds) {
-      const wanted = sites.get(botId);
+      const wanted = new Set(
+        [...(sites.get(botId) ?? [])].filter((site) => (keeper.get(site) ?? botId) === botId),
+      );
       const cookies = shared.filter(
-        (cookie) => botId === onlyBot || wanted?.has(siteOfHost(cookie.domain ?? "")),
+        (cookie) => botId === onlyBot || wanted.has(siteOfHost(cookie.domain ?? "")),
       );
       if (cookies.length === 0) continue;
       const target = this.#sessionFor(botId);
@@ -457,9 +575,79 @@ export class BrowserHost implements CoworkerBrowser {
     if (!botSession) {
       botSession = session.fromPartition(browserPartition(botId), { cache: true });
       this.#configureSession(botSession);
+      this.#keepSignInsAcrossRestarts(botSession, botId);
       this.#botSessions.set(botId, botSession);
     }
     return botSession;
+  }
+
+  /**
+   * Electron, unlike Chrome with "continue where you left off", drops cookies that have no
+   * expiry date when the app closes. Sites such as Facebook can keep the sign-in itself
+   * (c_user/xs) in such cookies, so a restart (the daily run) found the coworker signed out with
+   * only the "Continue as ..." device cookies left. A coworker's own browser keeps them: a
+   * session cookie of a site it has open is stored with an expiry, inside Chromium's own
+   * (encrypted) cookie store. A site that signs out still deletes it as usual.
+   */
+  #keepSignInsAcrossRestarts(target: Session, botId: string): void {
+    const pending = new Map<string, Electron.Cookie>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flushLater = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        const cookies = [...pending.values()];
+        pending.clear();
+        void (async () => {
+          for (const cookie of cookies) {
+            const kept = keptSessionCookie(cookie, Date.now());
+            if (kept) await target.cookies.set(kept).catch(() => undefined);
+          }
+          // On disk now, not on Chromium's own schedule: a killed app keeps its sign-ins.
+          await target.cookies.flushStore().catch(() => undefined);
+        })();
+      }, COOKIE_KEEP_DELAY_MS);
+      timer.unref?.();
+    };
+    target.cookies.on("changed", (_event, cookie, cause, removed) => {
+      const key = `${cookie.domain}|${cookie.path}|${cookie.name}`;
+      // A site that signs out within the delay must not get its cookie written back.
+      if (removed && cause !== "overwrite") pending.delete(key);
+      if (removed || !cookie.session) {
+        flushLater();
+        return;
+      }
+      const site = siteOfHost(cookie.domain ?? "");
+      const open = [...this.#tabs.values()].some(
+        (tab) => tab.ownerBotId === botId && siteOfUrl(currentTabUrl(tab)) === site,
+      );
+      if (!open) return;
+      pending.set(key, cookie);
+      flushLater();
+    });
+  }
+
+  /**
+   * Page caches grew to gigabytes (every coworker has its own). A big one is emptied once, a
+   * while after start; cookies, local storage and IndexedDB are never touched, so nobody is
+   * signed out.
+   */
+  #scheduleCacheTrim(botIds: string[]): void {
+    const timer = setTimeout(() => {
+      void (async () => {
+        const sessions = [this.#session, ...botIds.map((botId) => this.#sessionFor(botId))];
+        for (const target of sessions) {
+          try {
+            if ((await target.getCacheSize()) <= BrowserHost.CACHE_TRIM_BYTES) continue;
+            await target.clearCache();
+            await target.clearCodeCaches({});
+          } catch {
+            // A cache that cannot be read or cleared is left as it is.
+          }
+        }
+      })();
+    }, BrowserHost.CACHE_TRIM_DELAY_MS);
+    timer.unref?.();
   }
 
   /** Which account is signed in to this tab's browser, read from that browser alone. */
@@ -476,6 +664,22 @@ export class BrowserHost implements CoworkerBrowser {
       name: "li_at",
     });
     if (!member?.value) return null;
+    // Asked from inside an open LinkedIn page, the way LinkedIn's own site asks: a bare request
+    // from the app was challenged by LinkedIn's bot check, so a signed-in owner read as "could
+    // not be verified" and every post was refused.
+    const tab = this.#requireTab(tabId);
+    const view = tab.view;
+    if (view && isLinkedInUrl(currentTabUrl(tab))) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const fromPage = await Promise.race([
+        view.webContents.executeJavaScript(LINKEDIN_MEMBER_SCRIPT, false).catch(() => null),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), 10_000);
+        }),
+      ]);
+      clearTimeout(timer);
+      if (typeof fromPage === "string" && fromPage) return fromPage;
+    }
     const response = await tabSession
       .fetch("https://www.linkedin.com/in/me/", {
         redirect: "manual",
@@ -722,8 +926,10 @@ export class BrowserHost implements CoworkerBrowser {
   /** A coworker's page never replaces another coworker's on the panel the owner is looking at. */
   #mayTakePanel(ownerBotId: string | null): boolean {
     if (this.#ownerHolding) return false;
+    // The owner is looking at one coworker: only that coworker's pages may appear there.
+    if (this.#visible && this.#viewer) return ownerBotId === this.#viewer.botId;
     const shown = this.#activeTabId ? this.#tabs.get(this.#activeTabId) : null;
-    return !shown || !shown.ownerBotId || !ownerBotId || shown.ownerBotId === ownerBotId;
+    return !shown?.ownerBotId || !ownerBotId || shown.ownerBotId === ownerBotId;
   }
 
   async activate(tabId: string): Promise<void> {
@@ -745,7 +951,11 @@ export class BrowserHost implements CoworkerBrowser {
     }
 
     if (this.#activeTabId === tabId) {
-      this.#activeTabId = this.#tabs.keys().next().value ?? null;
+      // The same coworker's next page, never a colleague's.
+      const sameOwner = [...this.#tabs.values()].find(
+        (other) => other.ownerBotId === tab.ownerBotId,
+      );
+      this.#activeTabId = sameOwner?.id ?? this.#tabs.keys().next().value ?? null;
     }
     this.#syncAttachedView();
     this.#emitChanged();
@@ -753,6 +963,9 @@ export class BrowserHost implements CoworkerBrowser {
   }
 
   async setVisible(input: BrowserVisibilityInput): Promise<void> {
+    if (input.botId !== undefined || input.threadId !== undefined) {
+      this.#viewer = { botId: input.botId ?? null, threadId: input.threadId ?? null };
+    }
     this.#visible = input.visible;
     if (input.bounds) this.#bounds = validateBounds(input.bounds);
     this.#syncAttachedView();
@@ -764,9 +977,14 @@ export class BrowserHost implements CoworkerBrowser {
     acted.stale = false;
     acted.ownerTouched = false;
     const ids = sameSiteTabIds(
-      [...this.#tabs.values()].map((tab) => ({ id: tab.id, url: currentTabUrl(tab) })),
+      [...this.#tabs.values()].map((tab) => ({
+        id: tab.id,
+        url: currentTabUrl(tab),
+        ownerBotId: tab.ownerBotId,
+      })),
       acted.id,
       currentTabUrl(acted),
+      acted.ownerBotId,
     );
     if (ids.length === 0) return;
     for (const id of ids) {
@@ -965,6 +1183,12 @@ export class BrowserHost implements CoworkerBrowser {
     this.#persistTimer = null;
     try {
       await this.#persistState();
+      // Sign-ins made in the last moments are written to disk before the app closes.
+      await Promise.all(
+        [this.#session, ...this.#botSessions.values()].map((target) =>
+          target.cookies.flushStore().catch(() => undefined),
+        ),
+      );
     } finally {
       if (this.#staleRefreshTimer) clearTimeout(this.#staleRefreshTimer);
       clearInterval(this.#sleepTimer);
@@ -1161,6 +1385,62 @@ export class BrowserHost implements CoworkerBrowser {
     return snapshot;
   }
 
+  /**
+   * Types the owner's password or code into the sign-in field. Sites like Facebook redraw the
+   * form and change the address (index.php?next=...) without loading a new page, which made the
+   * coworker's ref stale; on the same origin the field is found again (the one the coworker
+   * pointed at, else the focused or the only visible password / code field). Another origin is
+   * refused, and the value is never logged, stored or returned.
+   */
+  async fillSecureField(tabId: string, input: SecureFillInput): Promise<void> {
+    await this.#enqueue(tabId, async (tab) => {
+      const view = await this.#wakeLoaded(tab);
+      const marker = `secure-${randomUUID()}`;
+      const found = await withTimeout(
+        view.webContents.executeJavaScript(
+          secureFieldScript(input.ref, input.kind, input.origin, marker),
+          true,
+        ),
+        10_000,
+        "The page did not answer.",
+      );
+      if (!isRecord(found) || typeof found.ref !== "string") {
+        throw new Error(
+          isRecord(found) && typeof found.error === "string"
+            ? found.error
+            : "The field was not found.",
+        );
+      }
+      const ref = found.ref;
+      const restore = view.getVisible() ? null : this.#showOutOfSight(view);
+      try {
+        if (restore) await delay(250);
+        await withTimeout(
+          performAction(view.webContents, {
+            type: "type",
+            ref,
+            text: input.text,
+            submit: input.submit,
+          }),
+          10_000,
+          "Typing timed out.",
+        );
+      } finally {
+        restore?.();
+        if (ref === marker) {
+          void view.webContents
+            .executeJavaScript(
+              `document.querySelector('[data-sahkarmi-ref=${JSON.stringify(marker)}]')?.removeAttribute('data-sahkarmi-ref')`,
+              true,
+            )
+            .catch(() => undefined);
+        }
+      }
+      // Element refs from before are not trusted after a sign-in step.
+      tab.revision += 1;
+    });
+  }
+
   /** What a browser action would touch: the element's label and the page address. */
   describeTarget(tabId: string, ref: string | null): { label: string; url: string } {
     const tab = this.#tabs.get(tabId);
@@ -1172,6 +1452,18 @@ export class BrowserHost implements CoworkerBrowser {
   }
 
   #syncAttachedView(): void {
+    if (this.#visible && this.#viewer) {
+      // Never show a colleague's page on this coworker's panel.
+      const shown = tabForViewer([...this.#tabs.values()], this.#activeTabId, this.#viewer);
+      if (!shown) {
+        this.#attachedView?.setVisible(false);
+        return;
+      }
+      if (shown !== this.#activeTabId) {
+        this.#activeTabId = shown;
+        this.#emitChanged();
+      }
+    }
     const tab = this.#activeTabId ? this.#tabs.get(this.#activeTabId) : null;
     if (!this.#visible || !this.#bounds || !tab) {
       this.#attachedView?.setVisible(false);
@@ -1276,6 +1568,79 @@ export class BrowserHost implements CoworkerBrowser {
   }
 }
 
+export type SecureFieldKind = "password" | "otp" | "pin" | "other";
+
+export interface SecureFillInput {
+  /** The field the coworker pointed at; may be gone after the site redrew its form. */
+  ref: string;
+  kind: SecureFieldKind;
+  /** The origin the owner was told; nothing is typed anywhere else. */
+  origin: string;
+  text: string;
+  submit: boolean;
+}
+
+/**
+ * Runs in the page: finds the field for the owner's secret and returns its ref, or an error.
+ * Order: the coworker's ref if it is still a fitting field, the focused fitting field, then
+ * the only fitting field visible on the page. "other" fields are only ever the coworker's ref.
+ */
+export function secureFieldScript(
+  ref: string,
+  kind: SecureFieldKind,
+  origin: string,
+  marker: string,
+): string {
+  return `(() => {
+    const origin = ${JSON.stringify(origin)};
+    const kind = ${JSON.stringify(kind)};
+    if (location.origin !== origin) {
+      return { error: 'The page is no longer on ' + origin + ', so nothing was typed.' };
+    }
+    const usable = (el) => {
+      if (!(el instanceof HTMLInputElement) || el.disabled || el.readOnly || el.type === 'hidden') return false;
+      if (el.closest('[hidden],[aria-hidden="true"],[inert]')) return false;
+      const style = getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    };
+    const codeLike = (el) =>
+      el.autocomplete === 'one-time-code' || el.inputMode === 'numeric' ||
+      el.type === 'tel' || el.type === 'number' ||
+      (el.maxLength > 0 && el.maxLength <= 10) ||
+      /otp|code|pin|verif|token/i.test([el.name, el.id, el.placeholder, el.getAttribute('aria-label') || ''].join(' '));
+    const fits = (el) =>
+      usable(el) && (kind === 'password' ? el.type === 'password' : kind === 'other' ? true :
+        ['text', 'tel', 'number', 'password', ''].includes(el.type) && codeLike(el));
+    const shown = (el) => { const rect = el.getBoundingClientRect(); return rect.width > 0 && rect.height > 0; };
+    const ref = ${JSON.stringify(ref)};
+    const own = ref ? document.querySelector('[data-sahkarmi-ref=' + JSON.stringify(ref) + ']') : null;
+    if (own && kind === 'other' && own instanceof HTMLElement) return { ref };
+    if (own && fits(own)) return { ref };
+    if (kind === 'other') return { error: 'The field is no longer on the page. Use Take over to type it yourself.' };
+    let pick = null;
+    const active = document.activeElement;
+    if (active && fits(active)) pick = active;
+    if (!pick) {
+      let found = [...document.querySelectorAll('input')].filter(fits);
+      if (kind !== 'password') {
+        const hinted = found.filter((el) => el.autocomplete === 'one-time-code');
+        if (hinted.length > 0) found = hinted;
+      }
+      const onScreen = found.filter(shown);
+      if (onScreen.length > 0) found = onScreen;
+      if (found.length > 1) {
+        return { error: 'More than one field on the page could take it, so nothing was typed. Use Take over to type it yourself.' };
+      }
+      pick = found[0] || null;
+    }
+    if (!pick) return { error: 'The field is no longer on the page. Use Take over to type it yourself.' };
+    const existing = pick.getAttribute('data-sahkarmi-ref');
+    if (existing) return { ref: existing };
+    pick.setAttribute('data-sahkarmi-ref', ${JSON.stringify(marker)});
+    return { ref: ${JSON.stringify(marker)} };
+  })()`;
+}
+
 /** What every browser engine needs for the tools: open, read, act, capture and close tabs. */
 export interface BrowserToolTarget {
   readonly activeTabId: string | null;
@@ -1299,6 +1664,8 @@ export interface CoworkerBrowser extends BrowserToolTarget {
   /** Which account is signed in for this tab; absent where it cannot be read, so publishing stops. */
   signedInAccount?(tabId: string, platform: SocialPlatform): Promise<string | null>;
   releaseBot?(botId: string): Promise<void>;
+  /** Types the owner's secret into the sign-in field, found again if the page redrew it. */
+  fillSecureField?(tabId: string, input: SecureFillInput): Promise<void>;
   onChanged(listener: (...args: BrowserHostEvents["changed"]) => void): () => void;
   onControlChanged(listener: (...args: BrowserHostEvents["controlChanged"]) => void): () => void;
   getControlState(): BrowserControlState;
@@ -1776,6 +2143,32 @@ function toPublicTab(tab: InternalTab): BrowserTab {
     ownerThreadId: tab.ownerThreadId,
     ownerBotId: tab.ownerBotId,
   };
+}
+
+/** The signed-in member's public id, read by the page itself (LinkedIn's own "me" request). */
+const LINKEDIN_MEMBER_SCRIPT = `(async () => {
+  try {
+    const token = /JSESSIONID="?([^";]+)/.exec(document.cookie)?.[1];
+    if (!token) return null;
+    const response = await fetch("/voyager/api/me", {
+      credentials: "include",
+      headers: { "csrf-token": token, "x-restli-protocol-version": "2.0.0", accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const me = await response.json();
+    return me?.miniProfile?.publicIdentifier ?? me?.publicIdentifier ?? null;
+  } catch {
+    return null;
+  }
+})()`;
+
+export function isLinkedInUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "linkedin.com" || host.endsWith(".linkedin.com");
+  } catch {
+    return false;
+  }
 }
 
 function currentTabUrl(tab: InternalTab): string {

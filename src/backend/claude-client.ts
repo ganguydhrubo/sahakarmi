@@ -26,6 +26,7 @@ import {
 import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { isInterruptMarker, readTranscriptLines } from "./claude-transcript";
 import type { ClaudeCliInfo } from "./cli";
+import { desktopSdkServers } from "./desktop/desktop-claude-tools";
 import {
   LIST_KNOWLEDGE_BASES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
@@ -209,12 +210,17 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   }
 
   async #readAccount(): Promise<unknown> {
-    try {
-      const { stdout } = await execFileAsync(this.#cli.executable, ["auth", "status", "--json"], {
-        timeout: 5_000,
+    // A busy PC (Gemini starting, several coworkers running) can take longer than a few seconds
+    // to start the CLI; a timeout used to read as "signed out" and queued every message. One
+    // retry with a longer limit, and a shell only for a .cmd/.bat (claude.exe starts directly).
+    const run = () =>
+      execFileAsync(this.#cli.executable, ["auth", "status", "--json"], {
+        timeout: 15_000,
         maxBuffer: 64 * 1024,
-        shell: process.platform === "win32",
+        shell: process.platform === "win32" && /\.(?:cmd|bat)$/i.test(this.#cli.executable),
       });
+    try {
+      const { stdout } = await run().catch(run);
       const status: unknown = JSON.parse(stdout);
       if (!isRecord(status) || status.loggedIn !== true) {
         return { account: null, requiresOpenaiAuth: false };
@@ -227,7 +233,9 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         },
         requiresOpenaiAuth: false,
       };
-    } catch {
+    } catch (error) {
+      // Logged, so a failing check is never again mistaken for a signed-out account.
+      this.emit("diagnostic", `Claude sign-in check failed: ${messageOfError(error)}`);
       return { account: null, requiresOpenaiAuth: false };
     }
   }
@@ -1046,6 +1054,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
         ],
       }),
+      ...desktopSdkServers(call),
     };
   }
 
@@ -1404,4 +1413,13 @@ export function cleanClaudeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEn
         !name.startsWith("CLAUDE_CODE_SSE"),
     ),
   );
+}
+
+function messageOfError(error: unknown): string {
+  const detail = error as { message?: unknown; stderr?: unknown; code?: unknown; killed?: unknown };
+  const stderr = typeof detail?.stderr === "string" ? detail.stderr.trim().slice(-400) : "";
+  const base = typeof detail?.message === "string" ? detail.message : String(error);
+  return [base.split("\n")[0], detail?.killed ? "(timed out)" : "", stderr]
+    .filter(Boolean)
+    .join(" ");
 }

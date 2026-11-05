@@ -11,8 +11,8 @@
   --brand-sindoor: #c0392b;
   --brand-paper: #fbf7f0;
   --brand-night: #0f1220;
-  --font-ui: "Mukta", "Hind Siliguri", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-heading: "Baloo 2", "Mukta", "Hind Siliguri", system-ui, sans-serif;
+  --font-ui: "Inter Variable", "Mukta", "Hind Siliguri", "Segoe UI", system-ui, sans-serif;
+  --font-heading: "Inter Variable", "Mukta", "Hind Siliguri", "Segoe UI", system-ui, sans-serif;
   --font-bengali: "Hind Siliguri", "Mukta", system-ui, sans-serif;
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -1231,7 +1231,19 @@ textarea {
 
 .agent-mark__eyes {
   transform-origin: 50px 49px;
+}
+/* Blinking every avatar at once kept the whole window repainting (SVG transforms are not
+   composited), even when nothing happened. Only the avatar being pointed at, or one whose
+   coworker is working, blinks now. */
+.bot-avatar:hover .agent-mark__eyes,
+.avatar-aura-working .agent-mark__eyes {
   animation: agentBlink 4.4s infinite ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bot-avatar:hover .agent-mark__eyes,
+  .avatar-aura-working .agent-mark__eyes {
+    animation: none;
+  }
 }
 
 .agent-mark__head {
@@ -11698,14 +11710,14 @@ ol.md-list {
 }
 .splash-name {
   color: #fff;
-  font-family: "Baloo 2", "Mukta", system-ui, sans-serif;
+  font-family: var(--font-heading);
   font-size: 34px;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
 .splash-native {
   color: #f6d9c2;
-  font-family: "Mukta", "Hind Siliguri", system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 18px;
   opacity: 0.9;
 }

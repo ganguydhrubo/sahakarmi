@@ -40,6 +40,8 @@ import {
 } from "../backend/cli";
 import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills } from "../backend/custom-skills";
+import { DesktopHost } from "../backend/desktop/desktop-host";
+import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
@@ -118,7 +120,9 @@ import { AgentInitializationGate } from "./agent-initialization";
 import { notificationForAgentEvent } from "./agent-notifications";
 import { AiRuntimeService } from "./ai-runtime-service";
 import { AppLog } from "./app-log";
+import { useOwnClaudeAccount } from "./claude-account";
 import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
+import { cleanUpRuntimes } from "./runtime-cleanup";
 import { readSetupState, writeSetupState } from "./setup-store";
 import { handleTrusted } from "./trusted-ipc";
 import { isTrustedRendererUrl } from "./trusted-renderer";
@@ -156,6 +160,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const appLog = new AppLog(app.getPath("userData"));
+/** Window focus refreshes models, updates and AI tools at most this often. */
+const FOCUS_REFRESH_MS = 10 * 60_000;
 let mainWindow: BrowserWindow | null = null;
 nativeTheme.on("updated", () => {
   mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0F1220" : "#FBF7F0");
@@ -1192,6 +1198,21 @@ function createWindow(): BrowserWindow {
   window.webContents.on("will-navigate", (event, targetUrl) => {
     if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();
   });
+  // A crashed or killed window page used to leave a blank window until the app was restarted.
+  // It loads again (coworkers keep running in the main process); a page that keeps dying is
+  // left alone after a few tries in a short time, so it cannot loop.
+  const reloads: number[] = [];
+  window.webContents.on("render-process-gone", (_event, details) => {
+    appLog.write("error", "window page stopped", details);
+    if (details.reason === "clean-exit" || window.isDestroyed()) return;
+    const now = Date.now();
+    while (reloads.length && now - (reloads[0] ?? 0) > 5 * 60_000) reloads.shift();
+    if (reloads.length >= 3) return;
+    reloads.push(now);
+    void loadRenderer(window).catch(() => undefined);
+  });
+  window.on("unresponsive", () => appLog.write("warn", "window not responding"));
+  window.on("responsive", () => appLog.write("info", "window responding again"));
 
   return window;
 }
@@ -1304,6 +1325,7 @@ function cannotSelfUpdate(): Promise<boolean> {
 
 let providerSetup: ProviderSetup | null = null;
 let voiceService: VoiceService | null = null;
+let desktopHost: DesktopHost | null = null;
 
 /** Two minutes of 16 kHz audio is the longest clip one dictation request may carry. */
 const MAX_DICTATION_SAMPLES = 16_000 * 120;
@@ -1536,6 +1558,15 @@ if (!hasSingleInstanceLock) {
       configureContentSecurityPolicy();
       mainWindow = createWindow();
       await restoreSavedApiKeys();
+      // Never blocks startup: only copies nobody uses are removed, so it can run alongside.
+      void cleanUpRuntimes(app.getPath("userData"))
+        .then(({ removed }) => {
+          if (removed.length) appLog.write("info", "removed unused AI tool copies", removed);
+        })
+        .catch(() => undefined);
+      await useOwnClaudeAccount(app.getPath("userData")).catch((error) =>
+        appLog.write("warn", "claude account folder", String(error)),
+      );
       const store = new BotStore(app.getPath("userData"), homedir());
       await store.initialize();
       mailboxStore = new MailboxStore(app.getPath("userData"), store.sharedRoot);
@@ -1587,6 +1618,14 @@ if (!hasSingleInstanceLock) {
       const composioClient = new ComposioClient({ userDataPath: app.getPath("userData") });
       service.setUsageService(usage);
       service.setComposioClient(composioClient);
+      if (desktopControlSupported()) {
+        // Started on a coworker's first desktop step; Sahkarmi's own windows stay off limits.
+        desktopHost = new DesktopHost({
+          scriptDir: join(app.getPath("userData"), "desktop"),
+          protectedPids: [process.pid],
+        });
+        service.setDesktopHost(desktopHost);
+      }
       const mcpServers = new McpServerStore(app.getPath("userData"));
       await mcpServers.load().catch((error) => {
         appLog.write("error", "MCP server list unreadable; starting with none", String(error));
@@ -1674,13 +1713,23 @@ if (!hasSingleInstanceLock) {
           ),
       });
       service.on("event", forwardAgentEvent);
+      let lastWakeWork = Date.now();
       const refreshOnWake = () => {
+        lastWakeWork = Date.now();
         service.wakeIdleProviders();
         void service.refreshModels();
         void updateService?.checkOnWake();
         void aiRuntimeService?.check();
       };
-      mainWindow.on("focus", refreshOnWake);
+      // Every click back into the window used to start a model refresh (one CLI per provider),
+      // an update check and an AI-tool version check: a burst of processes and network calls
+      // that made the window stutter. Focus now does it at most every few minutes; waking the
+      // PC from sleep still does it at once, and the 15-minute timers keep running.
+      const refreshOnFocus = () => {
+        service.wakeIdleProviders();
+        if (Date.now() - lastWakeWork >= FOCUS_REFRESH_MS) refreshOnWake();
+      };
+      mainWindow.on("focus", refreshOnFocus);
       powerMonitor.on("resume", refreshOnWake);
       mainWindow.once("closed", () => powerMonitor.removeListener("resume", refreshOnWake));
       service.on("event", (event) => {
@@ -1969,6 +2018,7 @@ async function prepareForShutdown(): Promise<void> {
     agentService?.stop().catch(() => {}),
     usageService?.flush().catch(() => {}),
     voiceService?.dispose().catch(() => {}),
+    desktopHost?.dispose().catch(() => {}),
   ]);
   const timeout = new Promise((resolve) => setTimeout(resolve, 2500));
   await Promise.race([cleanupTasks, timeout]);
@@ -2248,6 +2298,12 @@ function parseVisibility(value: unknown): BrowserVisibilityInput {
   return {
     visible: value.visible,
     bounds: value.bounds === undefined ? undefined : parseBounds(value.bounds),
+    ...(value.botId === undefined
+      ? {}
+      : { botId: value.botId === null ? null : requireString(value.botId, "botId") }),
+    ...(value.threadId === undefined
+      ? {}
+      : { threadId: value.threadId === null ? null : requireString(value.threadId, "threadId") }),
   };
 }
 

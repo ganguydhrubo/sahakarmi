@@ -86,6 +86,9 @@ nsis:
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   uninstallDisplayName: Sahkarmi
+  # Asks on uninstall (never on update) whether to delete the owner data too; default keeps it.
+  include: build/installer.nsh
+  deleteAppDataOnUninstall: false
 linux:
   icon: build/icons
   category: Office

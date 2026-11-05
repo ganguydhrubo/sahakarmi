@@ -5,6 +5,88 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-05
+
+### Fixed
+
+- One approval per task. Saying yes to a post, message or form on a site now covers the next steps of that same task (Next, Share, a retry after the page redraws) for up to 2 hours, instead of a new card for every click. A new instruction asks again; deleting something, payments and account changes always ask. Two identical questions at the same moment now share one card. The main window also reloads by itself if its page crashes.
+
+- Claude coworkers no longer sit at "Request line mein hai" forever. Sahkarmi shared
+  `~\.claude` with Claude Code, so both used one sign-in file: whichever account signed in or
+  refreshed last won, and Sahkarmi kept falling back to "sign-in required" and queueing every
+  message to a Claude coworker. Sahkarmi now keeps its own Claude sign-in in
+  `%APPDATA%\Sahkarmi\claude-account` (CLAUDE_CONFIG_DIR for every Claude process it starts);
+  existing coworker chats move there once, so they still resume. Sign in once with Connect.
+- Connect for Claude finishes as soon as the browser page says you are signed in, instead of
+  waiting for the sign-in tool to exit (it could wait forever, then report "took too long").
+- A signed-out provider is checked again even while other coworkers are working; before, it was
+  skipped whenever any coworker was busy, so a sign-in done meanwhile was never noticed.
+- The Claude sign-in check no longer reads a slow start on a busy PC as "signed out": longer
+  limit, one retry, no extra shell, and a failing check is logged with its reason.
+- A coworker whose AI is signed out says so in its chat, with where to click, instead of an
+  endless queued spinner.
+
+- Coworker browsers are kept apart. There was one browser panel and one selected page for
+  everyone: opening coworker B's browser when B had no pages of its own showed coworker A's
+  page on top of B's empty start screen. The panel now shows only the coworker whose chat is
+  open, a colleague's page never takes the panel, closing a page selects the same coworker's
+  next page, and refreshing a site no longer reloads other coworkers' pages of that site.
+- Logins stay after a restart. Electron drops cookies without an expiry date when the app
+  closes, and sites such as Facebook can keep the login itself in them (the daily run then found
+  "Continue as ..." instead of the account). A coworker's browser now keeps those cookies, in
+  Chromium's encrypted cookie store, for sites it has open; a site that logs out still removes
+  them, and cookies are written to disk shortly after each change and on quit.
+- Splitting the old shared browser no longer copies one site's login into several coworkers
+  (one Facebook session in many cookie jars, so a login change in one ended it for all); each
+  site's login goes to one coworker. The split that already ran on a PC is not repeated.
+- An approved Post goes through: the repeat of an approved click is matched by coworker,
+  action, button name and page address without its query string, because Facebook changes both
+  between page reads and the approval never matched (a new approval was opened instead).
+- LinkedIn posts are no longer refused as "could not be verified": the signed-in member is read
+  from inside the open LinkedIn page, the same way LinkedIn's site does, because the app's own
+  background request was challenged by LinkedIn's bot check.
+- A coworker tied to one account whose browser is signed in to another (for example Instagram)
+  asks the owner once whether to switch, instead of refusing every action with no way out.
+  It still never acts as another account without that approval.
+- The password and code card no longer fails with "The page changed since the coworker asked"
+  when a site redraws itself on the same address: on the same origin it finds the password (or
+  code) field again; on another origin it still refuses. The value is never logged or stored.
+- Page caches in coworker browsers (up to ~1 GB each) are emptied once after start when they
+  pass 150 MB; cookies, local storage and IndexedDB are not touched.
+
+### Added
+
+- Coworkers can use the Windows desktop (`sahkarmi_desktop`: screenshot, list/focus/close
+  windows, click, move, scroll, drag, type, keys, launch apps, read a window's controls through
+  UI Automation), with every AI provider. Settings > Permissions > "Control this PC" (default
+  Ask: one approval per coworker per app session). Sahkarmi's own windows, password fields,
+  credential and UAC screens, and script hosts are refused; a note in the coworker's chat says
+  when it uses the desktop, and only one coworker drives the desktop at a time.
+
+### Performance
+
+- The window no longer repaints all the time while idle: every avatar's eyes blinked forever
+  (32 running SVG animations, about 1,400 repaints every 10 seconds even with nothing
+  happening). Only the avatar under the pointer and working coworkers animate now.
+- Clicking back into the window no longer starts a model refresh (one process per AI tool), an
+  update check and an AI-tool check every time; focus does that at most every 10 minutes, waking
+  the PC still does it at once, and the 15-minute timers are unchanged. Signed-out providers are
+  checked at most every 3 minutes in the background.
+
+### Disk space
+
+- Old AI tool copies are removed at start: every Claude Code, Codex and OpenCode version except
+  the one in use, the old Codex download in `tools\codex`, interrupted downloads, download
+  folders in %TEMP% older than an hour and half-written save files. Before, the previous copy
+  (300-480 MB each) was kept, and one still running during an update was never removed.
+- Uninstall asks whether to delete your Sahkarmi data too (default No); an update or a silent
+  uninstall never touches it. Uninstall always removes the update download cache.
+
+### Changed
+
+- New interface font: Inter for all Latin text (Mukta and Hind Siliguri still draw Hindi and
+  Bengali); the rounded Baloo 2 headings are gone.
+
 ## [0.21.2] - 2026-11-03
 
 ### Fixed

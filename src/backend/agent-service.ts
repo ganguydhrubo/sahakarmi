@@ -133,6 +133,9 @@ import {
   saveInstructions,
 } from "./coworker-instructions";
 import { CustomSkills, customSkillLines } from "./custom-skills";
+import { DesktopControlService } from "./desktop/desktop-control";
+import type { DesktopHostLike } from "./desktop/desktop-host";
+import { desktopDynamicTools, SAHKARMI_DESKTOP_NAMESPACE } from "./desktop/desktop-tools";
 import type { GeminiAccountSource } from "./gemini-accounts";
 import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
@@ -179,6 +182,7 @@ import {
 import {
   accountLink,
   PLATFORM_LABELS,
+  siteOfUrl,
   socialPlatformForTool,
   socialPlatformForUrl,
 } from "./publishing-accounts";
@@ -379,7 +383,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     (outcome: "approved" | "rejected" | "timed-out") => void
   >();
   /** Approvals a coworker stopped waiting for (its runtime's tool time limit), by approval id. */
-  readonly #deferredPermissions = new Map<string, { botId: string; key: string }>();
+  readonly #deferredPermissions = new Map<
+    string,
+    { botId: string; key: string; grantKey: string | null }
+  >();
+  /** Task approvals: one "yes" covers the same kind of step on the same site for this task. */
+  readonly #taskGrants = new Map<string, number>();
+  /** A question already on its way to the owner: an identical one waits for the same answer. */
+  readonly #askingOwner = new Map<
+    string,
+    Promise<"approved" | "rejected" | "timed-out" | "deferred">
+  >();
   /** Employees a CEO has asked for work and not yet heard back from. */
   readonly #awaitingResults = new Map<string, Set<string>>();
   /** Actions the owner approved after the coworker stopped waiting: key -> expiry (ms). */
@@ -478,6 +492,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #restartTimer: NodeJS.Timeout | null = null;
   #models = structuredClone(FALLBACK_MODELS);
   readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
+  readonly #signedOutCheckAt = new Map<AgentProvider, number>();
+  readonly #signInNoticeAt = new Map<string, number>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
   #knowledge: KnowledgeService | null = null;
@@ -486,6 +502,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #composioClient: ComposioClient | null = null;
   #mcpServers: McpServerStore | null = null;
   #composioSecurity: ComposioSecurityGuard | null = null;
+  /** Windows desktop control (sahkarmi_desktop tools); null until main hands over the host. */
+  #desktop: DesktopControlService | null = null;
 
   constructor(
     store: BotStore,
@@ -664,6 +682,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return { customMcpServers: servers, ...(config ? { config } : {}) };
   }
 
+  /** Turns on the sahkarmi_desktop tools for every coworker, gated by "desktop_control". */
+  setDesktopHost(host: DesktopHostLike): void {
+    this.#desktop = new DesktopControlService({
+      host,
+      level: () => this.#permissions?.get().levels.desktop_control ?? "ask",
+      authorize: ({ provider, threadId, action, reason }) =>
+        this.#authorize(provider, threadId, {
+          category: "desktop_control",
+          paths: [],
+          action,
+          reason,
+        }),
+      notify: (botId, message) =>
+        this.#emit({ type: "notice", botId, code: "desktop_control", message }),
+      botName: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name ?? "A coworker",
+    });
+    this.#setStatus({ capabilities: { ...this.#status.capabilities, computerUse: "ready" } });
+  }
+
   setComposioClient(client: ComposioClient): void {
     this.#composioClient = client;
     this.#composioSecurity = new ComposioSecurityGuard(client, this.#approvals, {
@@ -748,14 +785,24 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     };
     for (const provider of AGENT_PROVIDERS) {
       if (this.#stopping) return;
-      const busy = this.#providerBusy(provider);
+      // Busy only matters for a running provider (a restart would cut its turns). One that is
+      // not connected, e.g. signed out, has no turns: it was skipped whenever any coworker was
+      // working, so a sign-in done meanwhile was never noticed and its messages stayed queued.
+      const busy = () => this.#clients.has(provider) && this.#providerBusy(provider);
       // Asleep after a quiet spell: a background refresh must not wake it (using it does).
-      if (busy || this.#providerStarts.has(provider) || this.#dormantClients.has(provider))
+      if (busy() || this.#providerStarts.has(provider) || this.#dormantClients.has(provider))
         continue;
+      // A signed-out provider is checked again at most every few minutes: each check starts its
+      // CLI, and on every window focus that was a burst of processes that made the app stutter.
+      if (this.#providerState(provider) === "sign-in-required") {
+        const last = this.#signedOutCheckAt.get(provider) ?? 0;
+        if (Date.now() - last < SIGNED_OUT_RECHECK_MS) continue;
+        this.#signedOutCheckAt.set(provider, Date.now());
+      }
       try {
         const latest = await resolvers[provider]();
         if (this.#stopping) return;
-        if (this.#providerBusy(provider) || this.#providerStarts.has(provider)) continue;
+        if (busy() || this.#providerStarts.has(provider)) continue;
         const current = this.#cli.get(provider);
         if (
           current?.version === latest.version &&
@@ -1105,15 +1152,32 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /** Asks the owner, and only the owner, to tie an account to this coworker. */
-  async #askToBind(bot: BotSummary, account: PublishingAccount): Promise<void> {
+  async #askToBind(bot: BotSummary, account: PublishingAccount, replacing?: string): Promise<void> {
     if (!this.#approvals) return;
+    // One open question per account is enough; repeated clicks must not pile up cards.
+    if (
+      this.#approvals
+        .list()
+        .some(
+          (existing) =>
+            existing.status === "pending" &&
+            existing.botId === bot.id &&
+            existing.bindsAccount?.platform === account.platform &&
+            existing.bindsAccount.accountId === account.accountId,
+        )
+    )
+      return;
     const label = PLATFORM_LABELS[account.platform];
     const link = accountLink(account.platform, account.accountId);
     await this.#approvals.create({
       botId: bot.id,
-      title: `Let ${bot.name} publish on ${label} as account ${account.accountId}?`,
+      title: replacing
+        ? `Switch ${bot.name} to ${label} account ${account.accountId}?`
+        : `Let ${bot.name} publish on ${label} as account ${account.accountId}?`,
       details: [
-        `${bot.name} wants to publish on ${label} and is not tied to an account there yet.`,
+        replacing
+          ? `${bot.name} is tied to ${label} account ${replacing}, but its browser is now signed in to account ${account.accountId}.`
+          : `${bot.name} wants to publish on ${label} and is not tied to an account there yet.`,
         account.source === "browser"
           ? `Signed in to its browser: account ${account.accountId}.`
           : `Connected app account: ${account.accountId}.`,
@@ -1184,7 +1248,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!bound && !publishing) return null;
     const signedIn = await this.#browser.signedInAccount?.(tabId, platform).catch(() => null);
     if (bound && signedIn && signedIn !== bound.accountId) {
-      return `Stopped: this browser is signed in to ${label} as ${signedIn}, but you may only act as ${bound.accountId}. Nothing was done, and no other account will be used. Ask the owner to sign in to the right account with sahkarmi.request_browser_takeover, then end your turn.`;
+      // Still never acts as another account on its own, but the owner, who signed this browser
+      // in, can switch the coworker to it with one approval instead of being stuck: the old tie
+      // often came from a login copied in from the shared browser, not from the owner's choice.
+      await this.#askToBind(
+        bot,
+        { platform, source: "browser", accountId: signedIn, boundAt: new Date().toISOString() },
+        bound.accountId,
+      );
+      return `Stopped: this browser is signed in to ${label} as ${signedIn}, but you are tied to ${bound.accountId}. Nothing was done. The owner has been asked whether to switch you to ${signedIn}; end your turn. If they approve you will get a message, then repeat this action. Otherwise ask them to sign in to ${bound.accountId} with sahkarmi.request_browser_takeover.`;
     }
     if (!publishing) return null;
     if (!signedIn) {
@@ -1308,7 +1380,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         // The coworker stopped waiting: tell it, and let the same action through once.
         this.#deferredPermissions.delete(approval.id);
         const approved = approval.status === "approved";
-        if (approved) this.#approvedLater.set(deferred.key, Date.now() + APPROVED_LATER_MS);
+        if (approved) {
+          this.#approvedLater.set(deferred.key, Date.now() + APPROVED_LATER_MS);
+          if (deferred.grantKey)
+            this.#taskGrants.set(deferred.grantKey, Date.now() + TASK_GRANT_MS);
+        }
         await this.#notifyBot(
           deferred.botId,
           [
@@ -1453,15 +1529,27 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       throw new Error(`The page is no longer on ${request.origin}, so nothing was sent.`);
     }
     try {
-      await this.#browser.act(request.tabId, pending.revision, {
-        type: "type",
-        ref: pending.ref,
-        text: value.slice(0, 1_000),
-        submit: pending.submit,
-      });
-    } catch {
+      if (this.#browser.fillSecureField) {
+        // Same origin only; the field is found again if the site redrew its form.
+        await this.#browser.fillSecureField(request.tabId, {
+          ref: pending.ref,
+          kind: request.kind,
+          origin: request.origin,
+          text: value.slice(0, 1_000),
+          submit: pending.submit,
+        });
+      } else {
+        await this.#browser.act(request.tabId, pending.revision, {
+          type: "type",
+          ref: pending.ref,
+          text: value.slice(0, 1_000),
+          submit: pending.submit,
+        });
+      }
+    } catch (error) {
+      const reason = error instanceof Error && error.message ? ` (${error.message})` : "";
       throw new Error(
-        "The page changed since the coworker asked. Use Take over to type it yourself.",
+        `The page changed since the coworker asked${reason}. Use Take over to type it yourself.`,
       );
     }
     this.#secureInputs.delete(id);
@@ -1724,6 +1812,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#awaitingResults.delete(botId);
     await this.#mailbox.deleteBotData(botId);
     await this.#approvals?.deleteBotData(botId);
+    this.#desktop?.forgetBot(botId);
     await this.#store.deleteBot(botId);
     for (const [id, pending] of this.#secureInputs) {
       if (pending.request.botId === botId) {
@@ -2286,7 +2375,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const primaryProvider = this.#defaultProvider();
     const primaryAccount = this.#accounts.get(primaryProvider);
     const codexClient = this.#clients.get("codex");
-    const computerUse = codexClient ? await this.#probeComputerUse(codexClient) : "unavailable";
+    const computerUse = this.#desktop
+      ? "ready"
+      : codexClient
+        ? await this.#probeComputerUse(codexClient)
+        : "unavailable";
     if (this.#stopping) return;
     this.#restartAttempts = 0;
     this.#setStatus({
@@ -2693,7 +2786,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   async #buildDynamicTools(botId: string): Promise<unknown[]> {
-    const tools: unknown[] = [...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS];
+    const tools: unknown[] = [
+      ...BROWSER_DYNAMIC_TOOLS,
+      SAHKARMI_DYNAMIC_TOOLS,
+      ...desktopDynamicTools(),
+    ];
     if (!this.#composioClient) return tools;
     try {
       const composioTools = await this.#composioClient.getDynamicTools();
@@ -2951,7 +3048,38 @@ ${carryOver}`
     request: PermissionRequest,
   ): Promise<"approved" | "rejected" | "timed-out" | "deferred"> {
     if (!this.#approvals || !request.botId) return "rejected";
+    // One approval per task, not per click: the owner said yes to publishing (or sending,
+    // submitting) on this site for what they asked, so Next, Share, Post and a retry after a
+    // page redraw do not each ask again. A new instruction from the owner is a new task.
+    // Payments and account changes still ask every time.
+    const grantKey = taskGrantKey(request, this.#ownerAsked(request.botId));
+    if (grantKey) {
+      const until = this.#taskGrants.get(grantKey);
+      if (until !== undefined && until > Date.now()) return "approved";
+      if (until !== undefined) this.#taskGrants.delete(grantKey);
+    }
     const key = permissionKey(request);
+    const asking = this.#askingOwner.get(key);
+    if (asking) return asking;
+    const answer = this.#askOwnerOnce(request, key, grantKey);
+    this.#askingOwner.set(key, answer);
+    try {
+      const outcome = await answer;
+      if (outcome === "approved" && grantKey) {
+        this.#taskGrants.set(grantKey, Date.now() + TASK_GRANT_MS);
+      }
+      return outcome;
+    } finally {
+      if (this.#askingOwner.get(key) === answer) this.#askingOwner.delete(key);
+    }
+  }
+
+  async #askOwnerOnce(
+    request: PermissionRequest,
+    key: string,
+    grantKey: string | null,
+  ): Promise<"approved" | "rejected" | "timed-out" | "deferred"> {
+    if (!this.#approvals || !request.botId) return "rejected";
     const approvedUntil = this.#approvedLater.get(key);
     if (approvedUntil !== undefined) {
       this.#approvedLater.delete(key);
@@ -2981,7 +3109,9 @@ ${carryOver}`
     const approval = await this.#approvals.create({
       botId: request.botId,
       title: wording.title,
-      details: wording.details,
+      details: grantKey
+        ? `${wording.details}\n\nApproving covers this kind of step on this site for the task you gave (up to ${TASK_GRANT_MS / 3_600_000} hours), so you are not asked again for each click. A new instruction asks again.`
+        : wording.details,
       technical: `${wording.technical}\nProvider: ${request.provider}`,
       category: approvalCategoryFor(request.category),
       kind: "permission",
@@ -2998,7 +3128,7 @@ ${carryOver}`
       const timer = setTimeout(() => {
         this.#permissionWaiters.delete(approval.id);
         if (defer) {
-          this.#deferredPermissions.set(approval.id, { botId, key });
+          this.#deferredPermissions.set(approval.id, { botId, key, grantKey });
           resolve("deferred");
           return;
         }
@@ -3152,6 +3282,28 @@ ${carryOver}`
           }
           if (request.params.namespace === "sahkarmi") {
             client.respond(request.id, await this.#handleSahkarmiTool(request.params));
+            return;
+          }
+          if (request.params.namespace === SAHKARMI_DESKTOP_NAMESPACE) {
+            // Like the browser: the coworker comes from the thread, never from the model.
+            const botId = this.#threadToBot.get(request.params.threadId);
+            client.respond(
+              request.id,
+              this.#desktop && botId
+                ? await this.#desktop.handleDynamicTool(
+                    { ...request.params, botId },
+                    client.provider,
+                  )
+                : {
+                    success: false,
+                    contentItems: [
+                      {
+                        type: "inputText",
+                        text: "Desktop control is not available in this chat.",
+                      },
+                    ],
+                  },
+            );
             return;
           }
           if (request.params.namespace === "composio") {
@@ -3993,7 +4145,19 @@ ${carryOver}`
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       // A provider waiting for a sign-in: the message stays queued and starts after the owner
       // signs in (the next provider check or message brings the provider back).
-      if (bot && this.#providerState(providerForBot(bot)) === "sign-in-required") return;
+      if (bot && this.#providerState(providerForBot(bot)) === "sign-in-required") {
+        // Say why, instead of an endless "Request line mein hai" with no reason.
+        const now = Date.now();
+        if (now - (this.#signInNoticeAt.get(botId) ?? 0) >= SIGN_IN_NOTICE_INTERVAL_MS) {
+          this.#signInNoticeAt.set(botId, now);
+          this.#emitError(
+            "delivery_waits_for_sign_in",
+            `${PROVIDER_LABELS[providerForBot(bot)]} is signed out, so this message is waiting. Open Settings > AI and models and click Connect next to ${PROVIDER_LABELS[providerForBot(bot)]}, or pick another model for this coworker. It starts by itself once signed in.`,
+            botId,
+          );
+        }
+        return;
+      }
       attempted = true;
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
@@ -4683,7 +4847,7 @@ ${carryOver}`
         return;
       }
       case "mcpServer/startupStatus/updated": {
-        if (getString(params, "name") !== "computer-use") return;
+        if (getString(params, "name") !== "computer-use" || this.#desktop) return;
         const status = getString(params, "status");
         this.#setStatus({
           capabilities: {
@@ -6005,7 +6169,11 @@ const SAHKARMI_DYNAMIC_TOOLS = {
 } as const;
 
 /** The shape of the tools every Codex chat starts with (Composio apps are not counted). */
-const CODEX_TOOL_SHAPE = toolShape([...BROWSER_DYNAMIC_TOOLS, SAHKARMI_DYNAMIC_TOOLS]);
+const CODEX_TOOL_SHAPE = toolShape([
+  ...BROWSER_DYNAMIC_TOOLS,
+  SAHKARMI_DYNAMIC_TOOLS,
+  ...desktopDynamicTools(),
+]);
 
 function developerInstructions(
   bot: BotSummary,
@@ -6136,6 +6304,11 @@ function updateProviderStatus(
   setProviderStatus(next, provider, patch);
   return next;
 }
+
+/** How often a background refresh checks a signed-out provider again (Connect checks at once). */
+const SIGNED_OUT_RECHECK_MS = 3 * 60_000;
+/** A coworker waiting for a sign-in says so again at most this often. */
+const SIGN_IN_NOTICE_INTERVAL_MS = 10 * 60_000;
 
 function providerFailureStatus(
   error: unknown,
@@ -6328,10 +6501,69 @@ function shortenReason(reason: string): string {
  * on a tool call after 3 minutes and then fails its other running calls too.
  */
 export const SHORT_TOOL_WAIT_MS: Partial<Record<string, number>> = { antigravity: 150_000 };
+/** How long one approval covers the same kind of step on the same site for the same task. */
+const TASK_GRANT_MS = 2 * 60 * 60_000;
+/** Steps that one approval may cover for a whole task; money and account changes never are. */
+const TASK_GRANT_CATEGORIES = new Set<string>([
+  "publication",
+  "external_messages",
+  "official_forms",
+  "business_actions",
+]);
+
+/**
+ * The task an approval covers: same coworker, same kind of step, same site, and the same owner
+ * instruction (a new instruction is a new task). Null when every action must ask on its own.
+ */
+export function taskGrantKey(
+  request: PermissionRequest,
+  ownerInstruction: string | null,
+): string | null {
+  if (!request.botId || !TASK_GRANT_CATEGORIES.has(request.category)) return null;
+  // Removing something cannot be undone, so it always gets its own question.
+  if (/\b(delete|remove|unpublish|deactivate|archive|discard)\b/i.test(request.action)) return null;
+  const url = request.browser?.url;
+  const site = url ? siteOfUrl(url) : null;
+  if (!site) return null;
+  return [request.botId, request.category, site, ownerInstruction ?? ""].join("\n");
+}
+
 /** An approval given after the coworker stopped waiting stays usable this long. */
 const APPROVED_LATER_MS = 30 * 60_000;
 
 /** The same action by the same coworker, so a later approval matches its repeat. */
-function permissionKey(request: PermissionRequest): string {
+export function permissionKey(request: PermissionRequest): string {
+  const browser = request.browser;
+  if (browser?.type === "click" && browser.url) {
+    // A click the owner approved is the same click when the coworker repeats it from a fresh
+    // snapshot: same button on the same page. Sites like Facebook change the query string and
+    // the element's role/tag text between snapshots, which made the approval never match and
+    // the "Post" click be refused after the owner had said yes.
+    return [
+      request.botId ?? "",
+      request.category,
+      "click",
+      browserButtonName(browser.label),
+      pageWithoutQuery(browser.url),
+    ].join("\n");
+  }
   return [request.botId ?? "", request.category, request.action].join("\n");
+}
+
+/** "Post button div" → "post": the visible name, without the role and tag a snapshot adds. */
+function browserButtonName(label: string): string {
+  return label
+    .replace(/\s+(button|link|a|div|span|svg|img|input|textbox|combobox|menuitem)(\s+\S+)?$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function pageWithoutQuery(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return url;
+  }
 }

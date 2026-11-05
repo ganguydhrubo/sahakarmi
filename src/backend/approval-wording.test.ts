@@ -77,6 +77,7 @@ describe("describePermissionRequest", () => {
       "shell",
       "browser_navigation",
       "browser_interaction",
+      "desktop_control",
       "downloads",
       "external_messages",
       "publication",

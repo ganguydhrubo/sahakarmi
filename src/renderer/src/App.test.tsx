@@ -27,6 +27,7 @@ const POLICY: PermissionPolicyState = {
     shell: "ask",
     browser_navigation: "auto",
     browser_interaction: "auto",
+    desktop_control: "ask",
     downloads: "workspace",
     external_messages: "ask",
     publication: "ask",
@@ -2119,10 +2120,14 @@ describe("Sahkarmi connected desktop shell", () => {
     window.dispatchEvent(new Event("resize"));
 
     await waitFor(() =>
-      expect(window.sahkarmi.browser.setVisible).toHaveBeenLastCalledWith({
-        visible: true,
-        bounds: { x: 640, y: 73, width: 380, height: 600 },
-      }),
+      expect(window.sahkarmi.browser.setVisible).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          visible: true,
+          bounds: { x: 640, y: 73, width: 380, height: 600 },
+          // The panel names the coworker it belongs to, so only its pages are shown.
+          botId: expect.any(String),
+        }),
+      ),
     );
   });
 

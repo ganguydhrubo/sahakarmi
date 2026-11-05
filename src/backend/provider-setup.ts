@@ -39,6 +39,7 @@ import {
 /** Codex build fetched by Connect when none is installed (Apache-2.0, published by OpenAI on npm). */
 export const CODEX_VERSION = "0.163.0";
 const LOGIN_TIMEOUT_MS = 10 * 60_000;
+const LOGIN_POLL_MS = 3_000;
 /** npm or a vendor installer may take a while on a slow connection. */
 const INSTALL_TIMEOUT_MS = 10 * 60_000;
 const URL_PATTERN = /https:\/\/[^\s"'<>]+/;
@@ -102,7 +103,9 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
           break;
         case "claude": {
           const claude = await resolveClaudeCli();
-          await this.#loginWithProcess(provider, claude.executable, ["auth", "login"]);
+          await this.#loginWithProcess(provider, claude.executable, ["auth", "login"], () =>
+            claudeSignedIn(claude.executable),
+          );
           break;
         }
         case "antigravity":
@@ -423,7 +426,12 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
    * Runs the provider's own sign-in. It opens the browser itself; the link is also shown in the
    * app in case the browser did not open. Finishes when the provider confirms the sign-in.
    */
-  #loginWithProcess(provider: AgentProviderId, executable: string, args: string[]): Promise<void> {
+  #loginWithProcess(
+    provider: AgentProviderId,
+    executable: string,
+    args: string[],
+    signedIn?: () => Promise<boolean>,
+  ): Promise<void> {
     const spawnImpl = this.#options.spawnImpl ?? spawn;
     this.#set(provider, {
       phase: "waiting",
@@ -450,11 +458,36 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     });
     this.#logins.set(provider, child);
     return new Promise((resolvePromise, reject) => {
+      let poll: ReturnType<typeof setInterval> | undefined;
       const timer = setTimeout(() => {
+        clearInterval(poll);
         child.kill();
         reject(new Error("Sign-in took too long. Click Connect to try again."));
       }, LOGIN_TIMEOUT_MS);
       timer.unref?.();
+      // The browser page saying "signed in" is enough: the login tool may still sit waiting for
+      // a key press or a pasted code, so its sign-in is read directly and the tool is closed.
+      if (signedIn) {
+        let probing = false;
+        poll = setInterval(() => {
+          if (probing || this.#logins.get(provider) !== child) return;
+          probing = true;
+          void signedIn()
+            .then((done) => {
+              if (!done || this.#logins.get(provider) !== child) return;
+              clearInterval(poll);
+              clearTimeout(timer);
+              this.#logins.delete(provider);
+              child.kill();
+              void this.check(provider).then(() => resolvePromise());
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              probing = false;
+            });
+        }, LOGIN_POLL_MS);
+        poll.unref?.();
+      }
       let output = "";
       let pressed = false;
       const onOutput = (chunk: Buffer) => {
@@ -487,10 +520,12 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       child.stderr?.on("data", onOutput);
       child.on("error", (error) => {
         clearTimeout(timer);
+        clearInterval(poll);
         reject(error);
       });
       child.on("exit", (code) => {
         clearTimeout(timer);
+        clearInterval(poll);
         if (this.#logins.get(provider) === child) this.#logins.delete(provider);
         if (code === 0) {
           void this.check(provider).then(() => resolvePromise());
@@ -774,4 +809,28 @@ async function refreshWindowsPath(): Promise<void> {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Reads `claude auth status`, with the same CLAUDE_CONFIG_DIR as every other Claude process. */
+export function claudeSignedIn(executable: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      executable,
+      ["auth", "status", "--json"],
+      {
+        timeout: 15_000,
+        maxBuffer: 64 * 1024,
+        windowsHide: true,
+        shell: process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable),
+      },
+      (error, stdout) => {
+        if (error) return resolve(false);
+        try {
+          resolve((JSON.parse(String(stdout)) as { loggedIn?: unknown }).loggedIn === true);
+        } catch {
+          resolve(false);
+        }
+      },
+    );
+  });
 }
