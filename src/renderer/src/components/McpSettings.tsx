@@ -64,7 +64,13 @@ export function McpSettings() {
     try {
       await action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      // Electron wraps main-process errors; the owner only needs the message itself.
+      setError(
+        (cause instanceof Error ? cause.message : String(cause)).replace(
+          /^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/,
+          "",
+        ),
+      );
     } finally {
       setBusy(false);
     }
@@ -309,6 +315,11 @@ export function McpSettings() {
                       ? server.url
                       : [server.command, ...server.args].join(" ")}
                   </small>
+                  <Show when={server.missingCommand}>
+                    <small class="extension-warning" role="note">
+                      {t("mcpCommandMissing", { command: server.command })}
+                    </small>
+                  </Show>
                 </span>
                 <button type="button" disabled={busy()} onClick={() => setDraft(draftOf(server))}>
                   {t("mcpEdit")}

@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
   acpMcpServers,
   claudeMcpServers,
   codexMcpConfig,
+  commandExists,
   launchCommand,
   McpServerStore,
   parseMcpJson,
@@ -142,6 +143,25 @@ describe("McpServerStore", () => {
     expect(JSON.parse(text)).toEqual({
       mcpServers: { a: { command: "x" }, b: { url: "https://b.test" } },
     });
+  });
+});
+
+describe("commandExists", () => {
+  it("finds a command on PATH with a Windows ending and spots a missing one", async () => {
+    const bin = await mkdtemp(join(tmpdir(), "sahkarmi-mcp-bin-"));
+    try {
+      await mkdir(join(bin, "tools"));
+      await writeFile(join(bin, "npx.cmd"), "@echo off");
+      await writeFile(join(bin, "tools", "server.exe"), "");
+      const env = { PATH: bin, PATHEXT: ".EXE;.CMD" };
+      expect(commandExists("npx", env)).toBe(true);
+      expect(commandExists("uvx", env)).toBe(false);
+      expect(commandExists(join(bin, "tools", "server.exe"), env)).toBe(true);
+      expect(commandExists(join(bin, "tools", "server"), env)).toBe(true);
+      expect(commandExists(join(bin, "missing", "server.exe"), env)).toBe(false);
+    } finally {
+      await rm(bin, { recursive: true, force: true });
+    }
   });
 });
 

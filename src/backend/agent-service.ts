@@ -1838,9 +1838,24 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#loadedThreads.delete(bot.threadId);
       this.#contextBudgets.delete(bot.threadId);
       this.#clearCompactionTimer(bot.threadId);
+      this.#releaseThread(providerForBot(bot), bot.threadId);
     }
     this.#compactingBots.delete(botId);
     this.#emit({ type: "bots-changed", bots: this.#store.list() });
+  }
+
+  /**
+   * A deleted coworker's provider session is let go, so it stops holding memory (Claude closes
+   * its process; Codex archives the thread). Best effort: the delete never waits on it.
+   */
+  #releaseThread(provider: AgentProvider, threadId: string): void {
+    const method =
+      provider === "claude" ? "thread/release" : provider === "codex" ? "thread/archive" : null;
+    const client = this.#clients.get(provider);
+    if (!method || !client) return;
+    void withTimeout(client.request(method, { threadId }), STEER_TIMEOUT_MS).catch((error) =>
+      this.emit("log", `releasing thread ${threadId} failed: ${String(error)}`),
+    );
   }
 
   async initialize(): Promise<void> {
@@ -2058,8 +2073,72 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "bots-changed", bots: this.#store.list() });
     this.#emitConversation(snapshot);
     this.#emitQueue(bot.id);
+    if (await this.#steerActiveTurn(bot, delivery)) {
+      this.#syncMailboxMessages(snapshot);
+      this.#emitConversation(snapshot);
+      this.#emitQueue(bot.id);
+    }
     this.#scheduleDrain(bot.id);
     return receipt;
+  }
+
+  /**
+   * A message the owner types while the coworker works joins the running task, as in Claude
+   * Code: the coworker reads it at its next step and adjusts, without the work being stopped.
+   * Only Codex and Claude can take a message mid-turn; anything else (or a refusal) queues.
+   */
+  async #steerActiveTurn(bot: BotSummary, context: DeliveryContext): Promise<boolean> {
+    const { delivery } = context;
+    const provider = providerForBot(bot);
+    const turnId = this.#snapshots.get(bot.id)?.activeTurnId;
+    if (
+      !turnId ||
+      !bot.threadId ||
+      !STEERABLE_PROVIDERS.has(provider) ||
+      this.#compactingBots.has(bot.id) ||
+      !delivery.text.trim() ||
+      context.managedAttachments.length > 0 ||
+      // Anything already waiting goes first; steering past it would reorder the owner's asks.
+      this.#mailbox
+        .listQueue(bot.id)
+        .deliveries.some((item) => item.status === "queued" && item.id !== delivery.id)
+    ) {
+      return false;
+    }
+    const client = this.#clients.get(provider);
+    if (!client || this.#status.phase !== "ready") return false;
+    let text = delivery.text;
+    if (delivery.replyToMessageId) {
+      const referenced = this.#snapshots
+        .get(bot.id)
+        ?.messages.find((message) => message.id === delivery.replyToMessageId);
+      text = [
+        `The user is replying to message ${delivery.replyToMessageId}.`,
+        "--- referenced message ---",
+        referenced?.text || "(The referenced message is unavailable.)",
+        "--- user reply ---",
+        delivery.text,
+      ].join("\n");
+    }
+    try {
+      await this.#mailbox.markStarting(delivery.id);
+      await withTimeout(
+        client.request("turn/steer", {
+          threadId: bot.threadId,
+          expectedTurnId: turnId,
+          clientUserMessageId: delivery.id,
+          input: [{ type: "text", text }],
+        }),
+        STEER_TIMEOUT_MS,
+      );
+    } catch (error) {
+      this.emit("log", `steering ${bot.id} failed, queued instead: ${String(error)}`);
+      await this.#mailbox.markQueuedAgain(delivery.id).catch(() => undefined);
+      return false;
+    }
+    await this.#mailbox.markRunning(delivery.id, turnId);
+    await this.#mailbox.markTerminal(delivery.id, "completed");
+    return true;
   }
 
   /**
@@ -4975,7 +5054,7 @@ ${carryOver}`
         await this.#resendOnNextFreeModel(botId, delivery);
       } else if (reason.includes(FREE_LIMIT_REACHED_HINT)) {
         await this.#fallBackToOtherFreeProvider(botId, delivery);
-      } else if (/429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded/i.test(reason)) {
+      } else if (isQuotaError(reason)) {
         if (!(await this.#rotateGeminiAccount(botId, delivery))) {
           await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
         }
@@ -6445,6 +6524,19 @@ export function previewText(markdown: string): string {
 }
 
 const QUOTA_NOTICE_INTERVAL_MS = 30_000;
+/** Providers that take an owner message into a running turn (Codex turn/steer, Claude SDK). */
+const STEERABLE_PROVIDERS: ReadonlySet<AgentProvider> = new Set(["codex", "claude"]);
+const STEER_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Timed out.")), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 /** An empty Gemini reply this soon after Google reported a limit counts as that limit. */
 const GEMINI_QUOTA_WINDOW_MS = 2 * 60_000;
 
@@ -6466,6 +6558,17 @@ export function quotaNotice(provider: AgentProvider, message: string): string | 
     return "Google Antigravity is rate-limited right now (HTTP 429). Try again in a minute, or switch this coworker to the free model.";
   }
   return null;
+}
+
+/**
+ * A failed turn whose error says the plan, quota or credit is spent, so a backup model can take
+ * the message: Claude ("usage limit reached", "Credit balance is too low"), Codex ("You've hit
+ * your usage limit"), OpenAI keys ("insufficient_quota") and Google (429, RESOURCE_EXHAUSTED).
+ */
+export function isQuotaError(reason: string): boolean {
+  return /429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded|credit balance|out of (?:credits|extra usage)|hit your (?:usage )?limit|plan limit|billing/i.test(
+    reason,
+  );
 }
 
 /** Google's harness logs pages of startup chatter at ERROR level that mean nothing to the owner. */

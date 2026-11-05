@@ -15,7 +15,12 @@ interface ComposerEditorProps {
   onSubmit: () => void;
   /** Escape with no mention list open (the chat uses it to stop a working coworker). */
   onEscape?: () => void;
+  /** A paste longer than LONG_PASTE_CHARS goes here (the chat attaches it as a text file). */
+  onLongPaste?: (text: string) => void;
 }
+
+/** Past this a paste buries the message box; it is attached as a .txt file instead. */
+export const LONG_PASTE_CHARS = 5_000;
 
 interface MentionContext {
   query: string;
@@ -187,6 +192,10 @@ export function ComposerEditor(props: ComposerEditorProps) {
 
     const text = clipboard.getData("text/plain").replace(/\r\n?/g, "\n");
     if (!text) return;
+    if (text.length > LONG_PASTE_CHARS && props.onLongPaste) {
+      props.onLongPaste(text);
+      return;
+    }
 
     insertPlainText(editor, text);
     emitValue();

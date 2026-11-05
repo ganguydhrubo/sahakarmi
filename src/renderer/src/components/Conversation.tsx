@@ -1302,6 +1302,11 @@ export function Conversation(props: ConversationProps) {
     const id = props.bot?.id;
     return id ? (drafts()[id] ?? EMPTY_DRAFT) : EMPTY_DRAFT;
   });
+  // Codex and Claude take a text message into the running task; other models queue it.
+  const canSteer = () =>
+    !!props.bot &&
+    ["codex", "claude"].includes(providerForModel(props.bot.model)) &&
+    !currentDraft().attachments.length;
   // Messages hidden above the window, per coworker. Fixed when a chat first loads, so new
   // messages extend the window instead of pushing older ones out while you read.
   const [hiddenBefore, setHiddenBefore] = createSignal<Record<string, number>>({});
@@ -2125,6 +2130,25 @@ export function Conversation(props: ConversationProps) {
       window.removeEventListener("resize", browserWindowResizeHandler);
     void window.sahkarmi.browser.setVisible({ visible: false });
   });
+
+  /** A long paste becomes a text file on the message, so the box stays readable. */
+  async function attachPastedText(text: string) {
+    const botId = props.bot?.id;
+    if (!botId) return;
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    try {
+      const attachments = await window.sahkarmi.agent.importData([
+        {
+          name: `pasted-text-${stamp}.txt`,
+          mimeType: "text/plain",
+          bytes: new TextEncoder().encode(text),
+        },
+      ]);
+      addAttachments(attachments, botId);
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   function addAttachments(selected: DraftAttachment[], botId = props.bot?.id) {
     if (!botId) return;
@@ -3223,6 +3247,7 @@ export function Conversation(props: ConversationProps) {
                 // Like Claude Code: Esc in the box stops a working coworker.
                 if (props.activeTurnId && !scheduleMode()) props.onStop();
               }}
+              onLongPaste={(text) => void attachPastedText(text)}
             />
           </div>
           <div class="composer-toolbar">
@@ -3314,7 +3339,11 @@ export function Conversation(props: ConversationProps) {
                 type="button"
                 class="voice-button send-button"
                 aria-label={scheduleMode() ? t("scheduleLabel") : "Send message"}
-                title={props.activeTurnId && !scheduleMode() ? t("queueHint") : undefined}
+                title={
+                  props.activeTurnId && !scheduleMode()
+                    ? t(canSteer() ? "steerHint" : "queueHint")
+                    : undefined
+                }
                 disabled={submitting() || !agentReady() || onboardingModelRequired()}
                 onClick={() => void submitMessage()}
               >

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { delimiter, extname, isAbsolute, join } from "node:path";
 import type { McpServerInput, McpServerSummary } from "../shared/ipc";
 import { type FetchLike, fetchRepoText, fetchRepoTree, parseGithubUrl } from "./github-repo";
 import { JsonFile } from "./json-file";
@@ -196,7 +197,34 @@ function summary(server: McpServerConfig): McpServerSummary {
     envKeys: Object.keys(server.env),
     headerKeys: Object.keys(server.headers),
     source: server.source,
+    ...(server.transport === "stdio" && !commandExists(server.command)
+      ? { missingCommand: true }
+      : {}),
   };
+}
+
+/**
+ * Whether Windows can start `command`: a full path that exists, or a name found on PATH with one
+ * of PATHEXT's endings (npx is npx.cmd). A missing one is shown in Settings instead of the
+ * coworker silently going without the server's tools.
+ */
+export function commandExists(command: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!command) return false;
+  const endings = extname(command)
+    ? [""]
+    : ["", ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)];
+  const candidates =
+    isAbsolute(command) || /[\\/]/.test(command)
+      ? [command]
+      : (env.PATH ?? env.Path ?? "")
+          .split(delimiter)
+          .filter(Boolean)
+          .map((directory) => join(directory, command));
+  return candidates.some((candidate) =>
+    endings.some(
+      (ending) => existsSync(candidate + ending.toLowerCase()) || existsSync(candidate + ending),
+    ),
+  );
 }
 
 function normalizeServer(

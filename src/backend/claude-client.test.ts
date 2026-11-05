@@ -199,6 +199,57 @@ fi
     await client.stop();
   });
 
+  it("adds an owner message to the running turn and ends it only when Claude is idle", async () => {
+    const { client, notifications, output, threadId, prompt } = await createHarness();
+    const turnId = "33333333-3333-4333-8333-333333333333";
+    const steerId = "44444444-4444-4444-8444-444444444444";
+    await startTurn(client, threadId, turnId);
+    const steer = () =>
+      client.request("turn/steer", {
+        threadId,
+        expectedTurnId: turnId,
+        clientUserMessageId: steerId,
+        input: [{ type: "text", text: "Use the blue logo" }],
+      });
+    // Before the CLI has said it reports idle, steering is refused so the message is queued.
+    await expect(steer()).rejects.toThrow(/mid-task/);
+    output.push(sessionState(threadId, "running"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(steer()).resolves.toEqual({ turnId });
+
+    const inputs = prompt()[Symbol.asyncIterator]();
+    expect((await inputs.next()).value?.message.content).toBe("Hello");
+    const steered = (await inputs.next()).value;
+    expect(steered?.priority).toBe("next");
+    expect(steered?.uuid).toBe(steerId);
+    expect(steered?.message.content).toBe("Use the blue logo");
+
+    output.push(assistantMessage(threadId, "first", "Working on it."));
+    output.push(resultMessage(threadId, turnId, ""));
+    output.push(assistantMessage(threadId, "second", " Switched to the blue logo."));
+    output.push(resultMessage(threadId, turnId, ""));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(notifications.some((event) => event.method === "turn/completed")).toBe(false);
+
+    output.push(sessionState(threadId, "idle"));
+    await waitFor(() => notifications.some((event) => event.method === "turn/completed"));
+    expect(completedText(notifications)).toContain("Switched to the blue logo.");
+    await client.stop();
+  });
+
+  it("closes a released session without taking the other coworkers' Claude down", async () => {
+    const { client, threadId } = await createHarness();
+    const exits: unknown[] = [];
+    client.on("exit", (error) => exits.push(error));
+    await client.request("thread/release", { threadId });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(exits).toEqual([]);
+    await expect(
+      client.request("turn/start", { threadId, input: [{ type: "text", text: "Hi" }] }),
+    ).rejects.toThrow();
+    await client.stop();
+  });
+
   it("uses a complete assistant message when Claude omits stream deltas", async () => {
     const { client, notifications, output, threadId } = await createHarness();
     const turnId = "11111111-1111-4111-8111-111111111111";
@@ -537,6 +588,7 @@ async function createHarness(resumeThreadId?: string): Promise<{
   notifications: Array<{ method: string; params: unknown }>;
   output: TestQueue<SDKMessage>;
   threadId: string;
+  prompt: () => AsyncIterable<SDKUserMessage>;
 }> {
   root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-client-"));
   const output = new TestQueue<SDKMessage>();
@@ -548,9 +600,13 @@ async function createHarness(resumeThreadId?: string): Promise<{
     setMaxThinkingTokens: async () => undefined,
     close: () => output.close(),
   });
+  let prompt: AsyncIterable<SDKUserMessage> | null = null;
   const client = new ClaudeAgentClient(
     { executable: "/bin/true", version: "2.1.231" },
-    () => generator,
+    (args: { prompt: unknown }) => {
+      prompt = args.prompt as AsyncIterable<SDKUserMessage>;
+      return generator;
+    },
   );
   const notifications: Array<{ method: string; params: unknown }> = [];
   client.on("notification", (notification) => notifications.push(notification));
@@ -565,7 +621,16 @@ async function createHarness(resumeThreadId?: string): Promise<{
       runtimeWorkspaceRoots: [root],
     },
   );
-  return { client, notifications, output, threadId: thread.thread.id };
+  return {
+    client,
+    notifications,
+    output,
+    threadId: thread.thread.id,
+    prompt: () => {
+      if (!prompt) throw new Error("No query was started.");
+      return prompt;
+    },
+  };
 }
 
 function startTurn(client: ClaudeAgentClient, threadId: string, turnId: string): Promise<unknown> {
@@ -598,6 +663,16 @@ function assistantMessage(
     session_id: threadId,
     uuid: messageId,
     message: { content: [{ type: "text", text }] },
+  } as unknown as SDKMessage;
+}
+
+function sessionState(threadId: string, state: "idle" | "running"): SDKMessage {
+  return {
+    type: "system",
+    subtype: "session_state_changed",
+    state,
+    uuid: "55555555-5555-4555-8555-555555555555",
+    session_id: threadId,
   } as unknown as SDKMessage;
 }
 

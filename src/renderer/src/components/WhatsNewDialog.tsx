@@ -10,6 +10,32 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.23.0": [
+    {
+      icon: "💬",
+      badge: "Chat",
+      title: "Talk to a coworker while it works",
+      desc: "Type while a Codex or Claude coworker is busy and it reads your message at its next step and adjusts, without stopping the task. Other models still run it next.",
+    },
+    {
+      icon: "📋",
+      badge: "Composer",
+      title: "Long pastes become a file",
+      desc: "Paste more than 5,000 characters and it is attached as a text file, so the message box stays readable.",
+    },
+    {
+      icon: "🔁",
+      badge: "Backup model",
+      title: "More plan limits switch to the backup model",
+      desc: "When a Claude, Codex or OpenAI plan or credit runs out, the message moves to the free model so started work goes on.",
+    },
+    {
+      icon: "🧩",
+      badge: "MCP",
+      title: "Missing MCP commands are flagged",
+      desc: "Settings > MCP servers now warns when a server's command is not installed on this PC.",
+    },
+  ],
   "0.22.1": [
     {
       icon: "📤",

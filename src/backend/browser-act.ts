@@ -14,7 +14,11 @@ export const ACT_DESCRIPTION =
   "focus, like Ctrl+V; tab-separated lines paste as rows and columns in a spreadsheet. " +
   "upload attaches files from this computer to a page's file picker: ref is the page's Upload / " +
   "Add photo / Attach button or its file input, paths are full local file paths (up to 10). " +
-  "Use it instead of asking the owner to take over for an upload.";
+  "Use it instead of asking the owner to take over for an upload. " +
+  "A finished action is not a finished task: after a click or Enter that submits, sends, posts, " +
+  "saves, books or pays, read the page (snapshot true) and look for the confirmation, the sent " +
+  "item or an error before telling the owner it worked. If the page shows an error, or nothing " +
+  "changed, say so plainly instead of reporting success.";
 
 export const SNAPSHOT_DESCRIPTION =
   "Read a page and obtain current element references. Each element is one line: the ref, the " +

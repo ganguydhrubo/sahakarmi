@@ -87,6 +87,10 @@ interface ActiveTurn {
   text: string;
   assistantMessages: Map<string, string>;
   toolUses: Map<string, { name: string; input: unknown }>;
+  /** Owner messages added while this turn ran; Claude reads them at its next step. */
+  steers: number;
+  /** A result that came while steering messages may still be waiting; the turn ends on idle. */
+  deferred?: { status: string; error: string | null; timer: ReturnType<typeof setTimeout> };
 }
 
 interface ThreadRuntime {
@@ -100,6 +104,8 @@ interface ThreadRuntime {
   resumedUsage: boolean;
   /** Claude Code's TaskCreate / TaskUpdate list for this thread, by task id. */
   tasks?: Map<string, { text: string; status: string }>;
+  /** The CLI reports idle/running, so a turn with steering messages can end at the true end. */
+  stateEvents?: boolean;
 }
 
 interface PendingServerRequest {
@@ -178,9 +184,22 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         return (await this.#readThread(requiredString(params, "threadId"))) as T;
       case "turn/start":
         return (await this.#startTurn(params)) as T;
+      case "thread/release": {
+        // A deleted coworker's session: close its Claude process instead of leaving it running.
+        const runtime = this.#threads.get(requiredString(params, "threadId"));
+        if (runtime) {
+          this.#threads.delete(runtime.id);
+          runtime.input.close();
+          runtime.query.close();
+        }
+        return {} as T;
+      }
+      case "turn/steer":
+        return this.#steerTurn(params) as T;
       case "turn/interrupt": {
         const runtime = this.#requireThread(requiredString(params, "threadId"));
         await runtime.query.interrupt();
+        if (runtime.activeTurn?.deferred) this.#completeTurn(runtime, "interrupted", null);
         return {} as T;
       }
       case "thread/compact/start":
@@ -336,6 +355,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         env: {
           ...cleanClaudeEnvironment(process.env),
           CLAUDE_AGENT_SDK_CLIENT_APP: "sahkarmi/0.1.0",
+          // Lets a turn the owner steered end only when Claude has read every added message.
+          CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
         },
       },
     });
@@ -380,6 +401,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       text: "",
       assistantMessages: new Map<string, string>(),
       toolUses: new Map<string, { name: string; input: unknown }>(),
+      steers: 0,
     };
     runtime.activeTurn = activeTurn;
     this.emit("notification", {
@@ -396,12 +418,40 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return { turn: { id: turnId, status: "inProgress" } };
   }
 
+  /**
+   * An owner message typed while Claude works joins the running turn, as in Claude Code: Claude
+   * reads it at its next step instead of the work being stopped or the message waiting.
+   */
+  #steerTurn(params: unknown): { turnId: string } {
+    const runtime = this.#requireThread(requiredString(params, "threadId"));
+    const turn = runtime.activeTurn;
+    if (!turn || turn.deferred || turn.id !== getString(params, "expectedTurnId")) {
+      throw new Error("The Claude turn to steer is no longer running.");
+    }
+    // Without idle reports the turn could end before Claude reads the message; queue it instead.
+    if (!runtime.stateEvents) throw new Error("This Claude version cannot take messages mid-task.");
+    const text = readInputText(params);
+    if (!text) throw new Error("A steering message needs text.");
+    const clientId = getString(params, "clientUserMessageId");
+    turn.steers += 1;
+    runtime.input.push({
+      type: "user",
+      message: { role: "user", content: text },
+      parent_tool_use_id: null,
+      priority: "next",
+      ...(clientId && isUuid(clientId) ? { uuid: clientId as UUID } : {}),
+      session_id: runtime.id,
+    });
+    return { turnId: turn.id };
+  }
+
   async #consume(runtime: ThreadRuntime): Promise<void> {
     try {
       for await (const message of runtime.query) this.#handleMessage(runtime, message);
+      if (this.#threads.get(runtime.id) !== runtime) return;
       if (this.#running) this.#fail(new Error("Claude session stream ended unexpectedly."));
     } catch (error) {
-      if (!this.#running) return;
+      if (!this.#running || this.#threads.get(runtime.id) !== runtime) return;
       const activeTurn = runtime.activeTurn;
       if (activeTurn) this.#completeTurn(runtime, "failed", error);
       this.#fail(error instanceof Error ? error : new Error(String(error)));
@@ -512,6 +562,14 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     if (message.type === "rate_limit_event" || message.type === "result") {
       this.#emitUsage(runtime, message);
     }
+    if (message.type === "system" && message.subtype === "session_state_changed") {
+      runtime.stateEvents = true;
+      const deferred = runtime.activeTurn?.deferred;
+      if (message.state === "idle" && deferred) {
+        this.#completeTurn(runtime, deferred.status, deferred.error);
+      }
+      return;
+    }
     if (message.type === "system" && message.subtype === "api_retry") {
       this.emit("notification", {
         method: "sahkarmi/retrying",
@@ -593,7 +651,19 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       : message.subtype === "success"
         ? "completed"
         : "failed";
-    this.#completeTurn(runtime, status, "errors" in message ? message.errors.join("\n") : null);
+    const error = "errors" in message ? message.errors.join("\n") : null;
+    if (turn && turn.steers > 0 && runtime.stateEvents && status !== "interrupted") {
+      // A steering message may still run as its own pass; its reply belongs to this turn.
+      if (turn.deferred) clearTimeout(turn.deferred.timer);
+      const timer = setTimeout(
+        () => this.#completeTurn(runtime, status, error),
+        STEER_IDLE_WAIT_MS,
+      );
+      timer.unref?.();
+      turn.deferred = { status, error, timer };
+      return;
+    }
+    this.#completeTurn(runtime, status, error);
   }
 
   #emitToolItem(
@@ -724,6 +794,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   #completeTurn(runtime: ThreadRuntime, status: string, error: unknown): void {
     const turn = runtime.activeTurn;
     if (!turn) return;
+    if (turn.deferred) clearTimeout(turn.deferred.timer);
     this.#completeTextItem(runtime, turn);
     if (status === "failed" && error) {
       this.emit("notification", {
@@ -1395,6 +1466,9 @@ export function thinkingTokens(effort: string): number {
     }[effort] ?? 16_000
   );
 }
+
+/** How long a steered turn waits for Claude's idle report before it is closed anyway. */
+const STEER_IDLE_WAIT_MS = 90_000;
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
