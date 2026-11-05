@@ -338,6 +338,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
+      # A step's `if` cannot see its own env, so the winget token has to be set here.
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - name: Download macOS release assets
         continue-on-error: true
@@ -388,15 +390,21 @@ jobs:
         continue-on-error: true
         run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f "release_tag=$RELEASE_TAG"
 
-      # Submit release to Windows Package Manager (winget-pkgs)
+      # Opens the winget-pkgs pull request for this version from the owner's fork, so
+      # `winget install Sahkarmi.Sahkarmi` follows every release. Needs the WINGET_TOKEN secret
+      # (classic token, public_repo scope). It can only update a package that winget-pkgs has
+      # accepted; until then it fails here without failing the release.
       - name: Submit to Windows Package Manager (winget)
         continue-on-error: true
         if: env.WINGET_TOKEN != ''
-        env:
-          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
-        uses: vedantmgoyal2009/winget-releaser@v2
+        uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
         with:
           identifier: Sahkarmi.Sahkarmi
           version: ${{ needs.validate.outputs.release_version }}
-          installers-regex: 'Sahkarmi-.*-x64\.exe$'
-          token: ${{ secrets.WINGET_TOKEN }}
+          release-tag: ${{ needs.validate.outputs.release_tag }}
+          installers-regex: '-x64\.exe$'
+          token: ${{ env.WINGET_TOKEN }}
+
+      - name: Explain skipped winget submission
+        if: env.WINGET_TOKEN == ''
+        run: echo "::notice::winget not updated - add the WINGET_TOKEN secret to submit each release automatically."
