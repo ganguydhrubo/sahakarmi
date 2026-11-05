@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Sahkarmi — open-source AI coworkers for your own computer</title>
-  <meta name="description" content="Free, open-source desktop app for Windows: a team of AI coworkers with their own browser, memory and approvals. Local-first. English, Hindi, Bengali." />
+  <meta name="description" content="Free, open-source AI that uses your Windows PC: a team of AI coworkers that browse websites, use desktop apps, research and write, and ask before they post or pay." />
   <link rel="canonical" href="https://sahkarmi.site/" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <meta name="theme-color" content="#0F1220" />
@@ -90,7 +90,7 @@
         "alternateName": "सहकर्मी",
         "applicationCategory": "BusinessApplication",
         "operatingSystem": "Windows 10, Windows 11",
-        "softwareVersion": "0.7.1",
+        "softwareVersion": "0.22.0",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
@@ -408,6 +408,13 @@
     .dl-card .btn { margin-top: auto; }
     .dl-card small { color: var(--muted); font-size: 13px; }
     .dl-card .size { color: var(--muted); font-size: 14px; }
+    .dl-facts { margin: 22px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .dl-facts > div { background: var(--bg-2, rgba(255,255,255,0.04)); border: 1px solid var(--line, rgba(255,255,255,0.1)); border-radius: 12px; padding: 10px 14px; min-width: 0; }
+    .dl-facts dt { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .dl-facts dd { margin: 2px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+    .dl-facts .dl-sha { grid-column: 1 / -1; }
+    .dl-facts code { font: 500 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    .dl-facts button { font: inherit; font-size: 13px; border: 1px solid var(--line-2, rgba(255,255,255,0.2)); background: transparent; color: inherit; border-radius: 999px; padding: 2px 12px; cursor: pointer; margin: 0 8px; }
     .dl-help { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--text-2); font-size: 15px; }
     .cmd { display: flex; align-items: center; gap: 10px; background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 14px; font-family: ui-monospace, Consolas, monospace; font-size: 14px; overflow-x: auto; }
     .cmd button { margin-left: auto; background: var(--card); border: 1px solid var(--line-2); color: var(--text); border-radius: 8px; padding: 4px 10px; font: 600 13px var(--font-ui); cursor: pointer; }
@@ -791,7 +798,7 @@
         <a href="#community" data-i18n="navCommunity">Community</a>
       </nav>
       <div class="header-actions">
-        <a class="btn btn-primary btn-small header-download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe"><span data-i18n="mini">Download</span></a>
+        <a class="btn btn-primary btn-small header-download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe"><span data-i18n="mini">Download</span></a>
         <div class="lang" role="group" aria-label="Language">
           <button type="button" data-lang="en" aria-pressed="true">EN</button>
           <button type="button" data-lang="hi" aria-pressed="false" lang="hi">हिं</button>
@@ -809,16 +816,17 @@
       <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="wrap hero-grid">
         <div class="hero-copy">
+          <a class="tg-announce pc-announce" href="/computer-use.html"><span class="plug-spark" aria-hidden="true">⌘</span><span data-i18n="pcAnnounce">New: coworkers can now use the apps on your PC</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce store-announce" href="#download"><svg class="ms-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#f25022" d="M2 2h9.5v9.5H2z"/><path fill="#7fba00" d="M12.5 2H22v9.5h-9.5z"/><path fill="#00a4ef" d="M2 12.5h9.5V22H2z"/><path fill="#ffb900" d="M12.5 12.5H22V22h-9.5z"/></svg><span data-i18n="msAnnounce">New: Sahkarmi is on the Microsoft Store, free</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce" href="#telegram"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><span data-i18n="tgAnnounce">New: give your team work from Telegram</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce plug-announce" href="#plug"><span class="plug-spark" aria-hidden="true">✦</span><span data-i18n="plugAnnounce">New: Skills, MCP servers and workflow export</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce calc-announce" href="/savings.html"><span class="calc-mark" aria-hidden="true">₹</span><span data-i18n="calcAnnounce">New: how much time and money can AI save you?</span><b aria-hidden="true">→</b></a>
-          <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Free · Open source · Version</span> <span data-release-version>latest</span></p>
+          <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Free · Open source · Version</span> <span data-release-version>0.22.0</span></p>
           <h1><span data-i18n="h1a">Hire an AI team.</span> <span class="accent" data-i18n="h1b">Pay ₹0.</span></h1>
           <p class="rotator"><span data-i18n="rotPre">They</span> <span class="rot-words"><span data-i18n="rot1" class="on">chase your invoices.</span><span data-i18n="rot2">answer your customers.</span><span data-i18n="rot3">write your posts.</span><span data-i18n="rot4">research your market.</span><span data-i18n="rot5">fix your code.</span><span data-i18n="rot6">work while you sleep.</span></span></p>
-          <p class="lead" data-i18n="lead">Sahkarmi puts AI coworkers on your Windows PC. They browse, write, research, work inside 1,660 apps and run on a schedule. Before they pay, send or post, they ask you.</p>
+          <p class="lead" data-i18n="lead">Sahkarmi is free, open-source AI that uses your Windows PC like a coworker would. It browses websites, opens and works in desktop apps, researches, writes, works inside 1,660 apps and runs on a schedule. Before it pays, sends or posts, it asks you.</p>
           <div class="cta-row">
-            <a class="btn btn-primary btn-glow" id="download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">
+            <a class="btn btn-primary btn-glow" id="download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
               <span id="download-label" data-i18n="download">Download for Windows</span>
             </a>
@@ -1270,7 +1278,7 @@
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="dlEyebrow">Download</p>
           <h2 id="dl-h" data-i18n="dlH2">Download for Windows</h2>
-          <p class="lead"><span data-i18n="dlLead">Every file is built by GitHub Actions from the public source, with SHA-256 checksums and a provenance attestation on the release page. Current version:</span> <strong data-release-version>latest</strong></p>
+          <p class="lead"><span data-i18n="dlLead">Every file is built by GitHub Actions from the public source, with SHA-256 checksums and a provenance attestation on the release page. Current version:</span> <strong data-release-version>0.22.0</strong></p>
         </div>
         <div class="dl-grid reveal">
           <div class="dl-card store" id="card-store">
@@ -1298,11 +1306,19 @@
               <div><h3>Windows</h3><span class="os-sub">10 · 11 · 64-bit</span></div>
             </div>
             <span class="status tested" data-i18n="stWin">Built and tested by the project</span>
-            <p><span data-i18n="winP">Windows 10 or 11, 64-bit. SmartScreen will warn because the installer is not code-signed yet: choose More info, then Run anyway.</span> <span class="size">(<span data-release-size="win">212 MB</span>)</span></p>
-            <a class="btn btn-primary" data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe"><span data-i18n="winBtn">Download .exe</span></a>
+            <p><span data-i18n="winP">Windows 10 or 11, 64-bit. SmartScreen will warn because the installer is not code-signed yet: choose More info, then Run anyway.</span> <span class="size">(<span data-release-size="win">240 MB</span>)</span></p>
+            <a class="btn btn-primary" data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe"><span data-i18n="winBtn">Download .exe</span></a>
             <small><a href="/install.html#windows" data-i18n="winHelp">Windows install and first-launch steps</a></small>
           </div>
         </div>
+        <dl class="dl-facts reveal" aria-label="Release details">
+          <div><dt data-i18n="dfVersion">Version</dt><dd data-release-version>0.22.0</dd></div>
+          <div><dt data-i18n="dfDate">Released</dt><dd><time data-release-date datetime="2026-11-05">2026-11-05</time></dd></div>
+          <div><dt data-i18n="dfSize">Download size</dt><dd data-release-size="win">240 MB</dd></div>
+          <div><dt data-i18n="dfSystem">System</dt><dd data-i18n="dfSystemV">Windows 10 or 11, 64-bit (x64)</dd></div>
+          <div><dt data-i18n="dfLicense">License</dt><dd><a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="dfLicenseV">Apache 2.0, free and open source</a></dd></div>
+          <div class="dl-sha"><dt data-i18n="dfSha">SHA-256 of the installer</dt><dd><code id="release-sha" data-release-sha256="win">f26bcb4502308f2803b6c83e00f23e1b77dcfb7e449b87b0064b6fe8faa9999b</code> <button type="button" data-copy-from="#release-sha" data-i18n="msCopy">Copy</button> <a href="/install.html#verify" data-i18n="dfGuide">Installation guide</a></dd></div>
+        </dl>
         <div class="dl-help reveal">
           <a href="https://github.com/ganguydhrubo/sahakarmi/releases/latest" target="_blank" rel="noopener noreferrer" data-i18n="allReleases">All releases and checksums on GitHub</a>
           <a href="https://sahkarmisite.itch.io/sahkarmi" target="_blank" rel="noopener noreferrer" data-i18n="itchLink">Also on itch.io</a>
@@ -1311,7 +1327,7 @@
           <a href="/install.html#troubleshooting" data-i18n="troubleLink">Troubleshooting</a>
         </div>
         <p class="platforms sr-only">
-          <a data-platform="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">Windows installer</a>
+          <a data-platform="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">Windows installer</a>
         </p>
       </div>
     </section>
@@ -1343,7 +1359,7 @@
         <p class="eyebrow" data-i18n="goEyebrow">Ready when you are</p>
         <h2 id="go-h" data-i18n="goH2">Your AI team is ready to start.</h2>
         <p class="lead" data-i18n="goLead">Download free. Up and running in minutes. No account, no card.</p>
-        <a class="btn btn-primary btn-glow btn-xl" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe">
+        <a class="btn btn-primary btn-glow btn-xl" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           <span data-i18n="goBtn">Download free for Windows</span>
         </a>
@@ -1448,7 +1464,7 @@
 
   <div class="dl-bar" id="dl-bar" aria-hidden="true">
     <span class="dl-bar-text" data-i18n="barText">Your free AI team for Windows</span>
-    <a class="btn btn-primary btn-small" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.7.1/Sahkarmi-0.7.1-x64.exe" tabindex="-1"><span data-i18n="mini">Download</span></a>
+    <a class="btn btn-primary btn-small" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe" tabindex="-1"><span data-i18n="mini">Download</span></a>
   </div>
 
   <footer>
@@ -1457,6 +1473,11 @@
         <span data-i18n="talk">Talk to a human:</span>
         <a href="mailto:dhrubo@sahkarmi.site"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>dhrubo@sahkarmi.site</a>
         <a href="https://wa.me/918240801921" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c1.6.7 2.3.8 3.1.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3z"/></svg>WhatsApp +91 82408 01921</a>
+        <a href="/computer-use.html" data-i18n="footComputer">AI that uses your computer</a>
+        <a href="/use-cases.html" data-i18n="footUseCases">Use cases</a>
+        <a href="/ai-agent-for-windows.html" data-i18n="footWindows">AI agent for Windows</a>
+        <a href="/alternatives.html" data-i18n="footAlt">Alternatives</a>
+        <a href="/open-source-ai-agent.html" data-i18n="footOpen">Open-source AI agent</a>
         <a href="/install.html" data-i18n="footInstall">Install guide</a>
         <a href="/docs.html" data-i18n="footDocs">Get started</a>
         <a href="/savings.html" data-i18n="footSavings">Savings calculator</a>
@@ -1522,6 +1543,21 @@
         tgM4: "/use Vikram",
         tgInput: "Message",
         plugAnnounce: "New: Skills, MCP servers and workflow export",
+        pcAnnounce: "New: coworkers can now use the apps on your PC",
+        footComputer: "AI that uses your computer",
+        footUseCases: "Use cases",
+        footOpen: "Open-source AI agent",
+        footWindows: "AI agent for Windows",
+        footAlt: "Alternatives",
+        dfVersion: "Version",
+        dfDate: "Released",
+        dfSize: "Download size",
+        dfSystem: "System",
+        dfSystemV: "Windows 10 or 11, 64-bit (x64)",
+        dfLicense: "License",
+        dfLicenseV: "Apache 2.0, free and open source",
+        dfSha: "SHA-256 of the installer",
+        dfGuide: "Installation guide",
         plugEyebrow: "New: Skills · MCP · Export",
         plugH2: "Plug in any tool. Take your workflow anywhere.",
         plugLead: "Give your coworkers the same skills and MCP tools Claude Code uses, straight from open-source GitHub repos. Then save what they did as a clean file you can share or run again.",
@@ -1601,7 +1637,7 @@
         chip: "Free · Open source · Version",
         h1a: "Hire an AI team.",
         h1b: "Pay ₹0.",
-        lead: "Sahkarmi puts AI coworkers on your Windows PC. They browse, write, research, work inside 1,660 apps and run on a schedule. Before they pay, send or post, they ask you.",
+        lead: "Sahkarmi is free, open-source AI that uses your Windows PC like a coworker would. It browses websites, opens and works in desktop apps, researches, writes, works inside 1,660 apps and runs on a schedule. Before it pays, sends or posts, it asks you.",
         download: "Download for Windows",
         downloadOther: "Windows only, for now",
         downloadAny: "Download",
@@ -1916,6 +1952,21 @@
         tgM4: "/use Vikram",
         tgInput: "मैसेज",
         plugAnnounce: "नया: स्किल्स, MCP सर्वर और वर्कफ़्लो एक्सपोर्ट",
+        pcAnnounce: "नया: सहकर्मी अब आपके PC के ऐप्स चला सकते हैं",
+        footComputer: "आपका कंप्यूटर चलाने वाला AI",
+        footUseCases: "इस्तेमाल के उदाहरण",
+        footOpen: "ओपन-सोर्स AI एजेंट",
+        footWindows: "Windows के लिए AI एजेंट",
+        footAlt: "विकल्प",
+        dfVersion: "वर्ज़न",
+        dfDate: "रिलीज़",
+        dfSize: "डाउनलोड साइज़",
+        dfSystem: "सिस्टम",
+        dfSystemV: "Windows 10 या 11, 64-बिट (x64)",
+        dfLicense: "लाइसेंस",
+        dfLicenseV: "Apache 2.0, मुफ़्त और ओपन सोर्स",
+        dfSha: "इंस्टॉलर का SHA-256",
+        dfGuide: "इंस्टॉल करने की गाइड",
         plugEyebrow: "नया: स्किल्स · MCP · एक्सपोर्ट",
         plugH2: "कोई भी टूल जोड़ें। अपना वर्कफ़्लो कहीं भी ले जाएँ।",
         plugLead: "अपने सहकर्मियों को वही स्किल्स और MCP टूल दें जो Claude Code इस्तेमाल करता है, सीधे ओपन-सोर्स GitHub रिपो से। फिर उन्होंने जो किया उसे एक साफ़ फ़ाइल में सेव करें, जिसे आप शेयर करें या दोबारा चलाएँ।",
@@ -1995,7 +2046,7 @@
         chip: "मुफ़्त · ओपन सोर्स · वर्ज़न",
         h1a: "AI टीम रखिए.",
         h1b: "ख़र्च ₹0.",
-        lead: "सहकर्मी आपके Windows PC पर AI सहकर्मी लाता है. वे ब्राउज़ करते हैं, लिखते हैं, रिसर्च करते हैं, 1,660 ऐप्स में काम करते हैं और तय समय पर चलते हैं. पेमेंट, मैसेज या पोस्ट से पहले आपसे पूछते हैं.",
+        lead: "सहकर्मी मुफ़्त, ओपन-सोर्स AI है जो आपके Windows PC को एक सहकर्मी की तरह चलाता है. यह वेबसाइट ब्राउज़ करता है, डेस्कटॉप ऐप खोलकर उनमें काम करता है, रिसर्च करता है, लिखता है, 1,660 ऐप्स में काम करता है और तय समय पर चलता है. पेमेंट, मैसेज या पोस्ट से पहले आपसे पूछता है.",
         download: "Windows के लिए डाउनलोड करें",
         downloadOther: "अभी सिर्फ़ Windows के लिए",
         downloadAny: "डाउनलोड करें",
@@ -2320,9 +2371,10 @@
     }
 
     // Copy the winget command
-    for (const button of document.querySelectorAll("[data-copy]")) {
+    for (const button of document.querySelectorAll("[data-copy], [data-copy-from]")) {
       button.addEventListener("click", async () => {
-        try { await navigator.clipboard.writeText(button.dataset.copy); } catch (_) { return; }
+        const text = button.dataset.copy ?? document.querySelector(button.dataset.copyFrom)?.textContent?.trim();
+        try { await navigator.clipboard.writeText(text); } catch (_) { return; }
         button.textContent = STRINGS[lang].msCopied;
         setTimeout(() => { button.textContent = STRINGS[lang].msCopy; }, 1800);
       });

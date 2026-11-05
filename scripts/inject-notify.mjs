@@ -3,7 +3,7 @@
 // Script /exec URL; see deploy/apps-script/download-notify/Code.gs) into the website's
 // <meta name="sahkarmi-download-notify">. Without the variable the meta stays empty and
 // website/assets/download-notify.js sends nothing.
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,14 +17,17 @@ if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) {
   process.exit(0);
 }
 const site = join(dirname(fileURLToPath(import.meta.url)), "..", "website");
-for (const name of ["index.html", "install.html"]) {
+// Every page that carries the meta (home, install, guides and use-case pages).
+for (const name of readdirSync(site).filter((file) => file.endsWith(".html"))) {
   const target = join(site, name);
   const html = readFileSync(target, "utf8");
   const next = html.replace(
     /<meta name="sahkarmi-download-notify" content="[^"]*" \/>/,
     `<meta name="sahkarmi-download-notify" content="${url}" />`,
   );
-  if (next === html && !html.includes(url)) throw new Error(`notify meta missing in ${name}`);
+  const required = name === "index.html" || name === "install.html";
+  if (required && next === html && !html.includes(url))
+    throw new Error(`notify meta missing in ${name}`);
   writeFileSync(target, next);
 }
 console.log("Download click mail turned on.");

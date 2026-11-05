@@ -4,7 +4,7 @@
 
 # Sahkarmi · सहकर्मी
 
-**A team of AI coworkers on your own computer.** Free, open source (Apache 2.0), local-first.
+**Free, open-source AI coworkers that use your computer.** Websites, desktop apps and files, with your approval before anything is posted, sent or paid. Apache 2.0, local-first, Windows.
 Your AI team. Made in India. · आपकी AI टीम. भारत में बनी. · আপনার AI টিম. ভারতে তৈরি.
 
 [![Latest release](https://img.shields.io/github/v/release/ganguydhrubo/sahakarmi?label=release)](https://github.com/ganguydhrubo/sahakarmi/releases/latest)
@@ -12,11 +12,17 @@ Your AI team. Made in India. · आपकी AI टीम. भारत मे�
 [![CI](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml/badge.svg)](https://github.com/ganguydhrubo/sahakarmi/actions/workflows/ci.yml)
 [![Website](https://img.shields.io/badge/website-sahkarmi.site-E8772E)](https://sahkarmi.site/)
 
-Sahkarmi is a desktop app for Windows (macOS and Linux builds come later) where each AI coworker has its own workspace,
-browser, memory and task queue. You give them work in plain English, हिन्दी or বাংলা; they read
-files, browse in their own tab, hand work to each other, and stop to ask you before anything that
-spends money or talks to a customer. Free AI models are built in (no account); your existing
-Claude Code, Codex (ChatGPT) and Google Antigravity sign-ins are reused if you have them.
+Sahkarmi is a computer-use AI app for Windows (macOS and Linux builds come later) where each AI
+coworker has its own workspace, browser, memory and task queue. You give them work in plain
+English, हिन्दी or বাংলা; they read files, browse and act in their own browser, use Windows desktop
+apps (with the **Control this PC** permission), hand work to each other, and stop to ask you before
+anything that spends money or talks to a customer. Free AI models are built in (no account); you
+can also connect Claude, ChatGPT (Codex), Google Gemini (Antigravity) and other providers.
+
+**[Download for Windows](https://github.com/ganguydhrubo/sahakarmi/releases/latest)** ·
+[Microsoft Store](https://apps.microsoft.com/detail/9PD6BP3NGVST) ·
+[Website](https://sahkarmi.site/) · [What computer use means here](https://sahkarmi.site/computer-use.html) ·
+[Use cases](https://sahkarmi.site/use-cases.html)
 
 ![Vikram, the sales coworker, answering on the free built-in model in Sahkarmi 0.7.1 on Windows](website/assets/shots/conversation-1440.webp)
 
@@ -48,6 +54,10 @@ Full steps, verification, troubleshooting and uninstall: **[sahkarmi.site/instal
   (accounts), Vikram (sales), Meera (support), Arjun (research), Kavya (content), Dev (code),
   Tara (ops), Kabir (security). Each gets standing instructions for Indian business context: INR
   with lakh/crore, IST, GST, DD/MM/YYYY, replies in the owner's language.
+- **Desktop control (Windows, 0.22.0+)**: with the *Control this PC* permission a coworker can
+  take screenshots, start and focus apps, read a window's controls through UI Automation, click,
+  scroll, drag, type and press keys. One coworker drives the desktop at a time; typing into
+  password fields and Windows credential prompts is refused.
 - **A browser per coworker** with a **Take over** button. While you are in control (logins,
   OTPs, CAPTCHAs, payment pages), the coworker's browser tools pause.
 - **Approvals inbox.** Coworkers call `sahkarmi.request_approval` and stop before payments,
@@ -73,11 +83,11 @@ Full steps, verification, troubleshooting and uninstall: **[sahkarmi.site/instal
 | Provider | How Sahkarmi uses it | Cost |
 | --- | --- | --- |
 | **OpenCode (built in)** | Bundled inside the installer. Free models, no login. OpenCode sets a usage limit per free model; Sahkarmi moves to the next free model when one is used up. | Free |
-| **Claude** | Your installed Claude Code CLI and its login | Your plan |
+| **Claude** | The Claude CLI with Sahkarmi's own sign-in (Settings → AI and models → Connect). Since 0.22.0 it is kept separate from your Claude Code account. | Your plan |
 | **ChatGPT (Codex)** | Your installed Codex CLI and its ChatGPT login | Your plan |
 | **Google Antigravity** | Google's own Antigravity agent (`agy_acp_server`, SHA-256 pinned), downloaded by Sahkarmi on Connect after you accept Google's terms. One click opens Log in with Google; a Google AI Studio API key also works | Your Google plan |
 
-Sahkarmi detects every installed CLI and **reuses its existing login**. It never copies tokens.
+Sahkarmi detects every installed CLI and reuses its existing login (Claude excepted: it has its own, see above). It never copies tokens.
 Any extra provider you sign in to inside OpenCode (`opencode auth login`) shows up as "Your
 OpenCode model".
 
