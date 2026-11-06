@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import type { Dirent } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, extname, join, relative, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import type { AttachmentSummary } from "../shared/ipc";
@@ -24,13 +25,13 @@ export async function extractAttachmentText(
   limit = MAX_ATTACHMENT_TEXT_CHARS,
 ): Promise<string | null> {
   const extension = extname(name).toLowerCase();
-  if (statSync(path).size > MAX_FILE_BYTES) return null;
+  if ((await stat(path)).size > MAX_FILE_BYTES) return null;
   let text: string | null = null;
-  if (extension === ".pdf") text = await pdfText(readFileSync(path));
-  else if (extension === ".docx") text = docxText(readFileSync(path));
-  else if (extension === ".pptx") text = pptxText(readFileSync(path));
-  else if (extension === ".xlsx") text = xlsxText(readFileSync(path));
-  else if (TEXT_EXTENSIONS.test(name)) text = readFileSync(path, "utf8");
+  if (extension === ".pdf") text = await pdfText(await readFile(path));
+  else if (extension === ".docx") text = docxText(await readFile(path));
+  else if (extension === ".pptx") text = pptxText(await readFile(path));
+  else if (extension === ".xlsx") text = xlsxText(await readFile(path));
+  else if (TEXT_EXTENSIONS.test(name)) text = await readFile(path, "utf8");
   if (text === null) return null;
   const clean = text
     .replace(/\r\n?/g, "\n")
@@ -161,9 +162,21 @@ export function decodeXml(text: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** No single unpacked part of a Word, Excel or PowerPoint file is bigger than this. */
+export const ZIP_ENTRY_MAX_BYTES = 200 * 1024 * 1024;
+/** All parts of one file together. */
+export const ZIP_TOTAL_MAX_BYTES = 400 * 1024 * 1024;
+
 /** Reads every entry of a ZIP in memory (stored or deflated), keyed by its path. */
-export function readZip(buffer: Buffer): Map<string, Buffer> {
+export function readZip(
+  buffer: Buffer,
+  limits: { entry: number; total: number } = {
+    entry: ZIP_ENTRY_MAX_BYTES,
+    total: ZIP_TOTAL_MAX_BYTES,
+  },
+): Map<string, Buffer> {
   const entries = new Map<string, Buffer>();
+  let budget = limits.total;
   const minimum = Math.max(0, buffer.length - 65_557);
   let eocd = -1;
   for (let offset = buffer.length - 22; offset >= minimum; offset -= 1) {
@@ -189,7 +202,31 @@ export function readZip(buffer: Buffer): Map<string, Buffer> {
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
     const data = buffer.subarray(dataStart, dataStart + compressedSize);
     if (!name.endsWith("/")) {
-      entries.set(name, method === 8 ? inflateRawSync(data) : Buffer.from(data));
+      let content: Buffer;
+      try {
+        // A tiny compressed entry can expand to gigabytes (a "zip bomb"): stop at a sane size.
+        content =
+          method === 8
+            ? inflateRawSync(data, { maxOutputLength: Math.min(limits.entry, budget) })
+            : Buffer.from(data);
+      } catch (error) {
+        if (
+          error instanceof RangeError ||
+          (error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE"
+        ) {
+          throw new Error(
+            "This file unpacks to far more data than a document holds; it was not read.",
+          );
+        }
+        throw error;
+      }
+      budget -= content.length;
+      if (budget <= 0) {
+        throw new Error(
+          "This file unpacks to far more data than a document holds; it was not read.",
+        );
+      }
+      entries.set(name, content);
     }
     offset += 46 + nameLength + extraLength + commentLength;
   }
@@ -212,30 +249,42 @@ export interface DeliverableOptions {
   limit?: number;
 }
 
-/** New or changed files under the coworker's folders since the turn began, newest first. */
-export function deliverableFiles(options: DeliverableOptions): string[] {
+/** A workspace can hold a huge tree; the scan stops after this many entries so a turn never stalls. */
+export const MAX_DELIVERABLE_ENTRIES = 2_000;
+
+/**
+ * New or changed files under the coworker's folders since the turn began, newest first.
+ * Reads the disk asynchronously and visits at most `maxEntries` directory entries.
+ */
+export async function deliverableFiles(
+  options: DeliverableOptions & { maxEntries?: number },
+): Promise<string[]> {
   const found: Array<{ path: string; mtime: number }> = [];
-  const excluded = options.excludeRoots ?? [];
-  const visit = (directory: string, depth: number) => {
-    let entries: import("node:fs").Dirent[];
+  const excluded = (options.excludeRoots ?? []).map((root) => resolve(root));
+  let budget = options.maxEntries ?? MAX_DELIVERABLE_ENTRIES;
+  const visit = async (directory: string, depth: number): Promise<void> => {
+    let entries: Dirent[];
     try {
-      entries = readdirSync(directory, { withFileTypes: true });
+      entries = await readdir(directory, { withFileTypes: true });
     } catch {
       return;
     }
+    const folders: string[] = [];
     for (const entry of entries) {
+      if (budget <= 0) return;
+      budget -= 1;
       if (entry.name.startsWith(".")) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) {
-        if (excluded.some((root) => resolve(root) === resolve(path))) continue;
+        if (excluded.includes(resolve(path))) continue;
         if (!SKIP_DIRECTORIES.has(entry.name) && depth < (options.maxDepth ?? 3)) {
-          visit(path, depth + 1);
+          folders.push(path);
         }
         continue;
       }
       if (!entry.isFile() || !DELIVERABLE_EXTENSIONS.test(entry.name)) continue;
       try {
-        const stats = statSync(path);
+        const stats = await stat(path);
         if (stats.mtimeMs >= options.since && stats.size > 0) {
           found.push({ path, mtime: stats.mtimeMs });
         }
@@ -243,8 +292,10 @@ export function deliverableFiles(options: DeliverableOptions): string[] {
         // unreadable: skip
       }
     }
+    // Files of a folder first, then its subfolders, so the budget favours shallow results.
+    for (const folder of folders) await visit(folder, depth + 1);
   };
-  for (const root of options.roots) visit(root, 0);
+  for (const root of options.roots) await visit(root, 0);
   return found
     .sort((a, b) => b.mtime - a.mtime)
     .slice(0, options.limit ?? 12)
@@ -304,16 +355,13 @@ export function mimeTypeFor(name: string): string {
   return table[extension] ?? "application/octet-stream";
 }
 
-export function localAttachmentSummary(path: string): AttachmentSummary {
+export async function localAttachmentSummary(path: string): Promise<AttachmentSummary> {
   const name = basename(path);
   const mimeType = mimeTypeFor(name);
-  const size = (() => {
-    try {
-      return statSync(path).size;
-    } catch {
-      return 0;
-    }
-  })();
+  const size = await stat(path).then(
+    (stats) => stats.size,
+    () => 0,
+  );
   const previewKind = mimeType.startsWith("image/")
     ? "image"
     : mimeType === "application/pdf"
@@ -330,6 +378,28 @@ export function localAttachmentSummary(path: string): AttachmentSummary {
     previewKind,
     previewUrl: localAttachmentPreviewUrl(path),
   };
+}
+
+const INLINE_IMAGE_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+export const MAX_INLINE_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/** An attached picture as an ACP image block (base64), or null when it is not one or too big. */
+export async function inlineImage(path: string): Promise<Record<string, unknown> | null> {
+  const mimeType = INLINE_IMAGE_TYPES[extname(path).toLowerCase()];
+  if (!mimeType) return null;
+  try {
+    if ((await stat(path)).size > MAX_INLINE_IMAGE_BYTES) return null;
+    const data = await readFile(path);
+    return { type: "image", mimeType, data: data.toString("base64") };
+  } catch {
+    return null;
+  }
 }
 
 /** A stable short hash for a path (used in tests and logs). */

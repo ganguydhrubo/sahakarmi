@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import {
   app,
@@ -58,6 +58,8 @@ interface InternalTab {
   openedTabs: string[];
   /** Coworker operations running on this tab; a busy tab never sleeps. */
   busy: number;
+  /** Muted by Sahkarmi while the app window was hidden; unmuted when it shows again. */
+  mutedWhileHidden?: boolean;
   ownerThreadId: string | null;
   ownerBotId: string | null;
   revision: number;
@@ -97,6 +99,8 @@ export function staleReloadDelay(
   tab: {
     stale: boolean;
     ownerTouched: boolean;
+    /** Keys the owner typed since the page loaded, even before the coworker's change. */
+    ownerTyped?: boolean;
     coworkerTyped: boolean;
     loadFailed: boolean;
     lastAutoReload: number;
@@ -104,7 +108,9 @@ export function staleReloadDelay(
   now: number,
   minimumGapMs: number,
 ): number | null {
-  if (!tab.stale || tab.ownerTouched || tab.coworkerTyped || tab.loadFailed) return null;
+  if (!tab.stale || tab.ownerTouched || tab.ownerTyped || tab.coworkerTyped || tab.loadFailed) {
+    return null;
+  }
   return Math.max(0, tab.lastAutoReload + minimumGapMs - now);
 }
 
@@ -321,6 +327,21 @@ export const BROWSER_DYNAMIC_TOOLS = [
 const PREVIEW_PAINT_MS = 120;
 const PREVIEW_WIDTH = 480;
 const PREVIEW_JPEG_QUALITY = 70;
+/**
+ * A coworker's screenshot: at most this wide, as JPEG. A full-size PNG of a large page took
+ * a long encode on the main thread and several MB for the model to read.
+ */
+const SCREENSHOT_MAX_WIDTH = 1280;
+const SCREENSHOT_JPEG_QUALITY = 80;
+
+/** A screenshot as the model gets it: resized to SCREENSHOT_MAX_WIDTH, JPEG. */
+export function screenshotDataUrl(image: Electron.NativeImage): string {
+  const small =
+    image.getSize().width > SCREENSHOT_MAX_WIDTH
+      ? image.resize({ width: SCREENSHOT_MAX_WIDTH, quality: "good" })
+      : image;
+  return `data:image/jpeg;base64,${small.toJPEG(SCREENSHOT_JPEG_QUALITY).toString("base64")}`;
+}
 /** Pages change their title and loading state many times a second; the app hears at most this often. */
 const CHANGE_EVENT_MIN_MS = 250;
 const PERSIST_DELAY_MS = 500;
@@ -421,6 +442,11 @@ export interface BrowserRestoreOptions {
   botIds?: string[];
   /** Pages coworkers are known to have used, besides their saved tabs. */
   usedPages?: Array<{ botId: string; url: string }>;
+  /**
+   * The same, read only when needed: just once, for the one-time sign-in split. Reading the
+   * whole permission audit at every start delayed the window for nothing.
+   */
+  loadUsedPages?: () => Promise<Array<{ botId: string; url: string }>>;
 }
 
 export class BrowserHost implements CoworkerBrowser {
@@ -441,12 +467,17 @@ export class BrowserHost implements CoworkerBrowser {
   /** A browser's page cache above this size is emptied once after start (sign-ins stay). */
   static CACHE_TRIM_BYTES = 150 * 1024 * 1024;
   static CACHE_TRIM_DELAY_MS = 90_000;
+  /** While the window is hidden, a page unused for this long is slowed down and muted. */
+  static HIDDEN_QUIET_AFTER_MS = 2 * 60_000;
   readonly takeoverHoldsShownTabOnly = true;
   readonly #window: BrowserWindow;
   readonly #session: Session;
   readonly #botSessions = new Map<string, Session>();
   readonly #downloadsRoot: string;
   readonly #statePath: string;
+  #windowHidden = false;
+  /** The page on screen, hidden while the window is minimised; shown again with the window. */
+  #viewHiddenWithWindow: WebContentsView | null = null;
   readonly #tabs = new Map<string, InternalTab>();
   readonly #listeners = new Set<(...args: BrowserHostEvents["changed"]) => void>();
   #changeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -454,6 +485,7 @@ export class BrowserHost implements CoworkerBrowser {
   #persistTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #control = new BrowserControlTracker();
   readonly #reservedDownloadPaths = new Set<string>();
+  #downloadAuthorizer: DownloadAuthorizer | null = null;
   #activeTabId: string | null = null;
   /** The owner has taken over: coworkers' new tabs open behind the tab the owner is using. */
   #ownerHolding = false;
@@ -518,6 +550,7 @@ export class BrowserHost implements CoworkerBrowser {
     if (!options.botIds?.length) return;
     const markerPath = join(dirname(this.#statePath), SIGN_IN_SPLIT_MARKER);
     if (existsSync(markerPath)) return;
+    const usedPages = options.usedPages ?? (await options.loadUsedPages?.()) ?? [];
     const shared = await this.#session.cookies.get({});
     const sites = new Map<string, Set<string>>();
     const addSite = (botId: string, url: string) => {
@@ -527,13 +560,13 @@ export class BrowserHost implements CoworkerBrowser {
       sites.get(botId)?.add(site);
     };
     for (const tab of tabs) if (tab.ownerBotId) addSite(tab.ownerBotId, tab.url);
-    for (const used of options.usedPages ?? []) addSite(used.botId, used.url);
+    for (const used of usedPages) addSite(used.botId, used.url);
     // A sign-in is one session on the website's side. Copied into several coworkers' browsers,
     // the first one that logs out, logs in again or switches account ends it for all of them
     // (Facebook then shows "Continue as ..." everywhere). Each site's sign-in goes to one coworker.
     const keeper = signInKeepers(
       tabs.flatMap((tab) => (tab.ownerBotId ? [{ botId: tab.ownerBotId, url: tab.url }] : [])),
-      options.usedPages ?? [],
+      usedPages,
     );
     const onlyBot = options.botIds.length === 1 ? options.botIds[0] : null;
     for (const botId of options.botIds) {
@@ -698,11 +731,68 @@ export class BrowserHost implements CoworkerBrowser {
       this.#botSessions.get(botId) ?? session.fromPartition(browserPartition(botId));
     await botSession.clearStorageData().catch(() => undefined);
     this.#botSessions.delete(botId);
+    // Its folder too (cleared data still left ~10 MB each). Chromium may hold a file of the
+    // released session until quit; whatever stays is removed at the next start.
+    if (/^bot-[a-z0-9-]+$/i.test(botId)) {
+      await rm(join(dirname(this.#statePath), "Partitions", `sahkarmi-browser-${botId}`), {
+        recursive: true,
+        force: true,
+        maxRetries: 2,
+        retryDelay: 200,
+      }).catch(() => undefined);
+    }
   }
 
   /** During a takeover the panel keeps showing the owner's tab, whatever coworkers open. */
   async setHumanControl(humanInControl: boolean): Promise<void> {
     this.#ownerHolding = humanInControl;
+  }
+
+  /**
+   * The app window was minimised or hidden (true) or shown again (false). Pages no coworker
+   * used in the last two minutes are slowed down and muted, and the page on screen is hidden,
+   * so an animated site stops costing CPU and battery while nobody can see it. A page a coworker
+   * is working in keeps full speed.
+   */
+  setWindowHidden(hidden: boolean): void {
+    this.#windowHidden = hidden;
+    if (hidden) {
+      this.#quietHiddenPages();
+      return;
+    }
+    for (const tab of this.#tabs.values()) {
+      const contents = tab.view?.webContents;
+      if (!contents || contents.isDestroyed()) continue;
+      if (tab.mutedWhileHidden) contents.setAudioMuted(false);
+      tab.mutedWhileHidden = false;
+    }
+    const hiddenView = this.#viewHiddenWithWindow;
+    this.#viewHiddenWithWindow = null;
+    if (hiddenView && hiddenView === this.#attachedView && this.#visible) {
+      hiddenView.setVisible(true);
+    }
+  }
+
+  /** While the window is hidden: quiet every page that went unused for two minutes. */
+  #quietHiddenPages(now = Date.now()): void {
+    if (!this.#windowHidden) return;
+    for (const tab of this.#tabs.values()) {
+      const view = tab.view;
+      const contents = view?.webContents;
+      if (!view || !contents || contents.isDestroyed()) continue;
+      if (tab.busy > 0 || now - tab.lastUsed < BrowserHost.HIDDEN_QUIET_AFTER_MS) continue;
+      contents.setBackgroundThrottling(true);
+      if (!contents.isAudioMuted()) {
+        contents.setAudioMuted(true);
+        tab.mutedWhileHidden = true;
+      }
+      // Off-screen pages can draw at a lower rate; on-screen ones stop drawing once hidden.
+      if (contents.isOffscreen()) contents.setFrameRate(1);
+      if (view === this.#attachedView && view.getVisible()) {
+        view.setVisible(false);
+        this.#viewHiddenWithWindow = view;
+      }
+    }
   }
 
   /** Number of tabs with a live page (for tests and diagnostics). */
@@ -792,6 +882,7 @@ export class BrowserHost implements CoworkerBrowser {
    */
   #sleepIdleTabs(): void {
     const now = Date.now();
+    this.#quietHiddenPages(now);
     let slept = false;
     const candidates: InternalTab[] = [];
     let awake = 0;
@@ -1117,7 +1208,7 @@ export class BrowserHost implements CoworkerBrowser {
           10_000,
           "Browser screenshot timed out.",
         );
-        return image.toDataURL();
+        return screenshotDataUrl(image);
       } finally {
         restore?.();
       }
@@ -1260,7 +1351,7 @@ export class BrowserHost implements CoworkerBrowser {
       callback(false);
     });
     target.setPermissionCheckHandler(() => false);
-    target.on("will-download", (_event, item) => {
+    target.on("will-download", (_event, item, contents) => {
       const safeName = basename(item.getFilename()).replace(/[^a-zA-Z0-9._ -]/g, "_");
       const downloadPath = uniqueDownloadPath(
         this.#downloadsRoot,
@@ -1270,6 +1361,32 @@ export class BrowserHost implements CoworkerBrowser {
       this.#reservedDownloadPaths.add(downloadPath);
       item.setSavePath(downloadPath);
       item.once("done", () => this.#reservedDownloadPaths.delete(downloadPath));
+      const authorize = this.#downloadAuthorizer;
+      if (!authorize) return;
+      // Held until the permission policy answers: "downloads" set to deny stops it, ask asks.
+      item.pause();
+      const tab = [...this.#tabs.values()].find(
+        (candidate) => candidate.view?.webContents === contents,
+      );
+      void authorize({
+        botId: tab?.ownerBotId ?? null,
+        threadId: tab?.ownerThreadId ?? null,
+        url: item.getURL(),
+        fileName: basename(downloadPath),
+        path: downloadPath,
+      })
+        .catch(() => false)
+        .then((allowed) => {
+          const state = item.getState();
+          if (!allowed) {
+            if (state === "progressing" || state === "interrupted") item.cancel();
+            return;
+          }
+          // A long wait for the owner can drop the connection; pick up where it stopped.
+          if (state === "progressing" || (state === "interrupted" && item.canResume())) {
+            item.resume();
+          }
+        });
     });
   }
 
@@ -1439,6 +1556,11 @@ export class BrowserHost implements CoworkerBrowser {
       // Element refs from before are not trusted after a sign-in step.
       tab.revision += 1;
     });
+  }
+
+  /** Every download waits for this answer; without one, downloads go ahead as before. */
+  setDownloadAuthorizer(authorizer: DownloadAuthorizer | null): void {
+    this.#downloadAuthorizer = authorizer;
   }
 
   /** What a browser action would touch: the element's label and the page address. */
@@ -1659,11 +1781,26 @@ export interface BrowserToolTarget {
 }
 
 /** The coworker browser as the rest of the app sees it, whichever engine runs it. */
+/** A file a page started downloading, and the tab's coworker (null on the owner's own tab). */
+export interface DownloadRequest {
+  botId: string | null;
+  threadId: string | null;
+  url: string;
+  fileName: string;
+  path: string;
+}
+
+export type DownloadAuthorizer = (request: DownloadRequest) => Promise<boolean>;
+
 export interface CoworkerBrowser extends BrowserToolTarget {
   restore(options?: BrowserRestoreOptions): Promise<void>;
+  /** Routes downloads through the permission policy (the built-in browser). */
+  setDownloadAuthorizer?(authorizer: DownloadAuthorizer | null): void;
   /** Which account is signed in for this tab; absent where it cannot be read, so publishing stops. */
   signedInAccount?(tabId: string, platform: SocialPlatform): Promise<string | null>;
   releaseBot?(botId: string): Promise<void>;
+  /** The app window was minimised/hidden (true) or shown (false); hidden pages are quietened. */
+  setWindowHidden?(hidden: boolean): void;
   /** Types the owner's secret into the sign-in field, found again if the page redrew it. */
   fillSecureField?(tabId: string, input: SecureFillInput): Promise<void>;
   onChanged(listener: (...args: BrowserHostEvents["changed"]) => void): () => void;

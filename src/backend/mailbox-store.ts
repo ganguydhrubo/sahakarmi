@@ -1,5 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readdirSync, readFileSync } from "node:fs";
+import {
+  appendFile,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative } from "node:path";
 import type {
   AttachmentDataInput,
@@ -9,6 +21,7 @@ import type {
   ConversationMessage,
   DraftAttachment,
   KnowledgeCitation,
+  MessageOrigin,
   MessageReaction,
   QueueDelivery,
   QueueDeliveryStatus,
@@ -22,6 +35,15 @@ import { isRecord } from "./protocol";
 const MAX_ATTACHMENTS = 10;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 250 * 1024 * 1024;
+/** Finished messages older than this move from mailbox.json to the monthly archive. */
+const ARCHIVE_AFTER_DAYS = 30;
+const DAY_MS = 24 * 60 * 60_000;
+const TERMINAL_STATUSES = new Set<QueueDeliveryStatus>([
+  "completed",
+  "failed",
+  "interrupted",
+  "cancelled",
+]);
 
 interface StoredAttachment extends AttachmentSummary {
   path: string;
@@ -35,6 +57,10 @@ interface StoredDraft extends StoredAttachment {
 interface StoredMessage {
   id: string;
   sender: { kind: "user" } | { kind: "bot"; botId: string };
+  /** Who really sent a "user" message (absent in older data: the owner). */
+  origin?: MessageOrigin;
+  /** Coworker-to-coworker hops in a row that led to this message. */
+  hops?: number;
   text: string;
   attachments: StoredAttachment[];
   replyToMessageId: string | null;
@@ -51,6 +77,10 @@ interface StoredDelivery {
   createdAt: string;
   /** Sent again automatically on another model; the failed copy is hidden from the chat. */
   retried?: boolean;
+  /** The delivery that carries the message again after this one failed. */
+  retriedAs?: string;
+  /** Interrupted when the app closed: offered to the owner to run again. */
+  offerRerun?: boolean;
   /** Knowledge Base excerpts this owner message was grounded on (for the [S1] pills). */
   citations?: KnowledgeCitation[];
 }
@@ -63,6 +93,22 @@ interface StoredState {
   pausedBotIds: string[];
   idempotency: Record<string, string>;
   reactions: StoredReaction[];
+  /** Coworkers with messages in the monthly archive (mailbox-archive/YYYY-MM.jsonl). */
+  archivedBotIds?: string[];
+}
+
+/** One archived message per line of a monthly mailbox-archive file. */
+interface ArchivedRecord {
+  v: 1;
+  message: StoredMessage;
+  deliveries: StoredDelivery[];
+  sourceTurnId?: string;
+}
+
+export interface MailboxStoreOptions {
+  /** Days after which finished messages are archived (default 30). */
+  archiveAfterDays?: number;
+  now?: () => number;
 }
 
 interface StoredReaction {
@@ -74,6 +120,8 @@ interface StoredReaction {
 
 interface EnqueueInput {
   sender: StoredMessage["sender"];
+  origin?: MessageOrigin;
+  hops?: number;
   recipientBotIds: string[];
   text: string;
   replyToMessageId?: string | null;
@@ -111,14 +159,24 @@ export class MailboxStore {
   #state: StoredState = structuredClone(EMPTY_STATE);
   #writeQueue: Promise<void> = Promise.resolve();
   #nextWrite: Promise<void> | null = null;
-  #lastSerialized: string | null = null;
+  /** Set by every change; the queued write runs only when something changed. */
+  #dirty = false;
+  #initializing: Promise<void> | null = null;
+  readonly #archiveRoot: string;
+  readonly #archiveAfterMs: number;
+  readonly #now: () => number;
+  /** Archived messages, read from disk only when an old message is needed. */
+  #archive: Map<string, ArchivedRecord> | null = null;
   readonly #messageIndex = new Map<string, StoredMessage>();
   readonly #sourceTurnIndex = new Map<string, string>();
 
-  constructor(userDataPath: string, sharedRoot: string) {
+  constructor(userDataPath: string, sharedRoot: string, options: MailboxStoreOptions = {}) {
     this.#statePath = join(userDataPath, "mailbox.json");
     this.#draftsRoot = join(userDataPath, "attachment-drafts");
+    this.#archiveRoot = join(userDataPath, "mailbox-archive");
     this.#transfersRoot = join(sharedRoot, "Transfers");
+    this.#archiveAfterMs = (options.archiveAfterDays ?? ARCHIVE_AFTER_DAYS) * DAY_MS;
+    this.#now = options.now ?? Date.now;
   }
 
   #rebuildIndexes(): void {
@@ -136,7 +194,13 @@ export class MailboxStore {
     }
   }
 
-  async initialize(): Promise<void> {
+  /** Safe to call more than once: later calls wait for the first one instead of loading again. */
+  initialize(): Promise<void> {
+    this.#initializing ??= this.#initialize();
+    return this.#initializing;
+  }
+
+  async #initialize(): Promise<void> {
     await Promise.all([
       mkdir(dirname(this.#statePath), { recursive: true, mode: 0o700 }),
       mkdir(this.#draftsRoot, { recursive: true, mode: 0o700 }),
@@ -150,6 +214,73 @@ export class MailboxStore {
     }
     await rm(this.#draftsRoot, { recursive: true, force: true });
     await mkdir(this.#draftsRoot, { recursive: true, mode: 0o700 });
+    await this.archiveOldMessages();
+  }
+
+  /**
+   * Moves finished messages older than 30 days to mailbox-archive/YYYY-MM.jsonl so mailbox.json
+   * stays small. The archive is appended first and mailbox.json rewritten after, so a crash in
+   * between only leaves a duplicate line, which reading ignores. Idempotency keys of archived or
+   * missing messages are dropped. Returns how many messages moved.
+   */
+  async archiveOldMessages(): Promise<number> {
+    if (!Number.isFinite(this.#archiveAfterMs)) return 0;
+    const cutoff = this.#now() - this.#archiveAfterMs;
+    const deliveriesByMessage = new Map<string, StoredDelivery[]>();
+    for (const delivery of this.#state.deliveries) {
+      const list = deliveriesByMessage.get(delivery.messageId) ?? [];
+      list.push(delivery);
+      deliveriesByMessage.set(delivery.messageId, list);
+    }
+    const byMonth = new Map<string, ArchivedRecord[]>();
+    const moved = new Set<string>();
+    for (const message of this.#state.messages) {
+      const created = Date.parse(message.createdAt);
+      if (!Number.isFinite(created) || created >= cutoff) continue;
+      const deliveries = deliveriesByMessage.get(message.id) ?? [];
+      if (!deliveries.every((delivery) => TERMINAL_STATUSES.has(delivery.status))) continue;
+      const sourceTurnId = this.#sourceTurnId(message.id);
+      const month = message.createdAt.slice(0, 7);
+      const records = byMonth.get(month) ?? [];
+      records.push({ v: 1, message, deliveries, ...(sourceTurnId ? { sourceTurnId } : {}) });
+      byMonth.set(month, records);
+      moved.add(message.id);
+    }
+    const liveIds = new Set(this.#state.messages.map((message) => message.id));
+    const staleKeys = Object.entries(this.#state.idempotency).filter(
+      ([, messageId]) => moved.has(messageId) || !liveIds.has(messageId),
+    );
+    if (moved.size === 0 && staleKeys.length === 0) return 0;
+
+    if (moved.size > 0) {
+      await mkdir(this.#archiveRoot, { recursive: true, mode: 0o700 });
+      for (const [month, records] of byMonth) {
+        const lines = records.map((record) => `${JSON.stringify(record)}\n`).join("");
+        await appendFile(join(this.#archiveRoot, `${safeMonth(month)}.jsonl`), lines, {
+          encoding: "utf8",
+          mode: 0o600,
+        });
+      }
+    }
+    const archivedBotIds = new Set(this.#state.archivedBotIds ?? []);
+    for (const records of byMonth.values()) {
+      for (const record of records) {
+        for (const botId of recordBotIds(record)) archivedBotIds.add(botId);
+        this.#archive?.set(record.message.id, record);
+      }
+    }
+    this.#state.messages = this.#state.messages.filter((message) => !moved.has(message.id));
+    this.#state.deliveries = this.#state.deliveries.filter(
+      (delivery) => !moved.has(delivery.messageId),
+    );
+    for (const [key] of staleKeys) delete this.#state.idempotency[key];
+    if (archivedBotIds.size > 0) this.#state.archivedBotIds = [...archivedBotIds];
+    for (const id of moved) {
+      this.#messageIndex.delete(id);
+      this.#sourceTurnIndex.delete(id);
+    }
+    await this.#persist();
+    return moved.size;
   }
 
   async prepareAttachments(paths: string[]): Promise<DraftAttachment[]> {
@@ -274,6 +405,8 @@ export class MailboxStore {
     const message: StoredMessage = {
       id: messageId,
       sender: input.sender,
+      ...(input.origin && input.origin !== "owner" ? { origin: input.origin } : {}),
+      ...(input.hops ? { hops: input.hops } : {}),
       text,
       attachments,
       replyToMessageId: input.replyToMessageId ?? null,
@@ -350,91 +483,119 @@ export class MailboxStore {
       deliveries.push(delivery);
       deliveriesByMessage.set(delivery.messageId, deliveries);
     }
-    for (const message of this.#state.messages) {
-      const deliveries = deliveriesByMessage.get(message.id) ?? [];
-      const recipientBotIds = deliveries.map((item) => item.recipientBotId);
-      let exchangeDeliveries: Array<{
-        id: string;
-        recipientBotId: string;
-        status: QueueDeliveryStatus;
-        position: number | null;
-        error: string | null;
-      }> | null = null;
-      const getExchangeDeliveries = () => {
-        if (!exchangeDeliveries) {
-          exchangeDeliveries = deliveries.map((item) => {
-            const delivery = this.#publicDelivery(item, positions);
-            return {
-              id: delivery.id,
-              recipientBotId: delivery.recipientBotId,
-              status: delivery.status,
-              position: delivery.position,
-              error: delivery.error,
-            };
-          });
-        }
-        return exchangeDeliveries;
-      };
-
-      if (message.sender.kind === "bot" && message.sender.botId === botId) {
-        messages.push({
-          id: `outbox-${message.id}`,
-          turnId: this.#sourceTurnId(message.id),
-          author: "system",
-          source: "system",
-          text: message.text,
-          attachments: message.attachments.map(toAttachmentSummary),
-          replyToMessageId: message.replyToMessageId,
-          exchange: {
-            direction: "outgoing",
-            messageId: message.id,
-            senderBotId: botId,
-            recipientBotIds,
-            replyToMessageId: message.replyToMessageId,
-            deliveries: getExchangeDeliveries(),
-          },
-          createdAt: message.createdAt,
-          status: "completed",
-          itemType: "agent-exchange",
-        });
-      }
-
-      for (const storedDelivery of deliveries) {
-        if (storedDelivery.recipientBotId !== botId || storedDelivery.retried) continue;
-        const delivery = this.#publicDelivery(storedDelivery, positions);
-        messages.push({
-          id: delivery.id,
-          turnId: storedDelivery.turnId ?? undefined,
-          author: message.sender.kind === "bot" ? "agent" : "user",
-          source: message.sender.kind === "bot" ? "agent" : "user",
-          text: message.text,
-          senderBotId: message.sender.kind === "bot" ? message.sender.botId : undefined,
-          attachments: message.attachments.map(toAttachmentSummary),
-          replyToMessageId: message.replyToMessageId,
-          citations: storedDelivery.citations,
-          delivery: {
-            id: delivery.id,
-            status: delivery.status,
-            position: delivery.position,
-          },
-          exchange:
-            message.sender.kind === "bot"
-              ? {
-                  direction: "incoming",
-                  messageId: message.id,
-                  senderBotId: message.sender.botId,
-                  recipientBotIds,
-                  replyToMessageId: message.replyToMessageId,
-                  deliveries: getExchangeDeliveries(),
-                }
-              : undefined,
-          createdAt: message.createdAt,
-          status: delivery.status === "failed" ? "failed" : "completed",
-          itemType: message.sender.kind === "bot" ? "agent-exchange" : undefined,
-        });
+    // Older history lives in the archive; it is read only for coworkers that have some there.
+    if (this.#state.archivedBotIds?.includes(botId)) {
+      for (const record of this.#loadArchive().values()) {
+        if (!recordBotIds(record).includes(botId)) continue;
+        this.#appendConversationMessages(
+          messages,
+          botId,
+          record.message,
+          record.deliveries,
+          positions,
+        );
       }
     }
+    for (const message of this.#state.messages) {
+      this.#appendConversationMessages(
+        messages,
+        botId,
+        message,
+        deliveriesByMessage.get(message.id) ?? [],
+        positions,
+      );
+    }
     return messages;
+  }
+
+  #appendConversationMessages(
+    messages: ConversationMessage[],
+    botId: string,
+    message: StoredMessage,
+    deliveries: StoredDelivery[],
+    positions: Map<string, number>,
+  ): void {
+    const recipientBotIds = deliveries.map((item) => item.recipientBotId);
+    let exchangeDeliveries: Array<{
+      id: string;
+      recipientBotId: string;
+      status: QueueDeliveryStatus;
+      position: number | null;
+      error: string | null;
+    }> | null = null;
+    const getExchangeDeliveries = () => {
+      if (!exchangeDeliveries) {
+        exchangeDeliveries = deliveries.map((item) => {
+          const delivery = this.#publicDelivery(item, positions);
+          return {
+            id: delivery.id,
+            recipientBotId: delivery.recipientBotId,
+            status: delivery.status,
+            position: delivery.position,
+            error: delivery.error,
+          };
+        });
+      }
+      return exchangeDeliveries;
+    };
+
+    if (message.sender.kind === "bot" && message.sender.botId === botId) {
+      messages.push({
+        id: `outbox-${message.id}`,
+        turnId: this.#sourceTurnId(message.id),
+        author: "system",
+        source: "system",
+        text: message.text,
+        attachments: message.attachments.map(toAttachmentSummary),
+        replyToMessageId: message.replyToMessageId,
+        exchange: {
+          direction: "outgoing",
+          messageId: message.id,
+          senderBotId: botId,
+          recipientBotIds,
+          replyToMessageId: message.replyToMessageId,
+          deliveries: getExchangeDeliveries(),
+        },
+        createdAt: message.createdAt,
+        status: "completed",
+        itemType: "agent-exchange",
+      });
+    }
+
+    for (const storedDelivery of deliveries) {
+      if (storedDelivery.recipientBotId !== botId || storedDelivery.retried) continue;
+      const delivery = this.#publicDelivery(storedDelivery, positions);
+      messages.push({
+        id: delivery.id,
+        turnId: storedDelivery.turnId ?? undefined,
+        author: message.sender.kind === "bot" ? "agent" : "user",
+        source: message.sender.kind === "bot" ? "agent" : "user",
+        text: message.text,
+        senderBotId: message.sender.kind === "bot" ? message.sender.botId : undefined,
+        attachments: message.attachments.map(toAttachmentSummary),
+        replyToMessageId: message.replyToMessageId,
+        citations: storedDelivery.citations,
+        delivery: {
+          id: delivery.id,
+          status: delivery.status,
+          position: delivery.position,
+        },
+        exchange:
+          message.sender.kind === "bot"
+            ? {
+                direction: "incoming",
+                messageId: message.id,
+                senderBotId: message.sender.botId,
+                recipientBotIds,
+                replyToMessageId: message.replyToMessageId,
+                deliveries: getExchangeDeliveries(),
+              }
+            : undefined,
+        createdAt: message.createdAt,
+        status: delivery.status === "failed" ? "failed" : "completed",
+        itemType: message.sender.kind === "bot" ? "agent-exchange" : undefined,
+      });
+    }
   }
 
   reactionFor(botId: string, messageId: string): MessageReaction | null {
@@ -485,6 +646,8 @@ export class MailboxStore {
   #sourceTurnId(messageId: string): string | undefined {
     const cached = this.#sourceTurnIndex.get(messageId);
     if (cached !== undefined) return cached;
+    const archived = this.#archive?.get(messageId);
+    if (archived) return archived.sourceTurnId;
     const key = Object.entries(this.#state.idempotency).find(
       ([, value]) => value === messageId,
     )?.[0];
@@ -542,6 +705,43 @@ export class MailboxStore {
     return delivery ? this.#context(delivery) : null;
   }
 
+  /**
+   * Settings > Storage: removes files sent with messages older than `days`. A message still
+   * waiting to be delivered keeps its files whatever its age. The chat keeps the message; its
+   * file card then says the file is gone.
+   */
+  async removeAttachmentsOlderThan(days: number): Promise<{ removed: number; bytes: number }> {
+    const cutoff = this.#now() - Math.max(0, days) * 24 * 60 * 60_000;
+    const pendingMessages = new Set(
+      this.#state.deliveries
+        .filter((delivery) => !TERMINAL_STATUSES.has(delivery.status))
+        .map((delivery) => delivery.messageId),
+    );
+    let removed = 0;
+    let bytes = 0;
+    for (const entry of await readdir(this.#transfersRoot, { withFileTypes: true }).catch(
+      () => [],
+    )) {
+      if (!entry.isDirectory() || pendingMessages.has(entry.name)) continue;
+      const folder = join(this.#transfersRoot, entry.name);
+      const message = this.#messageIndex.get(entry.name);
+      const created = message ? Date.parse(message.createdAt) : Number.NaN;
+      const age = Number.isFinite(created)
+        ? created
+        : ((await stat(folder).catch(() => null))?.mtimeMs ?? Number.POSITIVE_INFINITY);
+      if (age >= cutoff) continue;
+      const size = await folderBytes(folder);
+      try {
+        await rm(folder, { recursive: true, force: true, maxRetries: 2 });
+        removed += 1;
+        bytes += size;
+      } catch {
+        // A file still open elsewhere; try again another time.
+      }
+    }
+    return { removed, bytes };
+  }
+
   async deleteBotData(botId: string): Promise<void> {
     const previous = structuredClone(this.#state);
     const removedMessageIds = new Set<string>();
@@ -571,6 +771,9 @@ export class MailboxStore {
       this.#state = previous;
       throw error;
     }
+    for (const messageId of await this.#deleteArchivedBotData(botId)) {
+      removedMessageIds.add(messageId);
+    }
     await Promise.all(
       [...removedMessageIds].map((messageId) =>
         rm(join(this.#transfersRoot, messageId), { recursive: true, force: true }),
@@ -580,11 +783,11 @@ export class MailboxStore {
 
   chainOriginBotId(messageId: string): string | null {
     const visited = new Set<string>();
-    let message = this.#state.messages.find((candidate) => candidate.id === messageId);
+    let message = this.#findMessage(messageId);
     while (message && !visited.has(message.id)) {
       visited.add(message.id);
       const parent = message.replyToMessageId
-        ? this.#state.messages.find((candidate) => candidate.id === message?.replyToMessageId)
+        ? this.#findMessage(message.replyToMessageId)
         : undefined;
       if (!parent) return message.sender.kind === "bot" ? message.sender.botId : null;
       message = parent;
@@ -593,16 +796,18 @@ export class MailboxStore {
   }
 
   hasReplyFrom(botId: string, messageId: string): boolean {
-    return this.#state.messages.some(
-      (message) =>
-        message.sender.kind === "bot" &&
-        message.sender.botId === botId &&
-        message.replyToMessageId === messageId,
-    );
+    const isReply = (message: StoredMessage) =>
+      message.sender.kind === "bot" &&
+      message.sender.botId === botId &&
+      message.replyToMessageId === messageId;
+    if (this.#state.messages.some(isReply)) return true;
+    if (!this.#state.archivedBotIds?.includes(botId)) return false;
+    for (const record of this.#loadArchive().values()) if (isReply(record.message)) return true;
+    return false;
   }
 
   hasBotMessageFromTurnTo(botId: string, turnId: string, recipientBotId: string): boolean {
-    return this.#state.messages.some((message) => {
+    const live = this.#state.messages.some((message) => {
       if (message.sender.kind !== "bot" || message.sender.botId !== botId) return false;
       if (this.#sourceTurnId(message.id) !== turnId) return false;
       return this.#state.deliveries.some(
@@ -610,6 +815,99 @@ export class MailboxStore {
           delivery.messageId === message.id && delivery.recipientBotId === recipientBotId,
       );
     });
+    if (live || !this.#state.archivedBotIds?.includes(botId)) return live;
+    for (const record of this.#loadArchive().values()) {
+      const { message } = record;
+      if (message.sender.kind !== "bot" || message.sender.botId !== botId) continue;
+      if (record.sourceTurnId !== turnId) continue;
+      if (record.deliveries.some((delivery) => delivery.recipientBotId === recipientBotId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Removes a deleted coworker's deliveries from the archive files (rewritten only when they hold
+   * some). Returns the archived messages no other coworker can see any more.
+   */
+  async #deleteArchivedBotData(botId: string): Promise<string[]> {
+    if (!this.#state.archivedBotIds?.includes(botId)) return [];
+    const archive = this.#loadArchive();
+    const removed: string[] = [];
+    const touchedMonths = new Set<string>();
+    for (const [id, record] of [...archive]) {
+      if (!recordBotIds(record).includes(botId)) continue;
+      touchedMonths.add(safeMonth(record.message.createdAt.slice(0, 7)));
+      const deliveries = record.deliveries.filter((item) => item.recipientBotId !== botId);
+      if (deliveries.length === 0) {
+        archive.delete(id);
+        removed.push(id);
+      } else {
+        archive.set(id, { ...record, deliveries });
+      }
+    }
+    for (const month of touchedMonths) {
+      const lines = [...archive.values()]
+        .filter((record) => safeMonth(record.message.createdAt.slice(0, 7)) === month)
+        .map((record) => `${JSON.stringify(record)}\n`)
+        .join("");
+      const path = join(this.#archiveRoot, `${month}.jsonl`);
+      if (!lines) {
+        await rm(path, { force: true });
+        continue;
+      }
+      const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+      await writeFile(temporaryPath, lines, { encoding: "utf8", mode: 0o600 });
+      await renameWithRetry(temporaryPath, path);
+    }
+    const stillArchived = new Set<string>();
+    for (const record of archive.values()) {
+      for (const id of recordBotIds(record)) stillArchived.add(id);
+    }
+    this.#state.archivedBotIds = [...stillArchived];
+    await this.#persist();
+    return removed;
+  }
+
+  /** A message from mailbox.json, or from the archive when it has been archived. */
+  #findMessage(id: string): StoredMessage | undefined {
+    const live = this.#messageIndex.get(id) ?? this.#state.messages.find((item) => item.id === id);
+    if (live || !this.#state.archivedBotIds?.length) return live;
+    return this.#loadArchive().get(id)?.message;
+  }
+
+  /**
+   * Reads every monthly archive file once (only when an old message is needed). Duplicate lines
+   * from an interrupted archive step are ignored, and a message still in mailbox.json wins.
+   */
+  #loadArchive(): Map<string, ArchivedRecord> {
+    if (this.#archive) return this.#archive;
+    const archive = new Map<string, ArchivedRecord>();
+    let files: string[] = [];
+    try {
+      files = readdirSync(this.#archiveRoot)
+        .filter((name) => /^\d{4}-\d{2}\.jsonl$/.test(name))
+        .sort();
+    } catch {
+      // No archive yet.
+    }
+    for (const file of files) {
+      let text = "";
+      try {
+        text = readFileSync(join(this.#archiveRoot, file), "utf8");
+      } catch {
+        continue;
+      }
+      for (const line of text.split("\n")) {
+        const record = parseArchivedRecord(line);
+        if (!record || archive.has(record.message.id)) continue;
+        if (this.#messageIndex.has(record.message.id)) continue;
+        archive.set(record.message.id, record);
+      }
+    }
+    this.#archive = archive;
+    return archive;
   }
 
   async markStarting(deliveryId: string): Promise<void> {
@@ -650,10 +948,20 @@ export class MailboxStore {
   }
 
   /** Hides a failed delivery once the app has re-sent the same message on another model. */
-  async markRetried(deliveryId: string): Promise<void> {
+  /** Hides a failed copy; `nextDeliveryId` links it to the copy sent again, for waiters to follow. */
+  async markRetried(deliveryId: string, nextDeliveryId?: string): Promise<void> {
     const delivery = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
     if (!delivery) return;
     delivery.retried = true;
+    if (nextDeliveryId) delivery.retriedAs = nextDeliveryId;
+    await this.#persist();
+  }
+
+  async setOfferRerun(deliveryId: string, offer: boolean): Promise<void> {
+    const delivery = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
+    if (!delivery || Boolean(delivery.offerRerun) === offer) return;
+    if (offer) delivery.offerRerun = true;
+    else delete delivery.offerRerun;
     await this.#persist();
   }
 
@@ -713,12 +1021,21 @@ export class MailboxStore {
       const attachment = message.attachments.find((candidate) => candidate.id === id);
       if (attachment) return resolveManagedAttachment(this.#transfersRoot, attachment);
     }
+    if (this.#state.archivedBotIds?.length) {
+      for (const { message } of this.#loadArchive().values()) {
+        const attachment = message.attachments.find((candidate) => candidate.id === id);
+        if (attachment) return resolveManagedAttachment(this.#transfersRoot, attachment);
+      }
+    }
     return null;
   }
 
   async listExportAttachments(): Promise<ExportedAttachmentFile[]> {
     const files: ExportedAttachmentFile[] = [];
-    for (const [messageIndex, message] of this.#state.messages.entries()) {
+    const archived = this.#state.archivedBotIds?.length
+      ? [...this.#loadArchive().values()].map((record) => record.message)
+      : [];
+    for (const [messageIndex, message] of [...archived, ...this.#state.messages].entries()) {
       for (const attachment of message.attachments) {
         const resolved = await resolveManagedAttachment(this.#transfersRoot, attachment);
         if (!resolved) continue;
@@ -752,6 +1069,8 @@ export class MailboxStore {
     return {
       ...delivery,
       sender: structuredClone(message.sender),
+      ...(message.origin ? { origin: message.origin } : {}),
+      ...(message.hops ? { hops: message.hops } : {}),
       text: message.text,
       attachments: message.attachments.map(toAttachmentSummary),
       replyToMessageId: message.replyToMessageId,
@@ -837,8 +1156,7 @@ export class MailboxStore {
   }
 
   #requireMessage(id: string): StoredMessage {
-    const message =
-      this.#messageIndex.get(id) ?? this.#state.messages.find((candidate) => candidate.id === id);
+    const message = this.#findMessage(id);
     if (!message) throw new Error(`Mailbox message is missing: ${id}`);
     return message;
   }
@@ -862,6 +1180,7 @@ export class MailboxStore {
 
   /** Serialized when its turn comes: changes made meanwhile share one write of the whole file. */
   async #persist(): Promise<void> {
+    this.#dirty = true;
     if (this.#nextWrite) {
       await this.#nextWrite;
       return;
@@ -870,13 +1189,18 @@ export class MailboxStore {
       .catch(() => undefined)
       .then(async () => {
         this.#nextWrite = null;
+        // Changes made while an earlier write ran share this one; nothing changed, no write.
+        if (!this.#dirty) return;
+        this.#dirty = false;
         const serialized = `${JSON.stringify(this.#state)}\n`;
-        // Queue events fire often; the file is written only when its content changes.
-        if (serialized === this.#lastSerialized) return;
         const temporaryPath = `${this.#statePath}.${process.pid}.${randomUUID()}.tmp`;
-        await writeFile(temporaryPath, serialized, { encoding: "utf8", mode: 0o600 });
-        await renameWithRetry(temporaryPath, this.#statePath);
-        this.#lastSerialized = serialized;
+        try {
+          await writeFile(temporaryPath, serialized, { encoding: "utf8", mode: 0o600 });
+          await renameWithRetry(temporaryPath, this.#statePath);
+        } catch (error) {
+          this.#dirty = true;
+          throw error;
+        }
       });
     this.#nextWrite = write;
     this.#writeQueue = write;
@@ -1088,7 +1412,48 @@ function isStoredReaction(value: unknown): value is StoredReaction {
   );
 }
 
+function recordBotIds(record: ArchivedRecord): string[] {
+  const ids = record.deliveries.map((delivery) => delivery.recipientBotId);
+  if (record.message.sender.kind === "bot") ids.push(record.message.sender.botId);
+  return [...new Set(ids)];
+}
+
+function safeMonth(month: string): string {
+  return /^\d{4}-\d{2}$/.test(month) ? month : "0000-00";
+}
+
+function parseArchivedRecord(line: string): ArchivedRecord | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  try {
+    const value: unknown = JSON.parse(trimmed);
+    if (
+      isRecord(value) &&
+      value.v === 1 &&
+      isStoredMessage(value.message) &&
+      Array.isArray(value.deliveries) &&
+      value.deliveries.every(isStoredDelivery) &&
+      (value.sourceTurnId === undefined || typeof value.sourceTurnId === "string")
+    ) {
+      return value as unknown as ArchivedRecord;
+    }
+  } catch {
+    // A torn last line from a crash: skip it.
+  }
+  return null;
+}
+
 function isWithin(root: string, path: string): boolean {
   const candidate = relative(root, path);
   return candidate !== "" && !candidate.startsWith("..") && !isAbsolute(candidate);
+}
+
+async function folderBytes(folder: string): Promise<number> {
+  let total = 0;
+  for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
+    const path = join(folder, entry.name);
+    if (entry.isDirectory()) total += await folderBytes(path);
+    else total += (await stat(path).catch(() => null))?.size ?? 0;
+  }
+  return total;
 }

@@ -84,6 +84,99 @@ const STOP_WORDS = new Set([
   "কে",
 ]);
 
+/**
+ * Small talk: never a reason to add excerpts to a message nobody asked to search with. An
+ * explicit search still uses these words.
+ */
+const CHAT_WORDS = new Set([
+  "hi",
+  "hello",
+  "hey",
+  "hii",
+  "thanks",
+  "thank",
+  "ok",
+  "okay",
+  "yes",
+  "no",
+  "sure",
+  "can",
+  "could",
+  "would",
+  "should",
+  "will",
+  "just",
+  "now",
+  "then",
+  "also",
+  "too",
+  "very",
+  "so",
+  "not",
+  "all",
+  "any",
+  "some",
+  "something",
+  "anything",
+  "help",
+  "need",
+  "want",
+  "like",
+  "know",
+  "think",
+  "get",
+  "got",
+  "make",
+  "let",
+  "us",
+  "doing",
+  "done",
+  "going",
+  "good",
+  "great",
+  "nice",
+  "today",
+  "there",
+  "here",
+  "when",
+  "where",
+  "why",
+  "again",
+  "start",
+  "continue",
+  "go",
+  "ahead",
+  "haan",
+  "han",
+  "nahi",
+  "na",
+  "ji",
+  "bhai",
+  "acha",
+  "accha",
+  "theek",
+  "thik",
+  "karo",
+  "kar",
+  "kaise",
+  "ho",
+  "hain",
+  "abhi",
+  "bhi",
+  "toh",
+  "हाँ",
+  "नहीं",
+  "जी",
+  "ठीक",
+  "करो",
+  "धन्यवाद",
+  "হ্যাঁ",
+  "না",
+  "ঠিক",
+  "করো",
+  "ধন্যবাদ",
+]);
+
 export const MAX_QUERY_TERMS = 12;
 /** More chunks than this from one file would crowd the others out. */
 export const PER_DOCUMENT_CAP = 3;
@@ -105,13 +198,61 @@ export function queryTerms(query: string): string[] {
   return terms;
 }
 
+/** The words of a message that could be about a document (small talk removed). */
+export function contentTerms(query: string): string[] {
+  return queryTerms(query).filter((term) => !CHAT_WORDS.has(term.toLowerCase()));
+}
+
+/** A rough stem, so "registrations" in a query matches "registration" in the text. */
+function looseStem(term: string): string {
+  const lower = term.toLowerCase();
+  for (const suffix of ["ations", "ation", "ings", "ing", "ies", "es", "ed", "ly", "s"]) {
+    if (lower.length - suffix.length >= 4 && lower.endsWith(suffix)) {
+      return lower.slice(0, -suffix.length);
+    }
+  }
+  return lower;
+}
+
+/** How many of `terms` occur in `text` (as words or word starts). */
+export function matchedTerms(terms: string[], text: string): number {
+  const haystack = text.normalize("NFC").toLowerCase();
+  let matched = 0;
+  for (const term of terms) {
+    if (haystack.includes(looseStem(term))) matched += 1;
+  }
+  return matched;
+}
+
+/**
+ * The floor for excerpts added to a message unasked. A lexical hit must contain enough of the
+ * message's real words: one or two words all, three or more at least two (and 40%). Anything
+ * weaker than a third of the best hit's score is dropped as well. Tuned on the fixtures in
+ * knowledge-search.test.ts: chatty messages ground nothing, real questions keep their pages.
+ */
+export function passesGroundingFloor(
+  terms: string[],
+  text: string,
+  score: number,
+  bestScore: number,
+): boolean {
+  if (terms.length === 0) return false;
+  const needed = terms.length <= 2 ? terms.length : Math.max(2, Math.ceil(terms.length * 0.4));
+  if (matchedTerms(terms, text) < needed) return false;
+  return bestScore <= 0 || score >= bestScore / 3;
+}
+
 /**
  * An FTS5 expression: every term quoted (so no owner text is parsed as syntax), longer terms
  * also matched as prefixes ("regist" finds registration), all joined with OR so a chunk with
  * more of the words ranks higher through bm25.
  */
 export function buildMatchQuery(query: string): string | null {
-  const terms = queryTerms(query);
+  return matchFromTerms(queryTerms(query));
+}
+
+/** The same OR expression from words already picked out. */
+export function matchFromTerms(terms: string[]): string | null {
   if (terms.length === 0) return null;
   const parts = terms.map((term) => {
     const quoted = `"${term.replace(/"/g, '""')}"`;

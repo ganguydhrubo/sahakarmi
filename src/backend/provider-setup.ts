@@ -35,6 +35,7 @@ import {
   resolveClaudeCli,
   resolveCodexCli,
 } from "./cli";
+import { envForProvider, type SecretStore } from "./secret-store";
 
 /** Codex build fetched by Connect when none is installed (Apache-2.0, published by OpenAI on npm). */
 export const CODEX_VERSION = "0.163.0";
@@ -65,6 +66,11 @@ export interface ProviderSetupOptions {
    * is set when an extra Google account signs in (see gemini-accounts.ts).
    */
   antigravityClient?: (cli: AcpCliInfo, geminiHome: string | null) => AcpAgentClient;
+  /**
+   * Where API keys are kept, encrypted. Without one (tests, the CLI), keys go to the old plain
+   * files and the user's environment.
+   */
+  secrets?: SecretStore;
 }
 
 interface ProviderSetupEvents {
@@ -140,19 +146,26 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     if (!key) throw new Error("API key cannot be empty.");
     if (provider === "codex") {
       process.env.OPENAI_API_KEY = key;
-      persistUserEnvironment("OPENAI_API_KEY", key);
-      await saveKeyFile(join(this.#home(), ".codex"), "openai_api_key.txt", key);
+      await this.#saveKey(
+        "OPENAI_API_KEY",
+        key,
+        join(this.#home(), ".codex"),
+        "openai_api_key.txt",
+      );
     } else if (provider === "claude") {
       process.env.ANTHROPIC_API_KEY = key;
-      persistUserEnvironment("ANTHROPIC_API_KEY", key);
-      await saveKeyFile(join(this.#home(), ".claude"), "anthropic_api_key.txt", key);
+      await this.#saveKey(
+        "ANTHROPIC_API_KEY",
+        key,
+        join(this.#home(), ".claude"),
+        "anthropic_api_key.txt",
+      );
     } else if (provider === "antigravity") {
       // Google's server accepts a Google AI Studio key through its `gemini-api-key` sign-in method.
       process.env.ANTIGRAVITY_API_KEY = key;
       process.env.GEMINI_API_KEY = key;
       process.env.GOOGLE_API_KEY = key;
-      persistUserEnvironment("GEMINI_API_KEY", key);
-      await saveKeyFile(antigravityAcpHome(this.#home()), "api_key.txt", key);
+      await this.#saveKey("GEMINI_API_KEY", key, antigravityAcpHome(this.#home()), "api_key.txt");
       try {
         await this.#connectAntigravity("gemini-api-key");
       } catch (error) {
@@ -163,7 +176,7 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       const [name] = ACP_AGENT_SPECS[provider].apiKeyEnv ?? [];
       if (!name) throw new Error("This provider does not use an API key.");
       process.env[name] = key;
-      persistUserEnvironment(name, key);
+      await this.#saveKey(name, key, null, null);
     } else {
       throw new Error("This provider does not use an API key.");
     }
@@ -179,6 +192,24 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       this.#set(provider, { phase: "failed", message: messageOf(error) });
     }
     return this.#get(provider);
+  }
+
+  /**
+   * Keeps a key for the next start: encrypted in Sahkarmi's secret store (DPAPI) when it has one,
+   * else the old way (a plain file and the user's environment).
+   */
+  async #saveKey(
+    name: string,
+    key: string,
+    directory: string | null,
+    fileName: string | null,
+  ): Promise<void> {
+    if (this.#options.secrets) {
+      await this.#options.secrets.set(name, key);
+      return;
+    }
+    persistUserEnvironment(name, key);
+    if (directory && fileName) await saveKeyFile(directory, fileName, key);
   }
 
   /** Re-checks the provider (after a terminal sign-in, or to retry). */
@@ -280,7 +311,7 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       const child = spawnImpl(command, args, {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
-        env: process.env,
+        env: envForProvider(id, process.env),
       });
       let output = "";
       const keep = (chunk: Buffer) => {
@@ -328,9 +359,13 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
             stdio: "ignore",
             windowsHide: false,
             windowsVerbatimArguments: true,
-            env: process.env,
+            env: envForProvider(id, process.env),
           })
-        : spawnImpl(executable, signIn.args, { detached: true, stdio: "ignore", env: process.env });
+        : spawnImpl(executable, signIn.args, {
+            detached: true,
+            stdio: "ignore",
+            env: envForProvider(id, process.env),
+          });
     this.#logins.set(id, child);
     this.#set(id, { phase: "terminal", message: signIn.tip, url: null, progress: null });
     child.on("exit", () => {
@@ -454,7 +489,7 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
       windowsVerbatimArguments: windowsShim,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-      env: process.env,
+      env: envForProvider(provider, process.env),
     });
     this.#logins.set(provider, child);
     return new Promise((resolvePromise, reject) => {

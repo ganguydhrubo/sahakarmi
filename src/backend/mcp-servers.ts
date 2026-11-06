@@ -1,10 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { delimiter, extname, isAbsolute, join } from "node:path";
-import type { McpServerInput, McpServerSummary } from "../shared/ipc";
+import { isAbsolute, join } from "node:path";
+import type {
+  McpEnvRequirement,
+  McpRepoAnalysis,
+  McpServerInput,
+  McpServerStatus,
+  McpServerSummary,
+} from "../shared/ipc";
 import { type FetchLike, fetchRepoText, fetchRepoTree, parseGithubUrl } from "./github-repo";
 import { JsonFile } from "./json-file";
+import { argumentPaths, serverProblems } from "./mcp/checks";
+import { testServer } from "./mcp/handshake";
+import { placeholderHits } from "./mcp/placeholders";
+import { RepoAnalyzer } from "./mcp/resolve";
+import { freshPath, lookupCommand, refreshFreshPath, serverEnvironment } from "./mcp/windows-env";
 import { isRecord } from "./protocol";
+import type { SecretCodec } from "./secret-store";
 
 const FILE = "mcp-servers.json";
 export const MAX_MCP_SERVERS = 30;
@@ -23,13 +34,52 @@ export interface McpServerConfig {
   headers: Record<string, string>;
   source: string;
   addedAt: string;
+  /** Folder the server starts in (MCP-4). */
+  cwd?: string;
+  /** Coworkers that get the server; missing or null = all (how every older server works). */
+  coworkerIds?: string[] | null;
+  /** Saved under the "test first" rule: it can be turned on only after a passing test (MCP-11). */
+  needsTest?: boolean;
+  /** The last "Test server" result (MCP-18). */
+  status?: McpServerStatus | null;
+  /** Keys the server says it needs (from server.json, MCP-13). */
+  requiredEnv?: McpEnvRequirement[];
+  /** Started once per app and reached through the loopback bridge (MCP-7). */
+  shared?: boolean;
+  /** Imports heavy libraries: Settings suggests shared mode. */
+  heavy?: boolean;
+}
+
+/** The shared-mode bridge, as the store sees it. */
+export interface SharedBridgeLike {
+  urlFor(id: string): string | null;
+  stop(id: string): Promise<void>;
 }
 
 /** What a runtime needs to start the server; passed to clients as `customMcpServers`. */
 export type McpServerWire = Pick<
   McpServerConfig,
   "name" | "transport" | "command" | "args" | "env" | "url" | "headers"
->;
+> & {
+  cwd?: string;
+  /** Never passed a test yet: the first start may download a package (MCP-15). */
+  firstRun?: boolean;
+  /** Shared mode: the loopback address of the one running copy (MCP-7). */
+  sharedUrl?: string;
+};
+
+/** Feature switches this store follows; all on when nothing is set (tests, first start). */
+export type McpFeatureId =
+  | "mcp-fresh-path"
+  | "mcp-test-first"
+  | "mcp-smart-import"
+  | "mcp-guided-install"
+  | "mcp-shared-mode";
+export type McpFeatureCheck = (id: McpFeatureId) => boolean;
+
+/** How long a test may take: a first run can download the whole package (npx -y, uvx). */
+export const FIRST_RUN_TEST_MS = 60_000;
+export const TEST_MS = 15_000;
 
 interface StoredFile {
   version: 1;
@@ -51,47 +101,220 @@ function stringMap(value: unknown): Record<string, string> {
 
 /**
  * MCP servers the owner adds (like `claude mcp add`). Saved in the app's data folder, readable by
- * the owner only, and handed to every coworker's AI when its chat starts.
+ * the owner only, and handed to the coworkers the owner chose when their chat starts.
  */
 export class McpServerStore {
   readonly #file: JsonFile<StoredFile>;
   readonly #fetch: FetchLike;
+  readonly #codec: SecretCodec | null;
   #servers: McpServerConfig[] = [];
+  #feature: McpFeatureCheck = () => true;
+  #bridge: SharedBridgeLike | null = null;
+  readonly #analyzer: RepoAnalyzer;
 
-  constructor(userDataPath: string, fetchImpl: FetchLike = fetch as unknown as FetchLike) {
+  /** `codec` encrypts env and header values on disk (DPAPI); in memory they stay plain. */
+  constructor(
+    userDataPath: string,
+    fetchImpl: FetchLike = fetch as unknown as FetchLike,
+    codec: SecretCodec | null = null,
+  ) {
     this.#file = new JsonFile(join(userDataPath, FILE));
     this.#fetch = fetchImpl;
+    this.#codec = codec;
+    this.#analyzer = new RepoAnalyzer(join(userDataPath, "mcp-cache"), fetchImpl);
+  }
+
+  /** The analysis made earlier in this session (install plans refer to it by id). */
+  analysis(id: string): McpRepoAnalysis | undefined {
+    return this.#analyzer.get(id);
+  }
+
+  /**
+   * "Connect from GitHub" (audit §11.4 steps 1-3). With smart import switched off it returns the
+   * repo's .mcp.json files as before, for the paste box.
+   */
+  async analyzeGithub(url: string): Promise<McpRepoAnalysis> {
+    if (!this.#feature("mcp-smart-import")) {
+      const location = parseGithubUrl(url);
+      return {
+        id: "",
+        repo: `${location.owner}/${location.repo}`,
+        url,
+        commit: "",
+        subPath: location.subPath,
+        kind: "unknown",
+        notMcp: [],
+        evidence: [],
+        candidates: [],
+        cli: null,
+        heavy: false,
+        warnings: [],
+        truncated: false,
+        legacyJson: await this.githubJson(url),
+      };
+    }
+    return this.#analyzer.analyze(url);
+  }
+
+  /** Saves a ready-made candidate from an analysis, with the key values the owner typed. */
+  async addCandidate(
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    values: Record<string, string>,
+  ): Promise<McpServerSummary[]> {
+    const analysis = this.#analyzer.get(analysisId);
+    const candidate = analysis?.candidates.find((entry) => entry.id === candidateId);
+    if (!analysis || !candidate?.server) {
+      throw new Error("That suggestion is no longer available. Load the repo again.");
+    }
+    const allowed = new Set([
+      ...candidate.requiredEnv.map((entry) => entry.name),
+      ...Object.keys(candidate.server.env ?? {}),
+    ]);
+    const filled = Object.fromEntries(
+      Object.entries(values).filter(([key, value]) => allowed.has(key) && value.trim() !== ""),
+    );
+    const server = candidate.server;
+    return this.save(
+      {
+        ...server,
+        name,
+        ...(server.transport === "http"
+          ? { headers: { ...(server.headers ?? {}), ...filled } }
+          : { env: { ...(server.env ?? {}), ...filled } }),
+        requiredEnv: candidate.requiredEnv,
+        ...(analysis.heavy ? { heavy: true } : {}),
+        enabled: this.#feature("mcp-test-first") ? false : undefined,
+      },
+      `GitHub ${analysis.repo}${analysis.commit ? `@${analysis.commit.slice(0, 7)}` : ""}`,
+    );
+  }
+
+  /** Shared mode: the bridge that runs shared servers once per app. */
+  setSharedBridge(bridge: SharedBridgeLike | null): void {
+    this.#bridge = bridge;
+  }
+
+  /** Servers in shared mode that are switched on (the bridge only starts these). */
+  hasShared(): boolean {
+    return this.#servers.some((server) => server.shared && server.transport === "stdio");
+  }
+
+  /** What the bridge starts for a shared server; null when it is not shared or switched off. */
+  sharedLaunch(id: string): LaunchTarget | null {
+    const server = this.get(id);
+    if (!server?.shared || !server.enabled || server.transport !== "stdio") return null;
+    if (placeholderHits(server).length > 0) return null;
+    return launchTarget(this.#wire(server));
+  }
+
+  async setShared(id: string, shared: boolean): Promise<McpServerSummary[]> {
+    const server = this.get(id);
+    if (!server) throw new Error("That server is no longer in the list.");
+    if (shared && server.transport !== "stdio") {
+      throw new Error("Only servers started by a command can be shared.");
+    }
+    this.#servers = this.#servers.map((entry) =>
+      entry.id === id ? { ...entry, shared: shared || undefined } : entry,
+    );
+    await this.#persist();
+    if (!shared) await this.#bridge?.stop(id);
+    return this.list();
+  }
+
+  /** Follows Settings › Features (fresh PATH, test before use). */
+  setFeatureCheck(check: McpFeatureCheck): void {
+    this.#feature = check;
   }
 
   async load(): Promise<McpServerSummary[]> {
     const stored = await this.#file.read(() => ({ version: 1, servers: [] }), isStored);
-    this.#servers = stored.servers.filter((server) => isRecord(server) && NAME.test(server.name));
+    let plainOnDisk = false;
+    const open = (map: unknown) => {
+      const values = stringMap(map);
+      if (!this.#codec) return values;
+      const result: Record<string, string> = {};
+      for (const [key, value] of Object.entries(values)) {
+        if (value && !this.#codec.isSealed(value)) plainOnDisk = true;
+        // A value sealed on another PC cannot be read: it comes back empty, to be typed again.
+        result[key] = this.#codec.open(value) ?? "";
+      }
+      return result;
+    };
+    this.#servers = stored.servers
+      .filter((server) => isRecord(server) && NAME.test(server.name))
+      .map((server) =>
+        this.#codec ? { ...server, env: open(server.env), headers: open(server.headers) } : server,
+      );
+    // Keys saved by an older Sahkarmi in plain text are encrypted now.
+    if (plainOnDisk && this.#codec?.available) await this.#persist();
     return this.list();
   }
 
-  list(): McpServerSummary[] {
-    return this.#servers.map(summary);
+  /** The environment checks look commands up in: the fresh PATH when that is on. */
+  #checkEnv(): NodeJS.ProcessEnv {
+    return this.#feature("mcp-fresh-path") ? { ...process.env, PATH: freshPath() } : process.env;
   }
 
-  /** Enabled servers for a runtime, read when a coworker's chat starts. */
-  enabled(): McpServerWire[] {
+  list(): McpServerSummary[] {
+    const env = this.#checkEnv();
+    return this.#servers.map((server) => summary(server, env));
+  }
+
+  /** Re-reads Windows' PATH from the registry (Settings opened, or Re-check pressed). */
+  async recheck(): Promise<McpServerSummary[]> {
+    if (this.#feature("mcp-fresh-path")) await refreshFreshPath();
+    return this.list();
+  }
+
+  /**
+   * Enabled servers for a runtime, read when a coworker's chat starts. With `botId`, only the
+   * servers that coworker may use (MCP-12). A server still holding a template value is left out.
+   */
+  enabled(botId?: string): McpServerWire[] {
     return this.#servers
       .filter((server) => server.enabled)
-      .map(({ name, transport, command, args, env, url, headers }) => ({
-        name,
-        transport,
-        command,
-        args,
-        env,
-        url,
-        headers,
-      }));
+      .filter(
+        (server) =>
+          botId === undefined ||
+          !Array.isArray(server.coworkerIds) ||
+          server.coworkerIds.includes(botId),
+      )
+      .filter((server) => placeholderHits(server).length === 0)
+      .map((server) => this.#wire(server));
+  }
+
+  #wire(server: McpServerConfig): McpServerWire {
+    const { name, transport, command, args, url, headers } = server;
+    const sharedUrl =
+      server.shared && transport === "stdio" && this.#feature("mcp-shared-mode")
+        ? this.#bridge?.urlFor(server.id)
+        : null;
+    const env =
+      transport === "stdio" && this.#feature("mcp-fresh-path")
+        ? serverEnvironment(server.env)
+        : server.env;
+    return {
+      name,
+      transport,
+      command,
+      args,
+      env,
+      url,
+      headers,
+      ...(server.cwd ? { cwd: server.cwd } : {}),
+      ...(server.status?.ok ? {} : { firstRun: true }),
+      ...(sharedUrl ? { sharedUrl } : {}),
+    };
   }
 
   /** Adds a server, or updates the one with `input.id`. Blank env/header values keep the old ones. */
   async save(input: McpServerInput, source = "added by hand"): Promise<McpServerSummary[]> {
     const previous = input.id ? this.#servers.find((server) => server.id === input.id) : undefined;
-    const next = normalizeServer(input, previous, source);
+    const next = normalizeServer(input, previous, source, this.#feature("mcp-test-first"));
+    // A shared copy started with the old settings must not keep serving.
+    if (previous?.shared) await this.#bridge?.stop(previous.id);
     const clash = this.#servers.find(
       (server) =>
         server.id !== previous?.id && server.name.toLowerCase() === next.name.toLowerCase(),
@@ -109,15 +332,18 @@ export class McpServerStore {
 
   /**
    * Imports Claude-style JSON ({"mcpServers": {...}}) as pasted from a README, Claude Desktop or a
-   * repo's .mcp.json. A server with a name that already exists is replaced.
+   * repo's .mcp.json. A server whose name already exists is replaced only when its name is in
+   * `replace` (the owner confirmed it); otherwise it is reported in `conflicts` (MCP-14).
    */
   async importJson(
     text: string,
     source = "pasted JSON",
+    replace: string[] = [],
   ): Promise<{
     servers: McpServerSummary[];
     added: string[];
     skipped: string[];
+    conflicts: string[];
   }> {
     const { servers, skipped } = parseMcpJson(text);
     if (servers.length === 0) {
@@ -128,18 +354,32 @@ export class McpServerStore {
       );
     }
     const added: string[] = [];
+    const conflicts: string[] = [];
+    const confirmed = new Set(replace.map((name) => name.toLowerCase()));
     for (const input of servers) {
       const existing = this.#servers.find(
         (server) => server.name.toLowerCase() === input.name.toLowerCase(),
       );
+      if (existing && !confirmed.has(existing.name.toLowerCase())) {
+        conflicts.push(existing.name);
+        continue;
+      }
+      const testFirst = this.#feature("mcp-test-first");
       try {
-        await this.save({ ...input, id: existing?.id, enabled: existing?.enabled ?? true }, source);
+        await this.save(
+          {
+            ...input,
+            id: existing?.id,
+            enabled: testFirst ? false : (existing?.enabled ?? true),
+          },
+          source,
+        );
         added.push(input.name);
       } catch (error) {
         skipped.push(`${input.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    return { servers: this.list(), added, skipped };
+    return { servers: this.list(), added, skipped, conflicts };
   }
 
   /** Collects the .mcp.json files in a GitHub repo into one JSON text for the owner to review. */
@@ -167,8 +407,69 @@ export class McpServerStore {
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<McpServerSummary[]> {
-    this.#servers = this.#servers.map((server) =>
-      server.id === id ? { ...server, enabled } : server,
+    const server = this.#servers.find((entry) => entry.id === id);
+    if (enabled && server) {
+      const template = placeholderHits(server)[0];
+      if (template) {
+        throw new Error(
+          `This is a template: replace "${template.token}" with the real value, then turn it on.`,
+        );
+      }
+      if (server.needsTest && !server.status?.ok && this.#feature("mcp-test-first")) {
+        throw new Error('Press "Test server" first. It can be turned on once the test passes.');
+      }
+    }
+    this.#servers = this.#servers.map((entry) => (entry.id === id ? { ...entry, enabled } : entry));
+    await this.#persist();
+    return this.list();
+  }
+
+  /** Which coworkers get the server; null means all of them (MCP-12). */
+  async setCoworkers(id: string, coworkerIds: string[] | null): Promise<McpServerSummary[]> {
+    const ids = Array.isArray(coworkerIds)
+      ? [...new Set(coworkerIds.filter((entry) => typeof entry === "string" && entry))].slice(
+          0,
+          200,
+        )
+      : null;
+    this.#servers = this.#servers.map((entry) =>
+      entry.id === id ? { ...entry, coworkerIds: ids } : entry,
+    );
+    await this.#persist();
+    return this.list();
+  }
+
+  /** The saved record (main process only: it holds secret values). */
+  get(id: string): McpServerConfig | undefined {
+    return this.#servers.find((entry) => entry.id === id);
+  }
+
+  /** What a test or a coworker's runtime starts for this server, after cmd /c wrapping. */
+  launchTargetFor(id: string): LaunchTarget | null {
+    const server = this.get(id);
+    return server ? launchTarget(this.#wire(server)) : null;
+  }
+
+  /**
+   * "Test server" (MCP-2): starts it once exactly as coworkers would, lists its tools, ends the
+   * process tree and stores the result (MCP-18). 60 s the first time (package download), 15 s after.
+   */
+  async test(id: string, timeoutMs?: number): Promise<McpServerSummary[]> {
+    const server = this.get(id);
+    if (!server) throw new Error("That server is no longer in the list.");
+    const template = placeholderHits(server)[0];
+    if (template) {
+      throw new Error(`This is a template: replace "${template.token}" with the real value first.`);
+    }
+    if (this.#feature("mcp-fresh-path")) await refreshFreshPath();
+    const firstRun = !server.status?.ok;
+    const result = await testServer(
+      { ...launchTarget(this.#wire(server)), displayCommand: server.command },
+      { timeoutMs: timeoutMs ?? (firstRun ? FIRST_RUN_TEST_MS : TEST_MS), firstRun },
+    );
+    const { workingUrl, ...status } = result;
+    this.#servers = this.#servers.map((entry) =>
+      entry.id === id ? { ...entry, status, ...(workingUrl ? { url: workingUrl } : {}) } : entry,
     );
     await this.#persist();
     return this.list();
@@ -181,11 +482,22 @@ export class McpServerStore {
   }
 
   async #persist(): Promise<void> {
-    await this.#file.write({ version: 1, servers: this.#servers });
+    const codec = this.#codec;
+    const seal = (map: Record<string, string>) =>
+      codec ? Object.fromEntries(Object.entries(map).map(([k, v]) => [k, codec.seal(v)])) : map;
+    await this.#file.write({
+      version: 1,
+      servers: this.#servers.map((server) => ({
+        ...server,
+        env: seal(server.env),
+        headers: seal(server.headers),
+      })),
+    });
   }
 }
 
-function summary(server: McpServerConfig): McpServerSummary {
+function summary(server: McpServerConfig, env: NodeJS.ProcessEnv): McpServerSummary {
+  const problems = serverProblems(server, env);
   return {
     id: server.id,
     name: server.name,
@@ -197,33 +509,55 @@ function summary(server: McpServerConfig): McpServerSummary {
     envKeys: Object.keys(server.env),
     headerKeys: Object.keys(server.headers),
     source: server.source,
-    ...(server.transport === "stdio" && !commandExists(server.command)
+    ...(problems.some(
+      (problem) => problem.kind === "missing-command" || problem.kind === "store-stub",
+    )
       ? { missingCommand: true }
       : {}),
+    ...(server.cwd ? { cwd: server.cwd } : {}),
+    problems,
+    status: server.status ?? null,
+    ...(server.needsTest ? { needsTest: true } : {}),
+    coworkerIds: Array.isArray(server.coworkerIds) ? server.coworkerIds : null,
+    ...(server.requiredEnv?.length ? { requiredEnv: server.requiredEnv } : {}),
+    ...(server.shared ? { shared: true } : {}),
+    ...(server.heavy ? { heavy: true } : {}),
   };
 }
 
 /**
  * Whether Windows can start `command`: a full path that exists, or a name found on PATH with one
- * of PATHEXT's endings (npx is npx.cmd). A missing one is shown in Settings instead of the
- * coworker silently going without the server's tools.
+ * of PATHEXT's endings (npx is npx.cmd). The Store's python.exe stub does not count (MCP-9).
  */
 export function commandExists(command: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (!command) return false;
-  const endings = extname(command)
-    ? [""]
-    : ["", ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)];
-  const candidates =
-    isAbsolute(command) || /[\\/]/.test(command)
-      ? [command]
-      : (env.PATH ?? env.Path ?? "")
-          .split(delimiter)
-          .filter(Boolean)
-          .map((directory) => join(directory, command));
-  return candidates.some((candidate) =>
-    endings.some(
-      (ending) => existsSync(candidate + ending.toLowerCase()) || existsSync(candidate + ending),
-    ),
+  return lookupCommand(command, env).path !== null;
+}
+
+function requirements(value: unknown): McpEnvRequirement[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).flatMap((entry) =>
+    typeof entry.name === "string" && /^[A-Za-z0-9_.-]{1,128}$/.test(entry.name)
+      ? [
+          {
+            name: entry.name,
+            description:
+              typeof entry.description === "string" ? entry.description.slice(0, 300) : "",
+            isRequired: entry.isRequired === true,
+            isSecret: entry.isSecret === true,
+          },
+        ]
+      : [],
+  );
+}
+
+function sameLaunch(a: McpServerConfig, b: McpServerConfig): boolean {
+  return (
+    a.command === b.command &&
+    a.url === b.url &&
+    (a.cwd ?? "") === (b.cwd ?? "") &&
+    JSON.stringify(a.args) === JSON.stringify(b.args) &&
+    JSON.stringify(a.env) === JSON.stringify(b.env) &&
+    JSON.stringify(a.headers) === JSON.stringify(b.headers)
   );
 }
 
@@ -231,6 +565,7 @@ function normalizeServer(
   input: McpServerInput,
   previous: McpServerConfig | undefined,
   source: string,
+  testFirst: boolean,
 ): McpServerConfig {
   const name = String(input.name ?? "").trim();
   if (!NAME.test(name)) {
@@ -253,10 +588,14 @@ function normalizeServer(
   if (transport === "http" && !/^https?:\/\/\S+$/i.test(url)) {
     throw new Error("Enter the server's address, starting with https://.");
   }
-  return {
+  const cwd = transport === "stdio" ? String(input.cwd ?? "").trim() : "";
+  if (cwd && !isAbsolute(cwd) && placeholderHits({ cwd }).length === 0) {
+    throw new Error("Folder: use the full path, like C:\\Users\\you\\my-server.");
+  }
+  const next: McpServerConfig = {
     id: previous?.id ?? randomUUID(),
     name,
-    enabled: input.enabled ?? previous?.enabled ?? true,
+    enabled: input.enabled ?? previous?.enabled ?? !testFirst,
     transport,
     command: transport === "stdio" ? command : "",
     args:
@@ -268,7 +607,24 @@ function normalizeServer(
     headers: transport === "http" ? keep(input.headers, previous?.headers ?? {}) : {},
     source: previous?.source ?? source,
     addedAt: previous?.addedAt ?? new Date().toISOString(),
+    ...(cwd ? { cwd } : {}),
+    ...((input.heavy ?? previous?.heavy) ? { heavy: true } : {}),
+    ...(previous?.shared && transport === "stdio" ? { shared: true } : {}),
   };
+  if (previous && "coworkerIds" in previous) next.coworkerIds = previous.coworkerIds ?? null;
+  const required = input.requiredEnv
+    ? requirements(input.requiredEnv)
+    : (previous?.requiredEnv ?? []);
+  if (required.length > 0) next.requiredEnv = required;
+  // A new server (while "test first" is on) must pass a test before it can be turned on.
+  if ((!previous && testFirst) || previous?.needsTest) next.needsTest = true;
+  // When what starts changes, the old test result says nothing about the new one.
+  const same = previous ? sameLaunch(previous, next) : false;
+  if (same && previous?.status) next.status = previous.status;
+  if (previous && !same && next.needsTest && testFirst) next.enabled = false;
+  // A template value can never start; it stays off until the owner fills it in (MCP-1).
+  if (placeholderHits(next).length > 0) next.enabled = false;
+  return next;
 }
 
 /** Claude Code / Claude Desktop / Cursor / VS Code style MCP JSON → servers to save. */
@@ -297,6 +653,7 @@ export function parseMcpJson(text: string): { servers: McpServerInput[]; skipped
         command: value.command,
         args: Array.isArray(value.args) ? value.args.map(String) : [],
         env: stringMap(value.env),
+        ...(typeof value.cwd === "string" && value.cwd ? { cwd: value.cwd } : {}),
       });
       continue;
     }
@@ -307,10 +664,7 @@ export function parseMcpJson(text: string): { servers: McpServerInput[]; skipped
           ? value.serverUrl
           : "";
     if (url) {
-      if (value.type === "sse") {
-        skipped.push(`${name}: old "sse" servers are not supported; use its HTTP address`);
-        continue;
-      }
+      // Old "sse" servers: saved as HTTP; "Test server" also tries the newer /mcp address (MCP-17).
       servers.push({ name, transport: "http", url, headers: stringMap(value.headers) });
       continue;
     }
@@ -318,6 +672,8 @@ export function parseMcpJson(text: string): { servers: McpServerInput[]; skipped
   }
   return { servers, skipped };
 }
+
+const SHARED_URL = /^http:\/\/127\.0\.0\.1:\d{1,5}\/mcp\/[0-9a-f]{48}\/[^\s/]+$/;
 
 /** Reads `customMcpServers` from thread/start or thread/resume params. */
 export function readCustomMcpServers(params: unknown): McpServerWire[] {
@@ -335,6 +691,11 @@ export function readCustomMcpServers(params: unknown): McpServerWire[] {
         env: stringMap(entry.env),
         url: typeof entry.url === "string" ? entry.url : "",
         headers: stringMap(entry.headers),
+        ...(typeof entry.cwd === "string" && isAbsolute(entry.cwd) ? { cwd: entry.cwd } : {}),
+        ...(entry.firstRun === true ? { firstRun: true } : {}),
+        ...(typeof entry.sharedUrl === "string" && SHARED_URL.test(entry.sharedUrl)
+          ? { sharedUrl: entry.sharedUrl }
+          : {}),
       },
     ];
   });
@@ -345,7 +706,7 @@ export function readCustomMcpServers(params: unknown): McpServerWire[] {
  * run through cmd /c (what Claude Code tells Windows users to do by hand).
  */
 export function launchCommand(
-  server: McpServerWire,
+  server: Pick<McpServerWire, "command" | "args">,
   platform: NodeJS.Platform = process.platform,
 ): { command: string; args: string[] } {
   if (
@@ -357,14 +718,64 @@ export function launchCommand(
   return { command: server.command, args: server.args };
 }
 
-/** Claude Agent SDK `mcpServers` entries. */
+const UV = /(^|[\\/])uvx?(\.exe)?$/i;
+const PYTHON = /(^|[\\/])(python[0-9.]*|py)(\.exe)?$/i;
+
+/**
+ * For runtimes that cannot start a server in a folder (Claude Code and ACP agents, MCP-4):
+ * relative script paths become absolute, uv gets --directory, and `python -m` gets the folder on
+ * PYTHONPATH. Codex takes `cwd` itself.
+ */
+export function withoutCwd(server: McpServerWire): McpServerWire {
+  const cwd = server.cwd;
+  if (!cwd || server.transport !== "stdio") return server;
+  const args = server.args.map((arg) =>
+    /\.(py|js|mjs|cjs|ts)$/i.test(arg) && !isAbsolute(arg) && !/^[-@]/.test(arg)
+      ? join(cwd, arg)
+      : arg,
+  );
+  const env = { ...server.env };
+  if (server.command.match(UV) && argumentPaths(server.args).folders.length === 0) {
+    args.unshift("--directory", cwd);
+  }
+  if (PYTHON.test(server.command) && server.args.includes("-m")) {
+    env.PYTHONPATH = env.PYTHONPATH ? `${cwd};${env.PYTHONPATH}` : cwd;
+  }
+  return { ...server, args, env };
+}
+
+export interface LaunchTarget {
+  transport: "stdio" | "http";
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  cwd?: string;
+  url: string;
+  headers: Record<string, string>;
+}
+
+/** Command, args, env and folder exactly as a runtime will start them. */
+export function launchTarget(server: McpServerWire): LaunchTarget {
+  return {
+    transport: server.transport,
+    ...launchCommand(server),
+    env: server.env,
+    ...(server.cwd ? { cwd: server.cwd } : {}),
+    url: server.url,
+    headers: server.headers,
+  };
+}
+
+/** Claude Agent SDK `mcpServers` entries. Claude Code merges `env` over its own environment. */
 export function claudeMcpServers(
   servers: McpServerWire[],
 ): Record<string, Record<string, unknown>> {
   const result: Record<string, Record<string, unknown>> = {};
-  for (const server of servers) {
-    result[server.name] =
-      server.transport === "http"
+  for (const entry of servers) {
+    const server = withoutCwd(entry);
+    result[server.name] = server.sharedUrl
+      ? { type: "http", url: server.sharedUrl, headers: {} }
+      : server.transport === "http"
         ? { type: "http", url: server.url, headers: server.headers }
         : { type: "stdio", ...launchCommand(server), env: server.env };
   }
@@ -375,7 +786,12 @@ export function claudeMcpServers(
 export function acpMcpServers(servers: McpServerWire[], httpSupported: boolean): unknown[] {
   const pairs = (map: Record<string, string>) =>
     Object.entries(map).map(([name, value]) => ({ name, value }));
-  return servers.flatMap((server): unknown[] => {
+  return servers.flatMap((entry): unknown[] => {
+    const server = withoutCwd(entry);
+    // Shared: one running copy over HTTP when the agent accepts HTTP, else its own copy.
+    if (server.sharedUrl && httpSupported) {
+      return [{ type: "http", name: server.name, url: server.sharedUrl, headers: [] }];
+    }
     if (server.transport === "http") {
       return httpSupported
         ? [{ type: "http", name: server.name, url: server.url, headers: pairs(server.headers) }]
@@ -387,16 +803,24 @@ export function acpMcpServers(servers: McpServerWire[], httpSupported: boolean):
 
 /** An npx-based server on Windows can take longer than Codex's 10 s default to start. */
 const MCP_STARTUP_SECONDS = 20;
+/** Its very first start may download the whole package (npx -y, uvx) (MCP-15). */
+export const MCP_FIRST_START_SECONDS = 60;
 
 /** Codex thread `config` override: { mcp_servers: { name: {...} } }. */
 export function codexMcpConfig(servers: McpServerWire[]): Record<string, unknown> | undefined {
   if (servers.length === 0) return undefined;
   const mcp: Record<string, unknown> = {};
   for (const server of servers) {
-    mcp[server.name] =
-      server.transport === "http"
+    mcp[server.name] = server.sharedUrl
+      ? { url: server.sharedUrl }
+      : server.transport === "http"
         ? { url: server.url, http_headers: server.headers }
-        : { ...launchCommand(server), env: server.env, startup_timeout_sec: MCP_STARTUP_SECONDS };
+        : {
+            ...launchCommand(server),
+            env: server.env,
+            ...(server.cwd ? { cwd: server.cwd } : {}),
+            startup_timeout_sec: server.firstRun ? MCP_FIRST_START_SECONDS : MCP_STARTUP_SECONDS,
+          };
   }
   return { mcp_servers: mcp };
 }

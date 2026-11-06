@@ -14,7 +14,6 @@ import {
   untrack,
 } from "solid-js";
 import { createMutable } from "solid-js/store";
-import { coworkerFromTemplate } from "../../shared/agent-catalog";
 import type {
   AccountUsage,
   AgentEvent,
@@ -46,6 +45,7 @@ import type {
   UpdateStatus,
   WorkspaceState,
 } from "../../shared/ipc";
+import { providerForModel } from "../../shared/ipc";
 import type { MarketplaceAgent } from "../../shared/marketplace";
 import { vocab } from "./activity-vocab";
 import { stableApprovals } from "./approval-list";
@@ -253,6 +253,14 @@ export function App() {
   const [secureInputs, setSecureInputs] = createSignal<SecureInputRequest[]>([]);
   const pendingConversationChanges: Array<{ botId: string; revision: number; apply: () => void }> =
     [];
+  /**
+   * The last chat snapshot per coworker, kept up to date by per-message updates, so a tool step
+   * changes one message instead of the main process sending the whole chat again.
+   */
+  const chatSnapshots = new Map<string, ConversationSnapshot>();
+  /** How many of the newest messages each open chat shows; "Load earlier" adds more. */
+  const [chatWindows, setChatWindows] = createSignal<Record<string, number>>({});
+  const [earlierCounts, setEarlierCounts] = createSignal<Record<string, number>>({});
   const recentReplyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let conversationFrame: number | undefined;
 
@@ -400,13 +408,25 @@ export function App() {
       .join(","),
   );
 
+  // Only this coworker's own AI coming up is a reason to read its chat again, not any provider.
+  const activeProviderConnected = createMemo(() => {
+    const model = botList().find((bot) => bot.id === activeBotId())?.model;
+    if (!model) return false;
+    return connectedProviders().split(",").includes(providerForModel(model));
+  });
+
   createEffect(() => {
     const botId = activeBotId();
     isAgentReady();
-    connectedProviders();
+    activeProviderConnected();
     if (!botId) return;
-    void Promise.all([
-      window.sahkarmi.agent.readConversation(botId),
+    void readChat(botId);
+  });
+
+  function readChat(botId: string): Promise<void> {
+    const limit = untrack(() => chatWindows()[botId]) ?? CHAT_WINDOW;
+    return Promise.all([
+      window.sahkarmi.agent.readConversation(botId, { limit }),
       window.sahkarmi.agent.listQueue(botId),
     ])
       .then(([snapshot, queue]) => {
@@ -414,7 +434,16 @@ export function App() {
         scheduleConversation(snapshot);
       })
       .catch((error) => appendUiError(botId, error, vocab().ERROR_TITLES.load));
-  });
+  }
+
+  /** "Load earlier": show the next older messages of this chat. */
+  function loadEarlier(botId: string): Promise<void> {
+    setChatWindows((current) => ({
+      ...current,
+      [botId]: (current[botId] ?? CHAT_WINDOW) + CHAT_WINDOW,
+    }));
+    return readChat(botId);
+  }
 
   function handleAgentEvent(event: AgentEvent) {
     switch (event.type) {
@@ -466,6 +495,10 @@ export function App() {
         clearRetry(event.botId);
         applyConversationDelta(event);
         return;
+      case "message-upsert":
+        clearRetry(event.botId);
+        scheduleConversationChange(event.botId, event.revision, () => applyMessageUpsert(event));
+        return;
       case "turn-retrying":
         setRetries((current) => ({
           ...current,
@@ -499,6 +532,12 @@ export function App() {
         return;
       case "routines-changed":
         setRoutines(event.state);
+        return;
+      case "open-requested":
+        // A clicked notification: the coworker's chat shows its pending approval cards inline;
+        // a request with no known coworker opens the Approvals inbox.
+        if (event.botId && botList().some((bot) => bot.id === event.botId)) selectBot(event.botId);
+        else if (event.approvalId) setView("approvals");
         return;
       case "turn-started":
         clearRetry(event.botId);
@@ -611,6 +650,27 @@ export function App() {
         : { ...current, [event.botId]: event.revision },
     );
 
+    const stored = chatSnapshots.get(event.botId);
+    if (stored) {
+      // Keep the stored chat in step, so a later one-message update does not undo these tokens.
+      stored.revision = event.revision;
+      const raw = stored.messages.find((message) => message.id === event.messageId);
+      if (raw) {
+        raw.text += event.delta;
+        raw.status = "streaming";
+      } else {
+        stored.messages.push({
+          id: event.messageId,
+          turnId: event.turnId,
+          author: "assistant",
+          text: event.delta,
+          createdAt: event.createdAt,
+          status: "streaming",
+          itemType: "agentMessage",
+        });
+      }
+    }
+
     const existing = liveMessages()[event.botId]?.find((message) => message.id === event.messageId);
     if (existing) {
       existing.body += event.delta;
@@ -636,9 +696,33 @@ export function App() {
     }
   }
 
+  /**
+   * One message (or the plan) changed mid-turn. Applied to the stored chat, which is then shown
+   * as usual. A chat this window never loaded is skipped: it is read in full when opened.
+   */
+  function applyMessageUpsert(event: Extract<AgentEvent, { type: "message-upsert" }>) {
+    const stored = chatSnapshots.get(event.botId);
+    if (!stored || event.revision <= (conversationRevisions()[event.botId] ?? -1)) return;
+    stored.revision = event.revision;
+    stored.activeTurnId = event.activeTurnId;
+    stored.threadId = event.threadId;
+    if (event.message) {
+      upsertMessage(stored.messages, event.message, event.afterId ?? null);
+    } else if (event.plan !== undefined) {
+      stored.plan = event.plan;
+    }
+    applyConversation(stored);
+  }
+
   function applyConversation(snapshot: ConversationSnapshot) {
     const botId = snapshot.botId;
     if (snapshot.revision < (conversationRevisions()[botId] ?? -1)) return;
+    chatSnapshots.set(botId, snapshot);
+    setEarlierCounts((current) =>
+      (current[botId] ?? 0) === (snapshot.earlierCount ?? 0)
+        ? current
+        : { ...current, [botId]: snapshot.earlierCount ?? 0 },
+    );
     const initialLoad = conversationLoaded()[botId] !== true;
     setConversationRevisions((current) => ({ ...current, [botId]: snapshot.revision }));
     setPlans((current) =>
@@ -696,6 +780,8 @@ export function App() {
     const stored = await window.sahkarmi.agent.createBot(
       workspaces().activeWorkspaceId || undefined,
     );
+    // The catalog loads with the Marketplace, not with the first screen.
+    const { coworkerFromTemplate } = await import("../../shared/agent-catalog");
     const updated = await window.sahkarmi.agent.updateBot({
       botId: stored.id,
       ...coworkerFromTemplate(agent),
@@ -904,7 +990,7 @@ export function App() {
   ): Promise<boolean> {
     const bot = activeBot();
     if (!bot || (!body.trim() && attachmentDraftIds.length === 0)) return false;
-    return sendMessageToBot(bot.id, body, attachmentDraftIds, replyToMessageId);
+    return sendMessageToBot(bot.id, body, attachmentDraftIds, replyToMessageId, true);
   }
 
   async function sendMessageToBot(
@@ -912,6 +998,8 @@ export function App() {
     body: string,
     attachmentDraftIds: string[],
     replyToMessageId: string | null = null,
+    /** Typed in the composer: may join the coworker's running turn. */
+    steer = false,
   ): Promise<boolean> {
     const text = body.trim();
     const pendingId = text ? `sending:${++sendSequence}` : null;
@@ -945,6 +1033,7 @@ export function App() {
         text: body.trim(),
         attachmentDraftIds,
         ...(replyToMessageId ? { replyToMessageId } : {}),
+        ...(steer ? { steer: true } : {}),
       });
       setUiErrors((current) => ({ ...current, [botId]: [] }));
       // The queued message arrives in a snapshot applied on the next frame: swap in that frame.
@@ -1387,7 +1476,7 @@ export function App() {
                   <OrchestratorView bots={workspaceBots()} onOpenCoworker={selectBot} />
                 </Match>
                 <Match when={view() === "memory"}>
-                  <MemoryView />
+                  <MemoryView workspaceId={workspaces().activeWorkspaceId} bots={botList()} />
                 </Match>
                 <Match when={view() === "knowledge"}>
                   <KnowledgeView workspaceId={workspaces().activeWorkspaceId} bots={botList()} />
@@ -1449,7 +1538,11 @@ export function App() {
                   <MarketplaceView
                     bots={workspaceBots()}
                     onAddAgent={addMarketplaceAgent}
-                    onUpdateAgent={(botId, agent) => updateBot(botId, coworkerFromTemplate(agent))}
+                    onUpdateAgent={(botId, agent) =>
+                      import("../../shared/agent-catalog").then(({ coworkerFromTemplate }) =>
+                        updateBot(botId, coworkerFromTemplate(agent)),
+                      )
+                    }
                     onOpenCoworker={selectBot}
                     onConfigureCoworker={editBot}
                   />
@@ -1482,6 +1575,11 @@ export function App() {
                     loaded={
                       activeBot() ? conversationLoaded()[activeBot()?.id ?? ""] === true : false
                     }
+                    earlierCount={earlierCounts()[activeBot()?.id ?? ""] ?? 0}
+                    onLoadEarlier={() => {
+                      const botId = activeBot()?.id;
+                      if (botId) void loadEarlier(botId);
+                    }}
                     queue={activeQueue()}
                     schedules={schedules().filter((task) => task.botId === activeBot()?.id)}
                     takeover={takeover()}
@@ -1729,6 +1827,27 @@ function toBotMessage(message: ConversationMessage): BotMessage {
               ? "Interrupted"
               : undefined,
   };
+}
+
+/** Newest messages a chat shows when opened. */
+const CHAT_WINDOW = 80;
+
+/** Puts `message` in place of its old copy, right after `afterId` (null: first). */
+export function upsertMessage(
+  messages: ConversationMessage[],
+  message: ConversationMessage,
+  afterId: string | null,
+): void {
+  const existing = messages.findIndex((candidate) => candidate.id === message.id);
+  if (existing >= 0) messages.splice(existing, 1);
+  if (afterId === null) {
+    messages.unshift(message);
+    return;
+  }
+  const after = messages.findIndex((candidate) => candidate.id === afterId);
+  if (after >= 0) messages.splice(after + 1, 0, message);
+  else if (existing >= 0) messages.splice(existing, 0, message);
+  else messages.push(message);
 }
 
 function toBotMessages(messages: ConversationMessage[]): BotMessage[] {

@@ -31,4 +31,14 @@ describe("JsonLineDecoder", () => {
     const decoder = new JsonLineDecoder();
     expect(() => decoder.push("not-json\n")).toThrow("Invalid JSONL");
   });
+
+  it("skips and reports a non-JSON line when a callback is given", () => {
+    const skipped: string[] = [];
+    const decoder = new JsonLineDecoder((line) => skipped.push(line));
+    expect(decoder.push('Starting up...\n{"id":2,"result":{}}\n[1,2]\n')).toEqual([
+      { id: 2, result: {} },
+    ]);
+    expect(decoder.end("trailing junk")).toEqual([]);
+    expect(skipped).toEqual(["Starting up...", "[1,2]", "trailing junk"]);
+  });
 });

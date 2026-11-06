@@ -11,3 +11,11 @@ export const READ_DOCUMENT_SECTION_DESCRIPTION =
   "Read more of one indexed document: a whole page, or the passages around an excerpt (by its chunkIndex), or the beginning. Use after search_knowledge_base when an excerpt is cut short or you need the surrounding context.";
 export const SAVE_SKILL_DESCRIPTION =
   "Save what you learned as a reusable playbook after a task that took several steps, a fix, or a correction from the owner. Saving under an existing name improves that skill (its version goes up). Write clear numbered steps; never include passwords, OTPs, keys, card numbers or personal data.";
+export const SAVE_MEMORY_DESCRIPTION =
+  "Save a fact, decision or owner preference to this workspace's team memory, so you and your teammates can recall it in later chats (other workspaces never see it). Saving again under the same key replaces that memory instead of adding a copy. Related memories are added to the owner's later messages automatically. Never save passwords, OTPs, keys, card numbers or personal data.";
+export const SEARCH_MEMORY_DESCRIPTION =
+  "Search this workspace's team memory by words (word forms match, e.g. invoice finds invoices; it does not search by meaning). Returns the best matches first, up to limit (default 20).";
+export const LIST_MEMORIES_DESCRIPTION =
+  "List this workspace's team memory, newest first, one page at a time: limit (default 20, at most 50) and offset for the next page. Use search_memory to find something specific.";
+export const READ_SKILL_DESCRIPTION =
+  "Read one learned or custom skill's full playbook by its id (from list_skills). Give type (learned or custom, as list_skills shows) when a learned and a custom skill share the id.";

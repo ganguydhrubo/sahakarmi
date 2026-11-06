@@ -34,10 +34,11 @@ export class ScheduleStore extends EventEmitter<ScheduleStoreEvents> {
   #timer: NodeJS.Timeout | null = null;
   #runner: ScheduleRunner | null = null;
   #ticking = false;
+  #paused = false;
 
   constructor(userDataPath: string, now: () => Date = () => new Date()) {
     super();
-    this.#file = new JsonFile(join(userDataPath, "schedules.json"));
+    this.#file = new JsonFile(join(userDataPath, "schedules.json"), { recoverCorrupt: true });
     this.#now = now;
   }
 
@@ -56,6 +57,13 @@ export class ScheduleStore extends EventEmitter<ScheduleStoreEvents> {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
     this.#runner = null;
+  }
+
+  /** "Pause all coworkers": due tasks wait, then run once when resumed. */
+  setPaused(paused: boolean): void {
+    if (this.#paused === paused) return;
+    this.#paused = paused;
+    if (!paused) void this.tick();
   }
 
   list(): ScheduledTask[] {
@@ -108,7 +116,7 @@ export class ScheduleStore extends EventEmitter<ScheduleStoreEvents> {
 
   /** Runs every enabled task whose next run time has passed. Exposed for tests. */
   async tick(): Promise<void> {
-    if (this.#ticking) return;
+    if (this.#ticking || this.#paused) return;
     this.#ticking = true;
     try {
       const now = this.#now();

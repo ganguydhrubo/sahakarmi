@@ -7,6 +7,7 @@ import {
 } from "../../../shared/ipc";
 import { applyFeatures, features } from "../features";
 import { type MessageKey, t } from "../i18n";
+import { EngineSettingsPanel } from "./EngineSettingsPanel";
 
 const CATEGORY_KEYS: Record<FeatureCategory, MessageKey> = {
   core: "featCore",
@@ -50,6 +51,7 @@ export function FeaturesSettings() {
   return (
     <div class="features-settings">
       <p class="settings-meta">{t("featuresIntro")}</p>
+      <EngineSettingsPanel />
       <Show when={error()}>
         <p class="center-view-error" role="alert">
           {error()}

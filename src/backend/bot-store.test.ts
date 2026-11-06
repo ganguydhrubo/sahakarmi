@@ -99,7 +99,7 @@ describe("BotStore", () => {
     expect(chief.workspacePath).toBe(join(home, "Sahkarmi", "Coworkers", "chief"));
     expect(chief.description).toBe("");
     expect(chief.preview).toBe("No messages yet");
-    expect(chief.model).toBe("gpt-5.6-luna");
+    expect(chief.model).toBe("gpt-5.6-sol");
     expect(chief.reasoningEffort).toBe("medium");
     expect(sales.workspacePath).toBe(join(home, "Sahkarmi", "Coworkers", "sales-outbound"));
     expect(store.sharedRoot).toBe(join(home, "Sahkarmi", "Shared"));

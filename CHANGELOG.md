@@ -5,6 +5,75 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-06
+
+### Added
+
+- Marketplace → APIs: paste an API key (and, if you like, a name or a docs link). Sahkarmi finds
+  how the API works from its OpenAPI/Swagger description, its documentation page or the public
+  APIs.guru directory, and asks only for what it could not find. Seven real tests run before you
+  can turn it on (key, connection, endpoint, a real answer, readable data, permissions, errors and
+  limits), and you choose which coworkers, workspaces or CEO may use it. Coworkers then answer
+  questions like "tomorrow's weather in Kolkata" with live data. Keys are encrypted on this PC and
+  never shown to coworkers; reading calls never ask, calls that change something ask you once.
+- MCP servers: "Test server" really connects, lists the server's tools, and explains a failure
+  in plain words with a one-click fix (install uv, Node.js or Python, re-check PATH). New servers
+  stay off until a test passes, and you can choose which coworkers get each server.
+- Connect from GitHub tells you whether a repo is an MCP server and how to run it, with the
+  evidence. "Install for me" shows one approval card with every download and command, then
+  installs into Sahkarmi's own folder.
+- Projects that are not MCP servers, such as MoneyPrinterTurbo, can be set up as a Skill your
+  coworkers run, step by step.
+- Shared mode runs a heavy MCP server once for all coworkers.
+- Memory: coworkers can recall related team memories at the start of a message (Settings >
+  Features), and the Memory page lists, searches and deletes them.
+- Settings > Storage shows what uses space and frees it safely.
+- Settings > Features: how many coworkers may work at once, and how long a silent task may run
+  before it is stopped.
+- Team runs say honestly whether a task was checked (passed, failed or not checked), and you can
+  add your own check command. A Performance view shows how coworker turns went; it stays on
+  your PC.
+- Tasks cut off when Sahkarmi closed can be run again with one click.
+- Optional: keep Sahkarmi running in the tray when the window closes (off by default).
+- Labs, off by default: the CEO plans team runs, and a second AI model reviews each task.
+
+### Changed
+
+- New coworkers start on the most capable model of the AI you use (Codex: Sol; Claude: Opus).
+  Coworkers you already set up keep their model.
+- Approvals: once you say "no" to a step, the coworker's retries of that same step in the same
+  task are refused without asking you again. Cards say in plain words when a command also runs
+  a second one.
+- Messages you type while a coworker works join its current task; scheduled tasks, routines and
+  team runs wait their turn.
+- A brief AI-service hiccup (overloaded, server error, network) is retried automatically, at
+  most twice. When a model is at its limit, only that message moves to the free model.
+- Lighter and faster: only the AI tools your coworkers use start with the app, idle Claude
+  sessions close after 10 minutes and resume where they left off, long chats update one message
+  at a time and load the newest 80 messages first, and coworker pages go quiet while Sahkarmi is
+  minimised.
+- Knowledge Bases index in a separate background process, so the window never waits for them.
+- Old messages are archived by month, so large mailboxes open at once.
+- API keys you give Sahkarmi are stored encrypted with Windows, and each AI tool receives only
+  its own key.
+
+### Fixed
+
+- A tab you were typing in is never reloaded because a coworker saved on the same site, even when
+  you started typing just before.
+- A coworker could run a shell command without your approval through an unchecked path; every
+  command now goes through the approval rules.
+- Coworkers can no longer change Sahkarmi's own settings, other AI tools' settings, or files that
+  hold keys without asking.
+- Browser downloads now follow the downloads permission.
+- Coworkers can no longer pass a task back and forth without end (stopped after 6 hand-offs).
+- Pause and Cancel on a team run now really stop the coworker, and runs waiting on your approval
+  continue after a restart.
+- Codex is started without a shell and fully stopped with everything it started.
+- MCP servers installed after Sahkarmi started, old SSE addresses and Windows' Microsoft Store
+  Python stub are handled correctly.
+- A damaged settings file is set aside and reported instead of stopping the app.
+
 ## [0.23.0] - 2026-11-06
 
 ### Added

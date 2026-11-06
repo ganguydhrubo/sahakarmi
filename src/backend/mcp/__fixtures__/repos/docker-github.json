@@ -1,0 +1,109 @@
+{
+  "source": "https://github.com/github/github-mcp-server (server.json, Dockerfile, README.md lines 225-240), registry.modelcontextprotocol.io",
+  "location": {
+    "owner": "github",
+    "repo": "github-mcp-server",
+    "ref": "fixturecommit0004",
+    "subPath": ""
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "size": 120055
+    },
+    {
+      "path": "server.json",
+      "size": 1844
+    },
+    {
+      "path": "Dockerfile",
+      "size": 2267
+    },
+    {
+      "path": "go.mod",
+      "size": 3000
+    },
+    {
+      "path": "cmd/github-mcp-server/main.go",
+      "size": 8000
+    }
+  ],
+  "texts": {
+    "server.json": "{\n  \"$schema\": \"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json\",\n  \"name\": \"io.github.github/github-mcp-server\",\n  \"description\": \"Connect AI assistants to GitHub - manage repos, issues, PRs, and workflows through natural language.\",\n  \"title\": \"GitHub\",\n  \"repository\": {\n    \"url\": \"https://github.com/github/github-mcp-server\",\n    \"source\": \"github\"\n  },\n  \"version\": \"${VERSION}\",\n  \"packages\": [\n    {\n      \"registryType\": \"oci\",\n      \"identifier\": \"ghcr.io/github/github-mcp-server:${VERSION}\",\n      \"transport\": {\n        \"type\": \"stdio\"\n      },\n      \"runtimeArguments\": [\n        {\n          \"type\": \"named\",\n          \"name\": \"-p\",\n          \"description\": \"Publish the OAuth callback port to loopback so the in-container login callback is reachable\",\n          \"value\": \"127.0.0.1:8085:8085\"\n        },\n        {\n          \"type\": \"named\",\n          \"name\": \"-e\",\n          \"description\": \"Fixed OAuth callback port, matching the published port above\",\n          \"value\": \"GITHUB_OAUTH_CALLBACK_PORT=8085\"\n        },\n        {\n          \"type\": \"named\",\n          \"name\": \"-e\",\n          \"description\": \"Optional GitHub Personal Access Token. Omit to log in with OAuth on first use.\",\n          \"value\": \"GITHUB_PERSONAL_ACCESS_TOKEN={token}\",\n          \"isRequired\": false,\n          \"variables\": {\n            \"token\": {\n              \"isRequired\": false,\n              \"isSecret\": true,\n              \"format\": \"string\"\n            }\n          }\n        }\n      ]\n    }\n  ],\n  \"remotes\": [\n    {\n      \"type\": \"streamable-http\",\n      \"url\": \"https://api.githubcopilot.com/mcp/\",\n      \"headers\": [\n        {\n          \"name\": \"Authorization\",\n          \"description\": \"Authorization header with authentication token (PAT or App token)\",\n          \"isSecret\": true\n        }\n      ]\n    }\n  ]\n}\n",
+    "Dockerfile": "FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS ui-build\nWORKDIR /app\nCOPY ui/package*.json ./ui/\nRUN cd ui && npm ci\nCOPY ui/ ./ui/\n# Create output directory and build - vite outputs directly to pkg/github/ui_dist/\nRUN mkdir -p ./pkg/github/ui_dist && \\\n    cd ui && npm run build\n\nFROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS build\nARG VERSION=\"dev\"\n\n# Set the working directory\nWORKDIR /build\n\n# Install git\nRUN --mount=type=cache,target=/var/cache/apk \\\n    apk add git\n\n# Copy source code (including ui_dist placeholder)\nCOPY . .\n\n# Copy built UI assets over the placeholder\nCOPY --from=ui-build /app/pkg/github/ui_dist/* ./pkg/github/ui_dist/\n\n# Build the server\n# OAuth credentials are injected via build secrets so they are not baked into image history; the values are public in practice but kept out of layers.\nRUN --mount=type=cache,target=/go/pkg/mod \\\n    --mount=type=cache,target=/root/.cache/go-build \\\n    --mount=type=secret,id=oauth_client_id \\\n    --mount=type=secret,id=oauth_client_secret \\\n    export OAUTH_CLIENT_ID=\"$(cat /run/secrets/oauth_client_id 2>/dev/null || echo '')\" && \\\n    export OAUTH_CLIENT_SECRET=\"$(cat /run/secrets/oauth_client_secret 2>/dev/null || echo '')\" && \\\n    CGO_ENABLED=0 go build -ldflags=\"-s -w -X main.version=${VERSION} -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X github.com/github/github-mcp-server/v2/internal/buildinfo.OAuthClientID=${OAUTH_CLIENT_ID} -X github.com/github/github-mcp-server/v2/internal/buildinfo.OAuthClientSecret=${OAUTH_CLIENT_SECRET}\" \\\n    -o /bin/github-mcp-server ./cmd/github-mcp-server\n\n# Make a stage to run the app\nFROM gcr.io/distroless/base-debian12@sha256:fabbf1c0c357a3d42550111351daed089b20a2c954df13ee2fcff60602515e84\n\n# Add required MCP server annotation\nLABEL io.modelcontextprotocol.server.name=\"io.github.github/github-mcp-server\"\n\n# Set the working directory\nWORKDIR /server\n# Copy the binary from the build stage\nCOPY --from=build /bin/github-mcp-server .\n# Expose the default port\nEXPOSE 8082\n# Set the entrypoint to the server binary\nENTRYPOINT [\"/server/github-mcp-server\"]\n# Default arguments for ENTRYPOINT\nCMD [\"stdio\"]\n",
+    "README.md": "\n3. **Reference the token in configurations**\n\n   ```bash\n   # CLI usage\n   claude mcp add github -e GITHUB_PERSONAL_ACCESS_TOKEN=$GITHUB_PAT -- docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN ghcr.io/github/github-mcp-server\n\n   # In config files (where supported)\n   \"env\": {\n     \"GITHUB_PERSONAL_ACCESS_TOKEN\": \"$GITHUB_PAT\"\n   }\n   ```\n\n> **Note**: Environment variable support varies by host app and IDE. Some applications (like Windsurf) require hardcoded tokens in config files.\n\n### Token Security Best Practices"
+  },
+  "registry": [
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "io.github.github/github-mcp-server",
+        "description": "Connect AI assistants to GitHub - manage repos, issues, PRs, and workflows through natural language.",
+        "title": "GitHub",
+        "repository": {
+          "url": "https://github.com/github/github-mcp-server",
+          "source": "github"
+        },
+        "version": "2.1.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/github/github-mcp-server:2.1.0",
+            "transport": {
+              "type": "stdio"
+            },
+            "runtimeArguments": [
+              {
+                "description": "Publish the OAuth callback port to loopback so the in-container login callback is reachable",
+                "type": "named",
+                "name": "-p",
+                "value": "127.0.0.1:8085:8085"
+              },
+              {
+                "description": "Fixed OAuth callback port, matching the published port above",
+                "type": "named",
+                "name": "-e",
+                "value": "GITHUB_OAUTH_CALLBACK_PORT=8085"
+              },
+              {
+                "description": "Optional GitHub Personal Access Token. Omit to log in with OAuth on first use.",
+                "variables": {
+                  "token": {
+                    "format": "string",
+                    "isSecret": true
+                  }
+                },
+                "type": "named",
+                "name": "-e",
+                "value": "GITHUB_PERSONAL_ACCESS_TOKEN={token}"
+              }
+            ]
+          }
+        ],
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": [
+              {
+                "description": "Authorization header with authentication token (PAT or App token)",
+                "isSecret": true,
+                "name": "Authorization"
+              }
+            ]
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-11-03T11:06:05.48244Z",
+          "publishedAt": "2026-11-03T11:06:05.48244Z",
+          "updatedAt": "2026-11-03T11:06:05.48244Z",
+          "isLatest": true
+        }
+      }
+    }
+  ],
+  "packages": {}
+}

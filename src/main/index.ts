@@ -6,6 +6,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import {
   app,
   BrowserWindow,
+  crashReporter,
   desktopCapturer,
   dialog,
   Menu,
@@ -16,14 +17,18 @@ import {
   powerMonitor,
   protocol,
   type SaveDialogOptions,
+  safeStorage,
   screen,
   session,
   shell,
   systemPreferences,
+  utilityProcess,
 } from "electron";
 import electronUpdater from "electron-updater";
 import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
+import { memoryCategory } from "../backend/agent-memory-store";
 import { AgentService } from "../backend/agent-service";
+import { ApiIntegrationService } from "../backend/api-integrations/api-service";
 import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
@@ -35,30 +40,46 @@ import {
   resolveClaudeCli,
   resolveCodexCli,
   resolveOpenCodeCli,
+  setCliVersionCache,
   setRuntimeDirectory,
   setToolsDirectory,
 } from "../backend/cli";
 import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
-import { CustomSkills } from "../backend/custom-skills";
+import { CustomSkills, parseSkillMarkdown } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
 import { desktopControlSupported } from "../backend/desktop/desktop-tools";
+import { EngineSettingsStore } from "../backend/engine-settings";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
-import { ComposioClient } from "../backend/integrations/composio-client";
-import { KnowledgeService } from "../backend/knowledge/knowledge-service";
+import { COMPOSIO_SECRET, ComposioClient } from "../backend/integrations/composio-client";
+import { onCorruptFileRecovered } from "../backend/json-file";
+import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
+import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
 import { MailboxStore } from "../backend/mailbox-store";
+import {
+  genericApiSpec,
+  moneyPrinterTurboSpec,
+  writeAdapter,
+} from "../backend/mcp/adapter-template";
+import { McpInstaller } from "../backend/mcp/installer";
+import { SharedMcpBridge } from "../backend/mcp/shared-bridge";
+import { serverEnvironment } from "../backend/mcp/windows-env";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
+import { classifyCommand } from "../backend/permission-policy";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
 import { createRoutineExecutor } from "../backend/routine-executor";
 import { importDesktopRoutinesOnce } from "../backend/routine-import";
-import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
+import { parseRoutineCadence, parseRoutineTrigger, RoutineStore } from "../backend/routine-store";
+import { RunEventStore } from "../backend/run-events";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
+import { SecretCodec, SecretStore } from "../backend/secret-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { TelegramBridge } from "../backend/telegram-bridge";
 import { UsageService } from "../backend/usage-service";
+import { VerificationRepairEngine } from "../backend/verification-repair-engine";
 import { VoiceService } from "../backend/voice/voice-service";
 import {
   chatWorkflow,
@@ -74,6 +95,7 @@ import {
   type AgentProviderId,
   type AiRuntimeStatus,
   type AiToolId,
+  type ApiAuthKind,
   type AppInfo,
   type ApprovalCategory,
   type AppSetupState,
@@ -105,6 +127,7 @@ import {
   PERMISSION_LEVELS,
   type PermissionCategory,
   type PermissionLevel,
+  type ReadConversationOptions,
   type RespondToPromptInput,
   type SaveBusinessTargetInput,
   type SendMessageInput,
@@ -112,18 +135,31 @@ import {
   SOCIAL_PLATFORMS,
   type SocialPlatform,
   type StartOrchestratorRunInput,
+  type StorageCleanInput,
   type TargetPeriod,
   type UpdateBotInput,
   type WorkflowDoc,
 } from "../shared/ipc";
 import { AgentInitializationGate } from "./agent-initialization";
-import { notificationForAgentEvent } from "./agent-notifications";
+import {
+  type AgentNotificationContent,
+  notificationForAgentEvent,
+  notificationsForNewApprovals,
+} from "./agent-notifications";
 import { AiRuntimeService } from "./ai-runtime-service";
 import { AppLog } from "./app-log";
+import { BackgroundTray, shouldHideToTray } from "./background-tray";
 import { useOwnClaudeAccount } from "./claude-account";
-import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
-import { cleanUpRuntimes } from "./runtime-cleanup";
+import { pruneCrashDumps, redactErrorForLog } from "./crash-dumps";
+import {
+  cleanStorage,
+  exportDiagnostics,
+  exportSahkarmiData,
+  readStorageUsage,
+} from "./maintenance-service";
+import { cleanUpRuntimes, markRuntimeStarted } from "./runtime-cleanup";
 import { readSetupState, writeSetupState } from "./setup-store";
+import { removeOrphanGeminiHomes, removeOrphanPartitions } from "./storage-cleanup";
 import { handleTrusted } from "./trusted-ipc";
 import { isTrustedRendererUrl } from "./trusted-renderer";
 import {
@@ -160,6 +196,86 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const appLog = new AppLog(app.getPath("userData"));
+
+// Crash dumps are written locally only (nothing is uploaded) next to the app data, so a crash
+// can be looked at; pruneCrashDumps keeps the newest few.
+try {
+  app.setPath("crashDumps", join(app.getPath("userData"), "Crashpad"));
+  crashReporter.start({ uploadToServer: false });
+} catch (error) {
+  appLog.write("warn", "crash reporter did not start", String(error));
+}
+
+/** True once the window has loaded; before that a main-process error is a failed start. */
+let mainProcessStarted = false;
+const mainProcessErrors: number[] = [];
+
+/**
+ * A stray exception in a timer or callback used to show Electron's error dialog over the app.
+ * It is logged (secrets masked) and the app carries on: coworkers run in their own processes and
+ * every store writes atomically. A burst is logged only partly so the log cannot fill up.
+ */
+function logMainProcessError(kind: string, error: unknown): void {
+  const now = Date.now();
+  while (mainProcessErrors.length && now - (mainProcessErrors[0] ?? 0) > 60_000) {
+    mainProcessErrors.shift();
+  }
+  mainProcessErrors.push(now);
+  if (mainProcessErrors.length > 20) return;
+  console.error(`Main process ${kind}:`, error);
+  appLog.write("error", `main process ${kind}`, redactErrorForLog(error, homedir()));
+}
+
+process.on("uncaughtException", (error) => {
+  logMainProcessError("uncaught exception", error);
+  if (mainProcessStarted) return;
+  dialog.showErrorBox(
+    "Sahkarmi couldn’t start",
+    `${error.message}\n\nYour local data was not reset or overwritten. See the troubleshooting guide for recovery steps.`,
+  );
+  app.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  logMainProcessError("unhandled promise rejection", reason);
+});
+
+/** Store files that were unreadable at startup and replaced by defaults; told to the owner once. */
+const corruptFileNotices: string[] = [];
+onCorruptFileRecovered((recovery) => {
+  appLog.write("warn", "store file unreadable; moved aside and started with defaults", {
+    reason: recovery.reason,
+    backup: recovery.backupPath,
+  });
+  corruptFileNotices.push(`${recovery.reason}\nKept as: ${recovery.backupPath}`);
+  showCorruptFileNotices();
+});
+
+function showCorruptFileNotices(): void {
+  if (!mainProcessStarted || !mainWindow || mainWindow.isDestroyed()) return;
+  if (corruptFileNotices.length === 0) return;
+  // A box owned by a hidden window stays hidden too (first start, or the tray): wait for it.
+  if (!mainWindow.isVisible()) {
+    mainWindow.once("show", showCorruptFileNotices);
+    return;
+  }
+  const detail = corruptFileNotices.splice(0).join("\n\n");
+  void dialog
+    .showMessageBox(mainWindow, {
+      type: "warning",
+      title: "Sahkarmi",
+      message: "Some settings could not be read and were reset",
+      detail: `${detail}\n\nSahkarmi started with default settings for these. The unreadable copies were kept, not deleted. Check your permissions in Settings.`,
+    })
+    .catch((error) => appLog.write("warn", "could not show the reset notice", String(error)));
+}
+
+/** Settings → Features → "Keep running in the tray"; set once the feature list is loaded. */
+let keepRunningInTray: () => boolean = () => false;
+let backgroundTray: BackgroundTray | null = null;
+let trayHintShown = false;
+/** Coworker queues that "Pause all coworkers" paused, so resuming leaves the owner's own pauses. */
+const pausedByTray = new Set<string>();
+let allPaused = false;
 /** Window focus refreshes models, updates and AI tools at most this often. */
 const FOCUS_REFRESH_MS = 10 * 60_000;
 let mainWindow: BrowserWindow | null = null;
@@ -172,7 +288,7 @@ let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
 let aiRuntimeService: AiRuntimeService | null = null;
 let scheduleStore: ScheduleStore | null = null;
-let knowledgeService: KnowledgeService | null = null;
+let knowledgeService: KnowledgeApi | null = null;
 let routineStore: RoutineStore | null = null;
 let telegramBridge: TelegramBridge | null = null;
 let usageService: UsageService | null = null;
@@ -236,13 +352,46 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   handleTrusted(IPC_CHANNELS.customSkillsRemove, (input: unknown) =>
     skills.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
+  handleTrusted(IPC_CHANNELS.customSkillsMarkReviewed, (input: unknown) =>
+    skills.markReviewed(requireString(isObject(input) ? input.id : null, "id")),
+  );
+  // Guided installs (audit §11.6): plans are built here and run only after the owner approves.
+  const installer = new McpInstaller(app.getPath("userData"), {
+    saveServer: (input, source) => mcp.save(input, source),
+    testServer: async (name) => {
+      const server = mcp.list().find((entry) => entry.name === name);
+      return server ? mcp.test(server.id) : mcp.list();
+    },
+    addSkill: async (skillText) => {
+      await skills.addFromText(skillText);
+      return parseSkillMarkdown(skillText).name;
+    },
+    recheck: () => mcp.recheck(),
+    env: () => serverEnvironment({}),
+  });
+  // Shared mode (MCP-7): heavy servers run once per app behind a loopback endpoint.
+  const bridge = new SharedMcpBridge((id) => mcp.sharedLaunch(id));
+  mcp.setSharedBridge(bridge);
+  app.on("will-quit", () => void bridge.close());
+  // Windows' current PATH (plus Sahkarmi's own tools), read now and whenever Settings opens.
+  void installer.tools
+    .refreshManagedPath()
+    .then(() => mcp.recheck())
+    .then(() => (mcp.hasShared() ? bridge.listen() : undefined))
+    .catch(() => {});
   handleTrusted(IPC_CHANNELS.mcpList, () => mcp.list());
   handleTrusted(IPC_CHANNELS.mcpSave, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid MCP server.");
     return mcp.save(input as unknown as McpServerInput);
   });
   handleTrusted(IPC_CHANNELS.mcpImportJson, (input: unknown) =>
-    mcp.importJson(text(input, "text")),
+    mcp.importJson(
+      text(input, "text"),
+      undefined,
+      isObject(input) && Array.isArray(input.replace)
+        ? input.replace.filter((name): name is string => typeof name === "string")
+        : [],
+    ),
   );
   handleTrusted(IPC_CHANNELS.mcpGithubJson, (input: unknown) => mcp.githubJson(text(input, "url")));
   handleTrusted(IPC_CHANNELS.mcpSetEnabled, (input: unknown) =>
@@ -254,9 +403,118 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   handleTrusted(IPC_CHANNELS.mcpRemove, (input: unknown) =>
     mcp.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
+  handleTrusted(IPC_CHANNELS.mcpRecheck, () => mcp.recheck());
+  const analysisOf = (input: unknown) => {
+    const analysis = mcp.analysis(
+      requireString(isObject(input) ? input.analysisId : null, "analysisId"),
+    );
+    if (!analysis) throw new Error("Load the repo again; that check has expired.");
+    return analysis;
+  };
+  handleTrusted(IPC_CHANNELS.mcpPlanInstall, (input: unknown) => {
+    const analysis = analysisOf(input);
+    const candidateId = requireString(isObject(input) ? input.candidateId : null, "candidateId");
+    const candidate = analysis.candidates.find((entry) => entry.id === candidateId);
+    if (!candidate) throw new Error("That suggestion is no longer available.");
+    const values = isObject(input) && isObject(input.env) ? input.env : {};
+    return installer.planCandidate(
+      analysis,
+      candidate,
+      requireString(isObject(input) ? input.name : null, "name"),
+      Object.fromEntries(
+        Object.entries(values).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.mcpPlanSkill, (input: unknown) =>
+    installer.planSkill(analysisOf(input)),
+  );
+  handleTrusted(IPC_CHANNELS.mcpPlanTool, (input: unknown) => {
+    const tool = isObject(input) ? input.tool : null;
+    if (tool !== "uv" && tool !== "python" && tool !== "node") throw new Error("Unknown tool.");
+    return installer.planTool(tool);
+  });
+  handleTrusted(IPC_CHANNELS.mcpRunInstall, (input: unknown) =>
+    installer.run(requireString(isObject(input) ? input.planId : null, "planId")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpInstallStatus, (input: unknown) =>
+    installer.status(requireString(isObject(input) ? input.jobId : null, "jobId")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpCancelInstall, (input: unknown) =>
+    installer.cancel(requireString(isObject(input) ? input.jobId : null, "jobId")),
+  );
+  // Not an MCP server but a local web API: a small adapter Sahkarmi writes (audit §10.6 B).
+  handleTrusted(IPC_CHANNELS.mcpAddAdapter, async (input: unknown) => {
+    const analysis = analysisOf(input);
+    const name = requireString(isObject(input) ? input.name : null, "name");
+    if (!/^[A-Za-z0-9_-]{1,48}$/.test(name))
+      throw new Error("Name: letters, numbers, - and _ only.");
+    if (!analysis.notMcp.includes("http-api")) throw new Error("This repo has no local web API.");
+    const spec = /moneyprinterturbo/i.test(analysis.repo)
+      ? moneyPrinterTurboSpec()
+      : genericApiSpec(analysis.repo.split("/").pop() ?? name, "http://127.0.0.1:8000");
+    const server = await writeAdapter(
+      join(app.getPath("userData"), "mcp", name),
+      name,
+      spec,
+      process.execPath,
+    );
+    return mcp.save(server, `Adapter for GitHub ${analysis.repo}@${analysis.commit.slice(0, 7)}`);
+  });
+  handleTrusted(IPC_CHANNELS.mcpSetShared, async (input: unknown) => {
+    const shared = isObject(input) && input.shared === true;
+    if (shared) await bridge.listen();
+    return mcp.setShared(requireString(isObject(input) ? input.id : null, "id"), shared);
+  });
+  handleTrusted(IPC_CHANNELS.mcpAnalyzeGithub, (input: unknown) =>
+    mcp.analyzeGithub(text(input, "url")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpAddCandidate, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid MCP server.");
+    const values = isObject(input.env) ? input.env : {};
+    return mcp.addCandidate(
+      requireString(input.analysisId, "analysisId"),
+      requireString(input.candidateId, "candidateId"),
+      requireString(input.name, "name"),
+      Object.fromEntries(
+        Object.entries(values).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.mcpTest, (input: unknown) =>
+    mcp.test(requireString(isObject(input) ? input.id : null, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpSetCoworkers, (input: unknown) =>
+    mcp.setCoworkers(
+      requireString(isObject(input) ? input.id : null, "id"),
+      isObject(input) && Array.isArray(input.coworkerIds)
+        ? input.coworkerIds.filter((id): id is string => typeof id === "string")
+        : null,
+    ),
+  );
 }
 
-function registerKnowledgeIpc(knowledge: KnowledgeService): void {
+/**
+ * handleTrusted for a service initialised after the window shows: each call first waits for
+ * `ready`, so an early request from the page still gets a loaded answer.
+ */
+function trustedAfter(ready: Promise<unknown>) {
+  return <Arguments extends unknown[], Result>(
+    channel: string,
+    handler: (...arguments_: Arguments) => Result,
+  ): void =>
+    handleTrusted(channel, async (...arguments_: Arguments) => {
+      await ready;
+      return handler(...arguments_);
+    });
+}
+
+function registerKnowledgeIpc(knowledge: KnowledgeApi, ready: Promise<unknown>): void {
+  const handleTrusted = trustedAfter(ready);
   const kbId = (value: unknown) => requireString(value, "knowledgeBaseId");
   handleTrusted(IPC_CHANNELS.knowledgeList, () => knowledge.list());
   handleTrusted(IPC_CHANNELS.knowledgeCreate, (input: unknown) => {
@@ -353,7 +611,7 @@ function registerKnowledgeIpc(knowledge: KnowledgeService): void {
   });
   handleTrusted(IPC_CHANNELS.knowledgeOpenSource, async (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid request.");
-    const path = knowledge.sourcePath(
+    const path = await knowledge.sourcePath(
       kbId(input.kbId),
       requireString(input.documentId, "documentId"),
     );
@@ -394,6 +652,7 @@ function registerIpcHandlers(
   orchestrator: AdaptiveOrchestrator,
   store: BotStore,
   composio: ComposioClient,
+  apis: ApiIntegrationService,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -455,10 +714,21 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.maintenanceExportDiagnostics, () =>
     exportDiagnostics({ service, browser, updater, parentWindow: mainWindow }),
   );
+  const storageContext = {
+    userData: app.getPath("userData"),
+    transfersRoot: join(store.sharedRoot, "Transfers"),
+    botIds: () => store.list().map((bot) => bot.id),
+    mailbox,
+  };
+  handleTrusted(IPC_CHANNELS.maintenanceStorageUsage, () => readStorageUsage(storageContext));
+  handleTrusted(IPC_CHANNELS.maintenanceStorageClean, (input: unknown) =>
+    cleanStorage(storageContext, parseStorageClean(input)),
+  );
 
   handleTrusted(IPC_CHANNELS.agentGetStatus, () => service.getStatus());
   handleTrusted(IPC_CHANNELS.agentGetUsage, () => service.getUsage());
   handleTrusted(IPC_CHANNELS.agentListModels, () => service.listModels());
+  handleTrusted(IPC_CHANNELS.agentProbeProviders, () => service.probeProviders());
   handleTrusted(IPC_CHANNELS.agentRefreshModels, async () => {
     await service.refreshModels(true);
     return service.listModels();
@@ -487,8 +757,8 @@ function registerIpcHandlers(
     await service.deleteBot(id);
     await removeBotRecords(id);
   });
-  handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown) =>
-    service.readConversation(requireString(botId, "botId")),
+  handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown, options: unknown) =>
+    service.readConversation(requireString(botId, "botId"), readConversationOptions(options)),
   );
   handleTrusted(IPC_CHANNELS.agentSearchMessages, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid search request.");
@@ -568,6 +838,14 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.agentCancelQueuedMessage, (input: unknown) => {
     const parsed = parseCancelQueuedMessage(input);
     return service.cancelQueuedMessage(parsed.botId, parsed.deliveryId);
+  });
+  handleTrusted(IPC_CHANNELS.agentRerunInterrupted, (input: unknown) => {
+    const parsed = parseCancelQueuedMessage(input);
+    return service.rerunInterrupted(parsed.botId, parsed.deliveryId);
+  });
+  handleTrusted(IPC_CHANNELS.agentDismissInterrupted, (input: unknown) => {
+    const parsed = parseCancelQueuedMessage(input);
+    return service.dismissInterrupted(parsed.botId, parsed.deliveryId);
   });
   handleTrusted(IPC_CHANNELS.agentSendQueuedNow, (input: unknown) => {
     const parsed = parseCancelQueuedMessage(input);
@@ -825,6 +1103,56 @@ function registerIpcHandlers(
     business.deleteTarget(requireString(targetId, "targetId")),
   );
 
+  handleTrusted(IPC_CHANNELS.apisList, () => apis.list());
+  handleTrusted(IPC_CHANNELS.apisDiscover, (input: unknown) => {
+    if (!isObject(input) || typeof input.apiKey !== "string") throw new Error("Paste an API key.");
+    return apis.discover({
+      apiKey: input.apiKey,
+      name: optionalText(input.name),
+      docsUrl: optionalText(input.docsUrl),
+      specUrl: optionalText(input.specUrl),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.apisUpdate, (input: unknown) => {
+    if (!isObject(input) || !isObject(input.patch)) throw new Error("Invalid API details.");
+    const patch = input.patch;
+    const auth =
+      isObject(patch.auth) && typeof patch.auth.kind === "string"
+        ? { kind: patch.auth.kind as ApiAuthKind, name: optionalText(patch.auth.name) ?? null }
+        : undefined;
+    return apis.update(requireString(input.id, "id"), {
+      name: optionalText(patch.name),
+      provider: optionalText(patch.provider),
+      baseUrl: optionalText(patch.baseUrl),
+      docsUrl: optionalText(patch.docsUrl),
+      specUrl: optionalText(patch.specUrl),
+      example: optionalText(patch.example),
+      auth,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.apisRunTests, (id: unknown) => apis.runTests(requireString(id, "id")));
+  handleTrusted(IPC_CHANNELS.apisActivate, (id: unknown) => apis.activate(requireString(id, "id")));
+  handleTrusted(IPC_CHANNELS.apisSetEnabled, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    return apis.setEnabled(requireString(input.id, "id"), input.enabled === true);
+  });
+  handleTrusted(IPC_CHANNELS.apisSetAccess, (input: unknown) => {
+    if (!isObject(input) || !isObject(input.access)) throw new Error("Invalid access.");
+    const access = input.access;
+    const strings = (value: unknown) =>
+      Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    return apis.setAccess(requireString(input.id, "id"), {
+      everyone: access.everyone === true,
+      ceo: access.ceo === true,
+      botIds: strings(access.botIds),
+      workspaceIds: strings(access.workspaceIds),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.apisActivity, (id: unknown) => apis.activity(requireString(id, "id")));
+  handleTrusted(IPC_CHANNELS.apisRevoke, (id: unknown) => apis.revoke(requireString(id, "id")));
+
   handleTrusted(IPC_CHANNELS.composioGetStatus, () => composio.getStatus());
   handleTrusted(IPC_CHANNELS.composioSetApiKey, (input: unknown) => {
     const key = isObject(input) && typeof input.key === "string" ? input.key : "";
@@ -930,7 +1258,7 @@ function registerIpcHandlers(
     const doc = parseWorkflowJson(await readFile(path, "utf8"));
     return { doc, suggestions: suggestAssignments(doc, service.listBots()) };
   });
-  handleTrusted(IPC_CHANNELS.routinesSave, (input: unknown) => {
+  handleTrusted(IPC_CHANNELS.routinesSave, async (input: unknown) => {
     if (!isObject(input) || !Array.isArray(input.steps)) throw new Error("Invalid routine.");
     const known = new Set(service.listBots().map((bot) => bot.id));
     const steps = input.steps.map((step) => {
@@ -943,14 +1271,24 @@ function registerIpcHandlers(
         instruction: typeof step.instruction === "string" ? step.instruction : "",
       };
     });
+    const trigger = input.trigger ? await parseRoutineTrigger(input.trigger) : null;
     return routines.save({
       id: typeof input.id === "string" && input.id ? input.id : undefined,
       name: typeof input.name === "string" ? input.name : "",
       steps,
-      cadence: input.cadence === null ? null : parseRoutineCadence(input.cadence),
+      cadence: trigger || input.cadence === null ? null : parseRoutineCadence(input.cadence),
+      trigger,
       enabled: input.enabled === true,
       confirmFrequent: input.confirmFrequent === true,
     });
+  });
+  handleTrusted(IPC_CHANNELS.routinesPickFolder, async () => {
+    const options: OpenDialogOptions = { properties: ["openDirectory"] };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    const folder = result.filePaths[0];
+    return result.canceled || !folder ? null : folder;
   });
   handleTrusted(IPC_CHANNELS.routinesDelete, (routineId: unknown) =>
     routines.delete(requireString(routineId, "routineId")),
@@ -995,6 +1333,10 @@ function registerIpcHandlers(
     if (!isObject(input) || typeof input.objective !== "string") {
       throw new Error("Invalid StartOrchestratorRunInput");
     }
+    const check = input.checkCommand ?? null;
+    if (check !== null && (typeof check !== "string" || check.length > 500)) {
+      throw new Error("Invalid check command.");
+    }
     const workspacePath = store.sharedRoot;
     const existingBots = store.list();
     return orchestrator.startRun(
@@ -1015,33 +1357,42 @@ function registerIpcHandlers(
     if (typeof runId !== "string") throw new Error("Invalid runId");
     return orchestrator.cancelRun(runId);
   });
-  handleTrusted(IPC_CHANNELS.memoryList, (category: unknown) => {
-    return service.memoryStore.list(typeof category === "string" ? category : undefined);
+  handleTrusted(IPC_CHANNELS.memoryList, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid memory list request.");
+    const workspaceId = requireString(input.workspaceId, "workspaceId");
+    const category = typeof input.category === "string" ? input.category : undefined;
+    const limit = typeof input.limit === "number" ? input.limit : 200;
+    const offset = typeof input.offset === "number" ? input.offset : 0;
+    const query = typeof input.query === "string" ? input.query.trim() : "";
+    if (query) {
+      const memories = await service.memoryStore.search(workspaceId, query, { category, limit });
+      return { memories, total: memories.length, offset: 0 };
+    }
+    return service.memoryStore.list(workspaceId, { category, limit, offset });
   });
   handleTrusted(IPC_CHANNELS.memorySave, (entry: unknown) => {
     if (!isObject(entry) || typeof entry.key !== "string" || typeof entry.content !== "string") {
       throw new Error("Invalid memory entry: key and content required");
     }
-    const rawCat = typeof entry.category === "string" ? entry.category : "fact";
-    const category =
-      rawCat === "architecture" || rawCat === "preference" || rawCat === "decision"
-        ? rawCat
-        : "fact";
     const tags = Array.isArray(entry.tags)
       ? entry.tags.filter((t): t is string => typeof t === "string")
       : [];
     return service.memoryStore.save({
+      workspaceId: requireString(entry.workspaceId, "workspaceId"),
       key: entry.key,
       content: entry.content,
-      category,
+      category: memoryCategory(entry.category),
       tags,
       authorBotId: typeof entry.authorBotId === "string" ? entry.authorBotId : undefined,
       id: typeof entry.id === "string" ? entry.id : undefined,
     });
   });
-  handleTrusted(IPC_CHANNELS.memoryDelete, (id: unknown) => {
-    if (typeof id !== "string") throw new Error("Invalid memory id");
-    return service.memoryStore.delete(id);
+  handleTrusted(IPC_CHANNELS.memoryDelete, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid memory id");
+    return service.memoryStore.delete(
+      requireString(input.id, "id"),
+      requireString(input.workspaceId, "workspaceId"),
+    );
   });
 }
 
@@ -1171,7 +1522,22 @@ function createWindow(): BrowserWindow {
     if (process.platform === "darwin" && !isQuitting) {
       event.preventDefault();
       window.hide();
+    } else if (
+      shouldHideToTray({
+        platform: process.platform,
+        enabled: keepRunningInTray(),
+        quitting: isQuitting,
+      })
+    ) {
+      // Background mode: schedules, routines and Telegram keep running; Quit is in the tray.
+      event.preventDefault();
+      window.hide();
+      showBackgroundTray();
     }
+  });
+  // Windows is signing out or shutting down: never hold it up by hiding to the tray.
+  window.on("session-end", () => {
+    isQuitting = true;
   });
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
@@ -1289,21 +1655,112 @@ function configureApplicationMenu(service: AgentService, updater: UpdateService)
   );
 }
 
+/** Approval requests that already raised a notification (or appeared while the owner looked). */
+const notifiedApprovals = new Set<string>();
+
+/** The owner is looking at Sahkarmi: the window is shown, not minimised, and focused. */
+function ownerIsPresent(): boolean {
+  return Boolean(
+    mainWindow &&
+      !mainWindow.isDestroyed() &&
+      mainWindow.isVisible() &&
+      !mainWindow.isMinimized() &&
+      mainWindow.isFocused(),
+  );
+}
+
 function forwardAgentEvent(event: AgentEvent): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(IPC_CHANNELS.agentEvent, event);
+  if (event.type === "approvals-changed") {
+    // Tracked even while the owner is looking, so a card they already saw never pops up later.
+    const contents = notificationsForNewApprovals(
+      event.approvals,
+      agentService?.listBots() ?? [],
+      notifiedApprovals,
+    );
+    if (ownerIsPresent() || !Notification.isSupported()) return;
+    for (const content of contents) showAgentNotification(content);
+    return;
+  }
   if (mainWindow.isFocused() || !Notification.isSupported()) return;
 
   const content = notificationForAgentEvent(event, agentService?.listBots() ?? []);
   if (!content) return;
-  const notification = new Notification(content);
-  notification.on("click", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  });
+  showAgentNotification(content);
+}
+
+function showAgentNotification(content: AgentNotificationContent): void {
+  const notification = new Notification({ title: content.title, body: content.body });
+  notification.on("click", () => openMainWindow(content.botId ?? null, content.approvalId));
   notification.show();
+}
+
+/** Brings the window back (from the tray too) and, when given, opens that coworker's chat. */
+function openMainWindow(botId: string | null = null, approvalId?: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (botId || approvalId) {
+    mainWindow.webContents.send(IPC_CHANNELS.agentEvent, {
+      type: "open-requested",
+      botId,
+      ...(approvalId ? { approvalId } : {}),
+    } satisfies AgentEvent);
+  }
+}
+
+function showBackgroundTray(): void {
+  if (!backgroundTray) {
+    const icon = windowIcon() ?? nativeImage.createEmpty();
+    backgroundTray = new BackgroundTray(icon, {
+      open: () => openMainWindow(),
+      setPaused: (paused) => void setAllCoworkersPaused(paused),
+      isPaused: () => allPaused,
+      quit: () => app.quit(),
+    });
+  }
+  backgroundTray.show();
+  if (!trayHintShown && Notification.isSupported()) {
+    trayHintShown = true;
+    const hint = new Notification({
+      title: "Sahkarmi is still running",
+      body: "Schedules and routines keep working. Right-click the tray icon to pause or quit.",
+    });
+    hint.on("click", () => openMainWindow());
+    hint.show();
+  }
+}
+
+/**
+ * Tray → "Pause all coworkers": stops running turns, pauses every queue and holds schedules and
+ * routines until resumed. Not remembered across a restart.
+ */
+async function setAllCoworkersPaused(paused: boolean): Promise<void> {
+  allPaused = paused;
+  scheduleStore?.setPaused(paused);
+  routineStore?.setPaused(paused);
+  const service = agentService;
+  if (!service) return;
+  try {
+    if (paused) {
+      await service.interruptAll();
+      for (const bot of service.listBots()) {
+        if (service.listQueue(bot.id).paused && !pausedByTray.has(bot.id)) continue;
+        pausedByTray.add(bot.id);
+        await service.setQueuePaused(bot.id, true);
+      }
+    } else {
+      for (const botId of [...pausedByTray]) {
+        pausedByTray.delete(botId);
+        await service.setQueuePaused(botId, false).catch(() => undefined);
+      }
+    }
+  } catch (error) {
+    appLog.write("error", paused ? "pause all failed" : "resume all failed", String(error));
+  }
+  backgroundTray?.refresh();
 }
 
 let selfUpdateCheck: Promise<boolean> | null = null;
@@ -1324,13 +1781,17 @@ function cannotSelfUpdate(): Promise<boolean> {
 }
 
 let providerSetup: ProviderSetup | null = null;
+let secretStore: SecretStore | null = null;
+let secretCodec: SecretCodec | null = null;
+const SECRET_STORE_FILE = "secrets.enc.json";
 let voiceService: VoiceService | null = null;
 let desktopHost: DesktopHost | null = null;
 
 /** Two minutes of 16 kHz audio is the longest clip one dictation request may carry. */
 const MAX_DICTATION_SAMPLES = 16_000 * 120;
 
-function registerVoiceHandlers(voice: VoiceService): void {
+function registerVoiceHandlers(voice: VoiceService, ready: Promise<unknown>): void {
+  const handleTrusted = trustedAfter(ready);
   const modelId = (value: unknown) => {
     if (typeof value !== "string" || !/^[a-z0-9-]{2,40}$/.test(value)) {
       throw new Error("Unknown voice model.");
@@ -1420,46 +1881,48 @@ function registerProviderSetupHandlers(setup: ProviderSetup): void {
   });
 }
 
+/**
+ * API keys live encrypted in secrets.enc.json (Windows DPAPI through safeStorage). Keys an older
+ * Sahkarmi saved as plain .txt files are moved in once, and each file is removed only after its
+ * encrypted copy reads back. Without DPAPI the old files stay and are used as before.
+ */
 async function restoreSavedApiKeys(): Promise<void> {
   const home = homedir();
+  secretCodec = new SecretCodec(safeStorage);
+  const store = new SecretStore({
+    filePath: join(app.getPath("userData"), SECRET_STORE_FILE),
+    codec: secretCodec,
+    legacyFiles: {
+      GEMINI_API_KEY: join(home, ".gemini", "antigravity-acp", "api_key.txt"),
+      OPENAI_API_KEY: join(home, ".codex", "openai_api_key.txt"),
+      ANTHROPIC_API_KEY: join(home, ".claude", "anthropic_api_key.txt"),
+      [COMPOSIO_SECRET]: join(app.getPath("userData"), "composio_api_key.txt"),
+    },
+  });
+  secretStore = store;
   try {
-    if (!process.env.GEMINI_API_KEY && !process.env.ANTIGRAVITY_API_KEY) {
+    await store.load();
+    const { migrated, kept } = await store.migrate();
+    if (migrated.length) appLog.write("info", "API keys moved to encrypted storage", migrated);
+    if (kept.length) appLog.write("warn", "API keys left in their old files", kept);
+  } catch (error) {
+    appLog.write("warn", "encrypted key storage unavailable", String(error));
+  }
+  // Sahkarmi's own environment; each AI tool is then started with only its own key.
+  const entries = await store.entries().catch((): Array<[string, string]> => []);
+  for (const [name, value] of entries) {
+    // Composio reads its key from the store itself.
+    if (name === COMPOSIO_SECRET) continue;
+    if (name === "GEMINI_API_KEY") {
       // A Google AI Studio key saved from the Google Antigravity tile.
-      const key = await readFile(
-        join(home, ".gemini", "antigravity-acp", "api_key.txt"),
-        "utf8",
-      ).catch(() => "");
-      const trimmed = key.trim();
-      if (trimmed) {
-        process.env.ANTIGRAVITY_API_KEY = trimmed;
-        process.env.GEMINI_API_KEY = trimmed;
-        process.env.GOOGLE_API_KEY = trimmed;
+      if (!process.env.GEMINI_API_KEY && !process.env.ANTIGRAVITY_API_KEY) {
+        process.env.ANTIGRAVITY_API_KEY = value;
+        process.env.GEMINI_API_KEY = value;
+        process.env.GOOGLE_API_KEY = value;
       }
+      continue;
     }
-  } catch {
-    // ignore
-  }
-  try {
-    if (!process.env.OPENAI_API_KEY) {
-      const key = await readFile(join(home, ".codex", "openai_api_key.txt"), "utf8").catch(
-        () => "",
-      );
-      const trimmed = key.trim();
-      if (trimmed) process.env.OPENAI_API_KEY = trimmed;
-    }
-  } catch {
-    // ignore
-  }
-  try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      const key = await readFile(join(home, ".claude", "anthropic_api_key.txt"), "utf8").catch(
-        () => "",
-      );
-      const trimmed = key.trim();
-      if (trimmed) process.env.ANTHROPIC_API_KEY = trimmed;
-    }
-  } catch {
-    // ignore
+    if (!process.env[name]) process.env[name] = value;
   }
 }
 
@@ -1493,9 +1956,10 @@ function scheduleAiRuntimeChecks(): void {
 /** Passed when the app is opened again after waiting for an installer, so it never waits twice. */
 const AFTER_INSTALL_WAIT = "--after-install-wait";
 
-async function waitForRunningInstaller(): Promise<boolean> {
-  if (process.platform !== "win32" || !app.isPackaged) return false;
-  if (process.argv.includes(AFTER_INSTALL_WAIT)) return false;
+/** The update installer still running, if any (tasklist runs alongside the rest of start-up). */
+async function findRunningInstaller(): Promise<string | null> {
+  if (process.platform !== "win32" || !app.isPackaged) return null;
+  if (process.argv.includes(AFTER_INSTALL_WAIT)) return null;
   const tasks = await new Promise<string>((resolve) => {
     execFile(
       "tasklist",
@@ -1504,7 +1968,10 @@ async function waitForRunningInstaller(): Promise<boolean> {
       (error, stdout) => resolve(error ? "" : stdout),
     );
   });
-  const installer = runningInstallerName(tasks, app.getVersion());
+  return runningInstallerName(tasks, app.getVersion());
+}
+
+async function waitForRunningInstaller(installer: string | null): Promise<boolean> {
   if (!installer) return false;
   const quote = (text: string) => `'${text.replace(/'/g, "''")}'`;
   const script = [
@@ -1554,9 +2021,17 @@ if (!hasSingleInstanceLock) {
   void app
     .whenReady()
     .then(async () => {
-      if (await waitForRunningInstaller()) return;
+      // tasklist takes a few hundred ms: it runs while everything else starts. The window only
+      // shows once the page is loaded, which waits for this answer.
+      const runningInstaller = findRunningInstaller().catch(() => null);
       configureContentSecurityPolicy();
       mainWindow = createWindow();
+      // Work that the first screen does not need starts once the window is on screen.
+      const shownWindow = mainWindow;
+      const windowShown = new Promise<void>((resolve) => {
+        shownWindow.once("ready-to-show", () => resolve());
+        setTimeout(resolve, 15_000).unref?.();
+      });
       await restoreSavedApiKeys();
       // Never blocks startup: only copies nobody uses are removed, so it can run alongside.
       void cleanUpRuntimes(app.getPath("userData"))
@@ -1569,6 +2044,19 @@ if (!hasSingleInstanceLock) {
       );
       const store = new BotStore(app.getPath("userData"), homedir());
       await store.initialize();
+      // Browser data of deleted coworkers (their sessions are never opened again).
+      void windowShown
+        .then(() =>
+          removeOrphanPartitions(
+            app.getPath("userData"),
+            store.list().map((bot) => bot.id),
+          ),
+        )
+        .then(({ removed }) => {
+          if (removed.length)
+            appLog.write("info", "removed deleted coworkers' browser data", removed);
+        })
+        .catch(() => undefined);
       mailboxStore = new MailboxStore(app.getPath("userData"), store.sharedRoot);
       await mailboxStore.initialize();
       configureApplicationProtocol();
@@ -1583,13 +2071,13 @@ if (!hasSingleInstanceLock) {
         botOfThread: (threadId) =>
           store.list().find((bot) => bot.threadId === threadId)?.id ?? null,
         botIds: store.list().map((bot) => bot.id),
-        usedPages: await browserPagesFromAudit(
-          join(app.getPath("userData"), "permission-audit.json"),
-        ),
+        loadUsedPages: () =>
+          browserPagesFromAudit(join(app.getPath("userData"), "permission-audit.json")),
       });
       const setupFile = join(app.getPath("userData"), SETUP_FILE);
       const setupState = await readSetupState(setupFile);
       const permissions = new PermissionService(app.getPath("userData"));
+      const approvals = new ApprovalStore(app.getPath("userData"));
       agentService = new AgentService(
         store,
         mailboxStore,
@@ -1597,7 +2085,7 @@ if (!hasSingleInstanceLock) {
         readComputerUsePrerequisites,
         30_000,
         setupState.preferredProvider ?? "opencode",
-        new ApprovalStore(app.getPath("userData")),
+        approvals,
         permissions,
       );
       const service = agentService;
@@ -1610,14 +2098,56 @@ if (!hasSingleInstanceLock) {
         );
       });
       service.setGeminiAccounts(geminiAccounts);
+      // Sign-in folders of Google accounts removed while Google's server still held them.
+      void windowShown
+        .then(() => removeOrphanGeminiHomes(app.getPath("userData")))
+        .then(({ removed }) => {
+          if (removed.length)
+            appLog.write("info", "removed unused Google account folders", removed);
+        })
+        .catch(() => undefined);
       service.on("log", (message) => appLog.write("info", message));
+      // A newly downloaded AI tool worked once: the copy it replaced can go now.
+      service.on("runtime-started", (_provider, executable) => {
+        const userData = app.getPath("userData");
+        void markRuntimeStarted(userData, executable)
+          .then((marked) => (marked ? cleanUpRuntimes(userData) : null))
+          .then((result) => {
+            if (result?.removed.length)
+              appLog.write("info", "removed replaced AI tool copies", result.removed);
+          })
+          .catch(() => undefined);
+      });
       const usage = new UsageService(app.getPath("userData"));
       await usage.initialize().catch((error) => {
         appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
       });
-      const composioClient = new ComposioClient({ userDataPath: app.getPath("userData") });
+      const composioClient = new ComposioClient({
+        userDataPath: app.getPath("userData"),
+        secrets: secretStore ?? undefined,
+      });
       service.setUsageService(usage);
       service.setComposioClient(composioClient);
+      // Web APIs the owner connects in Marketplace → APIs: nothing runs until a coworker calls one.
+      const apis = new ApiIntegrationService({
+        filePath: join(app.getPath("userData"), "api-integrations.json"),
+        secrets: {
+          get: (name) => secretStore?.get(name) ?? Promise.resolve(null),
+          set: async (name, value) => {
+            if (!secretStore) throw new Error("Encrypted key storage is not ready yet.");
+            await secretStore.set(name, value);
+          },
+        },
+        coworkers: () =>
+          service.listBots().map((bot) => ({ id: bot.id, workspaceId: bot.workspaceId ?? null })),
+        ceoOf: (workspaceId) =>
+          service.listWorkspaces().workspaces.find((workspace) => workspace.id === workspaceId)
+            ?.ceoBotId ?? null,
+        approvals,
+        nameFor: (botId) => service.listBots().find((bot) => bot.id === botId)?.name,
+        onApprovalCreated: (approval) => service.apiApprovalCreated(approval),
+      });
+      service.setApiIntegrations(apis);
       if (desktopControlSupported()) {
         // Started on a coworker's first desktop step; Sahkarmi's own windows stay off limits.
         desktopHost = new DesktopHost({
@@ -1626,7 +2156,7 @@ if (!hasSingleInstanceLock) {
         });
         service.setDesktopHost(desktopHost);
       }
-      const mcpServers = new McpServerStore(app.getPath("userData"));
+      const mcpServers = new McpServerStore(app.getPath("userData"), undefined, secretCodec);
       await mcpServers.load().catch((error) => {
         appLog.write("error", "MCP server list unreadable; starting with none", String(error));
       });
@@ -1634,19 +2164,49 @@ if (!hasSingleInstanceLock) {
       registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
+      mcpServers.setFeatureCheck((id) => features.isEnabled(id));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
-      const knowledge = new KnowledgeService(app.getPath("userData"));
-      knowledgeService = knowledge;
-      await knowledge.initialize().catch((error) => {
-        appLog.write("error", "knowledge bases unreadable; starting empty", String(error));
+      const engineSettings = new EngineSettingsStore(app.getPath("userData"));
+      await engineSettings.initialize();
+      service.configureEngineSettings(() => engineSettings.get());
+      let runEvents: RunEventStore | null = null;
+      try {
+        runEvents = new RunEventStore(join(app.getPath("userData"), "run-events.sqlite"));
+        const recorder = runEvents;
+        service.configureRunEvents((event) => recorder.record(event));
+      } catch (error) {
+        appLog.write("error", "Performance record unavailable", String(error));
+      }
+      registerEngineIpc(service, engineSettings, runEvents);
+      keepRunningInTray = () => features.isEnabled("background-tray");
+      // Approvals raised while the owner is away wait longer before they expire.
+      service.setOwnerPresence(ownerIsPresent);
+      service.configureLazyProviderStart(() => features.isEnabled("lean-runtime"));
+      service.configureClaudeIdleClose(() => features.isEnabled("lean-runtime"));
+      service.configureDeltaUpdates(() => features.isEnabled("chat-delta-updates"));
+      // Knowledge Bases run in a utility process (indexing never blocks the window); the host
+      // falls back to this process if it cannot start. It starts after the window shows.
+      const knowledge = new KnowledgeHost(app.getPath("userData"), {
+        fork: () =>
+          utilityProcess.fork(join(__dirname, "knowledge-worker.js"), [], {
+            serviceName: "Sahkarmi Knowledge",
+          }),
       });
+      knowledgeService = knowledge;
       knowledge.on("event", forwardAgentEvent);
       knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
+      const knowledgeReady = windowShown.then(() =>
+        knowledge.initialize().catch((error) => {
+          appLog.write("error", "knowledge bases unreadable; starting empty", String(error));
+        }),
+      );
+      service.configureMemory(() => features.isEnabled("memory-auto-context"));
       service.attachKnowledge(
         knowledge,
         () => features.isEnabled("knowledge-base") && features.isEnabled("knowledge-auto-context"),
+        () => features.isEnabled("knowledge-base"),
       );
-      registerKnowledgeIpc(knowledge);
+      registerKnowledgeIpc(knowledge, knowledgeReady);
       await features.initialize().catch((error) => {
         appLog.write("error", "feature settings unreadable; using defaults", String(error));
       });
@@ -1660,14 +2220,18 @@ if (!hasSingleInstanceLock) {
       );
       const routines = new RoutineStore(app.getPath("userData"));
       await routines.initialize();
-      // Bring the owner's routines from their previous desktop agent over once (paused), so a switch loses nothing.
-      await importDesktopRoutinesOnce({
-        userDataPath: app.getPath("userData"),
-        sourceDatabase: join(app.getPath("appData"), "OpenBot", "openbot.db"),
-        routineCount: routines.state().routines.length,
-        coworkers: store.list(),
-        save: (input) => routines.save(input),
-      })
+      // Bring the owner's routines from their previous desktop agent over once (paused), so a
+      // switch loses nothing. Not needed for the first screen: it runs once the window shows.
+      void windowShown
+        .then(() =>
+          importDesktopRoutinesOnce({
+            userDataPath: app.getPath("userData"),
+            sourceDatabase: join(app.getPath("appData"), "OpenBot", "openbot.db"),
+            routineCount: routines.state().routines.length,
+            coworkers: store.list(),
+            save: (input) => routines.save(input),
+          }),
+        )
         .then((report) => {
           if (report)
             appLog.write("info", "Imported routines from the previous desktop agent", report);
@@ -1730,6 +2294,16 @@ if (!hasSingleInstanceLock) {
         if (Date.now() - lastWakeWork >= FOCUS_REFRESH_MS) refreshOnWake();
       };
       mainWindow.on("focus", refreshOnFocus);
+      // Minimised or hidden: coworker pages nobody is using slow down and go quiet.
+      const browserForWindow = browserHost;
+      const quietPages = (hidden: boolean) => () => {
+        if (features.isEnabled("lean-runtime")) browserForWindow.setWindowHidden?.(hidden);
+        else if (!hidden) browserForWindow.setWindowHidden?.(false);
+      };
+      mainWindow.on("minimize", quietPages(true));
+      mainWindow.on("hide", quietPages(true));
+      mainWindow.on("restore", quietPages(false));
+      mainWindow.on("show", quietPages(false));
       powerMonitor.on("resume", refreshOnWake);
       mainWindow.once("closed", () => powerMonitor.removeListener("resume", refreshOnWake));
       service.on("event", (event) => {
@@ -1748,6 +2322,7 @@ if (!hasSingleInstanceLock) {
       updateService.start();
       const toolsDirectory = join(app.getPath("userData"), "tools");
       setToolsDirectory(toolsDirectory);
+      setCliVersionCache(join(app.getPath("userData"), "cli-versions.json"));
       const runtimeDirectory = join(app.getPath("userData"), "runtime");
       setRuntimeDirectory(runtimeDirectory);
       aiRuntimeService = new AiRuntimeService({
@@ -1789,6 +2364,7 @@ if (!hasSingleInstanceLock) {
         runtimeDirectory,
         recheck: (provider) => service.ensureProvider(provider),
         openUrl: (url) => void shell.openExternal(url),
+        secrets: secretStore ?? undefined,
       });
       providerSetup.on("state", (state) => {
         if (state.phase === "failed") {
@@ -1801,23 +2377,22 @@ if (!hasSingleInstanceLock) {
       registerProviderSetupHandlers(providerSetup);
       registerGeminiAccountHandlers(geminiAccounts, providerSetup, service);
       voiceService = new VoiceService({ userDataPath: app.getPath("userData") });
-      await voiceService.initialize().catch((error) => {
-        appLog.write("error", "voice settings unreadable; using defaults", String(error));
-      });
+      const voice = voiceService;
+      const voiceReady = windowShown.then(() =>
+        voice.initialize().catch((error) => {
+          appLog.write("error", "voice settings unreadable; using defaults", String(error));
+        }),
+      );
       voiceService.on("state", (state) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.voiceEvent, state);
         }
       });
-      registerVoiceHandlers(voiceService);
+      registerVoiceHandlers(voiceService, voiceReady);
       const orchestratorStore = new OrchestratorStore(app.getPath("userData"));
       await orchestratorStore.initialize();
       const orchestrator = new AdaptiveOrchestrator(
         orchestratorStore,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
         {
           port: {
             sendMessage: (input) => service.sendMessage(input),
@@ -1827,8 +2402,34 @@ if (!hasSingleInstanceLock) {
             off: (event, listener) => service.off(event, listener),
             listBots: () => service.listBots(),
             listApprovals: () => service.listApprovals(),
+            withdrawDelivery: (botId, deliveryId) => service.withdrawDelivery(botId, deliveryId),
           },
-          enabled: () => features.isEnabled("team-run-engine"),
+          checkpoints: () =>
+            features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
+          review: () => features.isEnabled("cross-model-review"),
+          planner: (workspaceId) => {
+            if (!features.isEnabled("team-run-ai-planning")) return null;
+            const workspaces = service.listWorkspaces().workspaces;
+            const workspace =
+              workspaces.find((candidate) => candidate.id === workspaceId) ?? workspaces[0];
+            return workspace?.ceoBotId ?? null;
+          },
+        },
+        {
+          // The owner's check command runs only where the permission rules allow it.
+          verifier: new VerificationRepairEngine(({ botId, command, cwd }) =>
+            permissions.authorize(
+              {
+                botId,
+                provider: "sahkarmi",
+                category: classifyCommand(command),
+                action: `Run the team run's check command: ${command}`,
+                paths: [cwd],
+                reason: "The owner set this check for the team run.",
+              },
+              [cwd],
+            ),
+          ),
         },
       );
       orchestrator.onEvent((event) => forwardAgentEvent(event));
@@ -1851,9 +2452,11 @@ if (!hasSingleInstanceLock) {
         orchestrator,
         store,
         composioClient,
+        apis,
       );
       const telegram = new TelegramBridge({
         userDataPath: app.getPath("userData"),
+        codec: secretCodec ?? undefined,
         agent: {
           listBots: () => service.listBots(),
           sendMessage: (input) => service.sendMessage(input),
@@ -1889,25 +2492,38 @@ if (!hasSingleInstanceLock) {
       telegramBridge = telegram;
       registerTelegramIpc(telegram);
       configureApplicationMenu(service, updateService);
+      if (await waitForRunningInstaller(await runningInstaller)) return;
       await loadRenderer(mainWindow);
-      void agentInitialization
-        .start()
-        .then(() => {
-          schedules.start(async (task) => {
-            await service.sendMessage({
-              botId: task.botId,
-              text: `[Scheduled task] ${task.text}`,
-            });
-          });
-          routines.start(createRoutineExecutor(service));
-          void telegram
-            .initialize()
-            .catch((error) => appLog.write("error", "Telegram bridge did not start", error));
+      mainProcessStarted = true;
+      showCorruptFileNotices();
+      void pruneCrashDumps(app.getPath("crashDumps"))
+        .then((deleted) => {
+          if (deleted) appLog.write("info", "removed old crash dumps", { deleted });
         })
-        .catch((error) => {
-          console.error("Unable to initialize the local agent backend:", error);
-          appLog.write("error", "Unable to initialize the local agent backend", error);
+        .catch(() => undefined);
+      // Runs after the first successful start, including a retry from the window after a failed
+      // first try; before, a failed first try left these off until the app restarted.
+      agentInitialization.onReady(() => {
+        schedules.start(async (task) => {
+          await service.sendMessage({
+            botId: task.botId,
+            text: `[Scheduled task] ${task.text}`,
+            origin: "schedule",
+          });
         });
+        routines.start(createRoutineExecutor(service));
+        // A team run paused on an approval before the restart listens for the decision again.
+        void orchestrator
+          .restoreWaitingRuns()
+          .catch((error) => appLog.write("error", "Team runs did not resume", error));
+        void telegram
+          .initialize()
+          .catch((error) => appLog.write("error", "Telegram bridge did not start", error));
+      });
+      void agentInitialization.start().catch((error) => {
+        console.error("Unable to initialize the local agent backend:", error);
+        appLog.write("error", "Unable to initialize the local agent backend", error);
+      });
 
       app.on("activate", () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1993,6 +2609,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", (event) => {
   isQuitting = true;
+  backgroundTray?.destroy();
   if (shutdownStarted) return;
   event.preventDefault();
   // A stuck agent process or dialog must never keep the app open after the owner quit it.
@@ -2045,9 +2662,57 @@ function parseSaveTarget(value: unknown): SaveBusinessTargetInput {
   };
 }
 
+function parseStorageClean(value: unknown): StorageCleanInput {
+  if (!isObject(value) || typeof value.category !== "string") {
+    throw new Error("Invalid storage clean request.");
+  }
+  if (value.category === "attachments") {
+    const days = typeof value.olderThanDays === "number" ? value.olderThanDays : Number.NaN;
+    if (!Number.isFinite(days) || days < 1) throw new Error("Choose at least 1 day.");
+    return { category: "attachments", olderThanDays: Math.floor(days) };
+  }
+  if (["browser", "runtimes", "accounts", "logs"].includes(value.category)) {
+    return { category: value.category as "browser" | "runtimes" | "accounts" | "logs" };
+  }
+  throw new Error("This kind of data cannot be cleaned here.");
+}
+
+function readConversationOptions(value: unknown): ReadConversationOptions | undefined {
+  if (!isObject(value) || typeof value.limit !== "number" || !Number.isFinite(value.limit)) {
+    return undefined;
+  }
+  return { limit: Math.max(1, Math.min(100_000, Math.floor(value.limit))) };
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required.`);
   return value;
+}
+
+/** Settings > Features engine limits and the local Performance view. */
+function registerEngineIpc(
+  service: AgentService,
+  engineSettings: EngineSettingsStore,
+  runEvents: RunEventStore | null,
+): void {
+  handleTrusted(IPC_CHANNELS.orchestratorGetEngineSettings, () => engineSettings.get());
+  handleTrusted(IPC_CHANNELS.orchestratorSetEngineSettings, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid engine settings.");
+    const saved = await engineSettings.update(input);
+    service.configureEngineSettings(() => engineSettings.get());
+    return saved;
+  });
+  handleTrusted(
+    IPC_CHANNELS.orchestratorPerformance,
+    () =>
+      runEvents?.summary() ?? {
+        since: null,
+        totalTurns: 0,
+        byCoworker: [],
+        byModel: [],
+        recent: [],
+      },
+  );
 }
 
 function parseSendMessage(value: unknown): SendMessageInput {
@@ -2072,6 +2737,8 @@ function parseSendMessage(value: unknown): SendMessageInput {
     text: value.text,
     attachmentDraftIds,
     replyToMessageId: replyToMessageId?.trim() || null,
+    // The composer asks to join a running turn; the renderer can never claim another origin.
+    ...(value.steer === true ? { steer: true } : {}),
   };
 }
 
@@ -2334,4 +3001,8 @@ function previewThumbnail(dataUrl: string): string | null {
   const { width } = image.getSize();
   const small = width > 640 ? image.resize({ width: 640, quality: "good" }) : image;
   return `data:image/jpeg;base64,${small.toJPEG(72).toString("base64")}`;
+}
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 2_000) : undefined;
 }

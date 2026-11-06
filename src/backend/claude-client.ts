@@ -18,24 +18,31 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
+import { API_TOOL_NAMESPACE } from "./api-integrations/api-service";
+import { CALL_API_DESCRIPTION, LIST_APIS_DESCRIPTION } from "./api-integrations/api-tools";
 import {
   APPROVAL_DETAILS_HELP,
   APPROVAL_TITLE_HELP,
   APPROVAL_TOOL_DESCRIPTION,
 } from "./approval-wording";
 import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
-import { isInterruptMarker, readTranscriptLines } from "./claude-transcript";
+import { isInterruptMarker, readTranscriptLines, transcriptStamp } from "./claude-transcript";
 import type { ClaudeCliInfo } from "./cli";
 import { desktopSdkServers } from "./desktop/desktop-claude-tools";
 import {
   LIST_KNOWLEDGE_BASES_DESCRIPTION,
+  LIST_MEMORIES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
   READ_DOCUMENT_SECTION_DESCRIPTION,
+  READ_SKILL_DESCRIPTION,
+  SAVE_MEMORY_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
   SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
+  SEARCH_MEMORY_DESCRIPTION,
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import { claudeMcpServers, type McpServerWire, readCustomMcpServers } from "./mcp-servers";
+import { readCachedCatalog, writeCachedCatalog } from "./model-catalog";
 import {
   type AppServerNotification,
   type AppServerRequest,
@@ -45,9 +52,12 @@ import {
   type RpcError,
   type ThreadResponse,
 } from "./protocol";
+import { envForProvider, hideInheritedKeys } from "./secret-store";
 
 const execFileAsync = promisify(execFile);
 const PLAN_USAGE_TIMEOUT_MS = 8_000;
+/** Model-and-tool steps one Claude turn may take before the SDK stops it. */
+export const CLAUDE_MAX_TURNS = 200;
 
 /** One claude.ai plan window (5-hour, weekly, per model) as Claude reports it. */
 export interface ClaudePlanLimit {
@@ -74,6 +84,8 @@ interface ThreadConfig {
   additionalDirectories: string[];
   /** MCP servers the owner added in Settings. */
   customMcpServers: McpServerWire[];
+  /** The connected-API tools' description, when this coworker may use any web API. */
+  apiToolsDescription: string | null;
 }
 
 interface ActiveTurn {
@@ -106,40 +118,144 @@ interface ThreadRuntime {
   tasks?: Map<string, { text: string; status: string }>;
   /** The CLI reports idle/running, so a turn with steering messages can end at the true end. */
   stateEvents?: boolean;
+  /** Last turn start, end or steer: the least recently used runtime closes first. */
+  lastUsedAt: number;
 }
 
 interface PendingServerRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+  /** The thread waiting for this answer (an approval, a question): it must stay open. */
+  threadId: string | null;
+}
+
+export interface ClaudeClientOptions {
+  /** Where the model list is kept for a day (no throwaway Claude process just to list models). */
+  catalogCachePath?: string;
+  /** True while the app still needs this thread's process (queued work, an open approval). */
+  keepRuntime?: (threadId: string) => boolean;
+  /** Settings > Features: close idle Claude processes. */
+  idleClose?: () => boolean;
 }
 
 type QueryFactory = (params: Parameters<typeof query>[0]) => Query;
 
 export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
+  /** A Claude process (~450 MB) with no turn for this long closes; the next message reopens it. */
+  static IDLE_CLOSE_MS = 10 * 60_000;
+  /** At most this many Claude processes stay open; the least recently used idle one closes. */
+  static MAX_LIVE_RUNTIMES = 3;
+  static IDLE_CHECK_MS = 60_000;
+  static CATALOG_MAX_AGE_MS = 24 * 60 * 60_000;
   readonly provider: AgentProvider = "claude";
   readonly #cli: ClaudeCliInfo;
   readonly #createQuery: QueryFactory;
+  readonly #options: ClaudeClientOptions;
   readonly #threads = new Map<string, ThreadRuntime>();
+  /** Threads whose process was closed while idle: their settings, to resume them on the next turn. */
+  readonly #parked = new Map<string, ThreadConfig>();
   readonly #pendingServerRequests = new Map<RequestId, PendingServerRequest>();
   #running = false;
   #catalog = CLAUDE_MODELS;
+  #catalogCheckedAt = 0;
+  /** The last chat read per thread with its transcript's stamp: an unchanged file is not parsed again. */
+  readonly #threadReads = new Map<string, { stamp: string; response: ThreadResponse }>();
+  #idleTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(cli: ClaudeCliInfo, createQuery: QueryFactory = query) {
+  constructor(
+    cli: ClaudeCliInfo,
+    createQuery: QueryFactory = query,
+    options: ClaudeClientOptions = {},
+  ) {
     super();
     this.#cli = cli;
     this.#createQuery = createQuery;
+    this.#options = options;
   }
 
   get running(): boolean {
     return this.#running;
   }
 
+  /** Claude processes open right now (one per open conversation). */
+  get liveRuntimes(): number {
+    return this.#threads.size;
+  }
+
   start(): void {
     this.#running = true;
+    if (!this.#idleTimer) {
+      this.#idleTimer = setInterval(
+        () => this.closeIdleRuntimes(),
+        ClaudeAgentClient.IDLE_CHECK_MS,
+      );
+      this.#idleTimer.unref?.();
+    }
+  }
+
+  /**
+   * Closes the Claude process of every conversation idle for IDLE_CLOSE_MS (no turn, no
+   * approval or question waiting, nothing queued). Its session stays on disk, so the next
+   * message resumes it with the whole context. Returns the closed thread ids.
+   */
+  closeIdleRuntimes(now = Date.now()): string[] {
+    if (this.#options.idleClose && !this.#options.idleClose()) return [];
+    const closed: string[] = [];
+    for (const runtime of [...this.#threads.values()]) {
+      if (now - runtime.lastUsedAt < ClaudeAgentClient.IDLE_CLOSE_MS) continue;
+      if (!this.#canClose(runtime)) continue;
+      this.#park(runtime, "idle for 10 minutes");
+      closed.push(runtime.id);
+    }
+    return closed;
+  }
+
+  #canClose(runtime: ThreadRuntime): boolean {
+    if (runtime.activeTurn) return false;
+    for (const pending of this.#pendingServerRequests.values()) {
+      if (pending.threadId === runtime.id) return false;
+    }
+    return !this.#options.keepRuntime?.(runtime.id);
+  }
+
+  /** Over the cap: close the least recently used idle conversations' processes. */
+  #enforceRuntimeCap(keep: string): void {
+    if (this.#options.idleClose && !this.#options.idleClose()) return;
+    const excess = this.#threads.size - ClaudeAgentClient.MAX_LIVE_RUNTIMES;
+    if (excess <= 0) return;
+    const candidates = [...this.#threads.values()]
+      .filter((runtime) => runtime.id !== keep && this.#canClose(runtime))
+      .sort((left, right) => left.lastUsedAt - right.lastUsedAt)
+      .slice(0, excess);
+    for (const runtime of candidates) this.#park(runtime, "more than 3 Claude chats open");
+  }
+
+  #park(runtime: ThreadRuntime, reason: string): void {
+    this.#threads.delete(runtime.id);
+    this.#parked.set(runtime.id, runtime.config);
+    runtime.input.close();
+    runtime.query.close();
+    this.emit(
+      "diagnostic",
+      `Closed an idle Claude process (${reason}); it resumes on the next message.`,
+    );
+  }
+
+  /** The thread's runtime, reopened from its saved session when it was closed while idle. */
+  async #liveThread(threadId: string): Promise<ThreadRuntime> {
+    const live = this.#threads.get(threadId);
+    if (live) return live;
+    const parked = this.#parked.get(threadId);
+    if (!parked) return this.#requireThread(threadId);
+    await this.#startThread(threadId, parked, true);
+    return this.#requireThread(threadId);
   }
 
   async stop(): Promise<void> {
     this.#running = false;
+    if (this.#idleTimer) clearInterval(this.#idleTimer);
+    this.#idleTimer = null;
+    this.#parked.clear();
     for (const runtime of this.#threads.values()) {
       runtime.input.close();
       runtime.query.close();
@@ -176,6 +292,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       case "thread/resume": {
         const threadId = requiredString(params, "threadId");
         if (!this.#threads.has(threadId)) {
+          this.#parked.delete(threadId);
           await this.#startThread(threadId, readThreadConfig(params), true);
         }
         return { thread: { id: threadId } } as T;
@@ -186,7 +303,9 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         return (await this.#startTurn(params)) as T;
       case "thread/release": {
         // A deleted coworker's session: close its Claude process instead of leaving it running.
-        const runtime = this.#threads.get(requiredString(params, "threadId"));
+        const threadId = requiredString(params, "threadId");
+        this.#parked.delete(threadId);
+        const runtime = this.#threads.get(threadId);
         if (runtime) {
           this.#threads.delete(runtime.id);
           runtime.input.close();
@@ -197,7 +316,10 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       case "turn/steer":
         return this.#steerTurn(params) as T;
       case "turn/interrupt": {
-        const runtime = this.#requireThread(requiredString(params, "threadId"));
+        const threadId = requiredString(params, "threadId");
+        // Closed while idle: nothing is running to stop.
+        if (!this.#threads.has(threadId) && this.#parked.has(threadId)) return {} as T;
+        const runtime = this.#requireThread(threadId);
         await runtime.query.interrupt();
         if (runtime.activeTurn?.deferred) this.#completeTurn(runtime, "interrupted", null);
         return {} as T;
@@ -260,6 +382,23 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   }
 
   async #readModelCatalog(): Promise<typeof CLAUDE_MODELS> {
+    // The list changes with Claude Code releases, not by the minute: a day-old copy is fine, and
+    // reading it otherwise started a throwaway Claude process on every 15-minute refresh.
+    const fresh = Date.now() - this.#catalogCheckedAt < ClaudeAgentClient.CATALOG_MAX_AGE_MS;
+    if (fresh) return this.#catalog;
+    const cachePath = this.#options.catalogCachePath;
+    if (cachePath) {
+      const cached = await readCachedCatalog<typeof CLAUDE_MODELS>(
+        cachePath,
+        this.#cli.version,
+        ClaudeAgentClient.CATALOG_MAX_AGE_MS,
+      );
+      if (cached?.length) {
+        this.#catalog = cached;
+        this.#catalogCheckedAt = Date.now();
+        return this.#catalog;
+      }
+    }
     const runtime = this.#threads.values().next().value as ThreadRuntime | undefined;
     let owned: Query | null = null;
     const input = new AsyncMessageQueue();
@@ -289,6 +428,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           timer = setTimeout(() => reject(new Error("Model discovery timed out")), 6_000);
         }),
       ]);
+      if (models.length) this.#catalogCheckedAt = Date.now();
       if (models.length)
         this.#catalog = models.map((model) => {
           const id = model.resolvedModel ?? model.value;
@@ -303,6 +443,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
               CLAUDE_EFFORTS.map((reasoningEffort) => ({ reasoningEffort })),
           };
         });
+      if (models.length && cachePath) {
+        await writeCachedCatalog(cachePath, this.#cli.version, this.#catalog).catch(
+          () => undefined,
+        );
+      }
     } catch {
       /* Retain the last catalog when an older/offline CLI cannot report models. */
     } finally {
@@ -329,8 +474,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     };
     // The owner's own servers first, so Sahkarmi's tools always keep their names.
     const mcpServers = {
-      ...claudeMcpServers(config.customMcpServers),
-      ...this.#createSahkarmiServers(threadId),
+      ...withoutClaudeKey(claudeMcpServers(config.customMcpServers)),
+      ...this.#createSahkarmiServers(threadId, config.apiToolsDescription),
     } as Record<string, SdkMcpServerConfig>;
     const claudeQuery = this.#createQuery({
       prompt: input,
@@ -345,10 +490,16 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           preset: "claude_code",
           append: config.developerInstructions,
         },
-        settingSources: ["user", "project", "local"],
+        // Only the owner's own Claude settings. A coworker can write files in its folder, so
+        // .claude/settings.json there must never load: its allow rules and hooks run before
+        // canUseTool and would bypass Sahkarmi's permission policy. The coworker's rules
+        // (AGENTS.md / CLAUDE.md) still reach Claude through developerInstructions.
+        settingSources: CLAUDE_SETTING_SOURCES,
         // Every tool call goes through canUseTool, where Sahkarmi's permission policy decides.
         permissionMode: "default",
         includePartialMessages: true,
+        // A runaway tool loop stops here instead of running all night on the owner's plan.
+        maxTurns: CLAUDE_MAX_TURNS,
         additionalDirectories: config.additionalDirectories,
         canUseTool,
         mcpServers,
@@ -368,15 +519,19 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       activeTurn: null,
       consume: Promise.resolve(),
       resumedUsage: resume,
+      lastUsedAt: Date.now(),
     };
     runtime.consume = this.#consume(runtime);
     this.#threads.set(threadId, runtime);
+    this.#parked.delete(threadId);
+    this.#enforceRuntimeCap(threadId);
   }
 
   async #startTurn(params: unknown): Promise<unknown> {
     const threadId = requiredString(params, "threadId");
-    const runtime = this.#requireThread(threadId);
+    const runtime = await this.#liveThread(threadId);
     if (runtime.activeTurn) throw new Error("The Claude thread already has an active turn.");
+    runtime.lastUsedAt = Date.now();
 
     const requestedModel = getString(params, "model");
     if (requestedModel && requestedModel !== runtime.config.model) {
@@ -434,6 +589,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     if (!text) throw new Error("A steering message needs text.");
     const clientId = getString(params, "clientUserMessageId");
     turn.steers += 1;
+    runtime.lastUsedAt = Date.now();
     runtime.input.push({
       type: "user",
       message: { role: "user", content: text },
@@ -651,7 +807,12 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       : message.subtype === "success"
         ? "completed"
         : "failed";
-    const error = "errors" in message ? message.errors.join("\n") : null;
+    const error =
+      message.subtype === "error_max_turns"
+        ? `Stopped after ${CLAUDE_MAX_TURNS} steps in one turn, so a loop cannot run forever. Ask the coworker to continue if the work is not finished.`
+        : "errors" in message
+          ? message.errors.join("\n")
+          : null;
     if (turn && turn.steers > 0 && runtime.stateEvents && status !== "interrupted") {
       // A steering message may still run as its own pass; its reply belongs to this turn.
       if (turn.deferred) clearTimeout(turn.deferred.timer);
@@ -807,12 +968,31 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       params: { threadId: runtime.id, turn: { id: turn.id, status } },
     });
     runtime.activeTurn = null;
+    runtime.lastUsedAt = Date.now();
   }
 
   async #readThread(threadId: string): Promise<ThreadResponse> {
-    const runtime = this.#threads.get(threadId);
+    // A running turn is still writing; otherwise an unchanged transcript gives the same chat.
+    const busy = Boolean(this.#threads.get(threadId)?.activeTurn);
+    const stamp = busy ? null : await transcriptStamp(threadId).catch(() => null);
+    const cached = this.#threadReads.get(threadId);
+    if (stamp && cached?.stamp === stamp) return structuredClone(cached.response);
+    const response = await this.#parseThread(threadId);
+    if (stamp) {
+      this.#threadReads.set(threadId, { stamp, response: structuredClone(response) });
+      // A handful of open chats is plenty; the oldest entry goes first.
+      if (this.#threadReads.size > 20) {
+        const oldest = this.#threadReads.keys().next().value;
+        if (oldest !== undefined) this.#threadReads.delete(oldest);
+      }
+    }
+    return response;
+  }
+
+  async #parseThread(threadId: string): Promise<ThreadResponse> {
+    const cwd = this.#threads.get(threadId)?.config.cwd ?? this.#parked.get(threadId)?.cwd;
     const messages = await getSessionMessages(threadId, {
-      ...(runtime?.config.cwd ? { dir: runtime.config.cwd } : {}),
+      ...(cwd ? { dir: cwd } : {}),
     });
     // The SDK's messages carry no times; without them every reopen would stamp these turns "now".
     const lines = await readTranscriptLines(threadId);
@@ -859,7 +1039,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return { thread: { id: threadId, turns } };
   }
 
-  #createSahkarmiServers(threadId: string) {
+  #createSahkarmiServers(threadId: string, apiToolsDescription: string | null = null) {
     const call = (namespace: string, name: string, args: unknown) =>
       this.#callDynamicTool(threadId, namespace, name, args);
     return {
@@ -1043,7 +1223,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "save_memory",
-            "Save a persistent piece of knowledge, project decision, technical fact, or owner preference into long-term team memory.",
+            SAVE_MEMORY_DESCRIPTION,
             {
               key: z.string().min(1).max(120),
               content: z.string().min(1).max(8000),
@@ -1054,18 +1234,21 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "search_memory",
-            "Search long-term team memory by keyword to recall previous decisions, standards, or facts.",
+            SEARCH_MEMORY_DESCRIPTION,
             {
               query: z.string(),
               category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
+              limit: z.number().int().min(1).max(50).optional(),
             },
             (args) => call("sahkarmi", "search_memory", args),
           ),
           tool(
             "list_memories",
-            "List all memories currently retained in the team long-term memory hub.",
+            LIST_MEMORIES_DESCRIPTION,
             {
               category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
+              limit: z.number().int().min(1).max(50).optional(),
+              offset: z.number().int().min(0).optional(),
             },
             (args) => call("sahkarmi", "list_memories", args),
           ),
@@ -1108,8 +1291,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "read_skill",
-            "Read one learned or custom skill's full playbook by its id (from list_skills).",
-            { id: z.string().min(1).max(80) },
+            READ_SKILL_DESCRIPTION,
+            { id: z.string().min(1).max(90), type: z.enum(["learned", "custom"]).optional() },
             (args) => call("sahkarmi", "read_skill", args),
           ),
           tool(
@@ -1126,6 +1309,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         ],
       }),
       ...desktopSdkServers(call),
+      ...(apiToolsDescription ? apiSdkServer(call, apiToolsDescription) : {}),
     };
   }
 
@@ -1212,8 +1396,9 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
 
   #callServerRequest(method: string, params: unknown): Promise<unknown> {
     const id = randomUUID();
+    const threadId = getString(params, "threadId");
     return new Promise((resolve, reject) => {
-      this.#pendingServerRequests.set(id, { resolve, reject });
+      this.#pendingServerRequests.set(id, { resolve, reject, threadId });
       this.emit("request", { id, method, params });
     });
   }
@@ -1360,7 +1545,16 @@ function readThreadConfig(params: unknown): ThreadConfig {
     developerInstructions: getString(params, "developerInstructions") ?? "",
     additionalDirectories: [...new Set([cwd, ...roots])],
     customMcpServers: readCustomMcpServers(params),
+    apiToolsDescription: readApiToolsDescription(params),
   };
+}
+
+function readApiToolsDescription(params: unknown): string | null {
+  const tools = isRecord(params) && Array.isArray(params.dynamicTools) ? params.dynamicTools : [];
+  const entry = tools.find(
+    (tool) => isRecord(tool) && tool.type === "namespace" && tool.name === API_TOOL_NAMESPACE,
+  );
+  return isRecord(entry) && typeof entry.description === "string" ? entry.description : null;
 }
 
 function requiredString(value: unknown, key: string): string {
@@ -1467,6 +1661,9 @@ export function thinkingTokens(effort: string): number {
   );
 }
 
+/** Filesystem settings a coworker's Claude loads: the user's only, never the workspace's. */
+export const CLAUDE_SETTING_SOURCES: Array<"user" | "project" | "local"> = ["user"];
+
 /** How long a steered turn waits for Claude's idle report before it is closed anyway. */
 const STEER_IDLE_WAIT_MS = 90_000;
 
@@ -1479,13 +1676,31 @@ function isUuid(value: string): boolean {
  * make a coworker's Claude think it is nested in it. Its own login settings are kept.
  */
 export function cleanClaudeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // Claude gets its own key only: the other providers' keys stay out of its shell and tools.
   return Object.fromEntries(
-    Object.entries(env).filter(
+    Object.entries(envForProvider("claude", env)).filter(
       ([name]) =>
         name !== "CLAUDECODE" &&
         name !== "CLAUDE_CODE_ENTRYPOINT" &&
         !name.startsWith("CLAUDE_CODE_SSE"),
     ),
+  );
+}
+
+/** The owner's stdio MCP servers would inherit Claude's key from its environment; hide it. */
+function withoutClaudeKey(
+  servers: Record<string, Record<string, unknown>>,
+): Record<string, Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(servers).map(([name, server]) => [
+      name,
+      server.type === "stdio"
+        ? {
+            ...server,
+            env: hideInheritedKeys((server.env ?? {}) as Record<string, string>, "claude"),
+          }
+        : server,
+    ]),
   );
 }
 
@@ -1496,4 +1711,40 @@ function messageOfError(error: unknown): string {
   return [base.split("\n")[0], detail?.killed ? "(timed out)" : "", stderr]
     .filter(Boolean)
     .join(" ");
+}
+
+/** The owner's connected web APIs, for a Claude coworker that may use at least one. */
+function apiSdkServer(
+  call: (namespace: string, name: string, args: unknown) => Promise<CallToolResult>,
+  description: string,
+) {
+  return {
+    [API_TOOL_NAMESPACE]: createSdkMcpServer({
+      name: API_TOOL_NAMESPACE,
+      version: "0.1.0",
+      instructions: description,
+      tools: [
+        tool(
+          "list_apis",
+          `${LIST_APIS_DESCRIPTION} ${description}`,
+          { search: z.string().max(200).optional() },
+          (args) => call(API_TOOL_NAMESPACE, "list_apis", args),
+        ),
+        tool(
+          "call_api",
+          CALL_API_DESCRIPTION,
+          {
+            api: z.string().min(1).max(120),
+            operation: z.string().max(120).optional(),
+            method: z.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+            path: z.string().max(2_000).optional(),
+            params: z.record(z.string(), z.unknown()).optional(),
+            body: z.unknown().optional(),
+            approval_id: z.string().max(120).optional(),
+          },
+          (args) => call(API_TOOL_NAMESPACE, "call_api", args),
+        ),
+      ],
+    }),
+  };
 }

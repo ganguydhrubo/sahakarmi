@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { findMarketplaceSkill, MARKETPLACE_SKILLS } from "../shared/marketplace";
+import { renameWithRetry } from "./json-file";
 
 /** First line of every installed skill file, so only Sahkarmi's own files are ever removed. */
 const MARKER = "<!-- sahkarmi-skill:";
@@ -109,6 +111,24 @@ export function learnedSkillId(name: string): string {
   return slug;
 }
 
+/**
+ * Saves of one skill run one after another (two coworkers improving the same playbook at once
+ * would otherwise both read version N and one change would be lost).
+ */
+const saveQueues = new Map<string, Promise<unknown>>();
+
+function serialised<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = saveQueues.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(work);
+  saveQueues.set(key, next);
+  void next
+    .catch(() => undefined)
+    .finally(() => {
+      if (saveQueues.get(key) === next) saveQueues.delete(key);
+    });
+  return next;
+}
+
 function learnedRoot(sharedRoot: string): string {
   return join(sharedRoot, "Skills", LEARNED_FOLDER);
 }
@@ -173,6 +193,11 @@ export class LearnedSkills {
   }
 
   async save(input: SaveLearnedSkillInput): Promise<LearnedSkill> {
+    const id = learnedSkillId(input.name.trim().slice(0, 120));
+    return serialised(join(this.#root, id).toLowerCase(), () => this.#save(input));
+  }
+
+  async #save(input: SaveLearnedSkillInput): Promise<LearnedSkill> {
     const name = input.name.trim().slice(0, 120);
     const id = learnedSkillId(name);
     const steps = input.steps.trim();
@@ -221,7 +246,10 @@ export class LearnedSkills {
       "",
     ].join("\n");
     await mkdir(this.#root, { recursive: true });
-    await writeFile(path, text, "utf8");
+    // Written beside it and renamed over it: a crash never leaves half a playbook.
+    const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(temporary, text, "utf8");
+    await renameWithRetry(temporary, path);
     return parseLearned(id, text) as LearnedSkill;
   }
 

@@ -1,0 +1,120 @@
+{
+  "source": "https://github.com/upstash/context7 (server.json, packages/mcp/package.json), registry.modelcontextprotocol.io, registry.npmjs.org",
+  "location": {
+    "owner": "upstash",
+    "repo": "context7",
+    "ref": "fixturecommit0001",
+    "subPath": ""
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "size": 9000
+    },
+    {
+      "path": "server.json",
+      "size": 1200
+    },
+    {
+      "path": "package.json",
+      "size": 900
+    },
+    {
+      "path": "packages/mcp/package.json",
+      "size": 2400
+    },
+    {
+      "path": "packages/mcp/src/index.ts",
+      "size": 9000
+    }
+  ],
+  "texts": {
+    "server.json": "{\n  \"$schema\": \"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json\",\n  \"name\": \"io.github.upstash/context7\",\n  \"title\": \"Context7\",\n  \"description\": \"Up-to-date docs for AI agents\",\n  \"repository\": {\n    \"url\": \"https://github.com/upstash/context7\",\n    \"source\": \"github\"\n  },\n  \"websiteUrl\": \"https://context7.com\",\n  \"icons\": [\n    {\n      \"src\": \"https://raw.githubusercontent.com/upstash/context7/master/public/icon.png\",\n      \"mimeType\": \"image/png\"\n    }\n  ],\n  \"version\": \"4.0.3\",\n  \"packages\": [\n    {\n      \"registryType\": \"npm\",\n      \"identifier\": \"@upstash/context7-mcp\",\n      \"version\": \"4.0.3\",\n      \"transport\": {\n        \"type\": \"stdio\"\n      },\n      \"environmentVariables\": [\n        {\n          \"name\": \"CONTEXT7_API_KEY\",\n          \"description\": \"API key for authentication\",\n          \"isRequired\": false,\n          \"isSecret\": true\n        }\n      ]\n    }\n  ],\n  \"remotes\": [\n    {\n      \"type\": \"streamable-http\",\n      \"url\": \"https://mcp.context7.com/mcp\",\n      \"headers\": [\n        {\n          \"name\": \"Authorization\",\n          \"description\": \"API key for authentication. Accepts \\\"Bearer <key>\\\" or the raw key.\",\n          \"isRequired\": false,\n          \"isSecret\": true\n        }\n      ]\n    }\n  ]\n}\n",
+    "packages/mcp/package.json": "{\n  \"name\": \"@upstash/context7-mcp\",\n  \"version\": \"4.5.0\",\n  \"mcpName\": \"io.github.upstash/context7\",\n  \"description\": \"MCP server for Context7\",\n  \"scripts\": {\n    \"build\": \"tsc && chmod 755 dist/index.js\",\n    \"test\": \"pnpm exec vitest run\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"lint\": \"eslint .\",\n    \"lint:check\": \"eslint .\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"dev\": \"tsc --watch\",\n    \"start\": \"node dist/index.js --transport http\",\n    \"build:mcpb\": \"esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=mcpb/stage/server/dist/index.mjs --banner:js=\\\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\\\"\",\n    \"pack-mcpb\": \"rm -rf mcpb/stage && pnpm run build:mcpb && cp package.json mcpb/stage/package.json && cp mcpb/manifest.json mcpb/stage/manifest.json && cp ../../public/icon.png mcpb/stage/icon.png && mcpb validate mcpb/stage/manifest.json && mcpb pack mcpb/stage mcpb/context7.mcpb && rm -rf mcpb/stage\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"git+https://github.com/upstash/context7.git\",\n    \"directory\": \"packages/mcp\"\n  },\n  \"keywords\": [\n    \"modelcontextprotocol\",\n    \"mcp\",\n    \"context7\",\n    \"vibe-coding\",\n    \"developer tools\",\n    \"documentation\",\n    \"context\"\n  ],\n  \"author\": \"abdush\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"bin\": {\n    \"context7-mcp\": \"dist/index.js\"\n  },\n  \"files\": [\n    \"dist\",\n    \"LICENSE\",\n    \"README.md\"\n  ],\n  \"bugs\": {\n    \"url\": \"https://github.com/upstash/context7/issues\"\n  },\n  \"homepage\": \"https://github.com/upstash/context7#readme\",\n  \"dependencies\": {\n    \"@modelcontextprotocol/node\": \"2.1.1\",\n    \"@modelcontextprotocol/server\": \"2.3.1\",\n    \"@opentelemetry/api\": \"^1.9.1\",\n    \"@opentelemetry/exporter-prometheus\": \"^0.222.0\",\n    \"@opentelemetry/instrumentation-runtime-node\": \"^0.35.0\",\n    \"@opentelemetry/resources\": \"^2.11.0\",\n    \"@opentelemetry/sdk-metrics\": \"^2.11.0\",\n    \"@types/express\": \"^5.0.4\",\n    \"commander\": \"^13.1.0\",\n    \"express\": \"^5.1.0\",\n    \"jose\": \"^6.2.12\",\n    \"undici\": \"^7.30.0\",\n    \"zod\": \"^4.6.5\"\n  },\n  \"devDependencies\": {\n    \"@modelcontextprotocol/client\": \"2.3.1\",\n    \"@opentelemetry/context-async-hooks\": \"^2.11.0\",\n    \"@opentelemetry/core\": \"^2.11.0\",\n    \"@opentelemetry/sdk-trace-base\": \"^2.11.0\",\n    \"@types/node\": \"catalog:\",\n    \"esbuild\": \"^0.28.2\",\n    \"typescript\": \"catalog:\",\n    \"vitest\": \"catalog:\"\n  },\n  \"engines\": {\n    \"node\": \">=20.18.1\"\n  }\n}\n"
+  },
+  "registry": [
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "io.github.upstash/context7",
+        "description": "Up-to-date docs for AI agents",
+        "title": "Context7",
+        "repository": {
+          "url": "https://github.com/upstash/context7",
+          "source": "github"
+        },
+        "version": "4.5.0",
+        "websiteUrl": "https://context7.com",
+        "icons": [
+          {
+            "src": "https://raw.githubusercontent.com/upstash/context7/master/public/icon.png",
+            "mimeType": "image/png"
+          }
+        ],
+        "packages": [
+          {
+            "registryType": "npm",
+            "identifier": "@upstash/context7-mcp",
+            "version": "4.5.0",
+            "transport": {
+              "type": "stdio"
+            },
+            "environmentVariables": [
+              {
+                "description": "API key for authentication",
+                "isSecret": true,
+                "name": "CONTEXT7_API_KEY"
+              }
+            ]
+          },
+          {
+            "registryType": "mcpb",
+            "identifier": "https://github.com/upstash/context7/releases/download/mcpb-v4.5.0/context7.mcpb",
+            "version": "4.5.0",
+            "fileSha256": "d6faf96c89cb12b312b8cd6b7659477530add9adfff311f1f55dc4f3efe018ee",
+            "transport": {
+              "type": "stdio"
+            },
+            "environmentVariables": [
+              {
+                "description": "API key for authentication",
+                "isSecret": true,
+                "name": "CONTEXT7_API_KEY"
+              }
+            ]
+          }
+        ],
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.context7.com/mcp",
+            "headers": [
+              {
+                "description": "API key for authentication. Accepts \"Bearer <key>\" or the raw key.",
+                "isSecret": true,
+                "name": "Authorization"
+              }
+            ]
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-11-03T06:43:23.026643Z",
+          "publishedAt": "2026-11-03T06:43:23.026643Z",
+          "updatedAt": "2026-11-03T06:43:23.026643Z",
+          "isLatest": true
+        }
+      }
+    }
+  ],
+  "packages": {
+    "npm": {
+      "@upstash/context7-mcp": {
+        "version": "4.5.0",
+        "repository": "git+https://github.com/upstash/context7.git"
+      }
+    }
+  }
+}

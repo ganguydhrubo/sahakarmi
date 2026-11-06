@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PermissionCategory } from "../shared/ipc";
-import { approvalRequestProblem, describePermissionRequest } from "./approval-wording";
+import {
+  approvalRequestProblem,
+  commandCount,
+  describePermissionRequest,
+} from "./approval-wording";
 import { classifyAcpTool } from "./permission-policy";
 
 const ROOTS = {
@@ -9,6 +13,22 @@ const ROOTS = {
 };
 
 describe("describePermissionRequest", () => {
+  it("says in plain words when a command also runs a second one", () => {
+    const card = (action: string) =>
+      describePermissionRequest(
+        { botId: "asha", provider: "codex", category: "shell", action, paths: [] },
+        "Asha",
+        ROOTS,
+      ).details;
+    expect(card("dir")).not.toContain("second command");
+    expect(card('echo "a && b"')).not.toContain("second command");
+    expect(card("dir && del notes.txt")).toContain("also runs a second command");
+    expect(card("cd x; npm install; npm test")).toContain("runs 3 commands");
+    expect(card("dir\ndel notes.txt")).toContain("second command");
+    expect(commandCount("type a.txt | findstr total")).toBe(2);
+    expect(commandCount("echo 'x; y'")).toBe(1);
+  });
+
   it("explains a command in plain words and folds the raw command away", () => {
     const action = `python -c "open(r'C:\\Users\\me\\Sahkarmi\\Shared\\gst\\working.md').read()"`;
     const card = describePermissionRequest(

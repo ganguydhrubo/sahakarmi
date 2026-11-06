@@ -187,6 +187,8 @@ describe("staleReloadDelay", () => {
   it("never reloads over unsaved typing or an error page", async () => {
     const { staleReloadDelay } = await import("./browser-host");
     expect(staleReloadDelay({ ...fresh, ownerTouched: true }, 100_000, 30_000)).toBeNull();
+    // Typing from before the coworker's change is unsaved work too.
+    expect(staleReloadDelay({ ...fresh, ownerTyped: true }, 100_000, 30_000)).toBeNull();
     expect(staleReloadDelay({ ...fresh, coworkerTyped: true }, 100_000, 30_000)).toBeNull();
     expect(staleReloadDelay({ ...fresh, loadFailed: true }, 100_000, 30_000)).toBeNull();
   });

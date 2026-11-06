@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { renameSync, writeFileSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
@@ -8,7 +8,6 @@ import type {
   AccountUsageLimit,
   AccountUsageWindow,
   AgentEvent,
-  AgentMemoryCategory,
   AgentModelOption,
   AgentPromptQuestion,
   AgentProviderStatus,
@@ -29,6 +28,7 @@ import type {
   PublishingAccount,
   QueuedMessageReceipt,
   QueueSnapshot,
+  ReadConversationOptions,
   RespondToPromptInput,
   RoutineCadence,
   RoutinesState,
@@ -55,7 +55,9 @@ import {
   type BranchConversationInput,
   type ConversationMessage,
   type CreateFolderInput,
+  DEFAULT_ENGINE_SETTINGS,
   DEFAULT_MODEL_FOR_PROVIDER,
+  type EngineSettings,
   isAcpAgentProvider,
   isAvatarColor,
   isAvatarShape,
@@ -72,7 +74,9 @@ import { createAcpAgentClient, resolveAcpAgentCli } from "./acp-agents";
 import { FREE_LIMIT_REACHED_HINT, NEXT_FREE_MODEL_HINT } from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
-import { AgentMemoryStore } from "./agent-memory-store";
+import { AgentMemoryStore, MEMORY_PAGE_MAX, memoryCategory } from "./agent-memory-store";
+import { API_TOOL_NAMESPACE, type ApiIntegrationService } from "./api-integrations/api-service";
+import { API_TOOL_DEFINITIONS, API_TOOLS_DESCRIPTION } from "./api-integrations/api-tools";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
 import {
@@ -91,6 +95,7 @@ import type { BotStore } from "./bot-store";
 import {
   BROWSER_DYNAMIC_TOOLS,
   type CoworkerBrowser,
+  type DownloadRequest,
   isOwnTab,
   SAHKARMI_BROWSER_NAMESPACE,
 } from "./browser-host";
@@ -118,11 +123,14 @@ import {
   messagesThrough,
 } from "./conversation-branch";
 import {
+  conversationFingerprint,
   mergeConversationSnapshots,
   newAssistantMessage,
   normalizeCompletionStatus,
+  sameMailboxMessage,
   snapshotFromThread,
   sortConversationMessages,
+  windowedSnapshot,
 } from "./conversation-snapshots";
 import {
   type CoworkerInstructions,
@@ -132,7 +140,7 @@ import {
   readInstructions,
   saveInstructions,
 } from "./coworker-instructions";
-import { CustomSkills, customSkillLines } from "./custom-skills";
+import { CustomSkills, customSkillLines, UNTRUSTED_SKILL_NOTE } from "./custom-skills";
 import { DesktopControlService } from "./desktop/desktop-control";
 import type { DesktopHostLike } from "./desktop/desktop-host";
 import { desktopDynamicTools, SAHKARMI_DESKTOP_NAMESPACE } from "./desktop/desktop-tools";
@@ -141,18 +149,23 @@ import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
 import { isActionSensitive } from "./integrations/composio-policy";
 import { ComposioSecurityGuard } from "./integrations/composio-security";
+import type { KnowledgeApi } from "./knowledge/knowledge-api";
 import { citationLabel } from "./knowledge/knowledge-search";
-import type { KnowledgeService } from "./knowledge/knowledge-service";
 import {
   LIST_KNOWLEDGE_BASES_DESCRIPTION,
+  LIST_MEMORIES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
   READ_DOCUMENT_SECTION_DESCRIPTION,
+  READ_SKILL_DESCRIPTION,
+  SAVE_MEMORY_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
   SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
+  SEARCH_MEMORY_DESCRIPTION,
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { codexMcpConfig, type McpServerStore } from "./mcp-servers";
+import { memoryContextLines } from "./memory/memory-context";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
   classifyAcpTool,
@@ -186,6 +199,7 @@ import {
   socialPlatformForTool,
   socialPlatformForUrl,
 } from "./publishing-accounts";
+import type { NewRunEvent } from "./run-events";
 import { installedSkillNames, LearnedSkills, learnedSkillNames } from "./skill-library";
 import {
   decideRefusal,
@@ -209,6 +223,8 @@ interface AgentServiceEvents {
   event: [event: AgentEvent];
   /** Timings and housekeeping for the app log; never shown to the owner. */
   log: [message: string];
+  /** A provider's program started and answered (its older downloaded copies can go). */
+  "runtime-started": [provider: AgentProvider, executable: string];
 }
 
 interface StartedClient {
@@ -259,6 +275,8 @@ const CONTEXT_COMPACTION_THRESHOLD = 0.8;
 const CONTEXT_COMPACTION_TIMEOUT_MS = 120_000;
 /** Recently finished turn ids, kept to ignore out-of-order start events and responses. */
 const MAX_REMEMBERED_FINISHED_TURNS = 500;
+/** One-shot fallback marks kept per session; older ones belong to long-finished deliveries. */
+const MAX_REMEMBERED_FALLBACKS = 500;
 /** AI programs checked at the same time while Sahkarmi starts. */
 const PARALLEL_PROVIDER_STARTS = 3;
 /** Opening a chat waits this long for its AI to connect, then shows the saved chat. */
@@ -389,6 +407,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   >();
   /** Task approvals: one "yes" covers the same kind of step on the same site for this task. */
   readonly #taskGrants = new Map<string, number>();
+  /**
+   * Task refusals: the owner said "no" to this exact step for this task, so a retry (the
+   * coworker's own, or an automatic re-send after a failure) is refused without a new card.
+   */
+  readonly #taskDeclines = new Map<string, number>();
+  /** The text a coworker last typed or pasted on each of its tabs: what a "Send" click sends. */
+  readonly #typedOnTab = new Map<string, string>();
   /** A question already on its way to the owner: an identical one waits for the same answer. */
   readonly #askingOwner = new Map<
     string,
@@ -400,6 +425,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #approvedLater = new Map<string, number>();
   readonly #fileChangePaths = new Map<string, string[]>();
   readonly #permissionTimeoutMs: number;
+  /** Whether the owner is at the window; while away, approvals wait longer before expiring. */
+  #ownerPresent: () => boolean = () => true;
   #usage: UsageService | null = null;
   #takeover: BrowserTakeoverState = { humanInControl: false, requests: [] };
   /** Coworkers refused the browser during a takeover; told when the owner hands it back. */
@@ -413,6 +440,31 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #quotaNoticeAt = new Map<string, number>();
   /** Deliveries already re-sent on the free model: one fallback per message, never a loop. */
   readonly #fallbackRetried = new Set<string>();
+  /** Brief-fault retries already spent on a message, by the delivery now carrying it. */
+  readonly #transientRetries = new Map<string, number>();
+  /** Coworkers whose queue waits while a re-send is being prepared (model switch, backoff). */
+  readonly #heldDrains = new Set<string>();
+  /** Coworkers with a queued message waiting for a free turn slot (the concurrent-turn cap). */
+  readonly #waitingForSlot = new Set<string>();
+  #runEvents: ((event: NewRunEvent) => void) | null = null;
+  /** Tokens the runtime reported for each coworker's current turn, when it does. */
+  readonly #turnTokens = new Map<string, { input: number | null; output: number | null }>();
+  /** Last sign of life from each coworker's running turn (the no-progress watchdog). */
+  readonly #progressAt = new Map<string, number>();
+  #watchdogTimer: NodeJS.Timeout | null = null;
+  /** Last hop-limit notice per coworker. */
+  readonly #hopNoticeAt = new Map<string, number>();
+  #engineSettings: () => EngineSettings = () => DEFAULT_ENGINE_SETTINGS;
+  /** A coworker's own model and conversation while one message runs on a fallback model. */
+  readonly #ownRuntime = new Map<
+    string,
+    {
+      model: BotSummary["model"];
+      reasoningEffort: BotSummary["reasoningEffort"];
+      threadId: string | null;
+      fallbackModel?: BotSummary["model"];
+    }
+  >();
   /** The last error text each coworker's turn reported, to recognise a quota failure. */
   readonly #lastTurnError = new Map<string, string>();
   /** Per coworker: how often the current request was continued, and the open steps last seen. */
@@ -429,7 +481,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #drainingBots = new Set<string>();
   readonly #scheduledDrains = new Set<string>();
   readonly #drainTasks = new Map<string, Promise<void>>();
+  /** A short fingerprint of each chat as last sent, so an unchanged chat is not sent again. */
   readonly #lastConversationSignatures = new Map<string, string>();
+  /** The thread each cached chat was last read from; a chat still listed here is served from memory. */
+  readonly #freshReads = new Map<string, string>();
+  /** How many of the newest messages the window shows per coworker ("Load earlier" grows it). */
+  readonly #chatWindows = new Map<string, number>();
+  /** Settings > Features: send one changed message per tool step instead of the whole chat. */
+  #deltaUpdates: () => boolean = () => true;
   readonly #finishedTurnIds = new Set<string>();
   /** When each coworker's current turn began: files changed after this are its deliverables. */
   readonly #turnStartedAt = new Map<string, number>();
@@ -471,8 +530,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #geminiRotation: GeminiRotation | null = null;
   /** The Google account the running Gemini server was started with. */
   #geminiClientAccount: string | null = null;
-  /** When Google last reported a quota or rate limit (stderr only; the turn just ends empty). */
-  #geminiQuotaAt = 0;
+  /**
+   * When Google last reported a quota or rate limit, per Google account (stderr only; the turn
+   * just ends empty). Per account, so a limit on one account never blames the next one.
+   */
+  readonly #geminiQuotaAt = new Map<string, number>();
   readonly #geminiIdle = new IdleWatch({
     isBusy: () => this.#providerBusy("antigravity") || this.#providerStarts.has("antigravity"),
     onIdle: () => this.#sleepProvider("antigravity"),
@@ -486,20 +548,29 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   static UNUSED_PROVIDER_IDLE_MS = 60_000;
   readonly #quietWatches = new Map<AgentProvider, IdleWatch>();
   #preferredProvider: AgentProvider;
+  /** Providers the owner asked to check (Settings > AI and models, setup), besides the used ones. */
+  readonly #probedProviders = new Set<AgentProvider>();
+  /** Settings > Features: start only the AIs coworkers use (on by default). */
+  #lazyProviderStart: () => boolean = () => true;
+  #claudeIdleClose: () => boolean = () => true;
   #initialized = false;
   #stopping = false;
-  #restartAttempts = 0;
-  #restartTimer: NodeJS.Timeout | null = null;
+  /** Restarts tried per provider since it was last ready: one crash loop never blocks another. */
+  readonly #restartAttempts = new Map<AgentProvider, number>();
+  readonly #restartTimers = new Map<AgentProvider, NodeJS.Timeout>();
   #models = structuredClone(FALLBACK_MODELS);
   readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
   readonly #signedOutCheckAt = new Map<AgentProvider, number>();
   readonly #signInNoticeAt = new Map<string, number>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
-  #knowledge: KnowledgeService | null = null;
+  #knowledge: KnowledgeApi | null = null;
   #knowledgeAutoContext: () => boolean = () => true;
+  #knowledgeEnabled: () => boolean = () => true;
+  #memoryAutoContext: () => boolean = () => true;
   #routineHost: RoutineHost | null = null;
   #composioClient: ComposioClient | null = null;
+  #apis: ApiIntegrationService | null = null;
   #mcpServers: McpServerStore | null = null;
   #composioSecurity: ComposioSecurityGuard | null = null;
   /** Windows desktop control (sahkarmi_desktop tools); null until main hands over the host. */
@@ -518,7 +589,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   ) {
     super();
     this.#store = store;
-    this.#memoryStore = new AgentMemoryStore(store.userDataPath);
+    this.#memoryStore = new AgentMemoryStore(store.userDataPath, {
+      workspaceOfBot: (botId) => store.list().find((bot) => bot.id === botId)?.workspaceId,
+      activeWorkspace: () => store.workspaces().activeWorkspaceId,
+      log: (_level, line) => this.emit("log", line),
+    });
     this.#codexThreads = new CodexThreadLedger(store.userDataPath);
     this.#mailbox = mailbox;
     this.#browser = browser;
@@ -526,6 +601,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#permissions = permissions;
     this.#permissionTimeoutMs = permissionTimeoutMs;
     permissions?.setAsker((request) => this.#askOwner(request));
+    if (permissions) browser.setDownloadAuthorizer?.((request) => this.#authorizeDownload(request));
     this.#computerUsePrerequisites = computerUsePrerequisites;
     this.#requestTimeoutMs = requestTimeoutMs;
     this.#preferredProvider = preferredProvider;
@@ -580,7 +656,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   wakeIdleProviders(): void {
     if (!this.#initialized || this.#stopping) return;
     // Gemini only: its start takes up to a minute. The others start in seconds, when used.
-    if (this.#dormantClients.has("antigravity")) {
+    // Only when a coworker uses it: waking it cost six processes and ~700 MB for nobody.
+    if (
+      this.#dormantClients.has("antigravity") &&
+      (!this.#lazyProviderStart() || this.#providerInUse("antigravity"))
+    ) {
       void this.ensureProvider("antigravity").catch(() => undefined);
     }
   }
@@ -675,8 +755,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /** `customMcpServers` for Claude and ACP runtimes, plus a `config` override for Codex. */
-  #mcpParams(client: AgentClient): Record<string, unknown> {
-    const servers = this.#mcpServers?.enabled() ?? [];
+  #mcpParams(client: AgentClient, botId: string): Record<string, unknown> {
+    // Only the servers this coworker may use (all of them unless the owner limited a server).
+    const servers = this.#mcpServers?.enabled(botId) ?? [];
     if (servers.length === 0) return {};
     const config = client.provider === "codex" ? codexMcpConfig(servers) : undefined;
     return { customMcpServers: servers, ...(config ? { config } : {}) };
@@ -687,9 +768,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#desktop = new DesktopControlService({
       host,
       level: () => this.#permissions?.get().levels.desktop_control ?? "ask",
-      authorize: ({ provider, threadId, action, reason }) =>
+      authorize: ({ provider, threadId, action, reason, category }) =>
         this.#authorize(provider, threadId, {
-          category: "desktop_control",
+          category: category ?? "desktop_control",
           paths: [],
           action,
           reason,
@@ -699,6 +780,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       botName: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name ?? "A coworker",
     });
     this.#setStatus({ capabilities: { ...this.#status.capabilities, computerUse: "ready" } });
+  }
+
+  /** Web APIs the owner connected in Marketplace → APIs. */
+  setApiIntegrations(service: ApiIntegrationService): void {
+    this.#apis = service;
+  }
+
+  /** Approvals raised by a connected API call: routed and shown like any other. */
+  apiApprovalCreated(approval: ApprovalRequest): void {
+    void this.#routeApproval(approval).finally(() => {
+      if (this.#approvals) {
+        this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+      }
+    });
   }
 
   setComposioClient(client: ComposioClient): void {
@@ -783,7 +878,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         ACP_AGENT_PROVIDERS.map((provider) => [provider, () => resolveAcpAgentCli(provider)]),
       ) as Record<AcpAgentProviderId, () => Promise<AcpCliInfo>>),
     };
-    for (const provider of AGENT_PROVIDERS) {
+    for (const provider of this.#lazyProviderStart() ? this.#wantedProviders() : AGENT_PROVIDERS) {
       if (this.#stopping) return;
       // Busy only matters for a running provider (a restart would cut its turns). One that is
       // not connected, e.g. signed out, has no turns: it was skipped whenever any coworker was
@@ -1043,7 +1138,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         /* The branch file was removed: the coworker simply starts fresh. */
       }
     }
-    const bases = this.#knowledge?.basesForBot(bot) ?? [];
+    const bases = this.#knowledgeEnabled() ? (this.#knowledge?.basesForBot(bot) ?? []) : [];
     if (bases.length > 0) {
       extra.push(
         `Knowledge Bases (the owner's indexed documents you may search): ${bases
@@ -1384,6 +1479,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           this.#approvedLater.set(deferred.key, Date.now() + APPROVED_LATER_MS);
           if (deferred.grantKey)
             this.#taskGrants.set(deferred.grantKey, Date.now() + TASK_GRANT_MS);
+        } else {
+          this.#rememberDecline(declineKey(deferred.key, this.#ownerAsked(deferred.botId)));
         }
         await this.#notifyBot(
           deferred.botId,
@@ -1670,7 +1767,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   async #notifyBot(botId: string, text: string): Promise<void> {
     if (!this.#store.list().some((bot) => bot.id === botId)) return;
     try {
-      await this.sendMessage({ botId, text });
+      await this.sendMessage({ botId, text, origin: "system" });
     } catch (error) {
       this.#emitError("notify_failed", error, botId);
     }
@@ -1830,6 +1927,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#snapshots.delete(botId);
     this.#deliverables.delete(botId);
     this.#saveDeliverablesSoon();
+    this.#freshReads.delete(botId);
+    this.#chatWindows.delete(botId);
     this.#lastConversationSignatures.delete(botId);
     this.#drainingBots.delete(botId);
     this.#scheduledDrains.delete(botId);
@@ -1873,8 +1972,85 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (this.#approvals) {
       this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
     }
-    await this.#connect("starting", AGENT_PROVIDERS);
+    const lazy = this.#lazyProviderStart();
+    const wanted = lazy ? this.#wantedProviders() : AGENT_PROVIDERS;
+    await this.#connect("starting", wanted);
+    if (lazy && this.#clients.size === 0 && !this.#stopping) {
+      // None of the AIs the team uses is installed or signed in: look for any AI that is, so a
+      // fresh install still lands on the first one available (the bundled free model).
+      for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
+      const rest = AGENT_PROVIDERS.filter((provider) => !wanted.includes(provider));
+      if (rest.length) await this.#connect("starting", rest);
+    }
     this.#modelRefresh.start();
+  }
+
+  /** Lets the app switch lazy AI start off (Settings > Features). */
+  configureLazyProviderStart(enabled: () => boolean): void {
+    this.#lazyProviderStart = enabled;
+  }
+
+  /** Lets the app switch closing idle Claude processes off (Settings > Features). */
+  configureClaudeIdleClose(enabled: () => boolean): void {
+    this.#claudeIdleClose = enabled;
+  }
+
+  /**
+   * A Claude conversation's process stays open while its coworker has work queued, an approval
+   * waiting, or a delivery starting (a question it asked is tracked by the client itself);
+   * otherwise it may close after 10 idle minutes.
+   */
+  #keepClaudeRuntime(threadId: string): boolean {
+    const botId = this.#threadToBot.get(threadId);
+    if (!botId) return false;
+    if (this.#mailbox.nextQueued(botId)) return true;
+    if (this.#mailbox.startingDeliveryForBot(botId)) return true;
+    return (this.#approvals?.list() ?? []).some(
+      (approval) => approval.botId === botId && approval.status === "pending",
+    );
+  }
+
+  /** A coworker is set to use this provider. */
+  #providerInUse(provider: AgentProvider): boolean {
+    return this.#store.list().some((bot) => providerForBot(bot) === provider);
+  }
+
+  /**
+   * The providers worth starting: those a coworker uses, the default one, any the owner asked
+   * to check, and any already running. Starting all of them (about 18) at every launch and
+   * stopping the unused ones a minute later was most of the start-up CPU and process churn.
+   */
+  #wantedProviders(): AgentProvider[] {
+    const used = new Set(this.#store.list().map(providerForBot));
+    return AGENT_PROVIDERS.filter(
+      (provider) =>
+        provider === this.#preferredProvider ||
+        used.has(provider) ||
+        this.#probedProviders.has(provider) ||
+        this.#clients.has(provider) ||
+        this.#dormantClients.has(provider),
+    );
+  }
+
+  /**
+   * Settings > AI and models (or setup) opened: check every provider not checked yet, so the
+   * list shows what is installed and signed in. Unused ones stop again after a minute.
+   */
+  async probeProviders(): Promise<void> {
+    if (!this.#initialized || this.#stopping) return;
+    const unchecked = AGENT_PROVIDERS.filter(
+      (provider) =>
+        !this.#probedProviders.has(provider) &&
+        !this.#clients.has(provider) &&
+        !this.#providerStarts.has(provider) &&
+        !this.#dormantClients.has(provider),
+    );
+    for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
+    const fresh = unchecked.filter((provider) =>
+      [null, "not-started"].includes(this.#providerState(provider)),
+    );
+    if (!fresh.length) return;
+    await this.#connect("starting", fresh);
   }
 
   async setPreferredProvider(provider: AgentProvider): Promise<void> {
@@ -1915,8 +2091,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#stopping = true;
     this.#flushDeliverables();
     this.#initialized = false;
-    if (this.#restartTimer) clearTimeout(this.#restartTimer);
-    this.#restartTimer = null;
+    for (const timer of this.#restartTimers.values()) clearTimeout(timer);
+    this.#restartTimers.clear();
+    if (this.#watchdogTimer) clearInterval(this.#watchdogTimer);
+    this.#watchdogTimer = null;
     this.#clearCompactionRuntime();
     this.#pendingPrompts.clear();
     this.#scheduledDrains.clear();
@@ -1932,13 +2110,34 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await Promise.allSettled([...this.#turnAssociations.values()]);
     await Promise.allSettled([...this.#completionTasks]);
     this.#turnAssociations.clear();
+    // The memory database reopens on next use.
+    this.#memoryStore.close();
+    this.#recallIndexed.clear();
     this.#setStatus({ phase: "stopped", message: null });
   }
 
-  async readConversation(botId: string): Promise<ConversationSnapshot> {
+  /**
+   * The chat as the window shows it. With `limit`, only the newest messages are sent (the rest
+   * come with "Load earlier"), and later updates for this coworker keep that window.
+   */
+  async readConversation(
+    botId: string,
+    options?: ReadConversationOptions,
+  ): Promise<ConversationSnapshot> {
+    if (options?.limit) this.#chatWindows.set(botId, options.limit);
+    return windowedSnapshot(await this.#readConversationLive(botId), options?.limit);
+  }
+
+  /** Lets the app switch per-message chat updates off (Settings > Features). */
+  configureDeltaUpdates(enabled: () => boolean): void {
+    this.#deltaUpdates = enabled;
+  }
+
+  /** The live snapshot (not a copy): callers copy what they send. */
+  async #readConversationLive(botId: string): Promise<ConversationSnapshot> {
     const bot = await this.#store.getOrCreate(botId);
     const cached = this.#snapshots.get(botId);
-    if (cached?.activeTurnId) return structuredClone(cached);
+    if (cached?.activeTurnId) return cached;
     const revisionAtStart = cached?.revision ?? 0;
 
     const provider = providerForBot(bot);
@@ -1971,7 +2170,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!bot.threadId || !client || this.#status.phase !== "ready") {
       const snapshot = this.#ensureSnapshot(botId, bot.threadId);
       this.#syncMailboxMessages(snapshot);
-      return structuredClone(snapshot);
+      return snapshot;
+    }
+    // Read from the AI's own history once; after that every change reaches this snapshot as an
+    // event, so opening the chat again needs no re-read (Claude parsed the whole file each time).
+    if (
+      cached &&
+      this.#deltaUpdates() &&
+      this.#freshReads.get(botId) === bot.threadId &&
+      cached.threadId === bot.threadId
+    ) {
+      this.#syncMailboxMessages(cached);
+      return cached;
     }
 
     try {
@@ -1996,12 +2206,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#syncMailboxMessages(snapshot);
       this.#snapshots.set(botId, snapshot);
       this.#threadToBot.set(bot.threadId, botId);
-      return structuredClone(snapshot);
+      void this.#indexForRecall([bot]);
+      if (!snapshot.activeTurnId) this.#freshReads.set(botId, bot.threadId);
+      return snapshot;
     } catch (error) {
       this.#emitError("thread_read_failed", error, botId);
       const snapshot = this.#ensureSnapshot(botId, bot.threadId);
       this.#syncMailboxMessages(snapshot);
-      return structuredClone(snapshot);
+      return snapshot;
     }
   }
 
@@ -2057,6 +2269,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (this.#mailbox.listQueue(bot.id).paused) await this.#mailbox.setPaused(bot.id, false);
     const receipt = await this.#mailbox.enqueue({
       sender: { kind: "user" },
+      origin: input.origin ?? "owner",
       recipientBotIds: [bot.id],
       text: input.text,
       draftIds: input.attachmentDraftIds ?? [],
@@ -2073,7 +2286,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "bots-changed", bots: this.#store.list() });
     this.#emitConversation(snapshot);
     this.#emitQueue(bot.id);
-    if (await this.#steerActiveTurn(bot, delivery)) {
+    // Only what the owner types in the composer joins a running turn. Team-run tasks, routine
+    // steps, schedules and the app's own notes queue, so each gets a turn (and a reply) of its own.
+    if (input.steer === true && (await this.#steerActiveTurn(bot, delivery))) {
       this.#syncMailboxMessages(snapshot);
       this.#emitConversation(snapshot);
       this.#emitQueue(bot.id);
@@ -2120,25 +2335,57 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         delivery.text,
       ].join("\n");
     }
-    try {
-      await this.#mailbox.markStarting(delivery.id);
-      await withTimeout(
-        client.request("turn/steer", {
-          threadId: bot.threadId,
-          expectedTurnId: turnId,
-          clientUserMessageId: delivery.id,
-          input: [{ type: "text", text }],
-        }),
-        STEER_TIMEOUT_MS,
-      );
-    } catch (error) {
-      this.emit("log", `steering ${bot.id} failed, queued instead: ${String(error)}`);
+    await this.#mailbox.markStarting(delivery.id);
+    const request = client.request("turn/steer", {
+      threadId: bot.threadId,
+      expectedTurnId: turnId,
+      clientUserMessageId: delivery.id,
+      input: [{ type: "text", text }],
+    });
+    const outcome = await steerOutcome(request, () =>
+      this.#steerLanded(client, bot.threadId ?? "", turnId, delivery.id),
+    );
+    if (outcome === "refused") {
+      this.emit("log", `steering ${bot.id} was refused, queued instead`);
       await this.#mailbox.markQueuedAgain(delivery.id).catch(() => undefined);
       return false;
+    }
+    if (outcome === "unconfirmed") {
+      // Sending it again could run the same request twice (a second payment, a second post),
+      // so an unanswered steer counts as delivered and the owner is told to check.
+      this.#emit({
+        type: "notice",
+        botId: bot.id,
+        code: "steer_unconfirmed",
+        message: `${bot.name} did not confirm it received your last message. If it does not react to it, send it again.`,
+      });
     }
     await this.#mailbox.markRunning(delivery.id, turnId);
     await this.#mailbox.markTerminal(delivery.id, "completed");
     return true;
+  }
+
+  /** True when the running turn holds the steered message, null when the thread cannot be read. */
+  async #steerLanded(
+    client: AgentClient,
+    threadId: string,
+    turnId: string,
+    deliveryId: string,
+  ): Promise<boolean | null> {
+    try {
+      const response = await client.request<ThreadResponse>(
+        "thread/read",
+        { threadId, includeTurns: true },
+        5_000,
+      );
+      const turn = response.thread.turns?.find((candidate) => candidate.id === turnId);
+      if (!turn) return null;
+      return Boolean(
+        turn.items?.some((item) => item.type === "userMessage" && item.clientId === deliveryId),
+      );
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -2163,7 +2410,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   /**
    * A coworker's recall: messages that contain every word of the query, from its own chats or
-   * the whole team's, newest first.
+   * the whole team's (team-rules.ts decides), newest first. Chats the app has seen are kept in
+   * the memory database's search index, so recall is one lookup and never wakes a sleeping AI
+   * to read its chat; without that index only chats already in memory are searched.
    */
   async #recallChats(senderBotId: string, args: Record<string, unknown>) {
     const words = (typeof args.query === "string" ? args.query : "")
@@ -2179,14 +2428,78 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const bots = self
       ? recallableBots(self, everyone, args.scope, this.#workspaceOf(self.workspaceId)?.ceoBotId)
       : [];
+    await this.#indexForRecall(bots);
+    const indexed = await this.#memoryStore
+      .recall(
+        bots.map((bot) => bot.id),
+        words,
+        limit,
+      )
+      .catch((error: unknown) => {
+        this.emit("log", `chat recall index failed: ${String(error)}`);
+        return null;
+      });
+    if (indexed) {
+      const names = new Map(bots.map((bot) => [bot.id, bot.name]));
+      return indexed.map((message): MessageSearchHit => {
+        const lower = message.text.toLowerCase();
+        const first = words[0] as string;
+        const index = Math.max(0, lower.indexOf(first));
+        return {
+          botId: message.botId,
+          botName: names.get(message.botId) ?? message.botId,
+          messageId: message.messageId.slice(message.botId.length + 1),
+          author: message.author as MessageSearchHit["author"],
+          excerpt: searchExcerpt(message.text, index, first.length),
+          createdAt: message.createdAt,
+        };
+      });
+    }
     return this.#searchConversations(
-      bots,
+      bots.filter((bot) => this.#snapshots.has(bot.id)),
       (text) => {
         if (!words.every((word) => text.includes(word))) return null;
         return { index: text.indexOf(words[0] as string), length: (words[0] as string).length };
       },
       limit,
     );
+  }
+
+  /** What each chat looked like when it was last indexed for recall. */
+  readonly #recallIndexed = new Map<string, string>();
+
+  /** Adds the finished messages of chats in memory to the recall index (only what changed). */
+  async #indexForRecall(bots: BotSummary[]): Promise<void> {
+    for (const bot of bots) {
+      const snapshot = this.#snapshots.get(bot.id);
+      if (!snapshot) continue;
+      const last = snapshot.messages.at(-1);
+      const signature = `${snapshot.messages.length}|${last?.id ?? ""}|${last?.status ?? ""}|${last?.text?.length ?? 0}`;
+      if (this.#recallIndexed.get(bot.id) === signature) continue;
+      const messages = snapshot.messages.flatMap((message) =>
+        message.text &&
+        message.status !== "streaming" &&
+        message.itemType !== "toolCall" &&
+        message.itemType !== "commentary"
+          ? [
+              {
+                messageId: `${bot.id}:${message.id}`,
+                botId: bot.id,
+                author: message.author,
+                createdAt: message.createdAt,
+                text: message.text,
+              },
+            ]
+          : [],
+      );
+      try {
+        await this.#memoryStore.recordMessages(messages);
+        this.#recallIndexed.set(bot.id, signature);
+      } catch (error) {
+        this.emit("log", `chat recall index for ${bot.id} failed: ${String(error)}`);
+        return;
+      }
+    }
   }
 
   async #searchConversations(
@@ -2243,6 +2556,90 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await this.#mailbox.setReaction(bot.id, input.messageId, input.emoji);
     this.#syncMailboxMessages(current);
     this.#emitConversation(current);
+  }
+
+  /** Any sign of life from a coworker's turn: text, a tool, a plan change. Feeds the watchdog. */
+  #noteProgress(botId: string): void {
+    this.#progressAt.set(botId, Date.now());
+    if (this.#watchdogTimer || this.#stopping) return;
+    const limitMs = this.#engineSettings().watchdogMinutes * 60_000;
+    const tickMs = Math.min(WATCHDOG_TICK_MS, Math.max(25, Math.round(limitMs / 2)));
+    this.#watchdogTimer = setInterval(() => void this.#checkWatchdog(), tickMs);
+    this.#watchdogTimer.unref?.();
+  }
+
+  /**
+   * A turn with no sign of life for the owner's watchdog time is stopped with a plain note, so
+   * a hung provider never holds a coworker (and a turn slot) forever. A turn waiting on the
+   * owner (an approval, a password card, a browser takeover) is waiting, not hung.
+   */
+  async #checkWatchdog(): Promise<void> {
+    const limitMs = this.#engineSettings().watchdogMinutes * 60_000;
+    const now = Date.now();
+    let active = 0;
+    for (const [botId, snapshot] of this.#snapshots) {
+      const turnId = snapshot.activeTurnId;
+      if (!turnId) continue;
+      active += 1;
+      const last = this.#progressAt.get(botId) ?? this.#turnStartedAt.get(botId) ?? now;
+      if (now - last < limitMs || this.#waitingOnOwner(botId)) continue;
+      this.#progressAt.set(botId, now);
+      await this.stopTurn(botId, turnId, "watchdog").catch((error) =>
+        this.#emitError("watchdog_interrupt_failed", error, botId),
+      );
+    }
+    if (active === 0 && this.#watchdogTimer) {
+      clearInterval(this.#watchdogTimer);
+      this.#watchdogTimer = null;
+    }
+  }
+
+  #waitingOnOwner(botId: string): boolean {
+    if (this.#takeover.humanInControl) return true;
+    if ((this.#approvals?.list() ?? []).some((a) => a.botId === botId && a.status === "pending")) {
+      return true;
+    }
+    return [...this.#secureInputs.values()].some((pending) => pending.request.botId === botId);
+  }
+
+  /**
+   * Stops one turn without pausing the coworker's queue (unlike the owner's Stop): used by the
+   * watchdog and by a cancelled team run. The coworker's chat says why.
+   */
+  async stopTurn(botId: string, turnId: string, reason: "watchdog" | "team-run"): Promise<void> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot?.threadId) return;
+    const client = this.#clientForBot(bot);
+    if (!client) return;
+    await this.#cancelPausedToolCalls(botId);
+    await client.request("turn/interrupt", { threadId: bot.threadId, turnId });
+    const minutes = this.#engineSettings().watchdogMinutes;
+    this.#emit({
+      type: "notice",
+      botId,
+      code: reason === "watchdog" ? "turn_watchdog" : "team_run_stopped",
+      message:
+        reason === "watchdog"
+          ? `${bot.name} showed no progress for ${minutes} minutes, so Sahkarmi stopped this turn. Send the message again to retry, or change the time limit in Settings > Features.`
+          : `The team run was stopped, so ${bot.name}'s task for it was stopped too.`,
+    });
+  }
+
+  /**
+   * Withdraws a task the app sent (a cancelled team run): a queued copy is removed, a running
+   * one is stopped. Anything already finished is left as it is.
+   */
+  async withdrawDelivery(botId: string, deliveryId: string): Promise<void> {
+    const delivery = this.#mailbox.getDelivery(deliveryId)?.delivery;
+    if (!delivery || delivery.recipientBotId !== botId) return;
+    if (delivery.status === "queued") {
+      await this.cancelQueuedMessage(botId, deliveryId);
+      return;
+    }
+    const turnId = delivery.turnId ?? this.#snapshots.get(botId)?.activeTurnId ?? null;
+    if ((delivery.status === "running" || delivery.status === "starting") && turnId) {
+      await this.stopTurn(botId, turnId, "team-run");
+    }
   }
 
   async interrupt(botId: string, turnId: string): Promise<void> {
@@ -2460,7 +2857,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         ? await this.#probeComputerUse(codexClient)
         : "unavailable";
     if (this.#stopping) return;
-    this.#restartAttempts = 0;
+    for (const provider of requestedProviders) {
+      if (this.#clients.has(provider)) this.#restartAttempts.delete(provider);
+    }
     this.#setStatus({
       phase: "ready",
       cliVersion: this.#cli.get(primaryProvider)?.version ?? null,
@@ -2620,6 +3019,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#cli.set(provider, cli);
       this.#clients.set(provider, client);
       this.#dormantClients.delete(provider);
+      this.emit("runtime-started", provider, cli.executable);
+      // A reconnected AI may have a different history than the cached chats show.
+      for (const bot of this.#store.list()) {
+        if (providerForBot(bot) === provider) this.#freshReads.delete(bot.id);
+      }
       this.#accounts.set(provider, account.account);
       this.#touchProvider(provider);
       if (provider === "antigravity") {
@@ -2652,7 +3056,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       client = new CodexAppServerClient(cli.executable, this.#requestTimeoutMs);
     } else if (provider === "claude") {
       cli = await resolveClaudeCli();
-      client = new ClaudeAgentClient(cli);
+      client = new ClaudeAgentClient(cli, undefined, {
+        catalogCachePath: join(this.#store.userDataPath, "claude-models.json"),
+        keepRuntime: (threadId) => this.#keepClaudeRuntime(threadId),
+        idleClose: () => this.#claudeIdleClose(),
+      });
     } else if (provider === "antigravity") {
       const antigravity = await resolveAntigravityCli();
       cli = antigravity;
@@ -2768,7 +3176,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const quota = quotaNotice(client.provider, message);
       if (quota) {
         const now = Date.now();
-        if (client.provider === "antigravity") this.#geminiQuotaAt = now;
+        if (client.provider === "antigravity") {
+          this.#geminiQuotaAt.set(this.#geminiClientAccount ?? "", now);
+        }
         for (const botId of this.#botsWorkingOn(client.provider)) {
           if (now - (this.#quotaNoticeAt.get(botId) ?? 0) < QUOTA_NOTICE_INTERVAL_MS) continue;
           this.#quotaNoticeAt.set(botId, now);
@@ -2822,7 +3232,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     const anotherProviderIsReady = this.#clients.size > 0;
 
-    if (this.#restartAttempts >= 3) {
+    const attempts = this.#restartAttempts.get(client.provider) ?? 0;
+    if (attempts >= 3) {
       this.#setStatus(
         anotherProviderIsReady
           ? {
@@ -2841,8 +3252,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       return;
     }
 
-    const delayMs = 500 * 2 ** this.#restartAttempts;
-    this.#restartAttempts += 1;
+    const delayMs = 500 * 2 ** attempts;
+    this.#restartAttempts.set(client.provider, attempts + 1);
     this.#setStatus(
       anotherProviderIsReady
         ? {
@@ -2855,13 +3266,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             phase: "restarting",
             providers,
             capabilities: { ...this.#status.capabilities, chat: "unavailable" },
-            message: `${providerLabel(client.provider)} stopped. Retrying (${this.#restartAttempts}/3)…`,
+            message: `${providerLabel(client.provider)} stopped. Retrying (${attempts + 1}/3)…`,
           },
     );
-    this.#restartTimer = setTimeout(() => {
-      this.#restartTimer = null;
-      void this.#connect("restarting", [client.provider]);
-    }, delayMs);
+    const previous = this.#restartTimers.get(client.provider);
+    if (previous) clearTimeout(previous);
+    this.#restartTimers.set(
+      client.provider,
+      setTimeout(() => {
+        this.#restartTimers.delete(client.provider);
+        void this.#connect("restarting", [client.provider]);
+      }, delayMs),
+    );
   }
 
   async #buildDynamicTools(botId: string): Promise<unknown[]> {
@@ -2870,6 +3286,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       SAHKARMI_DYNAMIC_TOOLS,
       ...desktopDynamicTools(),
     ];
+    const apis = (await this.#apis?.availableTo(botId).catch(() => [])) ?? [];
+    if (apis.length) tools.push(apiDynamicTools(apis.map((api) => api.name)));
     if (!this.#composioClient) return tools;
     try {
       const composioTools = await this.#composioClient.getDynamicTools();
@@ -2977,7 +3395,7 @@ ${carryOver}`
       ephemeral: false,
       serviceName: "sahkarmi",
       dynamicTools: await this.#buildDynamicTools(bot.id),
-      ...this.#mcpParams(client),
+      ...this.#mcpParams(client, bot.id),
     });
     const threadId = response.thread.id;
     if (client.provider === "codex") {
@@ -3011,7 +3429,7 @@ ${carryOver}`
       sandbox: "danger-full-access",
       developerInstructions: await this.#instructionsFor(bot, client.provider),
       dynamicTools: await this.#buildDynamicTools(bot.id),
-      ...this.#mcpParams(client),
+      ...this.#mcpParams(client, bot.id),
     };
 
     try {
@@ -3111,6 +3529,25 @@ ${carryOver}`
     );
   }
 
+  /**
+   * A page in a coworker's tab started a download. It follows the "downloads" permission; the
+   * Sahkarmi Downloads folder counts as the coworker's own. The owner's own tabs are theirs.
+   */
+  async #authorizeDownload(request: DownloadRequest): Promise<boolean> {
+    if (!this.#permissions || !request.botId) return true;
+    const verdict = await this.#permissions.authorize(
+      {
+        botId: request.botId,
+        provider: "browser",
+        category: "downloads",
+        action: `Download ${request.fileName} from ${request.url.slice(0, 300)}`,
+        paths: [request.path],
+      },
+      [...this.#workspaceRoots(request.botId), this.#store.downloadsRoot],
+    );
+    return verdict.allowed;
+  }
+
   /** The owner's latest real instruction in this chat, skipping "ok" and the app's own notes. */
   #ownerAsked(botId: string): string | null {
     const messages = this.#snapshots.get(botId)?.messages ?? [];
@@ -3138,6 +3575,13 @@ ${carryOver}`
       if (until !== undefined) this.#taskGrants.delete(grantKey);
     }
     const key = permissionKey(request);
+    // The owner already said no to this exact step in this task: no second card for a retry.
+    const refusal = declineKey(key, this.#ownerAsked(request.botId));
+    const declinedUntil = this.#taskDeclines.get(refusal);
+    if (declinedUntil !== undefined) {
+      if (declinedUntil > Date.now()) return "rejected";
+      this.#taskDeclines.delete(refusal);
+    }
     const asking = this.#askingOwner.get(key);
     if (asking) return asking;
     const answer = this.#askOwnerOnce(request, key, grantKey);
@@ -3147,10 +3591,44 @@ ${carryOver}`
       if (outcome === "approved" && grantKey) {
         this.#taskGrants.set(grantKey, Date.now() + TASK_GRANT_MS);
       }
+      if (outcome === "rejected") this.#rememberDecline(refusal);
       return outcome;
     } finally {
       if (this.#askingOwner.get(key) === answer) this.#askingOwner.delete(key);
     }
+  }
+
+  #rememberDecline(refusal: string): void {
+    this.#taskDeclines.set(refusal, Date.now() + TASK_GRANT_MS);
+    // Bounded: the oldest refusals go first.
+    while (this.#taskDeclines.size > MAX_TASK_DECLINES) {
+      const oldest = this.#taskDeclines.keys().next().value;
+      if (oldest === undefined) break;
+      this.#taskDeclines.delete(oldest);
+    }
+  }
+
+  /**
+   * Main tells the service whether the owner is looking at the window. A request raised while
+   * they are away waits OWNER_AWAY_TIMEOUT_FACTOR times longer (15 min becomes 1 hour), so an
+   * approval does not silently expire while they are at lunch.
+   */
+  setOwnerPresence(present: () => boolean): void {
+    this.#ownerPresent = present;
+  }
+
+  static OWNER_AWAY_TIMEOUT_FACTOR = 4;
+
+  #permissionWaitMs(): number {
+    let present = true;
+    try {
+      present = this.#ownerPresent();
+    } catch {
+      present = true;
+    }
+    return present
+      ? this.#permissionTimeoutMs
+      : this.#permissionTimeoutMs * AgentService.OWNER_AWAY_TIMEOUT_FACTOR;
   }
 
   async #askOwnerOnce(
@@ -3173,8 +3651,9 @@ ${carryOver}`
     // A runtime that gives up on a tool call after a few minutes is answered before that; the
     // request stays in the inbox and the coworker hears the owner's decision as a message.
     const shortWait = SHORT_TOOL_WAIT_MS[request.provider];
-    const defer = shortWait !== undefined && shortWait < this.#permissionTimeoutMs;
-    const waitMs = defer ? shortWait : this.#permissionTimeoutMs;
+    const permissionTimeoutMs = this.#permissionWaitMs();
+    const defer = shortWait !== undefined && shortWait < permissionTimeoutMs;
+    const waitMs = defer ? shortWait : permissionTimeoutMs;
     const bot = this.#store.list().find((candidate) => candidate.id === request.botId);
     const wording = describePermissionRequest(
       request,
@@ -3198,7 +3677,7 @@ ${carryOver}`
       ...this.#approvalContext(request.botId),
       // The tool call is parked on the same timeout, so the deadline shown to the owner in
       // Telegram is the real one.
-      expiresAt: new Date(Date.now() + this.#permissionTimeoutMs).toISOString(),
+      expiresAt: new Date(Date.now() + permissionTimeoutMs).toISOString(),
     });
     await this.#routeApproval(approval);
     this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
@@ -3385,6 +3864,22 @@ ${carryOver}`
             );
             return;
           }
+          if (request.params.namespace === API_TOOL_NAMESPACE) {
+            const senderBotId = this.#threadToBot.get(request.params.threadId);
+            const result =
+              this.#apis && senderBotId
+                ? await this.#apis.handleTool(
+                    senderBotId,
+                    request.params.tool,
+                    request.params.arguments,
+                  )
+                : { success: false, text: "No web APIs are connected." };
+            client.respond(request.id, {
+              success: result.success,
+              contentItems: [{ type: "inputText", text: result.text }],
+            });
+            return;
+          }
           if (request.params.namespace === "composio") {
             client.respond(request.id, await this.#handleComposioTool(request.params));
             return;
@@ -3471,11 +3966,22 @@ ${carryOver}`
       ]
         .filter(Boolean)
         .join(" ");
+      const typed = getString(browserAction, "text");
+      const typedKey = `${params.botId ?? ""}\n${tabId}`;
+      if ((type === "type" || type === "paste") && typed) {
+        this.#typedOnTab.delete(typedKey);
+        this.#typedOnTab.set(typedKey, typed.slice(0, 20_000));
+        if (this.#typedOnTab.size > 200) {
+          const oldest = this.#typedOnTab.keys().next().value;
+          if (oldest !== undefined) this.#typedOnTab.delete(oldest);
+        }
+      }
       browser = {
         type,
         label: target.label,
         url: target.url,
-        text: getString(browserAction, "text") ?? undefined,
+        // A click sends what was typed before it, so one approval cannot cover a new message.
+        text: typed ?? (type === "click" ? this.#typedOnTab.get(typedKey) : undefined),
       };
     }
     const verdict = await this.#authorize(provider, params.threadId, {
@@ -3579,12 +4085,15 @@ ${carryOver}`
               installed: installedSkillNames(this.#store.sharedRoot),
               custom: (await new CustomSkills(this.#store.sharedRoot).list()).map((skill) => ({
                 id: skill.id,
+                type: "custom",
                 name: skill.name,
                 whenToUse: skill.description,
+                ...(skill.reviewNeeded ? { untrusted: UNTRUSTED_SKILL_NOTE } : {}),
                 path: join(this.#store.sharedRoot, skill.sharedPath),
               })),
               learned: learned.map((skill) => ({
                 id: skill.id,
+                type: "learned",
                 name: skill.name,
                 whenToUse: skill.whenToUse,
                 version: skill.version,
@@ -3598,11 +4107,25 @@ ${carryOver}`
 
     if (params.tool === "read_skill") {
       const args = isRecord(params.arguments) ? params.arguments : {};
-      const id = typeof args.id === "string" ? args.id : "";
+      const { id, type } = skillRef(args);
+      const learned =
+        type === "custom" ? null : await new LearnedSkills(this.#store.sharedRoot).read(id);
+      const custom =
+        type === "learned" ? null : await new CustomSkills(this.#store.sharedRoot).read(id);
+      if (learned === null && custom === null) {
+        throw new Error(`No skill with id "${id}". Call list_skills.`);
+      }
+      // A learned and a custom skill can share an id: without a type, both are shown, labelled.
       const text =
-        (await new LearnedSkills(this.#store.sharedRoot).read(id)) ??
-        (await new CustomSkills(this.#store.sharedRoot).read(id));
-      if (text === null) throw new Error(`No skill with id "${id}". Call list_skills.`);
+        learned !== null && custom !== null
+          ? [
+              `Two skills have the id "${id}". Call read_skill with type "learned" or "custom" to read one.`,
+              "--- learned skill ---",
+              learned,
+              "--- custom skill ---",
+              custom,
+            ].join("\n")
+          : (learned ?? custom ?? "");
       return { success: true, contentItems: [{ type: "inputText", text }] };
     }
 
@@ -3633,6 +4156,64 @@ ${carryOver}`
     throw new Error(`Unknown tool: ${params.tool}`);
   }
 
+  /** Team memory of the coworker's own workspace: save (one per key), search, list a page. */
+  async #handleMemoryTool(
+    senderBotId: string,
+    params: DynamicToolCallParams,
+  ): Promise<{ success: boolean; contentItems: Array<{ type: "inputText"; text: string }> }> {
+    const bot = this.#store.list().find((candidate) => candidate.id === senderBotId);
+    if (!bot) throw new Error("The sending coworker is unknown.");
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    const category = typeof args.category === "string" ? args.category : undefined;
+    const reply = (value: unknown) => ({
+      success: true,
+      contentItems: [{ type: "inputText" as const, text: JSON.stringify(value) }],
+    });
+    if (params.tool === "save_memory") {
+      const key = typeof args.key === "string" ? args.key.trim() : "";
+      const saved = await this.#memoryStore.save({
+        workspaceId: bot.workspaceId,
+        key: key || "Note",
+        content: typeof args.content === "string" ? args.content : "",
+        category: memoryCategory(args.category),
+        tags: Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string") : [],
+        authorBotId: senderBotId,
+      });
+      const updated = saved.createdAt !== saved.updatedAt;
+      return reply({
+        success: true,
+        message: `${updated ? "Memory updated" : "Memory saved"} under the key "${saved.key}".`,
+        memory: saved,
+      });
+    }
+    if (params.tool === "search_memory") {
+      const query = typeof args.query === "string" ? args.query : "";
+      const limit = typeof args.limit === "number" ? args.limit : 20;
+      const memories = await this.#memoryStore.search(bot.workspaceId, query, { category, limit });
+      return reply({ success: true, count: memories.length, memories });
+    }
+    // list_memories: one page, never the whole store.
+    const limit =
+      typeof args.limit === "number" ? Math.max(1, Math.min(MEMORY_PAGE_MAX, args.limit)) : 20;
+    const offset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
+    const page = await this.#memoryStore.list(bot.workspaceId, { category, limit, offset });
+    const next = page.offset + page.memories.length;
+    return reply({
+      success: true,
+      total: page.total,
+      offset: page.offset,
+      count: page.memories.length,
+      memories: page.memories.map((memory) => ({
+        ...memory,
+        content:
+          memory.content.length > 600
+            ? `${memory.content.slice(0, 600)}… (search_memory for all)`
+            : memory.content,
+      })),
+      ...(next < page.total ? { nextOffset: next } : {}),
+    });
+  }
+
   async #handleKnowledgeTool(
     senderBotId: string,
     params: DynamicToolCallParams,
@@ -3643,6 +4224,9 @@ ${carryOver}`
     const knowledge = this.#knowledge;
     const bot = this.#store.list().find((candidate) => candidate.id === senderBotId);
     if (!knowledge || !bot) throw new Error("Knowledge Bases are not available.");
+    if (!this.#knowledgeEnabled()) {
+      throw new Error("The owner has switched Knowledge Bases off (Settings > Features).");
+    }
     const args = isRecord(params.arguments) ? params.arguments : {};
     const reply = (value: unknown) => ({
       success: true,
@@ -3695,7 +4279,7 @@ ${carryOver}`
       if (!knowledge.basesForBot(bot).some((base) => base.id === kbId)) {
         throw new Error("You may not read that knowledge base.");
       }
-      const section = knowledge.readSection(kbId, documentId, {
+      const section = await knowledge.readSection(kbId, documentId, {
         page: typeof args.page === "number" ? args.page : null,
         chunkIndex: typeof args.chunkIndex === "number" ? args.chunkIndex : null,
       });
@@ -3915,79 +4499,23 @@ ${carryOver}`
       }
     }
 
-    if (params.tool === "save_memory") {
-      const args = isRecord(params.arguments) ? params.arguments : {};
-      const key = typeof args.key === "string" ? args.key.trim() : "Note";
-      const content = typeof args.content === "string" ? args.content.trim() : "";
-      const rawCategory = typeof args.category === "string" ? args.category : "";
-      const category: AgentMemoryCategory =
-        rawCategory === "architecture" || rawCategory === "preference" || rawCategory === "decision"
-          ? rawCategory
-          : "fact";
-      const tags = Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string") : [];
-
-      const saved = await this.#memoryStore.save({
-        key,
-        content,
-        category,
-        tags,
-        authorBotId: senderBotId,
-      });
-
-      return {
-        success: true,
-        contentItems: [
-          {
-            type: "inputText",
-            text: JSON.stringify({
-              success: true,
-              message: `Memory saved successfully with key: "${saved.key}"`,
-              memory: saved,
-            }),
-          },
-        ],
-      };
-    }
-
-    if (params.tool === "search_memory") {
-      const args = isRecord(params.arguments) ? params.arguments : {};
-      const query = typeof args.query === "string" ? args.query : "";
-      const category = typeof args.category === "string" ? args.category : undefined;
-      const results = await this.#memoryStore.search(query, category);
-
-      return {
-        success: true,
-        contentItems: [
-          {
-            type: "inputText",
-            text: JSON.stringify({
-              success: true,
-              count: results.length,
-              memories: results,
-            }),
-          },
-        ],
-      };
-    }
-
-    if (params.tool === "list_memories") {
-      const args = isRecord(params.arguments) ? params.arguments : {};
-      const category = typeof args.category === "string" ? args.category : undefined;
-      const results = await this.#memoryStore.list(category);
-
-      return {
-        success: true,
-        contentItems: [
-          {
-            type: "inputText",
-            text: JSON.stringify({
-              success: true,
-              count: results.length,
-              memories: results,
-            }),
-          },
-        ],
-      };
+    if (MEMORY_TOOLS.has(params.tool)) {
+      try {
+        return await this.#handleMemoryTool(senderBotId, params);
+      } catch (error) {
+        return {
+          success: false,
+          contentItems: [
+            {
+              type: "inputText",
+              text: JSON.stringify({
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            },
+          ],
+        };
+      }
     }
 
     if (params.tool !== "send_message" || !isRecord(params.arguments)) {
@@ -4029,9 +4557,17 @@ ${carryOver}`
       throw new Error("replyToMessageId must be a message id.");
     }
     if (typeof params.arguments.text !== "string") throw new Error("text is required.");
+    const hops = this.#nextHop(params.turnId);
+    if (hops > MAX_AGENT_HOPS) {
+      this.#noteHopLimit(senderBotId);
+      throw new Error(
+        `Stopped: this chain of coworker messages reached ${MAX_AGENT_HOPS} hops without the owner. Do not send more messages for it; finish with what you have and report to the owner.`,
+      );
+    }
 
     const receipt = await this.#mailbox.enqueue({
       sender: { kind: "bot", botId: senderBotId },
+      hops,
       recipientBotIds: recipientValues,
       text: params.arguments.text,
       sourcePaths: paths,
@@ -4206,6 +4742,7 @@ ${carryOver}`
       this.#stopping ||
       this.#drainingBots.has(botId) ||
       this.#compactingBots.has(botId) ||
+      this.#heldDrains.has(botId) ||
       this.#status.phase !== "ready"
     )
       return;
@@ -4237,16 +4774,96 @@ ${carryOver}`
         }
         return;
       }
+      // Too many coworkers working at once slows a small PC to a crawl: this one waits for a
+      // free slot and starts when any running turn ends.
+      if (!this.#hasTurnSlot(botId)) {
+        this.#noteWaitingForSlot(botId);
+        return;
+      }
+      this.#waitingForSlot.delete(botId);
       attempted = true;
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
         return;
       }
+      await this.#restoreOwnRuntime(botId, context);
       await this.#startDelivery(context);
     } finally {
       this.#drainingBots.delete(botId);
       if (attempted && this.#mailbox.nextQueued(botId)) this.#scheduleDrain(botId);
+      if (attempted) this.#drainWaitingForSlot();
     }
+  }
+
+  /** Coworkers with a turn running or starting right now. */
+  #busyBotIds(): Set<string> {
+    const busy = new Set<string>();
+    for (const [id, snapshot] of this.#snapshots) if (snapshot.activeTurnId) busy.add(id);
+    for (const id of this.#drainingBots) busy.add(id);
+    for (const deliveryId of this.#startingDeliveries) {
+      const recipient = this.#mailbox.getDelivery(deliveryId)?.delivery.recipientBotId;
+      if (recipient) busy.add(recipient);
+    }
+    return busy;
+  }
+
+  #hasTurnSlot(botId: string): boolean {
+    const busy = this.#busyBotIds();
+    busy.delete(botId);
+    return busy.size < this.#engineSettings().maxConcurrentTurns;
+  }
+
+  #noteWaitingForSlot(botId: string): void {
+    if (this.#waitingForSlot.has(botId)) return;
+    this.#waitingForSlot.add(botId);
+    const limit = this.#engineSettings().maxConcurrentTurns;
+    this.#emit({
+      type: "notice",
+      botId,
+      code: "waiting_for_turn_slot",
+      message: `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
+    });
+  }
+
+  /** Google reported a limit for the account Gemini runs on right now, a moment ago. */
+  #geminiQuotaJustHit(): boolean {
+    const at = this.#geminiQuotaAt.get(this.#geminiClientAccount ?? "") ?? 0;
+    return Date.now() - at < GEMINI_QUOTA_WINDOW_MS;
+  }
+
+  /** A turn ended: coworkers waiting for a slot get their chance, oldest first. */
+  #drainWaitingForSlot(): void {
+    for (const botId of [...this.#waitingForSlot]) {
+      if (!this.#mailbox.nextQueued(botId)) {
+        this.#waitingForSlot.delete(botId);
+        continue;
+      }
+      this.#scheduleDrain(botId);
+    }
+  }
+
+  /**
+   * Coworker-to-coworker hops in a row, counting the message this turn would send. A turn the
+   * owner started begins at one; a turn started by a colleague's message adds one to its count.
+   */
+  #nextHop(turnId: string): number {
+    const incoming = this.#mailbox.findDeliveryByTurn(turnId)?.delivery;
+    if (incoming?.sender.kind !== "bot") return 1;
+    return (incoming.hops ?? 1) + 1;
+  }
+
+  /** The owner sees why a chain of coworker messages stopped (once a minute per coworker). */
+  #noteHopLimit(botId: string): void {
+    const now = Date.now();
+    if (now - (this.#hopNoticeAt.get(botId) ?? 0) < 60_000) return;
+    this.#hopNoticeAt.set(botId, now);
+    const name = this.#store.list().find((bot) => bot.id === botId)?.name ?? "A coworker";
+    this.#emit({
+      type: "notice",
+      botId,
+      code: "agent_hop_limit",
+      message: `${name}'s coworkers passed this task back and forth ${MAX_AGENT_HOPS} times without you, so Sahkarmi stopped the chain. Read the latest replies and tell them how to go on.`,
+    });
   }
 
   /** Tells a CEO which employees it is still waiting on, so it reports once, with everything. */
@@ -4362,7 +4979,22 @@ ${carryOver}`
           this.emit("log", `knowledge grounding for ${bot.id} failed: ${String(error)}`);
         }
       }
+      if (
+        delivery.sender.kind === "user" &&
+        this.#memoryAutoContext() &&
+        delivery.text &&
+        !isContinuationText(delivery.text) &&
+        !delivery.text.startsWith("[")
+      ) {
+        try {
+          const memories = await this.#memoryStore.relevant(bot.workspaceId, delivery.text);
+          if (memories.length > 0) text += `\n\n${memoryContextLines(memories).join("\n")}`;
+        } catch (error) {
+          this.emit("log", `team memory for ${bot.id} failed: ${String(error)}`);
+        }
+      }
       this.#turnStartedAt.set(bot.id, Date.now() - 1_000);
+      this.#noteProgress(bot.id);
       const input: Array<Record<string, unknown>> = [{ type: "text", text }];
       for (const attachment of managedAttachments) {
         input.push(
@@ -4565,8 +5197,53 @@ ${carryOver}`
         terminal,
         terminal === "completed" ? null : reason,
       );
+      // The owner's own task (or a schedule's) is offered to run again. Team runs and
+      // routines decide themselves: their engines resume or report the step.
+      if (
+        terminal === "interrupted" &&
+        delivery.sender.kind === "user" &&
+        delivery.origin !== "team-run" &&
+        delivery.origin !== "routine" &&
+        !isContinuationText(delivery.text)
+      ) {
+        await this.#mailbox.setOfferRerun(delivery.id, true).catch(() => undefined);
+      }
       this.#emitQueue(delivery.recipientBotId);
     }
+  }
+
+  /** "Run again" on a task interrupted when Sahkarmi closed: the same message, sent anew. */
+  async rerunInterrupted(botId: string, deliveryId: string): Promise<void> {
+    const context = this.#mailbox.getDelivery(deliveryId);
+    if (!context || context.delivery.recipientBotId !== botId || !context.delivery.offerRerun) {
+      return;
+    }
+    await this.#mailbox.setOfferRerun(deliveryId, false);
+    await this.#store.getOrCreate(botId);
+    await this.#mailbox.enqueue({
+      sender: { kind: "user" },
+      origin: context.delivery.origin ?? "owner",
+      recipientBotIds: [botId],
+      text: context.delivery.text,
+      sourcePaths: context.managedAttachments.map((attachment) => attachment.path),
+      replyToMessageId: context.delivery.replyToMessageId,
+    });
+    if (this.#mailbox.listQueue(botId).paused) await this.#mailbox.setPaused(botId, false);
+    const snapshot = this.#ensureSnapshot(
+      botId,
+      this.#store.list().find((bot) => bot.id === botId)?.threadId ?? null,
+    );
+    this.#syncMailboxMessages(snapshot);
+    this.#emitConversation(snapshot);
+    this.#emitQueue(botId);
+    this.#scheduleDrain(botId);
+  }
+
+  async dismissInterrupted(botId: string, deliveryId: string): Promise<void> {
+    const context = this.#mailbox.getDelivery(deliveryId);
+    if (!context || context.delivery.recipientBotId !== botId) return;
+    await this.#mailbox.setOfferRerun(deliveryId, false);
+    this.#emitQueue(botId);
   }
 
   #syncDeliveryMessage(snapshot: ConversationSnapshot, deliveryId: string): void {
@@ -4581,28 +5258,39 @@ ${carryOver}`
     };
   }
 
-  #syncMailboxMessages(snapshot: ConversationSnapshot): void {
+  /** Brings the coworker's mailbox messages into its chat; true when anything changed. */
+  #syncMailboxMessages(snapshot: ConversationSnapshot): boolean {
+    let changed = false;
     const indexes = new Map(snapshot.messages.map((message, index) => [message.id, index]));
     for (const mailboxMessage of this.#mailbox.conversationMessages(snapshot.botId)) {
       const index = indexes.get(mailboxMessage.id);
-      if (index !== undefined) snapshot.messages[index] = mailboxMessage;
-      else {
+      if (index !== undefined) {
+        // Mailbox messages are short notes, so comparing them is cheap (unlike the whole chat).
+        if (!changed && !sameMailboxMessage(snapshot.messages[index], mailboxMessage)) {
+          changed = true;
+        }
+        snapshot.messages[index] = mailboxMessage;
+      } else {
         indexes.set(mailboxMessage.id, snapshot.messages.length);
         snapshot.messages.push(mailboxMessage);
+        changed = true;
       }
     }
     const reactions = this.#mailbox.reactionsFor(snapshot.botId);
     for (const message of snapshot.messages) {
-      message.reaction = reactions.get(message.id) ?? null;
+      const reaction = reactions.get(message.id) ?? null;
+      if ((message.reaction ?? null) !== reaction) changed = true;
+      message.reaction = reaction;
     }
     sortConversationMessages(snapshot.messages);
-    this.#applyDeliverables(snapshot);
+    if (this.#applyDeliverables(snapshot)) changed = true;
+    return changed;
   }
 
   /** Puts each turn's saved files on that turn's reply (a thread re-read drops in-memory fields). */
-  #applyDeliverables(snapshot: ConversationSnapshot): void {
+  #applyDeliverables(snapshot: ConversationSnapshot): boolean {
     const byTurn = this.#deliverables.get(snapshot.botId);
-    if (!byTurn) return;
+    if (!byTurn) return false;
     let changed = false;
     for (const [turnId, items] of Object.entries(byTurn)) {
       if (!items.length) continue;
@@ -4632,6 +5320,7 @@ ${carryOver}`
       }
     }
     if (changed) sortConversationMessages(snapshot.messages);
+    return changed;
   }
 
   #deliverablesPath(): string {
@@ -4687,8 +5376,7 @@ ${carryOver}`
     for (const affectedBotId of affectedBots) {
       const snapshot = this.#snapshots.get(affectedBotId);
       if (!snapshot) continue;
-      this.#syncMailboxMessages(snapshot);
-      this.#emitConversation(snapshot);
+      if (this.#syncMailboxMessages(snapshot)) this.#emitConversation(snapshot);
     }
   }
 
@@ -4772,6 +5460,7 @@ ${carryOver}`
     const threadId = getString(params, "threadId");
     const botId = threadId ? this.#threadToBot.get(threadId) : undefined;
     this.#rememberFileChange(notification);
+    if (botId) this.#noteProgress(botId);
 
     switch (notification.method) {
       case "turn/started": {
@@ -4837,7 +5526,7 @@ ${carryOver}`
             return text ? [{ text, status: planStepStatus(getString(entry, "status")) }] : [];
           }),
         };
-        this.#emitConversation(snapshot);
+        this.#emitUpsert(snapshot, null);
         return;
       }
       case "item/agentMessage/delta": {
@@ -4902,6 +5591,10 @@ ${carryOver}`
       case "thread/tokenUsage/updated": {
         if (!threadId || !botId) return;
         this.#updateContextBudget(threadId, params);
+        const last = getRecord(getRecord(params, "tokenUsage"), "last");
+        const input = finiteNumberOrNull(last?.inputTokens);
+        const output = finiteNumberOrNull(last?.outputTokens);
+        if (input !== null || output !== null) this.#turnTokens.set(botId, { input, output });
         const total = getRecord(getRecord(params, "tokenUsage"), "total");
         const totalTokens = finiteNumberOrNull(total?.totalTokens);
         if (totalTokens !== null) {
@@ -4977,6 +5670,7 @@ ${carryOver}`
       if (oldest !== undefined) this.#finishedTurnIds.delete(oldest);
     }
     await this.#turnAssociations.get(turnId)?.catch(() => undefined);
+    const turnStartedAt = this.#turnStartedAt.get(botId) ?? null;
     const shouldCompact = this.#reserveContextCompaction(botId, threadId);
     this.#browser.endControl(threadId, turnId);
     const snapshot = this.#ensureSnapshot(botId, threadId);
@@ -4985,6 +5679,7 @@ ${carryOver}`
       if (this.#itemTurns.get(message.id) !== turnId || message.status !== "streaming") continue;
       message.status = normalizeCompletionStatus(status);
     }
+    this.#forgetTurn(botId, turnId);
     const delivery =
       this.#mailbox.findDeliveryByTurn(turnId) ?? this.#mailbox.startingDeliveryForBot(botId);
     const latestAssistant = [...snapshot.messages]
@@ -5019,7 +5714,7 @@ ${carryOver}`
         await this.#relayAgentResult(botId, turnId, delivery, replyText);
       }
     }
-    this.#attachDeliverables(botId, snapshot, turnId, latestAssistant);
+    await this.#attachDeliverables(botId, snapshot, turnId, latestAssistant);
     if (latestAssistant) {
       if (status === "completed") this.#geminiRotation?.forget(botId);
       await this.#store.updatePreview(botId, previewText(latestAssistant.text));
@@ -5036,7 +5731,7 @@ ${carryOver}`
       // Google's server answers a quota error with an "ok" and no text; a blank is not an answer.
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       const label = bot ? PROVIDER_LABELS[providerForBot(bot)] : "The AI";
-      const quotaJustHit = Date.now() - this.#geminiQuotaAt < GEMINI_QUOTA_WINDOW_MS;
+      const quotaJustHit = this.#geminiQuotaJustHit();
       const fellBack = delivery
         ? (quotaJustHit && (await this.#rotateGeminiAccount(botId, delivery))) ||
           (await this.#fallBackToFreeModel(botId, delivery, "sent back an empty reply"))
@@ -5048,7 +5743,10 @@ ${carryOver}`
           botId,
         );
       }
-    } else if (status === "failed" && delivery) {
+    }
+    // Checked whether or not some text streamed before the failure: a 529 after a few words is
+    // still a 529.
+    if (status === "failed" && delivery) {
       const reason = this.#lastTurnError.get(botId) ?? "";
       if (reason.includes(NEXT_FREE_MODEL_HINT)) {
         await this.#resendOnNextFreeModel(botId, delivery);
@@ -5058,9 +5756,19 @@ ${carryOver}`
         if (!(await this.#rotateGeminiAccount(botId, delivery))) {
           await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
         }
+      } else if (isTransientError(reason)) {
+        await this.#retryTransient(botId, turnId, delivery);
       }
     }
     this.#lastTurnError.delete(botId);
+    this.#recordRunEvent(
+      botId,
+      turnId,
+      status,
+      turnStartedAt,
+      delivery?.delivery ?? null,
+      snapshot,
+    );
     if (delivery && (status === "failed" || status === "interrupted")) {
       await this.#tellCeoOfFailure(botId, turnId, delivery, status);
     }
@@ -5079,6 +5787,7 @@ ${carryOver}`
     }
     if (shouldCompact) await this.#requestContextCompaction(botId, threadId);
     else this.#scheduleDrain(botId);
+    this.#drainWaitingForSlot();
   }
 
   /** The rules file as it was before the turn, so a change by the coworker can be announced. */
@@ -5142,6 +5851,11 @@ ${carryOver}`
     plan: TurnPlan | undefined,
   ): Promise<void> {
     if (!this.#continuationEnabled() || delivery.sender.kind !== "user") return;
+    // A team-run task or routine step is judged by its engine, which waits for this reply; a
+    // "[Continue]" turn behind its back would hand the engine a half-finished answer.
+    if ("origin" in delivery && (delivery.origin === "team-run" || delivery.origin === "routine")) {
+      return;
+    }
     // The owner already sent the next thing: nothing to prompt.
     if (this.#mailbox.nextQueued(botId)) return;
     const previous = this.#continuations.get(botId) ?? null;
@@ -5167,19 +5881,77 @@ ${carryOver}`
     this.#continuationEnabled = enabled;
   }
 
+  /** Lets the app switch related team memories in each owner message off (Settings > Features). */
+  configureMemory(autoContext: () => boolean): void {
+    this.#memoryAutoContext = autoContext;
+  }
+
+  /** Finished turns go to the local Performance record (never off this PC). */
+  configureRunEvents(recorder: ((event: NewRunEvent) => void) | null): void {
+    this.#runEvents = recorder;
+  }
+
+  #recordRunEvent(
+    botId: string,
+    turnId: string,
+    status: string,
+    startedAt: number | null,
+    delivery: QueueDelivery | null,
+    snapshot: ConversationSnapshot,
+  ): void {
+    const tokens = this.#turnTokens.get(botId) ?? null;
+    this.#turnTokens.delete(botId);
+    if (!this.#runEvents) return;
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    const begun = startedAt ?? Date.now();
+    try {
+      this.#runEvents({
+        botId,
+        botName: bot?.name ?? null,
+        provider: bot ? providerForBot(bot) : null,
+        model: bot?.model ?? null,
+        origin: delivery?.sender.kind === "bot" ? "system" : (delivery?.origin ?? "owner"),
+        outcome:
+          status === "failed" ? "failed" : status === "interrupted" ? "interrupted" : "completed",
+        startedAt: new Date(begun).toISOString(),
+        durationMs: Date.now() - begun,
+        toolCount: snapshot.messages.filter(
+          (message) =>
+            message.turnId === turnId && (message.itemType === "toolCall" || Boolean(message.tool)),
+        ).length,
+        inputTokens: tokens?.input ?? null,
+        outputTokens: tokens?.output ?? null,
+      });
+    } catch (error) {
+      this.emit("log", `run event not recorded: ${String(error)}`);
+    }
+  }
+
+  /** The owner's concurrent-turn cap and no-progress watchdog (read live, so changes act at once). */
+  configureEngineSettings(settings: () => EngineSettings): void {
+    this.#engineSettings = settings;
+    this.#drainWaitingForSlot();
+  }
+
   /**
    * Gives coworkers the owner's Knowledge Bases: three tools, and (while `autoContext` says so)
-   * matching excerpts at the start of every owner message.
+   * matching excerpts at the start of every owner message. With `enabled` false (the
+   * Knowledge Bases feature switched off) the tools refuse and the bases are not mentioned.
    */
-  attachKnowledge(knowledge: KnowledgeService, autoContext: () => boolean): void {
+  attachKnowledge(
+    knowledge: KnowledgeApi,
+    autoContext: () => boolean,
+    enabled: () => boolean = () => true,
+  ): void {
     this.#knowledge = knowledge;
     this.#knowledgeAutoContext = autoContext;
+    this.#knowledgeEnabled = enabled;
     knowledge.on("event", (event: AgentEvent) => {
       if (event.type === "knowledge-changed") this.#reloadInstructions(this.#store.list());
     });
   }
 
-  get knowledge(): KnowledgeService | null {
+  get knowledge(): KnowledgeApi | null {
     return this.#knowledge;
   }
 
@@ -5369,9 +6141,15 @@ ${carryOver}`
       this.#mailbox.hasBotMessageFromTurnTo(botId, turnId, recipientBotId)
     )
       return;
+    const hops = (delivery.delivery.hops ?? 0) + 1;
+    if (hops > MAX_AGENT_HOPS) {
+      this.#noteHopLimit(botId);
+      return;
+    }
 
     await this.#mailbox.enqueue({
       sender: { kind: "bot", botId },
+      hops,
       recipientBotIds: [recipientBotId],
       text,
       replyToMessageId: messageId,
@@ -5404,7 +6182,7 @@ ${carryOver}`
       message.tool = tool;
       message.status = tool.status === "running" ? "streaming" : "completed";
       this.#itemTurns.set(item.id, turnId);
-      this.#emitConversation(snapshot);
+      this.#emitUpsert(snapshot, message);
       return;
     }
     if (item.type !== "agentMessage" || typeof item.id !== "string") return;
@@ -5418,7 +6196,7 @@ ${carryOver}`
     if (typeof item.phase === "string") message.itemType = item.phase;
     message.status = completed ? "completed" : "streaming";
     this.#itemTurns.set(item.id, turnId);
-    this.#emitConversation(snapshot);
+    this.#emitUpsert(snapshot, message);
   }
 
   #surfacePrompt(client: AgentClient, request: AppServerRequest): void {
@@ -5567,12 +6345,7 @@ ${carryOver}`
 
   #emitConversation(snapshot: ConversationSnapshot): void {
     sortConversationMessages(snapshot.messages);
-    const signature = JSON.stringify({
-      threadId: snapshot.threadId,
-      activeTurnId: snapshot.activeTurnId,
-      messages: snapshot.messages,
-      plan: snapshot.plan,
-    });
+    const signature = conversationFingerprint(snapshot);
     if (this.#lastConversationSignatures.get(snapshot.botId) === signature) return;
     this.#lastConversationSignatures.set(snapshot.botId, signature);
     // This snapshot already holds every streamed token so far. Sending the batched deltas after
@@ -5581,7 +6354,62 @@ ${carryOver}`
       if (pending.botId === snapshot.botId) this.#pendingDeltas.delete(key);
     }
     snapshot.revision += 1;
-    this.#emit({ type: "conversation", snapshot: structuredClone(snapshot) });
+    this.#emit({
+      type: "conversation",
+      snapshot: windowedSnapshot(snapshot, this.#chatWindows.get(snapshot.botId)),
+    });
+  }
+
+  /**
+   * One message (or, with `message` null, the plan) changed mid-turn: send only that instead of
+   * sorting, copying and sending the whole chat on every tool step. The full snapshot still goes
+   * out when the turn ends, so the window can never drift for long.
+   */
+  #emitUpsert(snapshot: ConversationSnapshot, message: ConversationMessage | null): void {
+    if (!this.#deltaUpdates()) {
+      this.#emitConversation(snapshot);
+      return;
+    }
+    let afterId: string | null = null;
+    if (message) {
+      sortConversationMessages(snapshot.messages);
+      const index = snapshot.messages.indexOf(message);
+      afterId = index > 0 ? snapshot.messages[index - 1].id : null;
+    }
+    // Tokens still batched for this message are in its text already; those of other messages
+    // go first, so the window applies them before this newer revision.
+    for (const [key, pending] of this.#pendingDeltas) {
+      if (pending.botId !== snapshot.botId) continue;
+      if (message && pending.messageId === message.id) this.#pendingDeltas.delete(key);
+      else this.#flushDeltas(key);
+    }
+    snapshot.revision += 1;
+    // The next full snapshot must go out even if it matches the one sent before this change.
+    this.#lastConversationSignatures.delete(snapshot.botId);
+    this.#emit({
+      type: "message-upsert",
+      botId: snapshot.botId,
+      threadId: snapshot.threadId,
+      activeTurnId: snapshot.activeTurnId,
+      revision: snapshot.revision,
+      ...(message
+        ? { message: structuredClone(message), afterId }
+        : { plan: structuredClone(snapshot.plan ?? null) }),
+    });
+  }
+
+  /** A finished turn's bookkeeping: item ids, and old one-shot fallback marks. */
+  #forgetTurn(botId: string, turnId: string): void {
+    for (const [itemId, owner] of this.#itemTurns) {
+      if (owner === turnId) this.#itemTurns.delete(itemId);
+    }
+    // The chat changed outside what events report (deliverables, compaction): read it again next time.
+    this.#freshReads.delete(botId);
+    while (this.#fallbackRetried.size > MAX_REMEMBERED_FALLBACKS) {
+      const oldest = this.#fallbackRetried.values().next().value;
+      if (oldest === undefined) break;
+      this.#fallbackRetried.delete(oldest);
+    }
   }
 
   /**
@@ -5589,12 +6417,12 @@ ${carryOver}`
    * folder) are shown under its reply: an image a coworker made belongs in the chat, not only in
    * a folder view.
    */
-  #attachDeliverables(
+  async #attachDeliverables(
     botId: string,
     snapshot: ConversationSnapshot,
     turnId: string,
     latestAssistant: ConversationMessage | undefined,
-  ): void {
+  ): Promise<void> {
     const since = this.#turnStartedAt.get(botId);
     this.#turnStartedAt.delete(botId);
     if (since === undefined) return;
@@ -5602,7 +6430,7 @@ ${carryOver}`
     if (!bot) return;
     let files: string[] = [];
     try {
-      files = deliverableFiles({
+      files = await deliverableFiles({
         roots: [bot.workspacePath, this.#store.sharedRoot],
         excludeRoots: [join(this.#store.sharedRoot, "Transfers")],
         since,
@@ -5611,7 +6439,7 @@ ${carryOver}`
       return;
     }
     if (files.length === 0) return;
-    const attachments = files.map(localAttachmentSummary);
+    const attachments = await Promise.all(files.map((path) => localAttachmentSummary(path)));
     const seen = new Set(
       snapshot.messages.flatMap((message) => (message.attachments ?? []).map((item) => item.id)),
     );
@@ -5627,11 +6455,96 @@ ${carryOver}`
   }
 
   /**
-   * A paid provider that cannot answer (quota, rate limit, blank reply) must not leave the
-   * owner staring at nothing: the coworker moves to the bundled free model, the owner is told
-   * why, and the same message is sent again there. Only once per message, and never when the
-   * coworker already runs on the free model or that model is unavailable.
+   * The checks every automatic re-send shares: a text message (no files) from the owner or the
+   * app on the owner's behalf, sent again at most once per copy.
    */
+  #canResend(delivery: DeliveryContext): boolean {
+    return (
+      delivery.delivery.sender.kind === "user" &&
+      Boolean(delivery.delivery.text.trim()) &&
+      delivery.managedAttachments.length === 0 &&
+      !this.#fallbackRetried.has(delivery.delivery.id)
+    );
+  }
+
+  /**
+   * Sends a failed message again. The new copy is queued and linked to the failed one at once
+   * (so a team run or routine waiting on the failed copy follows it), the failed copy is hidden,
+   * and the queue only moves on after `prepare` (a model or account switch) and `delayMs`.
+   */
+  async #resend(
+    botId: string,
+    delivery: DeliveryContext,
+    options: { prepare?: () => Promise<void>; delayMs?: number } = {},
+  ): Promise<string> {
+    this.#fallbackRetried.add(delivery.delivery.id);
+    this.#heldDrains.add(botId);
+    let nextId: string;
+    try {
+      const receipt = await this.#mailbox.enqueue({
+        sender: { kind: "user" },
+        origin: delivery.delivery.origin ?? "owner",
+        recipientBotIds: [botId],
+        text: delivery.delivery.text,
+      });
+      nextId = receipt.deliveries[0].id;
+      // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
+      await this.#mailbox.markRetried(delivery.delivery.id, nextId).catch(() => undefined);
+      this.#transientRetries.set(nextId, this.#transientRetries.get(delivery.delivery.id) ?? 0);
+      if (this.#mailbox.listQueue(botId).paused) await this.#mailbox.setPaused(botId, false);
+      const snapshot = this.#ensureSnapshot(
+        botId,
+        this.#store.list().find((bot) => bot.id === botId)?.threadId ?? null,
+      );
+      this.#syncMailboxMessages(snapshot);
+      this.#emitConversation(snapshot);
+      this.#emitQueue(botId);
+      await options.prepare?.();
+    } finally {
+      if (!options.delayMs) this.#heldDrains.delete(botId);
+    }
+    if (options.delayMs) {
+      const timer = setTimeout(() => {
+        this.#heldDrains.delete(botId);
+        this.#scheduleDrain(botId);
+      }, options.delayMs);
+      timer.unref?.();
+    } else {
+      this.#scheduleDrain(botId);
+    }
+    return nextId;
+  }
+
+  /**
+   * A brief provider fault (overloaded, 5xx, network) is tried again on the same model after a
+   * short wait: at most twice per message (2 s, then 8 s), and never when the failed turn already
+   * used a tool, so nothing the coworker did is repeated.
+   */
+  async #retryTransient(
+    botId: string,
+    turnId: string,
+    delivery: DeliveryContext,
+  ): Promise<boolean> {
+    if (!this.#canResend(delivery)) return false;
+    const attempts = this.#transientRetries.get(delivery.delivery.id) ?? 0;
+    if (attempts >= MAX_TRANSIENT_RETRIES) return false;
+    const snapshot = this.#snapshots.get(botId);
+    const usedTools = snapshot?.messages.some(
+      (message) =>
+        message.turnId === turnId && (message.itemType === "toolCall" || Boolean(message.tool)),
+    );
+    if (usedTools) return false;
+    const delayMs = TRANSIENT_RETRY_DELAYS_MS[attempts] ?? 8_000;
+    this.#emitError(
+      "transient_retry",
+      `The AI service had a brief problem, so this message is being sent again in ${Math.round(delayMs / 1000)} s (try ${attempts + 1} of ${MAX_TRANSIENT_RETRIES}).`,
+      botId,
+    );
+    const nextId = await this.#resend(botId, delivery, { delayMs });
+    this.#transientRetries.set(nextId, attempts + 1);
+    return true;
+  }
+
   /**
    * A Gemini coworker's message hit Google's usage limit: move Gemini to the owner's next
    * signed-in Google account, restart Google's server on it and send the message again there.
@@ -5642,9 +6555,7 @@ ${carryOver}`
     const rotation = this.#geminiRotation;
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
     if (!rotation || !bot || providerForBot(bot) !== "antigravity") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    if (!this.#canResend(delivery)) return false;
     let plan: Awaited<ReturnType<GeminiRotation["plan"]>>;
     try {
       plan = await rotation.plan(botId, this.#geminiClientAccount);
@@ -5652,82 +6563,88 @@ ${carryOver}`
       return false;
     }
     if (plan.kind === "none") return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
     this.#emitError(
       "fallback_model",
       `Google's limit for this account is used up, so Gemini moved to your next Google account and ${bot.name} is answering your message again there.`,
       botId,
     );
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    if (plan.kind === "switch") {
-      this.emit("log", "antigravity moved to the next Google account after a usage limit");
-      await this.#restartProvider("antigravity").catch(() => undefined);
-    }
-    await this.sendMessage({ botId, text: delivery.delivery.text });
-    return true;
-  }
-
-  async #fallBackToFreeModel(
-    botId: string,
-    delivery: DeliveryContext,
-    reason: string,
-  ): Promise<boolean> {
-    const bot = this.#store.list().find((candidate) => candidate.id === botId);
-    if (!bot || providerForBot(bot) === "opencode") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
-    const free = this.#status.providers?.find((provider) => provider.id === "opencode");
-    if (free?.state !== "available") return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
-    const from = PROVIDER_LABELS[providerForBot(bot)];
-    try {
-      await this.updateBot({ botId, model: "opencode-free" });
-    } catch {
-      this.#fallbackRetried.delete(delivery.delivery.id);
-      return false;
-    }
-    this.#emitError(
-      "fallback_model",
-      `${from} ${reason}, so ${bot.name} switched to the free model and is answering your message again there. Switch back from the model picker whenever you like.`,
-      botId,
-    );
-    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    await this.sendMessage({ botId, text: delivery.delivery.text });
+    await this.#resend(botId, delivery, {
+      prepare: async () => {
+        if (plan.kind !== "switch") return;
+        this.emit("log", "antigravity moved to the next Google account after a usage limit");
+        await this.#restartProvider("antigravity").catch(() => undefined);
+      },
+    });
     return true;
   }
 
   /**
-   * OpenCode's free limit is used up for every free model: move the coworker to another free
-   * provider the owner has already connected (Gemini, GitHub Copilot, Kiro) and send the message
-   * again there, once per message. Nothing connected → the owner keeps the clear limit message.
+   * A paid provider that cannot answer (quota, rate limit, blank reply) must not leave the
+   * owner staring at nothing: this one message is answered on a free model, the owner is told
+   * why, and the coworker goes back to its own model (and its own conversation) with the next
+   * message. Only once per message, and never when the free target is unavailable.
    */
-  async #fallBackToOtherFreeProvider(botId: string, delivery: DeliveryContext): Promise<boolean> {
+  async #fallBackTo(
+    botId: string,
+    delivery: DeliveryContext,
+    model: BotSummary["model"],
+    notice: (botName: string) => string,
+  ): Promise<boolean> {
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
-    if (!bot || providerForBot(bot) !== "opencode") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    if (!bot || !this.#canResend(delivery)) return false;
+    const own = this.#ownRuntime.get(botId) ?? {
+      model: bot.model,
+      reasoningEffort: bot.reasoningEffort,
+      threadId: bot.threadId,
+    };
+    try {
+      await this.#resend(botId, delivery, {
+        prepare: async () => {
+          await this.updateBot({ botId, model });
+          this.#ownRuntime.set(botId, { ...own, fallbackModel: model });
+        },
+      });
+    } catch {
+      return false;
+    }
+    this.#emitError("fallback_model", notice(bot.name), botId);
+    return true;
+  }
+
+  #fallBackToFreeModel(botId: string, delivery: DeliveryContext, reason: string): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot || providerForBot(bot) === "opencode") return Promise.resolve(false);
+    const free = this.#status.providers?.find((provider) => provider.id === "opencode");
+    if (free?.state !== "available") return Promise.resolve(false);
+    const from = PROVIDER_LABELS[providerForBot(bot)];
+    return this.#fallBackTo(
+      botId,
+      delivery,
+      "opencode-free",
+      (name) =>
+        `${from} ${reason}, so ${name} is answering this message on the free model. Your next message goes back to ${from}.`,
+    );
+  }
+
+  /**
+   * OpenCode's free limit is used up for every free model: answer this message on another free
+   * provider the owner has already connected (Gemini, GitHub Copilot, Kiro), once per message.
+   * Nothing connected → the owner keeps the clear limit message.
+   */
+  #fallBackToOtherFreeProvider(botId: string, delivery: DeliveryContext): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot || providerForBot(bot) !== "opencode") return Promise.resolve(false);
     const target = FREE_FALLBACK_PROVIDERS.find(
       (id) => this.#status.providers?.find((provider) => provider.id === id)?.state === "available",
     );
-    if (!target) return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
-    try {
-      await this.updateBot({ botId, model: DEFAULT_MODEL_FOR_PROVIDER[target] });
-    } catch {
-      this.#fallbackRetried.delete(delivery.delivery.id);
-      return false;
-    }
-    this.#emitError(
-      "fallback_model",
-      `OpenCode's free limit is used up, so ${bot.name} switched to ${PROVIDER_LABELS[target]} (also free) and is answering your message again there. Switch back from the model picker whenever you like.`,
+    if (!target) return Promise.resolve(false);
+    return this.#fallBackTo(
       botId,
+      delivery,
+      DEFAULT_MODEL_FOR_PROVIDER[target],
+      (name) =>
+        `OpenCode's free limit is used up, so ${name} is answering this message on ${PROVIDER_LABELS[target]} (also free). Your next message goes back to its own model.`,
     );
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    await this.sendMessage({ botId, text: delivery.delivery.text });
-    return true;
   }
 
   /**
@@ -5736,20 +6653,60 @@ ${carryOver}`
    */
   async #resendOnNextFreeModel(botId: string, delivery: DeliveryContext): Promise<boolean> {
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
-    if (bot?.model !== "opencode-free") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
+    if (bot?.model !== "opencode-free" || !this.#canResend(delivery)) return false;
     this.#emitError(
       "fallback_model",
       `${bot.name} is sending your message again on the next free model.`,
       botId,
     );
-    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    await this.sendMessage({ botId, text: delivery.delivery.text });
+    await this.#resend(botId, delivery);
     return true;
+  }
+
+  /**
+   * A coworker answered one message on a fallback model: before its next message starts it goes
+   * back to its own model and its own conversation. A model the owner picked meanwhile wins.
+   */
+  async #restoreOwnRuntime(botId: string, context: DeliveryContext): Promise<void> {
+    const own = this.#ownRuntime.get(botId);
+    if (!own) return;
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot) {
+      this.#ownRuntime.delete(botId);
+      return;
+    }
+    // The re-sent copy itself runs on the fallback model.
+    const resent = this.#mailbox
+      .listQueue(botId)
+      .deliveries.some((item) => item.retriedAs === context.delivery.id);
+    if (resent) return;
+    this.#ownRuntime.delete(botId);
+    if (bot.model !== own.fallbackModel) return;
+    try {
+      await this.updateBot({ botId, model: own.model, reasoningEffort: own.reasoningEffort });
+      const restored = this.#store.list().find((candidate) => candidate.id === botId);
+      if (own.threadId && restored && !restored.threadId) {
+        await this.#store.setThreadId(botId, own.threadId);
+        const stale = this.#snapshots.get(botId);
+        this.#snapshots.set(botId, {
+          botId,
+          threadId: own.threadId,
+          activeTurnId: null,
+          revision: (stale?.revision ?? 0) + 1,
+          messages: [],
+        });
+        this.#threadToBot.set(own.threadId, botId);
+      }
+      this.#emit({
+        type: "notice",
+        botId,
+        code: "fallback_restored",
+        message: `${bot.name} is back on its own model for this message.`,
+      });
+      this.#emit({ type: "bots-changed", bots: this.#store.list() });
+    } catch (error) {
+      this.#emitError("fallback_restore_failed", error, botId);
+    }
   }
 
   /** Coworkers with a turn running on this provider: who a provider-wide notice belongs to. */
@@ -5838,11 +6795,22 @@ function finiteNumberOrNull(value: unknown): number | null {
 }
 
 const LEARNING_TOOLS = new Set(["search_past_chats", "list_skills", "read_skill", "save_skill"]);
+const MEMORY_TOOLS = new Set(["save_memory", "search_memory", "list_memories"]);
 const KNOWLEDGE_TOOLS = new Set([
   "list_knowledge_bases",
   "search_knowledge_base",
   "read_document_section",
 ]);
+
+/** The owner's connected web APIs, listed by name so the model knows when to reach for them. */
+function apiDynamicTools(names: string[]) {
+  return {
+    type: "namespace",
+    name: API_TOOL_NAMESPACE,
+    description: `${API_TOOLS_DESCRIPTION} Connected for you: ${names.join(", ")}.`,
+    tools: API_TOOL_DEFINITIONS,
+  };
+}
 
 const SAHKARMI_DYNAMIC_TOOLS = {
   type: "namespace",
@@ -6080,8 +7048,7 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "save_memory",
-      description:
-        "Save a persistent piece of knowledge, project decision, technical fact, or owner preference into long-term team memory. Persists across conversations.",
+      description: SAVE_MEMORY_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
@@ -6115,17 +7082,17 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "search_memory",
-      description:
-        "Search long-term team memory by keyword or semantic query to recall previous decisions, standards, or facts.",
+      description: SEARCH_MEMORY_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Keyword or query to search for" },
+          query: { type: "string", description: "Words to look for" },
           category: {
             type: "string",
             enum: ["architecture", "preference", "decision", "fact"],
             description: "Optional category filter",
           },
+          limit: { type: "integer", minimum: 1, maximum: 50 },
         },
         required: ["query"],
         additionalProperties: false,
@@ -6134,7 +7101,7 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "list_memories",
-      description: "List all memories currently retained in the team long-term memory hub.",
+      description: LIST_MEMORIES_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
@@ -6143,6 +7110,8 @@ const SAHKARMI_DYNAMIC_TOOLS = {
             enum: ["architecture", "preference", "decision", "fact"],
             description: "Optional category filter",
           },
+          limit: { type: "integer", minimum: 1, maximum: 50 },
+          offset: { type: "integer", minimum: 0 },
         },
         additionalProperties: false,
       },
@@ -6175,10 +7144,13 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "read_skill",
-      description: "Read one learned or custom skill's full playbook by its id (from list_skills).",
+      description: READ_SKILL_DESCRIPTION,
       inputSchema: {
         type: "object",
-        properties: { id: { type: "string", minLength: 1, maxLength: 80 } },
+        properties: {
+          id: { type: "string", minLength: 1, maxLength: 90 },
+          type: { type: "string", enum: ["learned", "custom"] },
+        },
         required: ["id"],
         additionalProperties: false,
       },
@@ -6314,6 +7286,7 @@ function skillInstructions(sharedRoot: string): string[] {
       : []),
     "Learn as you work: before a task call sahkarmi.list_skills and follow a matching skill. After finishing a task that took several steps, needed a fix, or got a correction from the owner, call sahkarmi.save_skill to save the playbook, or to improve the existing one under the same name.",
     "To recall earlier conversations (what was decided, sent or promised), call sahkarmi.search_past_chats instead of guessing.",
+    "Team memory: save lasting facts, decisions and owner preferences with sahkarmi.save_memory (same key updates it); find them with sahkarmi.search_memory or sahkarmi.list_memories. Related memories may already be in the owner's message as <team_memory>.",
   ];
 }
 
@@ -6527,7 +7500,6 @@ const QUOTA_NOTICE_INTERVAL_MS = 30_000;
 /** Providers that take an owner message into a running turn (Codex turn/steer, Claude SDK). */
 const STEERABLE_PROVIDERS: ReadonlySet<AgentProvider> = new Set(["codex", "claude"]);
 const STEER_TIMEOUT_MS = 10_000;
-
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
@@ -6536,6 +7508,48 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       timer = setTimeout(() => reject(new Error("Timed out.")), ms);
     }),
   ]).finally(() => clearTimeout(timer));
+}
+/** After the steer timeout, how much longer a late answer is still awaited. */
+const STEER_LATE_ANSWER_MS = 20_000;
+
+/** Resolves "settled" or "rejected" when the promise does within `ms`, otherwise "pending". */
+function settleWithin(
+  promise: Promise<unknown>,
+  ms: number,
+): Promise<"settled" | "rejected" | "pending"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise.then(
+      () => "settled" as const,
+      () => "rejected" as const,
+    ),
+    new Promise<"pending">((resolve) => {
+      timer = setTimeout(() => resolve("pending"), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Whether a steering message reached the running turn. A refusal means it did not (it queues).
+ * A request still unanswered after the timeout may have landed anyway: it gets a while longer,
+ * then the turn is read for the message; when even that cannot tell, the answer is
+ * "unconfirmed", which counts as delivered. Never sending it twice is the safer mistake: a
+ * repeated message can repeat a payment or a post, a lost one the owner just sends again.
+ */
+export async function steerOutcome(
+  request: Promise<unknown>,
+  landed: () => Promise<boolean | null>,
+  timeoutMs = STEER_TIMEOUT_MS,
+  lateMs = STEER_LATE_ANSWER_MS,
+): Promise<"landed" | "refused" | "unconfirmed"> {
+  const first = await settleWithin(request, timeoutMs);
+  if (first === "settled") return "landed";
+  if (first === "rejected") return "refused";
+  const late = await settleWithin(request, lateMs);
+  if (late === "settled") return "landed";
+  if (late === "rejected") return "refused";
+  const seen = await landed().catch(() => null);
+  return seen === true ? "landed" : "unconfirmed";
 }
 /** An empty Gemini reply this soon after Google reported a limit counts as that limit. */
 const GEMINI_QUOTA_WINDOW_MS = 2 * 60_000;
@@ -6566,10 +7580,34 @@ export function quotaNotice(provider: AgentProvider, message: string): string | 
  * your usage limit"), OpenAI keys ("insufficient_quota") and Google (429, RESOURCE_EXHAUSTED).
  */
 export function isQuotaError(reason: string): boolean {
-  return /429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded|credit balance|out of (?:credits|extra usage)|hit your (?:usage )?limit|plan limit|billing/i.test(
+  // "429" counts only as an HTTP status ("HTTP 429", "status: 429", "Error 429", "429 Too Many
+  // Requests"), never as digits in a port, a path or an id. "Billing" and "overloaded" are not
+  // here: a file called billing.ts is not a spent plan, and an overloaded server is a brief
+  // fault that gets a retry (isTransientError), not a model switch.
+  return /(?:\b(?:HTTP|status(?: code)?|error|code)\b[\s:=#(]*429\b)|\b429 Too Many Requests\b|\bToo Many Requests\b|insufficient_quota|(?<![\w.\-/\\])quota(?![\w.\-/\\])|\busage limit|\brate.?limit|RESOURCE_EXHAUSTED|credit balance|out of (?:credits|extra usage)|hit your (?:usage )?limit|plan limit/i.test(
     reason,
   );
 }
+
+/**
+ * A brief fault worth one more try on the same model: an overloaded server (Claude's 529), an
+ * HTTP 5xx status, or the network dropping. Digits alone never count.
+ */
+export function isTransientError(reason: string): boolean {
+  if (isQuotaError(reason)) return false;
+  return /\boverloaded\b|(?:\b(?:HTTP|status(?: code)?|error|code)\b[\s:=#(]*5(?:0[0-4]|29)\b)|\b(?:Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)\b|\b(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EPIPE)\b|socket hang up|fetch failed|network (?:error|connection was lost)/i.test(
+    reason,
+  );
+}
+
+/** Coworker-to-coworker messages in a row before the app stops the chain for the owner. */
+export const MAX_AGENT_HOPS = 6;
+/** How often the no-progress watchdog looks at running turns. */
+const WATCHDOG_TICK_MS = 60_000;
+
+/** At most this many brief-fault retries per message, after these waits. */
+const MAX_TRANSIENT_RETRIES = 2;
+const TRANSIENT_RETRY_DELAYS_MS = [2_000, 8_000] as const;
 
 /** Google's harness logs pages of startup chatter at ERROR level that mean nothing to the owner. */
 export function isNoisyDiagnostic(provider: AgentProvider, message: string): boolean {
@@ -6585,6 +7623,23 @@ export function searchExcerpt(text: string, index: number, length: number): stri
   const start = Math.max(0, index - 48);
   const end = Math.min(flat.length, index + length + 72);
   return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
+}
+
+/** A read_skill id, with its type from `type` or a "learned:" / "custom:" prefix. */
+export function skillRef(args: Record<string, unknown>): {
+  id: string;
+  type: "learned" | "custom" | null;
+} {
+  const raw = typeof args.id === "string" ? args.id.trim() : "";
+  const prefixed = /^(learned|custom)[:/](.+)$/i.exec(raw);
+  const explicit = args.type === "learned" || args.type === "custom" ? args.type : null;
+  if (prefixed) {
+    return {
+      id: prefixed[2] ?? "",
+      type: explicit ?? ((prefixed[1] ?? "").toLowerCase() as "learned" | "custom"),
+    };
+  }
+  return { id: raw, type: explicit };
 }
 
 /** Codex says "inProgress", Claude and ACP say "in_progress". */
@@ -6606,6 +7661,14 @@ function shortenReason(reason: string): string {
 export const SHORT_TOOL_WAIT_MS: Partial<Record<string, number>> = { antigravity: 150_000 };
 /** How long one approval covers the same kind of step on the same site for the same task. */
 const TASK_GRANT_MS = 2 * 60 * 60_000;
+const MAX_TASK_DECLINES = 500;
+
+/** One "no": the same step (permissionKey) under the same owner instruction. */
+export function declineKey(key: string, ownerInstruction: string | null): string {
+  return `${key}
+${ownerInstruction ?? ""}`;
+}
+
 /** Steps that one approval may cover for a whole task; money and account changes never are. */
 const TASK_GRANT_CATEGORIES = new Set<string>([
   "publication",
@@ -6628,7 +7691,24 @@ export function taskGrantKey(
   const url = request.browser?.url;
   const site = url ? siteOfUrl(url) : null;
   if (!site) return null;
-  return [request.botId, request.category, site, ownerInstruction ?? ""].join("\n");
+  const key = [request.botId, request.category, site, ownerInstruction ?? ""];
+  // A message is approved for what it says: the same message retried after a page redraw goes
+  // through, a different message to anyone asks again.
+  if (request.category === "external_messages") {
+    key.push(
+      createHash("sha256")
+        .update(
+          [
+            request.browser?.type ?? "",
+            browserButtonName(request.browser?.label ?? ""),
+            request.browser?.text ?? "",
+            pageWithoutQuery(url ?? ""),
+          ].join("\n"),
+        )
+        .digest("hex"),
+    );
+  }
+  return key.join("\n");
 }
 
 /** An approval given after the coworker stopped waiting stays usable this long. */
@@ -6650,7 +7730,8 @@ export function permissionKey(request: PermissionRequest): string {
       pageWithoutQuery(browser.url),
     ].join("\n");
   }
-  return [request.botId ?? "", request.category, request.action].join("\n");
+  // The whole command: two commands that only differ after the 240th character are different.
+  return [request.botId ?? "", request.category, request.detail ?? request.action].join("\n");
 }
 
 /** "Post button div" → "post": the visible name, without the role and tag a snapshot adds. */

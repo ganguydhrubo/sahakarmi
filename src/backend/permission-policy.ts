@@ -65,6 +65,11 @@ export interface PermissionRequest {
   category: PermissionCategory;
   /** Human-readable, already redacted summary. */
   action: string;
+  /**
+   * The whole command or action, redacted but not shortened and with its line breaks kept, for
+   * the folded technical detail on the owner's card. Set by PermissionService.
+   */
+  detail?: string;
   /** Absolute paths the action touches, when known. */
   paths: string[];
   /** Why, in the coworker's own words, when its runtime gives a reason. */
@@ -91,6 +96,11 @@ export function decide(
   if (level === "deny") {
     return { effective: "deny", level, reason: "Denied by your permission settings.", grant: null };
   }
+  // Agent settings and secret files: always the owner's call, whatever the level, auto mode or
+  // a pre-authorisation says. A coworker that could edit .claude/settings.json could allow itself
+  // anything; one that could read a key file could send it anywhere.
+  const guarded = protectedPathReason(request);
+  if (guarded) return { effective: "ask", level, reason: guarded, grant: null };
   if (policy.autoMode && !isSensitive(request.category)) {
     return { effective: "allow", level, reason: "Auto mode.", grant: null };
   }
@@ -144,6 +154,71 @@ export function insideAny(path: string, roots: string[]): boolean {
 }
 
 // -----------------------------------------------------------------------------
+// Agent settings and secret files
+
+/** Folders whose files steer an AI tool (settings, hooks, MCP servers, editor tasks). */
+const AGENT_CONFIG_FOLDERS = new Set([".claude", ".codex", ".gemini", ".vscode"]);
+/** Files that do the same on their own. `.git/config` and hooks can run commands on `git status`. */
+const AGENT_CONFIG_FILES = new Set([".mcp.json"]);
+
+const WRITE_CATEGORIES = new Set<PermissionCategory>([
+  "file_create",
+  "file_modify",
+  "file_delete",
+  "downloads",
+]);
+
+/** Sahkarmi's own key files and the sign-ins other tools keep in the home folder. */
+const SECRET_FILE_NAMES =
+  /^(openai_api_key|anthropic_api_key|api_key|composio_api_key)\.txt$|^(telegram|mcp-servers|secrets\.enc)\.json$|^(acp_token|oauth_creds)\.json$|^\.env(\..+)?$|^\.(netrc|npmrc|pypirc|git-credentials)$/i;
+
+function pathParts(path: string): string[] {
+  return path.replaceAll("\\", "/").split("/").filter(Boolean);
+}
+
+/** Writing here lets a coworker change its own (or another AI's) rules. */
+export function isAgentConfigPath(path: string): boolean {
+  const parts = pathParts(path).map((part) => part.toLowerCase());
+  const name = parts.at(-1) ?? "";
+  if (AGENT_CONFIG_FILES.has(name)) return true;
+  if (parts.slice(0, -1).some((part) => AGENT_CONFIG_FOLDERS.has(part))) return true;
+  const git = parts.lastIndexOf(".git");
+  return git >= 0 && (parts[git + 1] === "config" || parts[git + 1] === "hooks");
+}
+
+/** Reading this would hand a coworker a key or a sign-in. */
+export function isSecretPath(path: string): boolean {
+  const parts = pathParts(path);
+  const lower = parts.map((part) => part.toLowerCase());
+  const name = parts.at(-1) ?? "";
+  if (SECRET_FILE_NAMES.test(name)) return true;
+  if (lower.includes(".ssh")) return true;
+  const parent = lower.at(-2) ?? "";
+  if (parent === ".codex" && /^auth/i.test(name)) return true;
+  if (parent === ".claude" && /^\.credentials/i.test(name)) return true;
+  return false;
+}
+
+/** A command line that names a secret file or folder (cat ~/.ssh/id_rsa, type .env). */
+export function mentionsSecretPath(command: string): boolean {
+  return command
+    .split(/[\s"'`;|&<>()=,]+/)
+    .filter(Boolean)
+    .some((token) => isSecretPath(token) || /(^|[\\/])\.ssh([\\/]|$)/i.test(token));
+}
+
+/** Why this request must be asked whatever the settings say, or null. */
+export function protectedPathReason(request: PermissionRequest): string | null {
+  if (WRITE_CATEGORIES.has(request.category) && request.paths.some(isAgentConfigPath)) {
+    return "This changes an AI tool's settings folder; asking the owner.";
+  }
+  if (request.category === "file_read" && request.paths.some(isSecretPath)) {
+    return "This reads a key or sign-in file; asking the owner.";
+  }
+  return null;
+}
+
+// -----------------------------------------------------------------------------
 // Classification of concrete tool calls
 
 const READ_ONLY_SEGMENT =
@@ -153,18 +228,58 @@ const READ_ONLY_SEGMENT =
 const VERSION_SEGMENT = /^\s*[\w.-]+\s+(--version|-version|-v|-V)\s*$/;
 
 /**
+ * Characters that chain, escape or build a command where a plain split cannot see it: a single
+ * `&` (cmd and PowerShell run what follows), line breaks, cmd's `^` escape, backticks, `$(`,
+ * `${` and `%VAR%` expansion, and redirection.
+ */
+const UNSAFE_SHELL_SYNTAX = /[<>`\r\n^]|\$[({]|(^|[^&])&(?!&)/;
+
+/** cmd's %VAR% expansion (%COMSPEC% /c …). git's --format=%h%x09%s placeholders are not it. */
+function expandsVariables(command: string): boolean {
+  const withoutFormats = command.replace(/--(format|pretty|date)(=|\s+)\S+/gi, "");
+  return /%[A-Za-z_][\w()]*%/.test(withoutFormats);
+}
+
+/** Flags that make a "looking" command write, delete or run something. */
+const WRITING_FORMS: RegExp[] = [
+  // find: -delete, -exec, -execdir, -ok, -okdir, -fprint, -fprint0, -fprintf, -fls
+  /^\s*find\b.*\s-(delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)\b/i,
+  /^\s*sort\b.*\s(-o\S*|--output\b)/i,
+  /^\s*tree\b.*\s-o\b/i,
+  /^\s*rg\b.*\s--pre\b/i,
+  /^\s*date\b.*\s(-s|--set)\b/i,
+  /^\s*git\s+(diff|log|show)\b.*\s(--output\b|--ext-diff\b)/i,
+];
+
+/** `git branch` only lists with these; anything else creates, renames or deletes a branch. */
+const GIT_BRANCH_LIST_FLAGS =
+  /^(-a|--all|-r|--remotes|-v|-vv|--verbose|-l|--list|--show-current|--no-color)$/i;
+
+function isReadOnlySegment(part: string): boolean {
+  if (VERSION_SEGMENT.test(part)) return true;
+  if (!READ_ONLY_SEGMENT.test(part)) return false;
+  if (WRITING_FORMS.some((pattern) => pattern.test(part))) return false;
+  const words = part.trim().split(/\s+/);
+  if (/^git$/i.test(words[0] ?? "") && /^branch$/i.test(words[1] ?? "")) {
+    return words.slice(2).every((word) => GIT_BRANCH_LIST_FLAGS.test(word));
+  }
+  // `uniq in out` writes the second file.
+  if (/^uniq$/i.test(words[0] ?? "")) {
+    return words.slice(1).filter((word) => !word.startsWith("-")).length <= 1;
+  }
+  return true;
+}
+
+/**
  * Read-only when every part of a chained or piped command only looks (ls; echo; git status |
  * grep x). Redirection, substitution and anything else keep the command in "shell".
  */
-function isReadOnlyCommand(command: string): boolean {
-  if (/[<>`]|\$\(/.test(command)) return false;
+export function isReadOnlyCommand(command: string): boolean {
+  if (UNSAFE_SHELL_SYNTAX.test(command) || expandsVariables(command)) return false;
+  if (mentionsSecretPath(command)) return false;
   const segments = command.split(/;|&&|\|\||\|/).filter((part) => part.trim());
   if (segments.length === 0) return false;
-  return segments.every(
-    (part) =>
-      VERSION_SEGMENT.test(part) ||
-      (READ_ONLY_SEGMENT.test(part) && !/-delete\b|-exec\b/i.test(part)),
-  );
+  return segments.every(isReadOnlySegment);
 }
 
 export function classifyCommand(command: string): PermissionCategory {
@@ -316,6 +431,21 @@ export function redact(value: string, max = 240): string {
   let text = value.replace(/\s+/g, " ").trim();
   for (const pattern of SECRET_PATTERNS) text = text.replace(pattern, "[redacted]");
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** Longest command shown in full on a card; approval-store keeps 4,000 characters of detail. */
+export const MAX_DETAIL_CHARS = 3_900;
+
+/**
+ * Strips likely secrets but keeps the command as written: line breaks and spacing stay (a
+ * newline is exactly what can hide a second command), and nothing is cut short of the limit.
+ */
+export function redactDetail(value: string, max = MAX_DETAIL_CHARS): string {
+  let text = value.replace(/\r\n?/g, "\n").trim();
+  for (const pattern of SECRET_PATTERNS) text = text.replace(pattern, "[redacted]");
+  return text.length > max
+    ? `${text.slice(0, max)}\n… (${text.length - max} more characters)`
+    : text;
 }
 
 function firstString(input: Record<string, unknown>, keys: string[]): string | null {

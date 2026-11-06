@@ -18,10 +18,13 @@ export const IPC_CHANNELS = {
   aiRuntimeEvent: "ai-runtime:event",
   maintenanceExportData: "maintenance:export-data",
   maintenanceExportDiagnostics: "maintenance:export-diagnostics",
+  maintenanceStorageUsage: "maintenance:storage-usage",
+  maintenanceStorageClean: "maintenance:storage-clean",
   agentGetStatus: "agent:get-status",
   agentGetUsage: "agent:get-usage",
   agentListModels: "agent:list-models",
   agentRefreshModels: "agent:refresh-models",
+  agentProbeProviders: "agent:probe-providers",
   agentListBots: "agent:list-bots",
   agentCreateBot: "agent:create-bot",
   agentUpdateBot: "agent:update-bot",
@@ -103,6 +106,7 @@ export const IPC_CHANNELS = {
   routinesDelete: "routines:delete",
   routinesSetEnabled: "routines:set-enabled",
   routinesRunNow: "routines:run-now",
+  routinesPickFolder: "routines:pick-folder",
   filesList: "files:list",
   filesAdd: "files:add",
   filesOpen: "files:open",
@@ -148,6 +152,11 @@ export const IPC_CHANNELS = {
   orchestratorPauseRun: "orchestrator:pause-run",
   orchestratorResumeRun: "orchestrator:resume-run",
   orchestratorCancelRun: "orchestrator:cancel-run",
+  orchestratorGetEngineSettings: "orchestrator:get-engine-settings",
+  orchestratorSetEngineSettings: "orchestrator:set-engine-settings",
+  orchestratorPerformance: "orchestrator:performance",
+  agentRerunInterrupted: "agent:rerun-interrupted",
+  agentDismissInterrupted: "agent:dismiss-interrupted",
   memoryList: "memory:list",
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
@@ -157,6 +166,15 @@ export const IPC_CHANNELS = {
   composioConnectApp: "composio:connect-app",
   composioConnectionStatus: "composio:connection-status",
   composioDisconnectApp: "composio:disconnect-app",
+  apisList: "apis:list",
+  apisDiscover: "apis:discover",
+  apisUpdate: "apis:update",
+  apisRunTests: "apis:run-tests",
+  apisActivate: "apis:activate",
+  apisSetEnabled: "apis:set-enabled",
+  apisSetAccess: "apis:set-access",
+  apisActivity: "apis:activity",
+  apisRevoke: "apis:revoke",
   telegramStatus: "telegram:status",
   telegramSetToken: "telegram:set-token",
   telegramSetCoworker: "telegram:set-coworker",
@@ -166,12 +184,26 @@ export const IPC_CHANNELS = {
   customSkillsPreviewGithub: "custom-skills:preview-github",
   customSkillsInstallGithub: "custom-skills:install-github",
   customSkillsRemove: "custom-skills:remove",
+  customSkillsMarkReviewed: "custom-skills:mark-reviewed",
   mcpList: "mcp:list",
   mcpSave: "mcp:save",
   mcpImportJson: "mcp:import-json",
   mcpGithubJson: "mcp:github-json",
   mcpSetEnabled: "mcp:set-enabled",
   mcpRemove: "mcp:remove",
+  mcpRecheck: "mcp:recheck",
+  mcpTest: "mcp:test",
+  mcpSetCoworkers: "mcp:set-coworkers",
+  mcpAnalyzeGithub: "mcp:analyze-github",
+  mcpAddCandidate: "mcp:add-candidate",
+  mcpPlanInstall: "mcp:plan-install",
+  mcpPlanSkill: "mcp:plan-skill",
+  mcpPlanTool: "mcp:plan-tool",
+  mcpRunInstall: "mcp:run-install",
+  mcpInstallStatus: "mcp:install-status",
+  mcpCancelInstall: "mcp:cancel-install",
+  mcpSetShared: "mcp:set-shared",
+  mcpAddAdapter: "mcp:add-adapter",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -773,7 +805,7 @@ export function providerForModel(model: AgentModelId): AgentProviderId {
 
 /** The model a new coworker gets when this provider is the one available. */
 export const DEFAULT_MODEL_FOR_PROVIDER: Record<AgentProviderId, AgentModelId> = {
-  codex: "gpt-5.6-luna",
+  codex: "gpt-5.6-sol",
   claude: "claude-opus-5",
   opencode: "opencode-free",
   antigravity: "antigravity-default",
@@ -1097,6 +1129,15 @@ export interface RoutineStep {
   instruction: string;
 }
 
+/** "When a file is added to this folder (or a subfolder)". */
+export interface RoutineFolderTrigger {
+  kind: "folder";
+  /** Absolute path of the watched folder. */
+  folder: string;
+}
+
+export type RoutineTrigger = RoutineFolderTrigger;
+
 /** A named multi-step automation: each step goes to one coworker, in order. */
 export interface Routine {
   id: string;
@@ -1104,6 +1145,8 @@ export interface Routine {
   steps: RoutineStep[];
   /** null = only runs with Run now. */
   cadence: RoutineCadence | null;
+  /** An event that starts the routine instead of a cadence (cadence is then null). */
+  trigger?: RoutineTrigger | null;
   enabled: boolean;
   createdAt: string;
   lastRunAt: string | null;
@@ -1128,7 +1171,9 @@ export interface RoutineRun {
   id: string;
   routineId: string;
   routineName: string;
-  trigger: "schedule" | "manual";
+  trigger: "schedule" | "manual" | "folder";
+  /** For folder-triggered runs: the files that were added. */
+  files?: string[];
   status: "running" | "done" | "failed";
   startedAt: string;
   finishedAt: string | null;
@@ -1147,6 +1192,8 @@ export interface SaveRoutineInput {
   name: string;
   steps: Array<{ id?: string; botId: string; instruction: string }>;
   cadence: RoutineCadence | null;
+  /** Omit or null for no event trigger. */
+  trigger?: RoutineTrigger | null;
   enabled: boolean;
   /** Required to save a cadence that repeats more often than every 5 minutes. */
   confirmFrequent?: boolean;
@@ -1281,6 +1328,14 @@ export interface QueueDelivery {
   messageId: string;
   recipientBotId: string;
   sender: { kind: "user" } | { kind: "bot"; botId: string };
+  /** Who really sent a "user" message: the owner, or the app on the owner's behalf. */
+  origin?: MessageOrigin;
+  /** Coworker-to-coworker messages in a row that led here (0 or absent for the owner). */
+  hops?: number;
+  /** This copy failed and the same message was sent again as this delivery. */
+  retriedAs?: string;
+  /** Interrupted when Sahkarmi closed: the chat offers to run it again. */
+  offerRerun?: boolean;
   text: string;
   attachments: AttachmentSummary[];
   replyToMessageId: string | null;
@@ -1358,6 +1413,13 @@ export interface ConversationSnapshot {
   revision: number;
   messages: ConversationMessage[];
   plan?: TurnPlan | null;
+  /** Older messages left out of this snapshot (the window shows the newest ones). */
+  earlierCount?: number;
+}
+
+export interface ReadConversationOptions {
+  /** Newest messages to include; the rest load with "Load earlier". */
+  limit?: number;
 }
 
 export interface SearchMessagesInput {
@@ -1375,11 +1437,24 @@ export interface MessageSearchHit {
   createdAt: string;
 }
 
+/**
+ * Where a message really came from. The owner's own messages carry "owner" (or nothing, for
+ * older data); the team-run engine, routines and schedules send on the owner's behalf.
+ */
+export type MessageOrigin = "owner" | "team-run" | "routine" | "schedule" | "system";
+
 export interface SendMessageInput {
   botId: string;
   text: string;
   attachmentDraftIds?: string[];
   replyToMessageId?: string | null;
+  /**
+   * The owner typed this in the composer while the coworker works: join the running turn
+   * (Codex/Claude) instead of waiting. Only the composer sets it; everything else queues.
+   */
+  steer?: boolean;
+  /** Set by the app (never the renderer) for messages it sends on the owner's behalf. */
+  origin?: MessageOrigin;
 }
 
 export interface SetMessageReactionInput {
@@ -1450,9 +1525,14 @@ export interface OrchestratorDeliverable {
   bytes?: number;
 }
 
+/** "unverified": nothing outside the coworker's own word could be checked. Never "passed". */
+export type OrchestratorVerificationVerdict = "passed" | "failed" | "unverified";
+
 export interface OrchestratorVerificationEvidence {
-  type: "lint" | "typecheck" | "test" | "build" | "review";
+  type: "lint" | "typecheck" | "test" | "build" | "review" | "files" | "check";
   passed: boolean;
+  /** Absent in runs from before 0.24: read `passed`. */
+  verdict?: OrchestratorVerificationVerdict;
   summary: string;
   output?: string;
   timestamp: string;
@@ -1475,6 +1555,8 @@ export interface OrchestratorTask {
   maxAttempts: number;
   error: string | null;
   evidence: OrchestratorVerificationEvidence[];
+  /** After completion: "verified" by outside evidence, or "unverified" (nothing to check). */
+  verification?: "verified" | "unverified" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1487,7 +1569,8 @@ export interface AgentExecutionInstance {
   assignedTaskId: string | null;
   status: "idle" | "running" | "waiting" | "completed" | "failed";
   workspacePath: string;
-  toolPermissions: string[];
+  /** Older runs only; permissions are decided per tool call. */
+  toolPermissions?: string[];
   turnCount: number;
   createdAt: string;
   completedAt: string | null;
@@ -1533,6 +1616,12 @@ export interface OrchestratorRun {
   engine?: "graph" | "legacy";
   /** Set while the run is paused on an approval the owner has not decided yet. */
   waitingOn?: OrchestratorWait | null;
+  /** The owner's check command for this run, if any. */
+  checkCommand?: string | null;
+  /** How the task list was made: the CEO coworker's plan, or the built-in template. */
+  plannedBy?: "ceo" | "template";
+  /** Revised plans made after a failure (at most 2). */
+  replans?: number;
 }
 
 export interface OrchestratorWait {
@@ -1546,6 +1635,8 @@ export interface StartOrchestratorRunInput {
   workspaceId?: string;
   objective: string;
   forcedStrategy?: TaskExecutionStrategy;
+  /** The owner's own check (e.g. "npm test"), run after each task through the permission rules. */
+  checkCommand?: string | null;
 }
 
 export interface RespondToPromptInput {
@@ -1573,6 +1664,21 @@ export type AgentEvent =
   | { type: "usage-changed"; usage: AccountUsage }
   | { type: "bots-changed"; bots: BotSummary[] }
   | { type: "conversation"; snapshot: ConversationSnapshot }
+  /**
+   * One message (or the plan) changed during a turn. Cheaper than a full snapshot on every tool
+   * step; the full snapshot still follows at the turn's end. `afterId` is the message just before
+   * it in the chat (null: first). A window that missed a change reads the chat again.
+   */
+  | {
+      type: "message-upsert";
+      botId: string;
+      threadId: string | null;
+      activeTurnId: string | null;
+      revision: number;
+      message?: ConversationMessage;
+      afterId?: string | null;
+      plan?: TurnPlan | null;
+    }
   | {
       type: "conversation-delta";
       botId: string;
@@ -1608,6 +1714,8 @@ export type AgentEvent =
   | { type: "approvals-changed"; approvals: ApprovalRequest[] }
   | { type: "schedules-changed"; schedules: ScheduledTask[] }
   | { type: "routines-changed"; state: RoutinesState }
+  /** Main asks the window to open a coworker's chat, e.g. after a notification was clicked. */
+  | { type: "open-requested"; botId: string | null; approvalId?: string }
   | { type: "orchestrator-run-updated"; run: OrchestratorRun }
   | { type: "orchestrator-task-updated"; runId: string; task: OrchestratorTask }
   | { type: "orchestrator-handoff"; message: AgentCollaborationMessage }
@@ -1690,7 +1798,13 @@ export interface AgentDesktopApi {
   createBot: (workspaceId?: string) => Promise<BotSummary>;
   updateBot: (input: UpdateBotInput) => Promise<BotSummary>;
   deleteBot: (botId: string) => Promise<void>;
-  readConversation: (botId: string) => Promise<ConversationSnapshot>;
+  /** `limit`: only the newest messages (the snapshot's earlierCount says how many were left out). */
+  readConversation: (
+    botId: string,
+    options?: ReadConversationOptions,
+  ) => Promise<ConversationSnapshot>;
+  /** Checks every AI provider not checked yet (Settings > AI and models, setup). */
+  probeProviders: () => Promise<void>;
   searchMessages: (input: SearchMessagesInput) => Promise<MessageSearchHit[]>;
   chooseAttachments: () => Promise<DraftAttachment[]>;
   /** Imports in-memory files (voice notes) as draft attachments. */
@@ -1707,6 +1821,10 @@ export interface AgentDesktopApi {
   setMessageReaction: (input: SetMessageReactionInput) => Promise<void>;
   listQueue: (botId: string) => Promise<QueueSnapshot>;
   cancelQueuedMessage: (input: CancelQueuedMessageInput) => Promise<void>;
+  /** Sends a task that was interrupted when Sahkarmi closed again, as a new message. */
+  rerunInterrupted: (input: CancelQueuedMessageInput) => Promise<void>;
+  /** Hides the "run again" offer for an interrupted task. */
+  dismissInterrupted: (input: CancelQueuedMessageInput) => Promise<void>;
   sendQueuedNow: (input: CancelQueuedMessageInput) => Promise<void>;
   setQueuePaused: (input: SetQueuePausedInput) => Promise<void>;
   interrupt: (input: InterruptTurnInput) => Promise<void>;
@@ -1827,6 +1945,8 @@ export interface RoutinesDesktopApi {
   setEnabled: (routineId: string, enabled: boolean) => Promise<RoutinesState>;
   /** Starts a run in the background and returns at once. */
   runNow: (routineId: string) => Promise<RoutinesState>;
+  /** Asks the owner to choose a folder for a "file added" trigger; null when cancelled. */
+  pickFolder: () => Promise<string | null>;
 }
 
 export interface SchedulesDesktopApi {
@@ -1861,6 +1981,50 @@ export interface AiRuntimeDesktopApi {
 export interface MaintenanceDesktopApi {
   exportData: () => Promise<ExportResult>;
   exportDiagnostics: () => Promise<ExportResult>;
+  /** Settings > Storage: how much space each kind of data takes. */
+  storageUsage: () => Promise<StorageUsage>;
+  /** Removes only data that is safe to remove for that category (see StorageCleanInput). */
+  cleanStorage: (input: StorageCleanInput) => Promise<StorageCleanResult>;
+}
+
+export const STORAGE_CATEGORY_IDS = [
+  "browser",
+  "runtimes",
+  "accounts",
+  "attachments",
+  "knowledge",
+  "logs",
+  "mailboxArchive",
+] as const;
+export type StorageCategoryId = (typeof STORAGE_CATEGORY_IDS)[number];
+
+export interface StorageCategory {
+  id: StorageCategoryId;
+  bytes: number;
+  /** Too many files to count them all: the real size is at least `bytes`. */
+  partial: boolean;
+}
+
+export interface StorageUsage {
+  categories: StorageCategory[];
+  measuredAt: string;
+}
+
+/**
+ * browser: data of deleted coworkers; runtimes: AI tool versions no longer used; accounts:
+ * folders of removed Google accounts; attachments: files sent with messages older than
+ * `olderThanDays`; logs: older log files.
+ */
+export type StorageCleanInput =
+  | { category: "browser" | "runtimes" | "accounts" | "logs" }
+  | { category: "attachments"; olderThanDays: number };
+
+export interface StorageCleanResult {
+  removedItems: number;
+  /** Space freed (may be an estimate). */
+  bytes: number;
+  /** Items still in use; tried again at the next start. */
+  skipped: number;
 }
 
 export interface OrchestratorDesktopApi {
@@ -1870,6 +2034,68 @@ export interface OrchestratorDesktopApi {
   pauseRun: (runId: string) => Promise<OrchestratorRun | null>;
   resumeRun: (runId: string) => Promise<OrchestratorRun | null>;
   cancelRun: (runId: string) => Promise<OrchestratorRun | null>;
+  getEngineSettings: () => Promise<EngineSettings>;
+  setEngineSettings: (input: Partial<EngineSettings>) => Promise<EngineSettings>;
+  performance: () => Promise<PerformanceSummary>;
+}
+
+/** How hard the agent engine may work this PC. Owner-editable in Settings > Features. */
+export interface EngineSettings {
+  /** Coworker turns that may run at the same time (1-8). */
+  maxConcurrentTurns: number;
+  /** A turn with no sign of life (no text, no tool) this long is stopped (5-240 minutes). */
+  watchdogMinutes: number;
+}
+
+export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
+  maxConcurrentTurns: 3,
+  watchdogMinutes: 45,
+};
+
+export const ENGINE_SETTINGS_LIMITS = {
+  maxConcurrentTurns: { min: 1, max: 8 },
+  watchdogMinutes: { min: 5, max: 240 },
+} as const;
+
+/** One finished coworker turn, recorded on this PC only (never sent anywhere). */
+export interface RunEvent {
+  id: number;
+  botId: string;
+  botName: string | null;
+  provider: string | null;
+  model: string | null;
+  origin: MessageOrigin;
+  outcome: "completed" | "failed" | "interrupted" | "cancelled";
+  startedAt: string;
+  durationMs: number;
+  toolCount: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+export interface PerformanceRow {
+  key: string;
+  turns: number;
+  completed: number;
+  failed: number;
+  medianDurationMs: number;
+  averageTools: number;
+}
+
+export interface PerformanceSummary {
+  since: string | null;
+  totalTurns: number;
+  byCoworker: PerformanceRow[];
+  byModel: PerformanceRow[];
+  recent: RunEvent[];
+}
+
+/** A task that was running when Sahkarmi closed, offered to the owner to run again. */
+export interface InterruptedTask {
+  deliveryId: string;
+  botId: string;
+  text: string;
+  createdAt: string;
 }
 
 export interface SahkarmiDesktopApi {
@@ -1902,6 +2128,7 @@ export interface SahkarmiDesktopApi {
   memory: MemoryDesktopApi;
   knowledge: KnowledgeDesktopApi;
   composio: ComposioDesktopApi;
+  apis: ApiIntegrationsDesktopApi;
   telegram: TelegramDesktopApi;
   customSkills: CustomSkillsDesktopApi;
   mcp: McpDesktopApi;
@@ -1974,6 +2201,10 @@ export interface CustomSkill {
   installedAt: string;
   /** Path inside the Shared folder, e.g. "Skills/Custom/frontend-design/SKILL.md". */
   sharedPath: string;
+  /** The import looked risky (pipes a download into a shell, says not to ask): not trusted yet. */
+  reviewNeeded?: boolean;
+  /** What was flagged, in plain English. */
+  risks?: string[];
 }
 
 /** One skill folder (with a SKILL.md) found in a GitHub repo. */
@@ -2002,6 +2233,87 @@ export interface CustomSkillsDesktopApi {
   previewGithub: (url: string) => Promise<GithubSkillPreview>;
   installGithub: (url: string, paths: string[]) => Promise<CustomSkill[]>;
   remove: (id: string) => Promise<CustomSkill[]>;
+  /** The owner has read a flagged skill and trusts it. */
+  markReviewed: (id: string) => Promise<CustomSkill[]>;
+}
+
+/** What the owner can press to fix an MCP server problem. */
+export type McpFixAction =
+  | "edit"
+  | "recheck"
+  | "install-uv"
+  | "install-node"
+  | "install-python"
+  | "retry-long"
+  | "reinstall"
+  | "use-skill-route"
+  | "shared-mode";
+
+/** A problem Settings can see before any coworker starts the server (MCP-1, -5, -6, -9, -13). */
+export interface McpProblem {
+  kind:
+    | "placeholder"
+    | "missing-command"
+    | "store-stub"
+    | "missing-folder"
+    | "missing-file"
+    | "missing-env";
+  /** The command, folder, file, env name or template text the problem is about. */
+  subject: string;
+  detail?: string;
+  /** Where to download a missing program. */
+  link?: string;
+  fix?: McpFixAction;
+}
+
+/** Plain-English causes of a failed test (audit §11.7); the window words each one. */
+export type McpDiagnosisCode =
+  | "command-not-found"
+  | "store-stub"
+  | "module-missing"
+  | "not-mcp"
+  | "no-reply"
+  | "stdout-noise"
+  | "auth"
+  | "port-in-use"
+  | "first-run-timeout"
+  | "path-not-found"
+  | "long-path"
+  | "build-tools"
+  | "python-version"
+  | "exited"
+  | "unknown";
+
+export interface McpDiagnosis {
+  code: McpDiagnosisCode;
+  fix?: McpFixAction;
+}
+
+export interface McpToolInfo {
+  name: string;
+  description: string;
+}
+
+/** The last "Test server" result (MCP-18). */
+export interface McpServerStatus {
+  lastCheckedAt: string;
+  ok: boolean;
+  toolCount: number;
+  /** Up to 20 names. */
+  toolNames: string[];
+  tools?: McpToolInfo[];
+  error: string | null;
+  stderrTail: string;
+  diagnosis?: McpDiagnosis | null;
+  durationMs?: number;
+}
+
+/** An env value (or header) a server says it needs, from its server.json (MCP-13). */
+export interface McpEnvRequirement {
+  name: string;
+  description: string;
+  isRequired: boolean;
+  isSecret: boolean;
 }
 
 /** An MCP server as Settings shows it: secret values (env, headers) are never sent here. */
@@ -2018,6 +2330,20 @@ export interface McpServerSummary {
   source: string;
   /** A local server whose command is not on this PC (not installed, or a wrong path). */
   missingCommand?: boolean;
+  /** Folder the server starts in. */
+  cwd?: string;
+  /** Everything wrong that can be seen without starting it. */
+  problems: McpProblem[];
+  status?: McpServerStatus | null;
+  /** Added after the "test first" rule: it can be turned on only after a passing test. */
+  needsTest?: boolean;
+  /** Coworkers that get it; null or missing means every coworker. */
+  coworkerIds?: string[] | null;
+  /** Started once for all coworkers instead of once per chat (MCP-7). */
+  shared?: boolean;
+  /** Big install or imports heavy libraries: better shared. */
+  heavy?: boolean;
+  requiredEnv?: McpEnvRequirement[];
 }
 
 export interface McpServerInput {
@@ -2031,22 +2357,177 @@ export interface McpServerInput {
   url?: string;
   headers?: Record<string, string>;
   enabled?: boolean;
+  /** Folder to start in (stdio only). */
+  cwd?: string;
+  requiredEnv?: McpEnvRequirement[];
+  /** Imports heavy libraries (video, speech, ML): Settings suggests shared mode. */
+  heavy?: boolean;
 }
 
 export interface McpImportResult {
   servers: McpServerSummary[];
   added: string[];
   skipped: string[];
+  /** Names that already exist; import again with them in `replace` to overwrite (MCP-14). */
+  conflicts: string[];
+}
+
+/** What "Connect from GitHub" found a repo to be (audit §11.5). */
+export type McpRepoKind = "mcp-stdio" | "mcp-http" | "mcp-needs-build" | "not-mcp" | "unknown";
+export type McpNotMcpKind = "cli" | "http-api" | "webapp";
+
+/** How a candidate gets onto this PC; every source is pinned to a version or a commit. */
+export type McpInstallSource =
+  | { type: "npm"; package: string; version: string }
+  | { type: "pypi"; package: string; version: string; script: string; requiresPython?: string }
+  | { type: "oci"; image: string }
+  | {
+      type: "clone-node";
+      repoUrl: string;
+      commit: string;
+      subPath: string;
+      bin: string;
+      build: boolean;
+    }
+  | {
+      type: "clone-python";
+      repoUrl: string;
+      commit: string;
+      subPath: string;
+      script: string | null;
+      entry: string | null;
+      requiresPython?: string;
+    };
+
+/** One way to run the server, with where each part came from. */
+export interface McpCandidate {
+  id: string;
+  label: string;
+  runtime: "node" | "python" | "docker" | "remote" | "other";
+  /** Ready-to-save settings; missing when the server must be installed first. */
+  server?: McpServerInput;
+  install: McpInstallSource | null;
+  evidence: string[];
+  requiredEnv: McpEnvRequirement[];
+  /** Template values still in the settings (MCP-1). */
+  placeholders: string[];
+  /** Programs it needs on this PC: node, uv, python, docker, git. */
+  needs: string[];
+}
+
+export interface McpRepoAnalysis {
+  id: string;
+  /** owner/repo */
+  repo: string;
+  url: string;
+  commit: string;
+  subPath: string;
+  kind: McpRepoKind;
+  notMcp: McpNotMcpKind[];
+  evidence: string[];
+  candidates: McpCandidate[];
+  /** A command-line program from PyPI it ships, for the "Use as a Skill" route. */
+  cli: { package: string; version: string; script: string; requiresPython?: string } | null;
+  /** Big libraries (video, speech, ML): better run once, shared, or as a Skill. */
+  heavy: boolean;
+  warnings: string[];
+  truncated: boolean;
+  /** Smart import switched off: the repo's .mcp.json files, merged, for the paste box. */
+  legacyJson?: string;
+}
+
+/** One step of a guided install, as the approval card shows it (audit §11.8). */
+export interface McpInstallStepView {
+  kind:
+    | "download-uv"
+    | "download-node"
+    | "python-install"
+    | "venv"
+    | "pip"
+    | "npm"
+    | "clone"
+    | "build"
+    | "docker-pull"
+    | "verify"
+    | "skill"
+    | "save"
+    | "test";
+  /** The exact command (or download address) that will run. */
+  command: string;
+}
+
+/** What the owner approves before anything is downloaded or run. */
+export interface McpInstallPlan {
+  id: string;
+  kind: "server" | "skill" | "tool";
+  name: string;
+  /** Repo + pinned commit, or package + version. */
+  source: string;
+  folder: string;
+  /** Rough download size in MB, when known. */
+  sizeMb: { min: number; max: number } | null;
+  heavy: boolean;
+  steps: McpInstallStepView[];
+  warnings: string[];
+}
+
+export interface McpInstallJob {
+  id: string;
+  planId: string;
+  state: "running" | "done" | "failed" | "cancelled";
+  steps: { kind: McpInstallStepView["kind"]; state: "waiting" | "running" | "done" | "failed" }[];
+  /** The last lines the programs printed. */
+  log: string;
+  error: string | null;
+  diagnosis: McpDiagnosis | null;
+  /** The server list after a server install (with the automatic test result). */
+  servers?: McpServerSummary[];
+  /** The skill written by the Skill route. */
+  skillName?: string;
 }
 
 export interface McpDesktopApi {
   list: () => Promise<McpServerSummary[]>;
   save: (input: McpServerInput) => Promise<McpServerSummary[]>;
-  importJson: (text: string) => Promise<McpImportResult>;
+  importJson: (text: string, replace?: string[]) => Promise<McpImportResult>;
   /** The .mcp.json files of a GitHub repo, merged, for the owner to review before importing. */
   githubJson: (url: string) => Promise<string>;
   setEnabled: (id: string, enabled: boolean) => Promise<McpServerSummary[]>;
   remove: (id: string) => Promise<McpServerSummary[]>;
+  /** Re-reads Windows' PATH (after installing something) and checks every server again. */
+  recheck: () => Promise<McpServerSummary[]>;
+  /** Starts the server once, lists its tools, stops it, and stores the result. */
+  test: (id: string) => Promise<McpServerSummary[]>;
+  /** null = every coworker. */
+  setCoworkers: (id: string, coworkerIds: string[] | null) => Promise<McpServerSummary[]>;
+  /** Reads a GitHub repo (and the MCP Registry) and says what it is and how it could run. */
+  analyzeGithub: (url: string) => Promise<McpRepoAnalysis>;
+  /** Saves one ready-made candidate (switched off until tested), with the env values filled in. */
+  addCandidate: (
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    env: Record<string, string>,
+  ) => Promise<McpServerSummary[]>;
+  /** Builds (does not run) the plan to install a candidate into its own folder. */
+  planInstall: (
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    env: Record<string, string>,
+  ) => Promise<McpInstallPlan>;
+  /** Builds the "Use as a Skill (CLI)" plan for a repo that is not an MCP server. */
+  planSkill: (analysisId: string) => Promise<McpInstallPlan>;
+  /** Builds the plan to download a missing tool (uv, Python 3.11 or Node.js). */
+  planTool: (tool: "uv" | "python" | "node") => Promise<McpInstallPlan>;
+  /** Runs a plan the owner approved. */
+  runInstall: (planId: string) => Promise<McpInstallJob>;
+  installStatus: (jobId: string) => Promise<McpInstallJob>;
+  cancelInstall: (jobId: string) => Promise<McpInstallJob>;
+  /** Shared mode (MCP-7): start once for all coworkers instead of once per chat. */
+  setShared: (id: string, shared: boolean) => Promise<McpServerSummary[]>;
+  /** Writes a small MCP adapter for a repo whose local web API coworkers should call. */
+  addAdapter: (analysisId: string, name: string) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */
@@ -2126,6 +2607,140 @@ export interface ComposioDesktopApi {
   disconnect: (connectionId: string) => Promise<boolean>;
 }
 
+/** Where an API key goes on every request. */
+export type ApiAuthKind = "bearer" | "header" | "query" | "basic" | "none";
+
+export interface ApiAuth {
+  kind: ApiAuthKind;
+  /** The header or query parameter name (for "header" and "query"). */
+  name: string | null;
+}
+
+export interface ApiParam {
+  name: string;
+  in: "path" | "query" | "header" | "body";
+  required: boolean;
+  type: string;
+  description: string;
+  /** A value the specification gives (default, example or first allowed value). */
+  example?: string;
+}
+
+/** One endpoint a coworker may call. */
+export interface ApiOperation {
+  id: string;
+  method: string;
+  path: string;
+  summary: string;
+  params: ApiParam[];
+  /** Sends, creates, changes or deletes something: asks the owner first. */
+  risky: boolean;
+}
+
+/** What discovery could not find on its own; the owner is asked only for these. */
+export type ApiMissingField = "provider" | "baseUrl" | "example";
+
+export type ApiIntegrationStatus =
+  | "needs-info"
+  | "ready-to-test"
+  | "tested"
+  | "failed"
+  | "active"
+  | "disabled";
+
+export type ApiTestId =
+  | "auth"
+  | "connectivity"
+  | "endpoint"
+  | "request"
+  | "parsing"
+  | "permissions"
+  | "errors";
+
+export interface ApiTestResult {
+  id: ApiTestId;
+  outcome: "passed" | "failed" | "skipped";
+  detail: string;
+}
+
+/** Who may use an API. Nobody may until the owner chooses. */
+export interface ApiAccess {
+  everyone: boolean;
+  ceo: boolean;
+  botIds: string[];
+  workspaceIds: string[];
+}
+
+export interface ApiActivityEntry {
+  at: string;
+  botId: string | null;
+  operation: string;
+  status: number | null;
+  ok: boolean;
+  ms: number;
+  error: string | null;
+}
+
+export interface ApiIntegrationSummary {
+  id: string;
+  name: string;
+  provider: string | null;
+  baseUrl: string | null;
+  docsUrl: string | null;
+  specUrl: string | null;
+  auth: ApiAuth;
+  /** The key with all but its last 4 characters hidden. */
+  keyMasked: string;
+  operations: ApiOperation[];
+  /** How many endpoints the specification had (only the first ones are kept). */
+  operationTotal: number;
+  /** The request the tests use, for example "GET /data/2.5/weather?q=Kolkata". */
+  testRequest: string | null;
+  status: ApiIntegrationStatus;
+  missing: ApiMissingField[];
+  /** What discovery did, in plain words. */
+  notes: string[];
+  tests: ApiTestResult[];
+  testedAt: string | null;
+  access: ApiAccess;
+  createdAt: string;
+  activatedAt: string | null;
+  calls: number;
+  errors: number;
+  lastUsedAt: string | null;
+}
+
+export interface ApiDiscoverInput {
+  apiKey: string;
+  name?: string;
+  docsUrl?: string;
+  specUrl?: string;
+}
+
+/** The owner's answers to what discovery asked for. */
+export interface ApiIntegrationPatch {
+  name?: string;
+  provider?: string;
+  baseUrl?: string;
+  docsUrl?: string;
+  specUrl?: string;
+  /** A full example request URL (with real values), or a path on the base address. */
+  example?: string;
+  auth?: ApiAuth;
+}
+
+export interface ApiIntegrationsDesktopApi {
+  list: () => Promise<ApiIntegrationSummary[]>;
+  discover: (input: ApiDiscoverInput) => Promise<ApiIntegrationSummary>;
+  update: (id: string, patch: ApiIntegrationPatch) => Promise<ApiIntegrationSummary>;
+  runTests: (id: string) => Promise<ApiIntegrationSummary>;
+  activate: (id: string) => Promise<ApiIntegrationSummary>;
+  setEnabled: (id: string, enabled: boolean) => Promise<ApiIntegrationSummary>;
+  setAccess: (id: string, access: ApiAccess) => Promise<ApiIntegrationSummary>;
+  activity: (id: string) => Promise<ApiActivityEntry[]>;
+  revoke: (id: string) => Promise<boolean>;
+}
+
 /** One downloadable voice model as Settings → Voice shows it. */
 export interface VoiceModelInfo {
   id: string;
@@ -2177,6 +2792,8 @@ export interface VoiceDesktopApi {
 
 export interface AgentMemory {
   id: string;
+  /** The workspace the memory belongs to (memories never cross workspaces). */
+  workspaceId?: string;
   category: "architecture" | "preference" | "decision" | "fact";
   key: string;
   content: string;
@@ -2346,10 +2963,29 @@ export interface KnowledgeDesktopApi {
   removeSemantic: () => Promise<KnowledgeSemanticStatus>;
 }
 
+export interface MemoryListInput {
+  workspaceId: string;
+  /** Words to search for; empty lists the newest. */
+  query?: string;
+  category?: AgentMemoryCategory;
+  limit?: number;
+  offset?: number;
+}
+
+export interface MemoryListResult {
+  memories: AgentMemory[];
+  /** All memories of the workspace (and category), not only this page. */
+  total: number;
+  offset: number;
+}
+
 export interface MemoryDesktopApi {
-  list: (category?: string) => Promise<AgentMemory[]>;
+  list: (input: MemoryListInput) => Promise<MemoryListResult>;
   save: (
-    entry: Omit<AgentMemory, "id" | "createdAt" | "updatedAt"> & { id?: string },
+    entry: Omit<AgentMemory, "id" | "createdAt" | "updatedAt" | "workspaceId"> & {
+      id?: string;
+      workspaceId: string;
+    },
   ) => Promise<AgentMemory>;
-  delete: (id: string) => Promise<boolean>;
+  delete: (id: string, workspaceId: string) => Promise<boolean>;
 }

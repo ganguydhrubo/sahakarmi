@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import { isRecord } from "./protocol";
 
 /**
@@ -20,27 +20,98 @@ export async function renameWithRetry(source: string, target: string): Promise<v
   }
 }
 
+export interface CorruptFileRecovery {
+  /** The file that could not be read. */
+  path: string;
+  /** Where the unreadable copy was moved; nothing is deleted. */
+  backupPath: string;
+  reason: string;
+  at: string;
+}
+
+type CorruptFileListener = (recovery: CorruptFileRecovery) => void;
+const corruptFileListeners = new Set<CorruptFileListener>();
+const recoveredFiles: CorruptFileRecovery[] = [];
+
+/**
+ * Main listens here to log a recovery and tell the owner. Recoveries that happened before the
+ * listener was added are replayed to it, since stores load before the window exists.
+ */
+export function onCorruptFileRecovered(listener: CorruptFileListener): () => void {
+  corruptFileListeners.add(listener);
+  for (const recovery of recoveredFiles) listener(recovery);
+  return () => corruptFileListeners.delete(listener);
+}
+
+/** Test helper: forget recoveries reported so far. */
+export function clearCorruptFileRecoveries(): void {
+  recoveredFiles.length = 0;
+}
+
+export interface JsonFileOptions {
+  /**
+   * A file that cannot be parsed or fails validation is moved aside as
+   * `<name>.corrupt-<time>` and the fallback is used, instead of failing startup. Only for
+   * stores whose defaults are safe (for example permissions fall back to "ask").
+   */
+  recoverCorrupt?: boolean;
+}
+
 /** Small atomic JSON document used by the approval and schedule stores. */
 export class JsonFile<T> {
   readonly #path: string;
+  readonly #recoverCorrupt: boolean;
   #writeQueue: Promise<void> = Promise.resolve();
   #next: { value: T; done: Promise<void> } | null = null;
 
-  constructor(path: string) {
+  constructor(path: string, options: JsonFileOptions = {}) {
     this.#path = path;
+    this.#recoverCorrupt = options.recoverCorrupt === true;
   }
 
   async read(fallback: () => T, validate: (value: unknown) => value is T): Promise<T> {
+    let text: string;
     try {
-      const parsed: unknown = JSON.parse(await readFile(this.#path, "utf8"));
-      if (!validate(parsed)) {
-        throw new Error(`${this.#path} is corrupt or from a newer Sahkarmi version.`);
-      }
-      return parsed;
+      text = await readFile(this.#path, "utf8");
     } catch (error) {
       if (isRecord(error) && error.code === "ENOENT") return fallback();
       throw error;
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      if (!this.#recoverCorrupt) throw error;
+      return this.#recover(fallback, `not valid JSON (${(error as Error).message})`);
+    }
+    if (!validate(parsed)) {
+      if (this.#recoverCorrupt) {
+        return this.#recover(fallback, "unexpected contents, or written by a newer Sahkarmi");
+      }
+      throw new Error(`${this.#path} is corrupt or from a newer Sahkarmi version.`);
+    }
+    return parsed;
+  }
+
+  async #recover(fallback: () => T, reason: string): Promise<T> {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupPath = `${this.#path}.corrupt-${stamp}`;
+    await renameWithRetry(this.#path, backupPath);
+    const recovery: CorruptFileRecovery = {
+      path: this.#path,
+      backupPath,
+      reason: `${basename(this.#path)}: ${reason}`,
+      at: new Date().toISOString(),
+    };
+    recoveredFiles.push(recovery);
+    for (const listener of corruptFileListeners) {
+      try {
+        listener(recovery);
+      } catch {
+        // A failing listener must not undo the recovery.
+      }
+    }
+    return fallback();
   }
 
   /** Writes waiting behind one in progress collapse into one, so a burst costs two at most. */

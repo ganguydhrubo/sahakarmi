@@ -14,6 +14,7 @@ import {
   openCodePlatformPackage,
   parseIntegrity,
   reasonOf,
+  requireStrongIntegrity,
   toolPlatformPackage,
   verifyFileIntegrity,
 } from "./ai-runtime-service";
@@ -99,6 +100,22 @@ describe("npm integrity", () => {
       verifyFileIntegrity(file, `sha512-${createHash("sha512").update("other").digest("base64")}`),
     ).toBe(false);
     expect(verifyFileIntegrity(file, "not-an-integrity")).toBe(false);
+  });
+
+  it("refuses sha1-only or missing checksums and uses the strongest one listed", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sahkarmi-integrity-"));
+    temporaryPaths.push(directory);
+    const file = join(directory, "package.tgz");
+    await writeFile(file, "hello");
+    const sha1 = `sha1-${createHash("sha1").update("hello").digest("base64")}`;
+    const sha256 = `sha256-${createHash("sha256").update("hello").digest("base64")}`;
+    expect(parseIntegrity(sha1)).toBeNull();
+    expect(verifyFileIntegrity(file, sha1)).toBe(false);
+    expect(verifyFileIntegrity(file, sha256)).toBe(true);
+    expect(parseIntegrity(`${sha1} ${sha256}`)?.algorithm).toBe("sha256");
+    expect(() => requireStrongIntegrity(null, "OpenCode 1.2.3")).toThrow(/sha512 or sha256/);
+    expect(() => requireStrongIntegrity(sha1, "OpenCode 1.2.3")).toThrow(/did not download/);
+    expect(requireStrongIntegrity(sha256, "x")).toBe(sha256);
   });
 });
 

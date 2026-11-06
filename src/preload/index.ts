@@ -79,11 +79,13 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     getUsage: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetUsage),
     listModels: () => ipcRenderer.invoke(IPC_CHANNELS.agentListModels),
     refreshModels: () => ipcRenderer.invoke(IPC_CHANNELS.agentRefreshModels),
+    probeProviders: () => ipcRenderer.invoke(IPC_CHANNELS.agentProbeProviders),
     listBots: () => ipcRenderer.invoke(IPC_CHANNELS.agentListBots),
     createBot: (workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.agentCreateBot, workspaceId),
     updateBot: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentUpdateBot, input),
     deleteBot: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentDeleteBot, botId),
-    readConversation: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentReadConversation, botId),
+    readConversation: (botId, options) =>
+      ipcRenderer.invoke(IPC_CHANNELS.agentReadConversation, botId, options),
     searchMessages: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSearchMessages, input),
     chooseAttachments: () => ipcRenderer.invoke(IPC_CHANNELS.agentChooseAttachments),
     importData: (data) =>
@@ -105,6 +107,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     cancelQueuedMessage: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.agentCancelQueuedMessage, input),
     sendQueuedNow: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSendQueuedNow, input),
+    rerunInterrupted: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentRerunInterrupted, input),
+    dismissInterrupted: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentDismissInterrupted, input),
     setQueuePaused: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSetQueuePaused, input),
     interrupt: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentInterrupt, input),
     respondToPrompt: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentRespondToPrompt, input),
@@ -216,6 +220,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     setEnabled: (routineId, enabled) =>
       ipcRenderer.invoke(IPC_CHANNELS.routinesSetEnabled, { routineId, enabled }),
     runNow: (routineId) => ipcRenderer.invoke(IPC_CHANNELS.routinesRunNow, routineId),
+    pickFolder: () => ipcRenderer.invoke(IPC_CHANNELS.routinesPickFolder),
   },
   files: {
     list: (directory) => ipcRenderer.invoke(IPC_CHANNELS.filesList, directory ?? ""),
@@ -269,6 +274,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   maintenance: {
     exportData: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportData),
     exportDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportDiagnostics),
+    storageUsage: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceStorageUsage),
+    cleanStorage: (input) => ipcRenderer.invoke(IPC_CHANNELS.maintenanceStorageClean, input),
   },
   orchestrator: {
     getRuns: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetRuns),
@@ -277,6 +284,10 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     pauseRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPauseRun, runId),
     resumeRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResumeRun, runId),
     cancelRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorCancelRun, runId),
+    getEngineSettings: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetEngineSettings),
+    setEngineSettings: (input) =>
+      ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetEngineSettings, input),
+    performance: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPerformance),
   },
   knowledge: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),
@@ -303,9 +314,9 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     removeSemantic: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSemanticRemove),
   },
   memory: {
-    list: (category) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, category),
+    list: (input) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, input),
     save: (entry) => ipcRenderer.invoke(IPC_CHANNELS.memorySave, entry),
-    delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, id),
+    delete: (id, workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, { id, workspaceId }),
   },
   composio: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.composioGetStatus),
@@ -317,6 +328,17 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.composioConnectionStatus, { connectionId }),
     disconnect: (connectionId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.composioDisconnectApp, { connectionId }),
+  },
+  apis: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.apisList),
+    discover: (input) => ipcRenderer.invoke(IPC_CHANNELS.apisDiscover, input),
+    update: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.apisUpdate, { id, patch }),
+    runTests: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisRunTests, id),
+    activate: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisActivate, id),
+    setEnabled: (id, enabled) => ipcRenderer.invoke(IPC_CHANNELS.apisSetEnabled, { id, enabled }),
+    setAccess: (id, access) => ipcRenderer.invoke(IPC_CHANNELS.apisSetAccess, { id, access }),
+    activity: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisActivity, id),
+    revoke: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisRevoke, id),
   },
   telegram: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.telegramStatus),
@@ -332,15 +354,40 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     installGithub: (url: string, paths: string[]) =>
       ipcRenderer.invoke(IPC_CHANNELS.customSkillsInstallGithub, { url, paths }),
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsRemove, { id }),
+    markReviewed: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsMarkReviewed, { id }),
   },
   mcp: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
     save: (input) => ipcRenderer.invoke(IPC_CHANNELS.mcpSave, input),
-    importJson: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpImportJson, { text }),
+    importJson: (text: string, replace?: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpImportJson, { text, replace: replace ?? [] }),
     githubJson: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpGithubJson, { url }),
     setEnabled: (id: string, enabled: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, { id, enabled }),
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRemove, { id }),
+    recheck: () => ipcRenderer.invoke(IPC_CHANNELS.mcpRecheck),
+    test: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpTest, { id }),
+    setCoworkers: (id: string, coworkerIds: string[] | null) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpSetCoworkers, { id, coworkerIds }),
+    analyzeGithub: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpAnalyzeGithub, { url }),
+    addCandidate: (
+      analysisId: string,
+      candidateId: string,
+      name: string,
+      env: Record<string, string>,
+    ) => ipcRenderer.invoke(IPC_CHANNELS.mcpAddCandidate, { analysisId, candidateId, name, env }),
+    planInstall: (analysisId, candidateId, name, env) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpPlanInstall, { analysisId, candidateId, name, env }),
+    planSkill: (analysisId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpPlanSkill, { analysisId }),
+    planTool: (tool) => ipcRenderer.invoke(IPC_CHANNELS.mcpPlanTool, { tool }),
+    runInstall: (planId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRunInstall, { planId }),
+    installStatus: (jobId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpInstallStatus, { jobId }),
+    cancelInstall: (jobId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpCancelInstall, { jobId }),
+    setShared: (id: string, shared: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpSetShared, { id, shared }),
+    addAdapter: (analysisId: string, name: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpAddAdapter, { analysisId, name }),
   },
   workflow: {
     export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),

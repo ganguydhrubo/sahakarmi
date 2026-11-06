@@ -1,12 +1,12 @@
 // @vitest-environment node
 
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_MODEL_FOR_PROVIDER } from "../shared/ipc";
 import { readModelOptions, stripLeakedToolCalls } from "./acp-client";
-import { openCodeModelValue, readAntigravityAccount } from "./acp-providers";
+import { createOpenCodeClient, openCodeModelValue, readAntigravityAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
@@ -305,6 +305,8 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       const events: Array<{ type: string; code?: string; message?: string }> = [];
       service.on("event", (event) => events.push(event as { type: string; code?: string }));
       await service.initialize();
+      // No coworker uses Gemini, so it is checked only once the owner opens Settings > AI.
+      await service.probeProviders();
       await waitFor(
         () =>
           service?.getStatus().providers?.find((provider) => provider.id === "antigravity")
@@ -356,12 +358,30 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     );
     const note = events.find((event) => event.type === "error" && event.code === "fallback_model");
     expect(note?.message).toContain("Google Antigravity sent back an empty reply");
-    expect(note?.message).toContain("switched to the free model");
+    // Only this message moves; the coworker's own model comes back for the next one.
+    expect(note?.message).toContain("answering this message on the free model");
+    expect(note?.message).toContain("Your next message goes back to Google Antigravity");
     // The same text went out again on the free model; the failed copy is not shown twice.
     const userMessages = (await service.readConversation("meera-support")).messages.filter(
       (message) => message.author === "user",
     );
     expect(userMessages.map((message) => message.text)).toEqual(["say nothing, then Namaste"]);
+
+    // The next message runs on the coworker's own model again, with a note.
+    await waitFor(() =>
+      service
+        ?.listQueue("meera-support")
+        .deliveries.every(
+          (delivery) => delivery.status !== "running" && delivery.status !== "queued",
+        ),
+    );
+    await service.sendMessage({ botId: "meera-support", text: "Namaste again" });
+    await waitFor(() =>
+      events.some((event) => event.type === "notice" && event.code === "fallback_restored"),
+    );
+    expect(service.listBots().find((bot) => bot.id === "meera-support")?.model).toBe(
+      "antigravity-default",
+    );
   });
 
   it("shows a file the coworker made during the turn under its reply, also after a restart", async () => {
@@ -379,6 +399,12 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       service
         ?.listQueue("meera-support")
         .deliveries.every((delivery) => delivery.status === "completed"),
+    );
+    // The file card is added as the turn ends, a moment after the delivery is marked done.
+    await waitFor(async () =>
+      (await service?.readConversation("meera-support"))?.messages.some(
+        (message) => message.author === "assistant" && (message.attachments?.length ?? 0) > 0,
+      ),
     );
     const reply = (await service.readConversation("meera-support")).messages.find(
       (message) => message.author === "assistant" && message.text.includes("Namaste"),
@@ -470,6 +496,74 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     ]);
     expect(messages[2]?.text).toBe("Namaste! Done.");
   });
+
+  it("appends turns to a .jsonl transcript and converts a chat saved in the old format", async () => {
+    const folder = join(root, "user-data", "acp-transcripts", "opencode");
+    const start = async () => {
+      const store = new BotStore(join(root, "user-data"), join(root, "home"));
+      const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+      service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+      await service.initialize();
+    };
+    const sendAndWait = async (text: string, replies: number) => {
+      await service?.sendMessage({ botId: "meera-support", text });
+      await waitFor(async () => {
+        const messages = (await service?.readConversation("meera-support"))?.messages ?? [];
+        return messages.filter((message) => message.text === "Namaste! Done.").length === replies;
+      });
+      await waitFor(() =>
+        service
+          ?.listQueue("meera-support")
+          .deliveries.every((delivery) => delivery.status === "completed"),
+      );
+    };
+    await start();
+    await sendAndWait("Hello", 1);
+    await service?.stop();
+    const [file] = (await readdir(folder)).filter((name) => name.endsWith(".jsonl"));
+    expect(file).toBeDefined();
+    const turns = (await readFile(join(folder, file), "utf8")).trim().split("\n");
+    expect(turns).toHaveLength(1);
+
+    // Turn it back into the pre-0.24 single-file format.
+    const legacy = join(folder, file.replace(/\.jsonl$/, ".json"));
+    await writeFile(
+      legacy,
+      JSON.stringify({ version: 1, turns: turns.map((line) => JSON.parse(line)) }),
+    );
+    await rm(join(folder, file));
+    await start();
+    expect(
+      (await service?.readConversation("meera-support"))?.messages.map((item) =>
+        item.tool ? "tool" : item.author,
+      ),
+    ).toEqual(["user", "tool", "assistant"]);
+    await sendAndWait("Again", 2);
+    expect((await readdir(folder)).filter((name) => !name.endsWith(".jsonl"))).toEqual([]);
+    expect((await readFile(join(folder, file), "utf8")).trim().split("\n")).toHaveLength(2);
+  });
+
+  it("drops the tool routes of an agent's sessions when it stops", async () => {
+    const client = createOpenCodeClient(
+      { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
+      join(root, "transcripts"),
+    );
+    client.start();
+    try {
+      const threads: string[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        const opened = await client.request<{ thread: { id: string } }>("thread/start", {
+          cwd: root,
+        });
+        threads.push(opened.thread.id);
+      }
+      await client.request("thread/resume", { threadId: threads[0], cwd: root });
+      expect(client.mcpRouteCount).toBe(new Set(threads).size);
+    } finally {
+      await client.stop();
+    }
+    expect(client.mcpRouteCount).toBe(0);
+  });
 });
 
 describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_000 }, () => {
@@ -499,6 +593,10 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     process.env.SAHKARMI_FAKE_SLOW_INIT_MS = "1500";
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    // A coworker uses Gemini, so Google's server starts with the app.
+    await store.initialize();
+    await store.getOrCreate("meera-support");
+    await store.updateBot({ botId: "meera-support", model: "antigravity-default" });
     service = newService(store, mailbox);
     // OpenCode's state at the moment Gemini first showed as connected.
     let openCodeWhenGeminiReady: string | null | undefined;
@@ -637,6 +735,32 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     );
     await service.sendMessage({ botId: "meera-support", text: "Hello again" });
     await waitFor(async () => (await answers("meera-support")) === 2);
+  });
+
+  it("wakes a sleeping Gemini on window focus only while a coworker uses it", async () => {
+    process.env.SAHKARMI_GEMINI_IDLE_MS = "300";
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = newService(store, mailbox);
+    await service.initialize();
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    await service.sendMessage({ botId: "meera-support", text: "Hello" });
+    await waitFor(async () => (await answers("meera-support")) === 1);
+    // Nobody uses Gemini any more; once it is asleep, focusing the window must not start it.
+    await service.updateBot({ botId: "meera-support", model: "opencode-free" });
+    await waitFor(
+      async () =>
+        (await antigravityEntries("stdin-closed")) >= 1 &&
+        (await antigravityEntries("stdin-closed")) === (await antigravityEntries("started")),
+    );
+    const asleep = await antigravityEntries("started");
+    service.wakeIdleProviders();
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(await antigravityEntries("started")).toBe(asleep);
+    // A coworker on Gemini again: focus wakes it, so its next message needs no minute-long start.
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    service.wakeIdleProviders();
+    await waitFor(async () => (await antigravityEntries("started")) === asleep + 1);
   });
 });
 

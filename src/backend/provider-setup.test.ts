@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSetupState } from "../shared/ipc";
 import { managedCodexPath, setToolsDirectory } from "./cli";
 import { CODEX_VERSION, ProviderSetup } from "./provider-setup";
+import { SecretCodec, SecretStore } from "./secret-store";
 
 let root: string;
 const originalClaude = process.env.SAHKARMI_CLAUDE_PATH;
@@ -374,19 +375,32 @@ describe("ProviderSetup", () => {
   it("saves a Google AI Studio key for Antigravity and signs in with it", async () => {
     process.env.SAHKARMI_ANTIGRAVITY_PATH = await fakeCli("agy_acp_server", "1.4.2");
     const client = new FakeAcpClient(async () => ({}));
+    const keyFile = join(root, "home", ".gemini", "antigravity-acp", "api_key.txt");
+    const secrets = new SecretStore({
+      filePath: join(root, "secrets.enc.json"),
+      codec: new SecretCodec({
+        isEncryptionAvailable: () => true,
+        encryptString: (text) => Buffer.from(`x${[...text].reverse().join("")}`),
+        decryptString: (buffer) => [...buffer.toString().slice(1)].reverse().join(""),
+      }),
+      legacyFiles: { GEMINI_API_KEY: keyFile },
+    });
+    await secrets.load();
     const setup = new ProviderSetup({
       toolsDirectory: join(root, "tools"),
       recheck: vi.fn(async () => undefined),
       home: join(root, "home"),
       antigravityClient: () => client as never,
+      secrets,
     });
     const state = await setup.setApiKey("antigravity", "AIzaSy-test");
     expect(client.signIns).toEqual(["gemini-api-key"]);
     expect(state.phase).toBe("connected");
     expect(process.env.ANTIGRAVITY_API_KEY).toBe("AIzaSy-test");
-    expect(
-      await readFile(join(root, "home", ".gemini", "antigravity-acp", "api_key.txt"), "utf8"),
-    ).toBe("AIzaSy-test");
+    // Kept encrypted, not in a plain file (and not in the Windows user environment).
+    expect(await secrets.get("GEMINI_API_KEY")).toBe("AIzaSy-test");
+    expect(await readFile(join(root, "secrets.enc.json"), "utf8")).not.toContain("AIzaSy-test");
+    await expect(readFile(keyFile, "utf8")).rejects.toThrow();
     delete process.env.SAHKARMI_ANTIGRAVITY_PATH;
     delete process.env.ANTIGRAVITY_API_KEY;
     delete process.env.GEMINI_API_KEY;
