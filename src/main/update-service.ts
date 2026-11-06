@@ -6,6 +6,7 @@ import {
   type AppUpdater,
   CancellationToken,
   type ProgressInfo,
+  type UpdateDownloadedEvent,
   type UpdateInfo,
 } from "electron-updater";
 import type { UpdateStatus } from "../shared/ipc";
@@ -63,6 +64,16 @@ interface UpdateServiceOptions {
    */
   manualInstall?: () => Promise<boolean>;
   openDownload?: (version: string) => Promise<void>;
+  /**
+   * Windows: runs the downloaded installer through Sahkarmi's own helper (see
+   * windows-installer.ts) and quits the app. "quit" installs silently as the owner closes the
+   * app. Without it, or when it fails, electron-updater's own launcher is used.
+   */
+  launchInstaller?: (installer: string, version: string, mode: "restart" | "quit") => Promise<void>;
+  /** What the helper recorded about the last install, read once at start. */
+  installResult?: () => { version: string; code: number } | null;
+  /** Plain words for an installer exit code. */
+  describeInstallFailure?: (code: number) => string;
 }
 
 const DEFAULT_CHECK_INTERVAL = 15 * 60 * 1_000;
@@ -98,6 +109,12 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   #installTimer: ReturnType<typeof setTimeout> | null = null;
   /** Restart clicks on this PC that left the old version running (from installAttempts). */
   #failedInstalls = 0;
+  /** Why the last install left this version running, when the helper recorded it. */
+  #failureReason: string | null = null;
+  /** The verified installer on disk, from update-downloaded. */
+  #downloadedFile: string | null = null;
+  /** Install silently when the owner quits (Sahkarmi's helper, not electron-updater's). */
+  #installOnQuit = false;
 
   constructor(updater: UpdateAdapter, options: UpdateServiceOptions) {
     super();
@@ -167,14 +184,24 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     this.#updater.on("update-downloaded", (info: UpdateInfo) => {
       this.#clearStallTimer();
       this.#retryCount = 0;
+      this.#downloadedFile = (info as Partial<UpdateDownloadedEvent>).downloadedFile ?? null;
       // Downloaded and verified: if the owner never clicks Restart, it installs on the next quit.
       // Not after a failed attempt on this PC: that would raise a permission prompt at every quit.
-      this.#updater.autoInstallOnAppQuit = this.#failedInstalls === 0;
+      // With Sahkarmi's own helper, electron-updater must not also start an installer on quit.
+      const onQuit = this.#failedInstalls === 0;
+      const ownHelper = Boolean(this.#options.launchInstaller && this.#downloadedFile);
+      this.#installOnQuit = onQuit && ownHelper;
+      this.#updater.autoInstallOnAppQuit = onQuit && !ownHelper;
       this.#setStatus({
         phase: "ready",
         availableVersion: info.version,
         progress: 100,
-        message: this.#failedInstalls > 0 ? READY_AFTER_FAILED_INSTALL : null,
+        message:
+          this.#failedInstalls === 0
+            ? null
+            : this.#failureReason
+              ? `The last update did not install. ${this.#failureReason} Click Restart to try again.`
+              : READY_AFTER_FAILED_INSTALL,
       });
     });
     this.#updater.on("error", (error: unknown) => {
@@ -334,6 +361,17 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
 
   /** Attempts recorded for a version newer than the one running never installed. */
   #loadFailedInstalls(): number {
+    let result: { version: string; code: number } | null = null;
+    try {
+      result = this.#options.installResult?.() ?? null;
+    } catch {}
+    if (result && compareVersions(result.version, this.#options.currentVersion) > 0) {
+      this.#failureReason =
+        result.code === 0
+          ? "It installed into another Sahkarmi folder than the one you opened. Open Sahkarmi from the Start menu, or reinstall it from https://sahkarmi.site."
+          : (this.#options.describeInstallFailure?.(result.code) ??
+            `The installer stopped with code ${result.code}.`);
+    }
     const store = this.#options.installAttempts;
     if (!store) return 0;
     let attempt: InstallAttempt | null = null;
@@ -380,7 +418,23 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         at: new Date().toISOString(),
       });
     } catch {}
+    // Cleared first: beforeInstall shuts the app down, and its quit step must not start a
+    // second, silent install.
+    this.#installOnQuit = false;
     await this.#options.beforeInstall();
+    if (this.#options.launchInstaller && this.#downloadedFile) {
+      this.#updater.autoInstallOnAppQuit = false;
+      try {
+        // The helper waits for this app to exit, installs, and reopens Sahkarmi either way.
+        await this.#options.launchInstaller(this.#downloadedFile, version, "restart");
+        return;
+      } catch (error) {
+        console.warn(
+          "[update] Sahkarmi's install helper did not start; using the updater's",
+          error,
+        );
+      }
+    }
     this.#updater.quitAndInstall(false, true);
     // The updater reports "cannot start" at once through its error event; a spawned installer
     // quits the app within a second or two. Anything else is a failure to show, not a hang.
@@ -406,6 +460,32 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       } ${INSTALL_DID_NOT_START}`,
     });
     this.#options.afterFailedInstall?.();
+  }
+
+  /**
+   * The owner is closing Sahkarmi with an update ready: install it silently once the app has
+   * exited. True when the helper started (it then also covers the next start's check).
+   */
+  async installOnQuit(): Promise<boolean> {
+    if (!this.#installOnQuit || this.#status.phase !== "ready") return false;
+    const file = this.#downloadedFile;
+    const launch = this.#options.launchInstaller;
+    if (!file || !launch) return false;
+    this.#installOnQuit = false;
+    const version = this.#status.availableVersion ?? "";
+    try {
+      this.#options.installAttempts?.write({
+        version,
+        count: this.#failedInstalls + 1,
+        at: new Date().toISOString(),
+      });
+    } catch {}
+    try {
+      await launch(file, version, "quit");
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   stop(): void {
@@ -465,6 +545,9 @@ function clampProgress(value: number): number {
 }
 
 type OptionalOption =
+  | "launchInstaller"
+  | "installResult"
+  | "describeInstallFailure"
   | "beforeInstall"
   | "manualInstall"
   | "installAttempts"

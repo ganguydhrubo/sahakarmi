@@ -466,6 +466,99 @@ describe("UpdateService", () => {
   });
 });
 
+describe("UpdateService with Sahkarmi's install helper", () => {
+  function helperService(
+    updater: FakeUpdater,
+    extra: Partial<ConstructorParameters<typeof UpdateService>[1]> = {},
+  ) {
+    const launches: Array<{ installer: string; version: string; mode: string }> = [];
+    const service = new UpdateService(updater as unknown as AppUpdater, {
+      currentVersion: "0.1.0",
+      enabled: true,
+      beforeInstall: async () => undefined,
+      installAttempts: memoryAttempts(),
+      launchInstaller: async (installer, version, mode) => {
+        launches.push({ installer, version, mode });
+      },
+      ...extra,
+    });
+    return { service, launches };
+  }
+  const downloaded = { version: "0.1.1", downloadedFile: "C:cacheSahkarmi-0.1.1-x64.exe" };
+
+  it("runs the installer through the helper, never electron-updater's launcher or install-on-quit", async () => {
+    const updater = new FakeUpdater();
+    const { service, launches } = helperService(updater);
+    service.start(false);
+    updater.emit("update-downloaded", downloaded);
+    expect(updater.autoInstallOnAppQuit).toBe(false);
+    await service.installUpdate();
+    expect(launches).toEqual([
+      { installer: downloaded.downloadedFile, version: "0.1.1", mode: "restart" },
+    ]);
+    expect(updater.quitAndInstall).not.toHaveBeenCalled();
+    // The quit that follows Restart must not start a second, silent install.
+    expect(await service.installOnQuit()).toBe(false);
+    expect(launches).toHaveLength(1);
+  });
+
+  it("installs silently when the owner quits with an update ready", async () => {
+    const updater = new FakeUpdater();
+    const { service, launches } = helperService(updater);
+    service.start(false);
+    updater.emit("update-downloaded", downloaded);
+    expect(await service.installOnQuit()).toBe(true);
+    expect(await service.installOnQuit()).toBe(false);
+    expect(launches).toEqual([
+      { installer: downloaded.downloadedFile, version: "0.1.1", mode: "quit" },
+    ]);
+  });
+
+  it("falls back to electron-updater when the helper cannot start", async () => {
+    const updater = new FakeUpdater();
+    const { service } = helperService(updater, {
+      launchInstaller: async () => {
+        throw new Error("cmd.exe blocked");
+      },
+    });
+    service.start(false);
+    updater.emit("update-downloaded", downloaded);
+    await service.installUpdate();
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it("says why the last install failed, from the helper's record, and does not install on quit", () => {
+    const updater = new FakeUpdater();
+    const { service, launches } = helperService(updater, {
+      installAttempts: memoryAttempts({ version: "0.1.1", count: 1, at: "" }),
+      installResult: () => ({ version: "0.1.1", code: 2 }),
+      describeInstallFailure: (code) => `code ${code} in plain words.`,
+    });
+    service.start(false);
+    updater.emit("update-downloaded", downloaded);
+    expect(service.getStatus()).toMatchObject({
+      phase: "ready",
+      message:
+        "The last update did not install. code 2 in plain words. Click Restart to try again.",
+    });
+    return service.installOnQuit().then((started) => {
+      expect(started).toBe(false);
+      expect(launches).toEqual([]);
+    });
+  });
+
+  it("ignores the helper's record once that version runs", () => {
+    const updater = new FakeUpdater();
+    const { service } = helperService(updater, {
+      currentVersion: "0.1.1",
+      installResult: () => ({ version: "0.1.1", code: 0 }),
+    });
+    service.start(false);
+    updater.emit("update-downloaded", { version: "0.1.2", downloadedFile: "x.exe" });
+    expect(service.getStatus().message).toBeNull();
+  });
+});
+
 describe("supportsInstalledUpdates", () => {
   it.each([
     ["darwin", true],
