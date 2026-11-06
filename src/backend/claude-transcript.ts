@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -53,6 +53,50 @@ export async function readTranscriptLines(
     if (text !== null) return parseTranscriptLines(text);
   }
   return new Map();
+}
+
+/** Claude Code's folder name for a working directory: every character but a-z, A-Z, 0-9 is "-". */
+export function claudeProjectFolder(cwd: string): string {
+  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
+}
+
+/** Claude shortens very long folder names in its own way; those are left to Claude to find. */
+const MAX_PLAIN_PROJECT_FOLDER = 200;
+
+/**
+ * Whether Claude can resume the session from `cwd`. Claude looks for a saved session only in
+ * the folder of the directory it runs in, so a transcript saved under another folder (the
+ * coworker's folder moved) is copied there first. False when no transcript exists anywhere:
+ * resuming would fail with "No conversation found", so the caller starts a new session.
+ */
+export async function prepareResume(
+  sessionId: string,
+  cwd: string,
+  configDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"),
+): Promise<boolean> {
+  const projects = join(configDir, "projects");
+  const file = `${sessionId}.jsonl`;
+  const folder = claudeProjectFolder(cwd);
+  const isFile = async (path: string) => (await stat(path).catch(() => null))?.isFile() === true;
+  if (await isFile(join(projects, folder, file))) return true;
+  for (const other of await readdir(projects).catch(() => [] as string[])) {
+    if (other === folder || !(await isFile(join(projects, other, file)))) continue;
+    if (folder.length > MAX_PLAIN_PROJECT_FOLDER) return true;
+    try {
+      await mkdir(join(projects, folder), { recursive: true });
+      await copyFile(join(projects, other, file), join(projects, folder, file));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** Claude's answer when asked to resume a session it has no transcript for. */
+export function isMissingSessionError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  return /No conversation found with session ID/i.test(text);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

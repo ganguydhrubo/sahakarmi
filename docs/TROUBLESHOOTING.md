@@ -37,21 +37,31 @@ plugin, then restart Sahkarmi. Sahkarmi does not bypass macOS prompts or plugin 
 
 ## "Restart to update" does not update (Windows)
 
-Sahkarmi downloads each update itself and runs the installer when you click **Restart**. On some
-PCs Windows will not start that installer without asking for permission first, so a prompt appears
-that names `Sahkarmi-<version>-x64.exe` from an "unknown publisher" (Sahkarmi is free software and
-is not code-signed yet). Choose **Yes**. If you choose **No**, nothing is installed and the app
-offers the same restart again.
+From 0.25.0, **Restart** closes Sahkarmi and a small helper installs the update once the app has
+fully exited, then opens the new version by itself (about a minute). It runs as you, so Windows
+never asks for administrator permission. If the install cannot finish, the old version opens
+again and says why under the Restart button:
 
-From 0.21.2 the app notices a restart that changed nothing and says so under the Restart button.
-After two such attempts the **Download update** button hands the installer to your browser instead:
-open the file when it finishes, choose **More info → Run anyway** if SmartScreen warns, then
-**Yes**. Sahkarmi closes and installs itself. The Microsoft Store copy of Sahkarmi updates on its own
-and never shows these prompts.
+- **"A Sahkarmi file was still in use"**: usually antivirus checking the new files. The helper
+  already retried three times. Restart the PC, open Sahkarmi and click Restart again.
+- **"Windows or your antivirus blocked the installer"**: allow `Sahkarmi-<version>-x64.exe` in
+  `%LOCALAPPDATA%\sahkarmi-updater\pending` in your antivirus, or download the installer from
+  https://sahkarmi.site and run it.
+- After two failed attempts, **Download update** hands the installer to your browser instead.
 
-If the installer never starts at all, **Settings → Export diagnostics** includes the updater log
-(`sahkarmi.log`, lines tagged `updater`); antivirus software that quarantines the downloaded
-installer in `%LOCALAPPDATA%\sahkarmi-updater\pending` is the usual cause.
+If you close Sahkarmi while an update is ready, it installs silently after the app has closed.
+
+A copy installed with **Scoop** (or unpacked by hand) does not update itself: run
+`scoop update sahkarmi`, or install with the installer from https://sahkarmi.site to get updates
+inside the app. The Microsoft Store copy updates through the Store.
+
+Versions before 0.25.0 could get stuck in a loop here: the installer started while the app was
+still closing, a busy file made it stop with a hidden error box, and the next start found that
+installer still running. Updating to 0.25.0 itself may still need one manual install from
+https://sahkarmi.site on a PC that is already looping; later updates use the new helper.
+
+**Settings → Export diagnostics** includes the updater log (`sahkarmi.log`, lines tagged
+`updater`, including "last install result").
 
 ## Reset Sahkarmi
 

@@ -168,6 +168,12 @@ import {
   supportsInstalledUpdates,
   UpdateService,
 } from "./update-service";
+import {
+  installedByInstaller,
+  installFailureReason,
+  launchWindowsInstaller,
+  takeInstallResult,
+} from "./windows-installer";
 
 if (!app.isPackaged) {
   // SAHKARMI_DEV_USER_DATA lets a test run use a throwaway profile instead of "Sahkarmi Dev".
@@ -2249,10 +2255,19 @@ if (!hasSingleInstanceLock) {
         warn: (message) => appLog.write("warn", "updater", message),
         error: (message) => appLog.write("error", "updater", message),
       };
+      // A copy Scoop (or the owner) unpacked has no uninstaller: the installer would put a
+      // second copy elsewhere, and this one would offer the same update at every start.
+      const unpackedCopy =
+        process.platform === "win32" &&
+        app.isPackaged &&
+        !process.windowsStore &&
+        !installedByInstaller(process.execPath, app.getName());
+      const ownInstaller = process.platform === "win32" && app.isPackaged && !unpackedCopy;
       updateService = new UpdateService(autoUpdater, {
         currentVersion: app.getVersion(),
         enabled:
           app.isPackaged &&
+          !unpackedCopy &&
           supportsInstalledUpdates(process.platform) &&
           existsSync(join(process.resourcesPath, "app-update.yml")),
         beforeInstall: prepareForShutdown,
@@ -2266,7 +2281,43 @@ if (!hasSingleInstanceLock) {
         },
         unsupportedMessage: process.windowsStore
           ? "This copy of Sahkarmi is updated by the Microsoft Store."
-          : undefined,
+          : unpackedCopy
+            ? "This copy of Sahkarmi was unpacked by Scoop or by hand, so it is updated the same way (for Scoop: scoop update sahkarmi). Or install it with the installer from https://sahkarmi.site to get updates inside the app."
+            : undefined,
+        ...(ownInstaller
+          ? {
+              launchInstaller: async (
+                installer: string,
+                version: string,
+                mode: "restart" | "quit",
+              ) => {
+                await launchWindowsInstaller({
+                  installer,
+                  version,
+                  mode,
+                  appExe: process.execPath,
+                  pid: process.pid,
+                  resultDir: app.getPath("userData"),
+                  scriptDir: dirname(installer),
+                });
+                appLog.write("info", "updater", `install helper started (${mode}) for ${version}`);
+                await appLog.flush();
+                if (mode === "restart") {
+                  // The helper waits for this process to end before it installs.
+                  const backstop = setTimeout(() => app.exit(0), QUIT_BACKSTOP_MS);
+                  backstop.unref?.();
+                  app.quit();
+                }
+              },
+              installResult: () => {
+                const result = takeInstallResult(app.getPath("userData"));
+                if (result)
+                  appLog.write("info", "updater", `last install result ${JSON.stringify(result)}`);
+                return result;
+              },
+              describeInstallFailure: installFailureReason,
+            }
+          : {}),
         autoDownload: () => permissions.get().levels.app_updates === "auto",
         manualInstall: () => cannotSelfUpdate(),
         openDownload: (version) =>
@@ -2624,6 +2675,8 @@ async function prepareForShutdown(): Promise<void> {
   if (shutdownStarted) return;
   shutdownStarted = true;
   isQuitting = true;
+  // An update that is ready installs once the app has exited (no-op after Restart to update).
+  await updateService?.installOnQuit().catch(() => false);
   updateService?.stop();
   providerSetup?.stop();
   scheduleStore?.stop();

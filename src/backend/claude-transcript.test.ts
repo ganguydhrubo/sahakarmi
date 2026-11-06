@@ -1,11 +1,17 @@
 // @vitest-environment node
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeAgentClient } from "./claude-client";
-import { isInterruptMarker, parseTranscriptLines } from "./claude-transcript";
+import {
+  claudeProjectFolder,
+  isInterruptMarker,
+  isMissingSessionError,
+  parseTranscriptLines,
+  prepareResume,
+} from "./claude-transcript";
 import { snapshotFromThread } from "./conversation-snapshots";
 import type { ThreadResponse } from "./protocol";
 
@@ -126,5 +132,33 @@ describe("Claude transcript times", () => {
     // Coming back later must give the same chat, not move anything to "now".
     vi.useFakeTimers({ now: Date.parse("2026-10-29T12:00:00.000Z"), toFake: ["Date"] });
     expect(await read()).toEqual(first);
+  });
+});
+
+describe("prepareResume", () => {
+  it("resumes from the coworker's folder, copies a transcript saved elsewhere, and refuses a missing one", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "sahkarmi-claude-resume-"));
+    const cwd = join(configDir, "Sahkarmi", "Coworkers", "bot-1");
+    const folder = join(configDir, "projects", claudeProjectFolder(cwd));
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "here.jsonl"), "{}\n");
+    const moved = join(configDir, "projects", "C--old-place");
+    await mkdir(moved, { recursive: true });
+    await writeFile(join(moved, "moved.jsonl"), '{"uuid":"a"}\n');
+
+    expect(await prepareResume("here", cwd, configDir)).toBe(true);
+    expect(await prepareResume("moved", cwd, configDir)).toBe(true);
+    expect(await readFile(join(folder, "moved.jsonl"), "utf8")).toBe('{"uuid":"a"}\n');
+    expect(await prepareResume("gone", cwd, configDir)).toBe(false);
+    await rm(configDir, { recursive: true, force: true });
+  });
+
+  it("recognises Claude's missing-session error", () => {
+    expect(
+      isMissingSessionError(
+        new Error("Claude Code returned an error result: No conversation found with session ID: x"),
+      ),
+    ).toBe(true);
+    expect(isMissingSessionError(new Error("rate limited"))).toBe(false);
   });
 });

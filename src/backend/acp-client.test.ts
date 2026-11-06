@@ -543,6 +543,47 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     expect((await readFile(join(folder, file), "utf8")).trim().split("\n")).toHaveLength(2);
   });
 
+  it("remembers the session that replaced one the agent lost, so the next start reloads it", async () => {
+    process.env.SAHKARMI_FAKE_LOAD_SESSION = "1";
+    const transcripts = join(root, "transcripts");
+    const open = async (threadId?: string) => {
+      const client = createOpenCodeClient(
+        { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
+        transcripts,
+      );
+      client.start();
+      try {
+        await client.request("initialize", {});
+        const opened = threadId
+          ? await client.request<{ thread: { id: string } }>("thread/resume", {
+              threadId,
+              cwd: root,
+            })
+          : await client.request<{ thread: { id: string } }>("thread/start", { cwd: root });
+        return opened.thread.id;
+      } finally {
+        await client.stop();
+      }
+    };
+    const loads = async () =>
+      (await readLog())
+        .filter((entry) => entry.method === "session/load")
+        .map((entry) => (entry.params as { sessionId: string }).sessionId);
+    const threadId = await open();
+    // The agent lost that session (as Antigravity does with another GEMINI_HOME).
+    process.env.SAHKARMI_FAKE_FORGET = threadId;
+    expect(await open(threadId)).toBe(threadId);
+    const replaced = (await loads()).length;
+    expect(await open(threadId)).toBe(threadId);
+    const tried = await loads();
+    // The third start asked for the replacement, which the agent knows, not the lost id again.
+    expect(tried.at(-1)).not.toBe(threadId);
+    expect(tried).toHaveLength(replaced + 1);
+    const news = (await readLog()).filter((entry) => entry.method === "session/new").length;
+    expect(await open(threadId)).toBe(threadId);
+    expect((await readLog()).filter((entry) => entry.method === "session/new").length).toBe(news);
+  });
+
   it("drops the tool routes of an agent's sessions when it stops", async () => {
     const client = createOpenCodeClient(
       { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
@@ -906,12 +947,20 @@ async function handle(message) {
     const delay = agent === "opencode" ? Number(process.env.SAHKARMI_FAKE_SLOW_INIT_MS || 0) : 0;
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
     log({ method: "initialize-answered", agent, at: Date.now() });
-    return write({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: false, mcpCapabilities: { http: true } } } });
+    return write({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: process.env.SAHKARMI_FAKE_LOAD_SESSION === "1", mcpCapabilities: { http: true } } } });
+  }
+  if (method === "session/load") {
+    const known = fs.existsSync(process.env.SAHKARMI_FAKE_ACP_LOG + ".sessions") ? fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG + ".sessions", "utf8").split(String.fromCharCode(10)) : [];
+    if (!known.includes(params.sessionId) || params.sessionId === process.env.SAHKARMI_FAKE_FORGET) return write({ id, error: { code: -32000, message: "Session not found in the current GEMINI_HOME" } });
+    mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
+    return write({ id, result: {} });
   }
   if (method === "session/new") {
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
-    cwdBySession["ses_" + Date.now()] = params.cwd; lastCwd = params.cwd;
-    return write({ id, result: { sessionId: "ses_" + Date.now(), configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "opencode/nemotron-free", name: "Nemotron" }, { value: "anthropic/x", name: "X" }] }] } });
+    const newId = "ses_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+    fs.appendFileSync(process.env.SAHKARMI_FAKE_ACP_LOG + ".sessions", newId + String.fromCharCode(10));
+    cwdBySession[newId] = params.cwd; lastCwd = params.cwd;
+    return write({ id, result: { sessionId: newId, configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "opencode/nemotron-free", name: "Nemotron" }, { value: "anthropic/x", name: "X" }] }] } });
   }
   if (method === "session/set_config_option") return write({ id, result: {} });
   if (method === "session/cancel") { const pending = cancellable.get(params.sessionId); cancellable.delete(params.sessionId); pending?.(); return; }

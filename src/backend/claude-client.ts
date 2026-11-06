@@ -26,7 +26,13 @@ import {
   APPROVAL_TOOL_DESCRIPTION,
 } from "./approval-wording";
 import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
-import { isInterruptMarker, readTranscriptLines, transcriptStamp } from "./claude-transcript";
+import {
+  isInterruptMarker,
+  isMissingSessionError,
+  prepareResume,
+  readTranscriptLines,
+  transcriptStamp,
+} from "./claude-transcript";
 import type { ClaudeCliInfo } from "./cli";
 import { desktopSdkServers } from "./desktop/desktop-claude-tools";
 import {
@@ -101,6 +107,8 @@ interface ActiveTurn {
   toolUses: Map<string, { name: string; input: unknown }>;
   /** Owner messages added while this turn ran; Claude reads them at its next step. */
   steers: number;
+  /** What the owner sent, kept so a turn whose saved session is gone can run in a new one. */
+  input?: string;
   /** A result that came while steering messages may still be waiting; the turn ends on idle. */
   deferred?: { status: string; error: string | null; timer: ReturnType<typeof setTimeout> };
 }
@@ -136,6 +144,8 @@ export interface ClaudeClientOptions {
   keepRuntime?: (threadId: string) => boolean;
   /** Settings > Features: close idle Claude processes. */
   idleClose?: () => boolean;
+  /** Whether a saved session can be resumed from `cwd` (default: its transcript is on disk). */
+  canResume?: (threadId: string, cwd: string) => Promise<boolean>;
 }
 
 type QueryFactory = (params: Parameters<typeof query>[0]) => Query;
@@ -180,6 +190,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   /** Claude processes open right now (one per open conversation). */
   get liveRuntimes(): number {
     return this.#threads.size;
+  }
+
+  /** True while this thread's Claude process is open (a turn on it starts no new process). */
+  hasLiveRuntime(threadId: string): boolean {
+    return this.#threads.has(threadId);
   }
 
   start(): void {
@@ -461,6 +476,13 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   }
 
   async #startThread(threadId: string, config: ThreadConfig, resume: boolean): Promise<void> {
+    // A session Claude has no transcript for (deleted, cleaned up by Claude, or saved under
+    // another account) cannot resume: asking anyway fails every turn with "No conversation
+    // found". It starts as a new session under the same id instead.
+    if (resume) {
+      const canResume = this.#options.canResume ?? prepareResume;
+      resume = await canResume(threadId, config.cwd).catch(() => true);
+    }
     const input = new AsyncMessageQueue();
     const canUseTool: CanUseTool = async (toolName, toolInput, options) => {
       if (toolName === "AskUserQuestion") {
@@ -557,6 +579,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       assistantMessages: new Map<string, string>(),
       toolUses: new Map<string, { name: string; input: unknown }>(),
       steers: 0,
+      input: text,
     };
     runtime.activeTurn = activeTurn;
     this.emit("notification", {
@@ -602,16 +625,52 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   }
 
   async #consume(runtime: ThreadRuntime): Promise<void> {
+    let failure: unknown;
     try {
       for await (const message of runtime.query) this.#handleMessage(runtime, message);
-      if (this.#threads.get(runtime.id) !== runtime) return;
-      if (this.#running) this.#fail(new Error("Claude session stream ended unexpectedly."));
+      failure = new Error("Claude session stream ended unexpectedly.");
     } catch (error) {
-      if (!this.#running || this.#threads.get(runtime.id) !== runtime) return;
-      const activeTurn = runtime.activeTurn;
-      if (activeTurn) this.#completeTurn(runtime, "failed", error);
-      this.#fail(error instanceof Error ? error : new Error(String(error)));
+      failure = error;
     }
+    if (!this.#running || this.#threads.get(runtime.id) !== runtime) return;
+    await this.#recoverThread(runtime, failure);
+  }
+
+  /**
+   * Each coworker has its own Claude process, so one that fails affects only that coworker.
+   * (It used to stop the whole Claude provider: every other coworker's running turn was
+   * dropped as "process exited", and three such failures blocked Claude until a restart.)
+   * A turn whose saved session is gone runs again at once in a new session; anything else
+   * fails the turn, and the next message opens the thread again.
+   */
+  async #recoverThread(runtime: ThreadRuntime, failure: unknown): Promise<void> {
+    this.#threads.delete(runtime.id);
+    runtime.input.close();
+    runtime.query.close();
+    const turn = runtime.activeTurn;
+    const replay =
+      isMissingSessionError(failure) && turn && !turn.text && !turn.toolUses.size && turn.input;
+    if (replay) {
+      try {
+        await this.#startThread(runtime.id, runtime.config, false);
+        const fresh = this.#requireThread(runtime.id);
+        fresh.activeTurn = turn;
+        fresh.input.push({
+          type: "user",
+          message: { role: "user", content: turn.input ?? "" },
+          parent_tool_use_id: null,
+          uuid: turn.id as UUID,
+          session_id: runtime.id,
+        });
+        return;
+      } catch (error) {
+        failure = error;
+        this.#threads.delete(runtime.id);
+      }
+    }
+    if (turn) this.#completeTurn(runtime, "failed", failure);
+    // The next message reopens it (resumed if its transcript is there, otherwise new).
+    this.#parked.set(runtime.id, runtime.config);
   }
 
   /**
@@ -706,12 +765,6 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         owned.close();
       }
     }
-  }
-
-  #fail(error: Error): void {
-    if (!this.#running) return;
-    this.#running = false;
-    this.emit("exit", error);
   }
 
   #handleMessage(runtime: ThreadRuntime, message: SDKMessage): void {

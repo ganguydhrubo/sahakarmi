@@ -23,6 +23,7 @@ import type {
 import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
+import { readMemory } from "./memory-pressure";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
 import {
@@ -464,6 +465,13 @@ export class BrowserHost implements CoworkerBrowser {
   static AWAKE_LIMIT_IDLE_MS = 2 * 60_000;
   /** How often idle tabs are looked for. */
   static SLEEP_CHECK_MS = 60_000;
+  /**
+   * While the PC is short of memory: fewer pages stay awake, a page idle this long may sleep,
+   * and the check runs this often. Each awake page is a renderer process of ~100-200 MB.
+   */
+  static PRESSURE_AWAKE_TABS = { low: 3, critical: 2 } as const;
+  static PRESSURE_IDLE_MS = 20_000;
+  static PRESSURE_CHECK_MS = 15_000;
   /** A browser's page cache above this size is emptied once after start (sign-ins stay). */
   static CACHE_TRIM_BYTES = 150 * 1024 * 1024;
   static CACHE_TRIM_DELAY_MS = 90_000;
@@ -498,6 +506,8 @@ export class BrowserHost implements CoworkerBrowser {
   #persistQueue: Promise<void> = Promise.resolve();
   #staleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #sleepTimer: ReturnType<typeof setInterval>;
+  #pressureTimer: ReturnType<typeof setTimeout> | null = null;
+  #destroyed = false;
 
   constructor(window: BrowserWindow, downloadsRoot: string, statePath: string) {
     this.#window = window;
@@ -861,6 +871,16 @@ export class BrowserHost implements CoworkerBrowser {
     return view;
   }
 
+  /** While memory is short, idle pages are looked at every few seconds, not once a minute. */
+  #schedulePressureCheck(): void {
+    if (this.#pressureTimer || this.#destroyed) return;
+    this.#pressureTimer = setTimeout(() => {
+      this.#pressureTimer = null;
+      if (!this.#destroyed) this.#sleepIdleTabs();
+    }, BrowserHost.PRESSURE_CHECK_MS);
+    this.#pressureTimer.unref?.();
+  }
+
   /** Frees a tab's page; the tab stays in the list with its address and title. */
   #sleep(tab: InternalTab): void {
     const view = tab.view;
@@ -883,6 +903,12 @@ export class BrowserHost implements CoworkerBrowser {
   #sleepIdleTabs(): void {
     const now = Date.now();
     this.#quietHiddenPages(now);
+    const pressure = readMemory().pressure;
+    const maxAwake =
+      pressure === "ok" ? BrowserHost.MAX_AWAKE_TABS : BrowserHost.PRESSURE_AWAKE_TABS[pressure];
+    const idleFloor =
+      pressure === "ok" ? BrowserHost.AWAKE_LIMIT_IDLE_MS : BrowserHost.PRESSURE_IDLE_MS;
+    if (pressure !== "ok") this.#schedulePressureCheck();
     let slept = false;
     const candidates: InternalTab[] = [];
     let awake = 0;
@@ -903,8 +929,8 @@ export class BrowserHost implements CoworkerBrowser {
     }
     candidates.sort((a, b) => a.lastUsed - b.lastUsed);
     for (const tab of candidates) {
-      if (awake <= BrowserHost.MAX_AWAKE_TABS) break;
-      if (now - tab.lastUsed < BrowserHost.AWAKE_LIMIT_IDLE_MS) break;
+      if (awake <= maxAwake) break;
+      if (now - tab.lastUsed < idleFloor) break;
       this.#sleep(tab);
       awake -= 1;
       slept = true;
@@ -1283,6 +1309,9 @@ export class BrowserHost implements CoworkerBrowser {
     } finally {
       if (this.#staleRefreshTimer) clearTimeout(this.#staleRefreshTimer);
       clearInterval(this.#sleepTimer);
+      this.#destroyed = true;
+      if (this.#pressureTimer) clearTimeout(this.#pressureTimer);
+      this.#pressureTimer = null;
       for (const tab of this.#tabs.values()) {
         if (!tab.view) continue;
         this.#unmountView(tab.view);

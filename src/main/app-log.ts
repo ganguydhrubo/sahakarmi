@@ -38,6 +38,11 @@ export class AppLog {
       })
       .catch(() => undefined);
   }
+
+  /** Resolves once every line written so far is on disk (call before the app quits). */
+  flush(): Promise<void> {
+    return this.#queue.catch(() => undefined);
+  }
 }
 
 function safeJson(value: unknown): string {
