@@ -26,4 +26,25 @@ describe("AgentInitializationGate", () => {
 
     expect(initialize).toHaveBeenCalledTimes(2);
   });
+
+  it("starts background work after a retry succeeds, not only after the first try", async () => {
+    const initialize = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("startup failed"))
+      .mockResolvedValue(undefined);
+    const gate = new AgentInitializationGate(initialize);
+    const ready = vi.fn();
+    gate.onReady(ready);
+
+    await expect(gate.start()).rejects.toThrow("startup failed");
+    expect(ready).not.toHaveBeenCalled();
+    await gate.start();
+    await gate.start();
+    expect(ready).toHaveBeenCalledOnce();
+
+    // A late subscriber runs at once.
+    const late = vi.fn();
+    gate.onReady(late);
+    expect(late).toHaveBeenCalledOnce();
+  });
 });

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
+import { stat } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   isFrequentCadence,
   MAX_INTERVAL_MINUTES,
@@ -13,8 +14,10 @@ import type {
   RoutineRun,
   RoutineRunStep,
   RoutinesState,
+  RoutineTrigger,
   SaveRoutineInput,
 } from "../shared/ipc";
+import { createFolderWatcher, type StopWatching, type WatchFolder } from "./folder-watch";
 import { JsonFile } from "./json-file";
 import { isRecord } from "./protocol";
 import { parseCadence } from "./schedule-store";
@@ -45,6 +48,8 @@ const MAX_RUNS = 200;
 const MAX_STEPS = 20;
 const RESULT_EXCERPT = 500;
 const CONTEXT_LIMIT = 6_000;
+/** Files added while a folder routine is busy or paused wait for its next run, up to this many. */
+const MAX_PENDING_FILES = 50;
 
 /**
  * Named multi-step routines. Steps run one after another; each step's final reply is passed to
@@ -58,11 +63,20 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
   #timer: NodeJS.Timeout | null = null;
   #ticking = false;
   readonly #active = new Map<string, Promise<void>>();
+  readonly #watchFolder: WatchFolder;
+  readonly #watchers = new Map<string, { folder: string; stop: StopWatching }>();
+  readonly #pendingFiles = new Map<string, string[]>();
+  #paused = false;
 
-  constructor(userDataPath: string, now: () => Date = () => new Date()) {
+  constructor(
+    userDataPath: string,
+    now: () => Date = () => new Date(),
+    watchFolder: WatchFolder = createFolderWatcher(),
+  ) {
     super();
-    this.#file = new JsonFile(join(userDataPath, "routines.json"));
+    this.#file = new JsonFile(join(userDataPath, "routines.json"), { recoverCorrupt: true });
     this.#now = now;
+    this.#watchFolder = watchFolder;
   }
 
   async initialize(): Promise<void> {
@@ -93,6 +107,7 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     this.#executor = executor;
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = setInterval(() => void this.tick(), TICK_MS);
+    this.#syncWatchers();
     void this.tick();
   }
 
@@ -100,6 +115,24 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
     this.#executor = null;
+    for (const watcher of this.#watchers.values()) watcher.stop();
+    this.#watchers.clear();
+  }
+
+  /**
+   * "Pause all coworkers": no routine starts while paused. Due scheduled runs start once on
+   * resume (as after a restart); files added meanwhile are handed to the next folder run.
+   */
+  setPaused(paused: boolean): void {
+    if (this.#paused === paused) return;
+    this.#paused = paused;
+    if (paused) return;
+    void this.tick();
+    for (const routineId of [...this.#pendingFiles.keys()]) this.#launchPendingFiles(routineId);
+  }
+
+  get paused(): boolean {
+    return this.#paused;
   }
 
   state(): RoutinesState {
@@ -126,7 +159,8 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
         instruction: instruction.slice(0, 20_000),
       };
     });
-    const cadence = input.cadence === null ? null : parseRoutineCadence(input.cadence);
+    const trigger = input.trigger ? await parseRoutineTrigger(input.trigger) : null;
+    const cadence = trigger || input.cadence === null ? null : parseRoutineCadence(input.cadence);
     if (cadence && isFrequentCadence(cadence) && input.confirmFrequent !== true) {
       throw new Error("Running more often than every 5 minutes needs confirmation.");
     }
@@ -140,6 +174,7 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
       existing.name = name;
       existing.steps = steps;
       existing.cadence = cadence;
+      existing.trigger = trigger;
       existing.enabled = input.enabled === true;
       existing.nextRunAt = nextRunAt;
     } else {
@@ -148,6 +183,7 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
         name,
         steps,
         cadence,
+        trigger,
         enabled: input.enabled === true,
         createdAt: now.toISOString(),
         lastRunAt: null,
@@ -200,7 +236,7 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
 
   /** Starts every enabled routine whose next run time has passed. */
   async tick(): Promise<void> {
-    if (this.#ticking || !this.#executor) return;
+    if (this.#ticking || !this.#executor || this.#paused) return;
     this.#ticking = true;
     try {
       const now = this.#now();
@@ -221,23 +257,72 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     }
   }
 
-  #launch(routineId: string, trigger: RoutineRun["trigger"]): void {
-    const task = this.#run(routineId, trigger)
+  #launch(routineId: string, trigger: RoutineRun["trigger"], files: string[] = []): void {
+    const task = this.#run(routineId, trigger, files)
       .catch((error) => console.error("Routine run failed:", error))
-      .finally(() => this.#active.delete(routineId));
+      .finally(() => {
+        this.#active.delete(routineId);
+        this.#launchPendingFiles(routineId);
+      });
     this.#active.set(routineId, task);
   }
 
-  async #run(routineId: string, trigger: RoutineRun["trigger"]): Promise<void> {
+  /** Keeps one watcher per enabled folder routine, matching the saved routines. */
+  #syncWatchers(): void {
+    const wanted = new Map<string, string>();
+    if (this.#executor) {
+      for (const routine of this.#state.routines) {
+        const folder = folderOf(routine.trigger);
+        if (routine.enabled && folder) wanted.set(routine.id, folder);
+      }
+    }
+    for (const [routineId, watcher] of this.#watchers) {
+      if (wanted.get(routineId) === watcher.folder) continue;
+      watcher.stop();
+      this.#watchers.delete(routineId);
+      this.#pendingFiles.delete(routineId);
+    }
+    for (const [routineId, folder] of wanted) {
+      if (this.#watchers.has(routineId)) continue;
+      const stop = this.#watchFolder(folder, (files) => this.#filesAdded(routineId, files));
+      this.#watchers.set(routineId, { folder, stop });
+    }
+  }
+
+  #filesAdded(routineId: string, files: string[]): void {
+    const routine = this.#state.routines.find((candidate) => candidate.id === routineId);
+    if (!routine?.enabled || !folderOf(routine.trigger)) return;
+    const pending = [...(this.#pendingFiles.get(routineId) ?? []), ...files];
+    this.#pendingFiles.set(routineId, [...new Set(pending)].slice(0, MAX_PENDING_FILES));
+    this.#launchPendingFiles(routineId);
+  }
+
+  #launchPendingFiles(routineId: string): void {
+    const files = this.#pendingFiles.get(routineId);
+    if (!files?.length) return;
+    if (this.#paused || !this.#executor || this.#active.has(routineId)) return;
+    this.#pendingFiles.delete(routineId);
+    if (!this.#state.routines.some((routine) => routine.id === routineId && routine.enabled)) {
+      return;
+    }
+    this.#launch(routineId, "folder", files);
+  }
+
+  async #run(
+    routineId: string,
+    trigger: RoutineRun["trigger"],
+    files: string[] = [],
+  ): Promise<void> {
     const routine = this.#require(routineId);
     const executor = this.#executor;
     const startedAt = this.#now().toISOString();
-    if (trigger === "manual") routine.lastRunAt = startedAt;
+    if (trigger === "manual" || trigger === "folder") routine.lastRunAt = startedAt;
     const run: RoutineRun = {
       id: randomUUID(),
       routineId,
       routineName: routine.name,
       trigger,
+      ...(files.length > 0 ? { files } : {}),
       status: "running",
       startedAt,
       finishedAt: null,
@@ -268,7 +353,14 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
         if (!executor) throw new Error("Coworkers are not ready yet.");
         step.deliveryId = await executor.send(
           step.botId,
-          stepText(routine.name, index, run.steps.length, step.instruction, previous),
+          stepText(
+            routine.name,
+            index,
+            run.steps.length,
+            step.instruction,
+            previous,
+            index === 0 ? files : [],
+          ),
         );
         await this.#persist();
         outcome = await executor.waitFor(step.botId, step.deliveryId);
@@ -307,8 +399,27 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
 
   async #persist(): Promise<void> {
     await this.#file.write(this.#state);
+    this.#syncWatchers();
     this.emit("changed", this.state());
   }
+}
+
+function folderOf(trigger: RoutineTrigger | null | undefined): string | null {
+  return isRecord(trigger) && trigger.kind === "folder" && typeof trigger.folder === "string"
+    ? trigger.folder
+    : null;
+}
+
+/** Validates a trigger from the window: the folder must exist now. */
+export async function parseRoutineTrigger(value: unknown): Promise<RoutineTrigger> {
+  if (!isRecord(value) || value.kind !== "folder" || typeof value.folder !== "string") {
+    throw new Error("Unknown routine trigger.");
+  }
+  const folder = value.folder.trim();
+  if (!folder || !isAbsolute(folder)) throw new Error("Choose a folder to watch.");
+  const info = await stat(folder).catch(() => null);
+  if (!info?.isDirectory()) throw new Error("That folder does not exist.");
+  return { kind: "folder", folder: resolve(folder) };
 }
 
 export function parseRoutineCadence(value: unknown): RoutineCadence {
@@ -333,8 +444,13 @@ function stepText(
   total: number,
   instruction: string,
   previous: string | null,
+  files: string[] = [],
 ): string {
   const header = `[Routine "${name}" · step ${index + 1}/${total}] ${instruction}`;
+  if (files.length > 0) {
+    const list = files.map((file) => `- ${file}`).join("\n");
+    return `${header}\n\nNew file${files.length === 1 ? "" : "s"} added (use as input):\n${list}`;
+  }
   if (!previous) return header;
   const context =
     previous.length > CONTEXT_LIMIT ? `${previous.slice(0, CONTEXT_LIMIT)}\n…` : previous;

@@ -75,8 +75,12 @@ export class PermissionService {
   readonly #now: () => Date;
 
   constructor(userDataPath: string, now: () => Date = () => new Date()) {
-    this.#policyFile = new JsonFile(join(userDataPath, "permissions.json"));
-    this.#auditFile = new JsonFile(join(userDataPath, "permission-audit.json"));
+    this.#policyFile = new JsonFile(join(userDataPath, "permissions.json"), {
+      recoverCorrupt: true,
+    });
+    this.#auditFile = new JsonFile(join(userDataPath, "permission-audit.json"), {
+      recoverCorrupt: true,
+    });
     this.#now = now;
   }
 

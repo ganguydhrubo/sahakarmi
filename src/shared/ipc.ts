@@ -103,6 +103,7 @@ export const IPC_CHANNELS = {
   routinesDelete: "routines:delete",
   routinesSetEnabled: "routines:set-enabled",
   routinesRunNow: "routines:run-now",
+  routinesPickFolder: "routines:pick-folder",
   filesList: "files:list",
   filesAdd: "files:add",
   filesOpen: "files:open",
@@ -1097,6 +1098,15 @@ export interface RoutineStep {
   instruction: string;
 }
 
+/** "When a file is added to this folder (or a subfolder)". */
+export interface RoutineFolderTrigger {
+  kind: "folder";
+  /** Absolute path of the watched folder. */
+  folder: string;
+}
+
+export type RoutineTrigger = RoutineFolderTrigger;
+
 /** A named multi-step automation: each step goes to one coworker, in order. */
 export interface Routine {
   id: string;
@@ -1104,6 +1114,8 @@ export interface Routine {
   steps: RoutineStep[];
   /** null = only runs with Run now. */
   cadence: RoutineCadence | null;
+  /** An event that starts the routine instead of a cadence (cadence is then null). */
+  trigger?: RoutineTrigger | null;
   enabled: boolean;
   createdAt: string;
   lastRunAt: string | null;
@@ -1128,7 +1140,9 @@ export interface RoutineRun {
   id: string;
   routineId: string;
   routineName: string;
-  trigger: "schedule" | "manual";
+  trigger: "schedule" | "manual" | "folder";
+  /** For folder-triggered runs: the files that were added. */
+  files?: string[];
   status: "running" | "done" | "failed";
   startedAt: string;
   finishedAt: string | null;
@@ -1147,6 +1161,8 @@ export interface SaveRoutineInput {
   name: string;
   steps: Array<{ id?: string; botId: string; instruction: string }>;
   cadence: RoutineCadence | null;
+  /** Omit or null for no event trigger. */
+  trigger?: RoutineTrigger | null;
   enabled: boolean;
   /** Required to save a cadence that repeats more often than every 5 minutes. */
   confirmFrequent?: boolean;
@@ -1608,6 +1624,8 @@ export type AgentEvent =
   | { type: "approvals-changed"; approvals: ApprovalRequest[] }
   | { type: "schedules-changed"; schedules: ScheduledTask[] }
   | { type: "routines-changed"; state: RoutinesState }
+  /** Main asks the window to open a coworker's chat, e.g. after a notification was clicked. */
+  | { type: "open-requested"; botId: string | null; approvalId?: string }
   | { type: "orchestrator-run-updated"; run: OrchestratorRun }
   | { type: "orchestrator-task-updated"; runId: string; task: OrchestratorTask }
   | { type: "orchestrator-handoff"; message: AgentCollaborationMessage }
@@ -1827,6 +1845,8 @@ export interface RoutinesDesktopApi {
   setEnabled: (routineId: string, enabled: boolean) => Promise<RoutinesState>;
   /** Starts a run in the background and returns at once. */
   runNow: (routineId: string) => Promise<RoutinesState>;
+  /** Asks the owner to choose a folder for a "file added" trigger; null when cancelled. */
+  pickFolder: () => Promise<string | null>;
 }
 
 export interface SchedulesDesktopApi {
