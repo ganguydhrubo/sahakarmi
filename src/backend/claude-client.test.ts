@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { randomUUID } from "node:crypto";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -744,6 +745,8 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
       };
       calls.push(options);
       const id = options.resume ?? options.sessionId ?? "";
+      // Like Claude Code: resuming a session it has no transcript for fails the whole stream.
+      const missing = Boolean(options.resume) && (!sessions.has(id) || lost.has(id));
       if (!options.resume) sessions.set(id, []);
       open.add(id);
       const output = new TestQueue<SDKMessage>();
@@ -760,6 +763,14 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
       });
       void (async () => {
         for await (const message of args.prompt as AsyncIterable<SDKUserMessage>) {
+          if (missing) {
+            output.fail(
+              new Error(
+                `Claude Code returned an error result: No conversation found with session ID: ${id}`,
+              ),
+            );
+            return;
+          }
           const history = sessions.get(id) ?? [];
           history.push(String(message.message.content));
           sessions.set(id, history);
@@ -770,7 +781,10 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
       })();
       return generator;
     };
-    return { factory, calls, open, sessions };
+    /** Sessions whose transcript Claude lost although Sahkarmi thinks they can resume. */
+    const lost = new Set<string>();
+    const canResume = async (id: string) => sessions.has(id);
+    return { factory, calls, open, sessions, lost, canResume };
   }
 
   async function turn(
@@ -797,6 +811,7 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
     const client = new ClaudeAgentClient(
       { executable: "/bin/true", version: "2.1.231" },
       sdk.factory as never,
+      { canResume: sdk.canResume },
     );
     const notifications: Array<{ method: string; params: unknown }> = [];
     client.on("notification", (event) => notifications.push(event));
@@ -831,7 +846,7 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
     const client = new ClaudeAgentClient(
       { executable: "/bin/true", version: "2.1.231" },
       sdk.factory as never,
-      { keepRuntime: () => queued },
+      { keepRuntime: () => queued, canResume: sdk.canResume },
     );
     client.start();
     const { thread } = await client.request<{ thread: { id: string } }>("thread/start", {
@@ -851,6 +866,7 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
     const client = new ClaudeAgentClient(
       { executable: "/bin/true", version: "2.1.231" },
       sdk.factory as never,
+      { canResume: sdk.canResume },
     );
     const notifications: Array<{ method: string; params: unknown }> = [];
     client.on("notification", (event) => notifications.push(event));
@@ -872,6 +888,123 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
     expect(await turn(client, notifications, ids[0], "again")).toBe("I remember: hello 0, again");
     expect(client.liveRuntimes).toBe(3);
     expect(sdk.open.has(ids[0])).toBe(true);
+    await client.stop();
+  });
+
+  it("starts a new session when the saved one is gone instead of failing every turn", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-gone-"));
+    const sdk = fakeSdk();
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      sdk.factory as never,
+      { canResume: sdk.canResume },
+    );
+    const exits: Error[] = [];
+    client.on("exit", (error) => exits.push(error));
+    const notifications: Array<{ method: string; params: unknown }> = [];
+    client.on("notification", (event) => notifications.push(event));
+    client.start();
+    const threadId = randomUUID();
+    await client.request("thread/resume", {
+      threadId,
+      cwd: root,
+      developerInstructions: "",
+      runtimeWorkspaceRoots: [root],
+    });
+    expect(sdk.calls.at(-1)).toMatchObject({ sessionId: threadId });
+    expect(sdk.calls.at(-1)?.resume).toBeUndefined();
+    expect(await turn(client, notifications, threadId, "hello")).toBe("I remember: hello");
+    expect(exits).toEqual([]);
+    await client.stop();
+  });
+
+  it("runs a turn again in a new session when Claude lost the transcript, and stays up", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-lost-"));
+    const sdk = fakeSdk();
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      sdk.factory as never,
+      { canResume: sdk.canResume },
+    );
+    const exits: Error[] = [];
+    client.on("exit", (error) => exits.push(error));
+    const notifications: Array<{ method: string; params: unknown }> = [];
+    client.on("notification", (event) => notifications.push(event));
+    client.start();
+    const start = { cwd: root, developerInstructions: "", runtimeWorkspaceRoots: [root] };
+    const { thread: other } = await client.request<{ thread: { id: string } }>(
+      "thread/start",
+      start,
+    );
+    const { thread } = await client.request<{ thread: { id: string } }>("thread/start", start);
+    await turn(client, notifications, thread.id, "first");
+    expect(client.closeIdleRuntimes(Date.now() + 11 * 60_000)).toContain(thread.id);
+    sdk.lost.add(thread.id);
+
+    expect(await turn(client, notifications, thread.id, "second")).toBe("I remember: second");
+    expect(sdk.calls.at(-1)).toMatchObject({ sessionId: thread.id });
+    expect(notifications.some((event) => event.method === "error")).toBe(false);
+    // The other coworker's session was never touched and the provider never went down.
+    expect(await turn(client, notifications, other.id, "still here")).toBe(
+      "I remember: still here",
+    );
+    expect(exits).toEqual([]);
+    await client.stop();
+  });
+
+  it("fails only the coworker whose Claude process broke", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-one-"));
+    const sdk = fakeSdk();
+    const broken = new Set<string>();
+    const factory = (args: { prompt: unknown; options?: Record<string, unknown> }) => {
+      const id = String(args.options?.resume ?? args.options?.sessionId ?? "");
+      if (!broken.has(id)) return sdk.factory(args);
+      const output = new TestQueue<SDKMessage>();
+      const generator = output[Symbol.asyncIterator]() as Query;
+      Object.assign(generator, {
+        [Symbol.asyncIterator]: () => generator,
+        interrupt: async () => undefined,
+        close: () => output.close(),
+      });
+      void (async () => {
+        for await (const _ of args.prompt as AsyncIterable<SDKUserMessage>) {
+          output.fail(new Error("Claude Code process exited with code 1"));
+          return;
+        }
+      })();
+      return generator;
+    };
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      factory as never,
+      { canResume: sdk.canResume },
+    );
+    const exits: Error[] = [];
+    client.on("exit", (error) => exits.push(error));
+    const notifications: Array<{ method: string; params: unknown }> = [];
+    client.on("notification", (event) => notifications.push(event));
+    client.start();
+    const start = { cwd: root, developerInstructions: "", runtimeWorkspaceRoots: [root] };
+    const badId = randomUUID();
+    broken.add(badId);
+    await client.request("thread/resume", { threadId: badId, ...start });
+    const { thread: good } = await client.request<{ thread: { id: string } }>(
+      "thread/start",
+      start,
+    );
+    await turn(client, notifications, badId, "do it");
+    const failed = notifications.find(
+      (event) =>
+        event.method === "turn/completed" &&
+        (event.params as { threadId: string }).threadId === badId,
+    );
+    expect((failed?.params as { turn: { status: string } }).turn.status).toBe("failed");
+    expect(await turn(client, notifications, good.id, "fine")).toBe("I remember: fine");
+    expect(exits).toEqual([]);
+    // The broken thread opens again on its next message.
+    broken.delete(badId);
+    sdk.sessions.set(badId, []);
+    expect(await turn(client, notifications, badId, "again")).toBe("I remember: again");
     await client.stop();
   });
 });
@@ -900,6 +1033,8 @@ async function createHarness(resumeThreadId?: string): Promise<{
       prompt = args.prompt as AsyncIterable<SDKUserMessage>;
       return generator;
     },
+    // The harness stands in for a session whose transcript is on disk.
+    { canResume: async () => true },
   );
   const notifications: Array<{ method: string; params: unknown }> = [];
   client.on("notification", (notification) => notifications.push(notification));
@@ -995,18 +1130,28 @@ function completedText(notifications: Array<{ method: string; params: unknown }>
 
 class TestQueue<T> implements AsyncIterable<T> {
   readonly #values: T[] = [];
-  readonly #waiters: Array<(result: IteratorResult<T>) => void> = [];
+  readonly #waiters: Array<{
+    resolve: (result: IteratorResult<T>) => void;
+    reject: (error: Error) => void;
+  }> = [];
   #closed = false;
+  #error: Error | null = null;
 
   push(value: T): void {
     const waiter = this.#waiters.shift();
-    if (waiter) waiter({ done: false, value });
+    if (waiter) waiter.resolve({ done: false, value });
     else this.#values.push(value);
   }
 
   close(): void {
     this.#closed = true;
-    for (const waiter of this.#waiters.splice(0)) waiter({ done: true, value: undefined });
+    for (const waiter of this.#waiters.splice(0)) waiter.resolve({ done: true, value: undefined });
+  }
+
+  /** Ends the stream with an error, as the SDK does when Claude Code exits with one. */
+  fail(error: Error): void {
+    this.#error = error;
+    for (const waiter of this.#waiters.splice(0)) waiter.reject(error);
   }
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -1014,8 +1159,9 @@ class TestQueue<T> implements AsyncIterable<T> {
       next: () => {
         const value = this.#values.shift();
         if (value) return Promise.resolve({ done: false, value });
+        if (this.#error) return Promise.reject(this.#error);
         if (this.#closed) return Promise.resolve({ done: true, value: undefined });
-        return new Promise((resolve) => this.#waiters.push(resolve));
+        return new Promise((resolve, reject) => this.#waiters.push({ resolve, reject }));
       },
     };
   }
