@@ -74,6 +74,8 @@ interface Props {
   onTest: () => void;
   onFix: (action: McpFixAction) => void;
   onCoworkers: (ids: string[] | null) => void;
+  /** Shared mode switch; missing when the feature is off. */
+  onShared?: (shared: boolean) => void;
 }
 
 export function McpServerRow(props: Props) {
@@ -187,6 +189,22 @@ export function McpServerRow(props: Props) {
               </Show>
             </Show>
           )}
+        </Show>
+        <Show when={props.onShared && props.server.transport === "stdio"}>
+          <Show when={props.server.heavy && !props.server.shared}>
+            <small class="extension-warning" role="note">
+              {t("mcpxHeavyServer")}
+            </small>
+          </Show>
+          <label class="settings-meta mcp-shared">
+            <input
+              type="checkbox"
+              checked={props.server.shared === true}
+              disabled={props.busy}
+              onChange={(event) => props.onShared?.(event.currentTarget.checked)}
+            />{" "}
+            {t("mcpxShared")}
+          </label>
         </Show>
         <small class="settings-meta">
           {t("mcpxCoworkers")}:{" "}

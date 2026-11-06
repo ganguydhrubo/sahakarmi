@@ -361,6 +361,10 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     runInstall: (planId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRunInstall, { planId }),
     installStatus: (jobId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpInstallStatus, { jobId }),
     cancelInstall: (jobId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpCancelInstall, { jobId }),
+    setShared: (id: string, shared: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpSetShared, { id, shared }),
+    addAdapter: (analysisId: string, name: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpAddAdapter, { analysisId, name }),
   },
   workflow: {
     export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),

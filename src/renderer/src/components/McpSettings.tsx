@@ -14,6 +14,7 @@ import { McpServerRow } from "./McpServerRow";
 
 /** Fix buttons the window can carry out itself. */
 const BASIC_FIXES: McpFixAction[] = ["edit", "recheck", "retry-long"];
+const SHARED_FIXES: McpFixAction[] = ["shared-mode"];
 const INSTALL_FIXES: McpFixAction[] = ["install-uv", "install-node", "install-python"];
 const TOOL_OF: Partial<Record<McpFixAction, "uv" | "node" | "python">> = {
   "install-uv": "uv",
@@ -140,7 +141,11 @@ export function McpSettings() {
 
   const guided = () => featureOn("mcp-guided-install");
   const fixes = (): ReadonlySet<McpFixAction> =>
-    new Set(guided() ? [...BASIC_FIXES, ...INSTALL_FIXES] : BASIC_FIXES);
+    new Set([
+      ...BASIC_FIXES,
+      ...(guided() ? INSTALL_FIXES : []),
+      ...(featureOn("mcp-shared-mode") ? SHARED_FIXES : []),
+    ]);
   const [plan, setPlan] = createSignal<McpInstallPlan | null>(null);
   const showPlan = (make: () => Promise<McpInstallPlan>) =>
     void run(async () => setPlan(await make()));
@@ -149,6 +154,8 @@ export function McpSettings() {
     const tool = TOOL_OF[action];
     if (tool) showPlan(() => window.sahkarmi.mcp.planTool(tool));
     else if (action === "edit") setDraft(draftOf(server));
+    else if (action === "shared-mode")
+      void run(async () => setServers(await window.sahkarmi.mcp.setShared(server.id, true)));
     else if (action === "recheck")
       void run(async () => setServers(await window.sahkarmi.mcp.recheck()));
     else if (action === "retry-long") test(server);
@@ -241,6 +248,10 @@ export function McpSettings() {
                 ),
               onSkillRoute: (analysis) =>
                 showPlan(() => window.sahkarmi.mcp.planSkill(analysis.id)),
+              onAdapter: (analysis, name) =>
+                void run(async () =>
+                  setServers(await window.sahkarmi.mcp.addAdapter(analysis.id, name)),
+                ),
             }
           : {})}
       />
@@ -420,6 +431,14 @@ export function McpSettings() {
                 }
                 onTest={() => test(server)}
                 onFix={(action) => fix(server, action)}
+                {...(featureOn("mcp-shared-mode")
+                  ? {
+                      onShared: (shared: boolean) =>
+                        void run(async () =>
+                          setServers(await window.sahkarmi.mcp.setShared(server.id, shared)),
+                        ),
+                    }
+                  : {})}
                 onCoworkers={(ids) =>
                   void run(async () =>
                     setServers(await window.sahkarmi.mcp.setCoworkers(server.id, ids)),

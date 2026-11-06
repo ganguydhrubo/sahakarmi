@@ -43,6 +43,16 @@ export interface McpServerConfig {
   status?: McpServerStatus | null;
   /** Keys the server says it needs (from server.json, MCP-13). */
   requiredEnv?: McpEnvRequirement[];
+  /** Started once per app and reached through the loopback bridge (MCP-7). */
+  shared?: boolean;
+  /** Imports heavy libraries: Settings suggests shared mode. */
+  heavy?: boolean;
+}
+
+/** The shared-mode bridge, as the store sees it. */
+export interface SharedBridgeLike {
+  urlFor(id: string): string | null;
+  stop(id: string): Promise<void>;
 }
 
 /** What a runtime needs to start the server; passed to clients as `customMcpServers`. */
@@ -53,6 +63,8 @@ export type McpServerWire = Pick<
   cwd?: string;
   /** Never passed a test yet: the first start may download a package (MCP-15). */
   firstRun?: boolean;
+  /** Shared mode: the loopback address of the one running copy (MCP-7). */
+  sharedUrl?: string;
 };
 
 /** Feature switches this store follows; all on when nothing is set (tests, first start). */
@@ -60,7 +72,8 @@ export type McpFeatureId =
   | "mcp-fresh-path"
   | "mcp-test-first"
   | "mcp-smart-import"
-  | "mcp-guided-install";
+  | "mcp-guided-install"
+  | "mcp-shared-mode";
 export type McpFeatureCheck = (id: McpFeatureId) => boolean;
 
 /** How long a test may take: a first run can download the whole package (npx -y, uvx). */
@@ -94,6 +107,7 @@ export class McpServerStore {
   readonly #fetch: FetchLike;
   #servers: McpServerConfig[] = [];
   #feature: McpFeatureCheck = () => true;
+  #bridge: SharedBridgeLike | null = null;
   readonly #analyzer: RepoAnalyzer;
 
   constructor(userDataPath: string, fetchImpl: FetchLike = fetch as unknown as FetchLike) {
@@ -162,10 +176,43 @@ export class McpServerStore {
           ? { headers: { ...(server.headers ?? {}), ...filled } }
           : { env: { ...(server.env ?? {}), ...filled } }),
         requiredEnv: candidate.requiredEnv,
+        ...(analysis.heavy ? { heavy: true } : {}),
         enabled: this.#feature("mcp-test-first") ? false : undefined,
       },
       `GitHub ${analysis.repo}${analysis.commit ? `@${analysis.commit.slice(0, 7)}` : ""}`,
     );
+  }
+
+  /** Shared mode: the bridge that runs shared servers once per app. */
+  setSharedBridge(bridge: SharedBridgeLike | null): void {
+    this.#bridge = bridge;
+  }
+
+  /** Servers in shared mode that are switched on (the bridge only starts these). */
+  hasShared(): boolean {
+    return this.#servers.some((server) => server.shared && server.transport === "stdio");
+  }
+
+  /** What the bridge starts for a shared server; null when it is not shared or switched off. */
+  sharedLaunch(id: string): LaunchTarget | null {
+    const server = this.get(id);
+    if (!server?.shared || !server.enabled || server.transport !== "stdio") return null;
+    if (placeholderHits(server).length > 0) return null;
+    return launchTarget(this.#wire(server));
+  }
+
+  async setShared(id: string, shared: boolean): Promise<McpServerSummary[]> {
+    const server = this.get(id);
+    if (!server) throw new Error("That server is no longer in the list.");
+    if (shared && server.transport !== "stdio") {
+      throw new Error("Only servers started by a command can be shared.");
+    }
+    this.#servers = this.#servers.map((entry) =>
+      entry.id === id ? { ...entry, shared: shared || undefined } : entry,
+    );
+    await this.#persist();
+    if (!shared) await this.#bridge?.stop(id);
+    return this.list();
   }
 
   /** Follows Settings › Features (fresh PATH, test before use). */
@@ -214,6 +261,10 @@ export class McpServerStore {
 
   #wire(server: McpServerConfig): McpServerWire {
     const { name, transport, command, args, url, headers } = server;
+    const sharedUrl =
+      server.shared && transport === "stdio" && this.#feature("mcp-shared-mode")
+        ? this.#bridge?.urlFor(server.id)
+        : null;
     const env =
       transport === "stdio" && this.#feature("mcp-fresh-path")
         ? serverEnvironment(server.env)
@@ -228,6 +279,7 @@ export class McpServerStore {
       headers,
       ...(server.cwd ? { cwd: server.cwd } : {}),
       ...(server.status?.ok ? {} : { firstRun: true }),
+      ...(sharedUrl ? { sharedUrl } : {}),
     };
   }
 
@@ -235,6 +287,8 @@ export class McpServerStore {
   async save(input: McpServerInput, source = "added by hand"): Promise<McpServerSummary[]> {
     const previous = input.id ? this.#servers.find((server) => server.id === input.id) : undefined;
     const next = normalizeServer(input, previous, source, this.#feature("mcp-test-first"));
+    // A shared copy started with the old settings must not keep serving.
+    if (previous?.shared) await this.#bridge?.stop(previous.id);
     const clash = this.#servers.find(
       (server) =>
         server.id !== previous?.id && server.name.toLowerCase() === next.name.toLowerCase(),
@@ -430,6 +484,8 @@ function summary(server: McpServerConfig, env: NodeJS.ProcessEnv): McpServerSumm
     ...(server.needsTest ? { needsTest: true } : {}),
     coworkerIds: Array.isArray(server.coworkerIds) ? server.coworkerIds : null,
     ...(server.requiredEnv?.length ? { requiredEnv: server.requiredEnv } : {}),
+    ...(server.shared ? { shared: true } : {}),
+    ...(server.heavy ? { heavy: true } : {}),
   };
 }
 
@@ -516,6 +572,8 @@ function normalizeServer(
     source: previous?.source ?? source,
     addedAt: previous?.addedAt ?? new Date().toISOString(),
     ...(cwd ? { cwd } : {}),
+    ...((input.heavy ?? previous?.heavy) ? { heavy: true } : {}),
+    ...(previous?.shared && transport === "stdio" ? { shared: true } : {}),
   };
   if (previous && "coworkerIds" in previous) next.coworkerIds = previous.coworkerIds ?? null;
   const required = input.requiredEnv
@@ -570,10 +628,7 @@ export function parseMcpJson(text: string): { servers: McpServerInput[]; skipped
           ? value.serverUrl
           : "";
     if (url) {
-      if (value.type === "sse") {
-        skipped.push(`${name}: old "sse" servers are not supported; use its HTTP address`);
-        continue;
-      }
+      // Old "sse" servers: saved as HTTP; "Test server" also tries the newer /mcp address (MCP-17).
       servers.push({ name, transport: "http", url, headers: stringMap(value.headers) });
       continue;
     }
@@ -581,6 +636,8 @@ export function parseMcpJson(text: string): { servers: McpServerInput[]; skipped
   }
   return { servers, skipped };
 }
+
+const SHARED_URL = /^http:\/\/127\.0\.0\.1:\d{1,5}\/mcp\/[0-9a-f]{48}\/[^\s/]+$/;
 
 /** Reads `customMcpServers` from thread/start or thread/resume params. */
 export function readCustomMcpServers(params: unknown): McpServerWire[] {
@@ -600,6 +657,9 @@ export function readCustomMcpServers(params: unknown): McpServerWire[] {
         headers: stringMap(entry.headers),
         ...(typeof entry.cwd === "string" && isAbsolute(entry.cwd) ? { cwd: entry.cwd } : {}),
         ...(entry.firstRun === true ? { firstRun: true } : {}),
+        ...(typeof entry.sharedUrl === "string" && SHARED_URL.test(entry.sharedUrl)
+          ? { sharedUrl: entry.sharedUrl }
+          : {}),
       },
     ];
   });
@@ -677,8 +737,9 @@ export function claudeMcpServers(
   const result: Record<string, Record<string, unknown>> = {};
   for (const entry of servers) {
     const server = withoutCwd(entry);
-    result[server.name] =
-      server.transport === "http"
+    result[server.name] = server.sharedUrl
+      ? { type: "http", url: server.sharedUrl, headers: {} }
+      : server.transport === "http"
         ? { type: "http", url: server.url, headers: server.headers }
         : { type: "stdio", ...launchCommand(server), env: server.env };
   }
@@ -691,6 +752,10 @@ export function acpMcpServers(servers: McpServerWire[], httpSupported: boolean):
     Object.entries(map).map(([name, value]) => ({ name, value }));
   return servers.flatMap((entry): unknown[] => {
     const server = withoutCwd(entry);
+    // Shared: one running copy over HTTP when the agent accepts HTTP, else its own copy.
+    if (server.sharedUrl && httpSupported) {
+      return [{ type: "http", name: server.name, url: server.sharedUrl, headers: [] }];
+    }
     if (server.transport === "http") {
       return httpSupported
         ? [{ type: "http", name: server.name, url: server.url, headers: pairs(server.headers) }]
@@ -710,8 +775,9 @@ export function codexMcpConfig(servers: McpServerWire[]): Record<string, unknown
   if (servers.length === 0) return undefined;
   const mcp: Record<string, unknown> = {};
   for (const server of servers) {
-    mcp[server.name] =
-      server.transport === "http"
+    mcp[server.name] = server.sharedUrl
+      ? { url: server.sharedUrl }
+      : server.transport === "http"
         ? { url: server.url, http_headers: server.headers }
         : {
             ...launchCommand(server),

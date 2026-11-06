@@ -130,6 +130,13 @@ export const mcpEn = {
   mcpxInstallLog: "Show details",
   mcpxDiag_longPath:
     "A file path got longer than Windows allows (260 characters). Sahkarmi now installs into a shorter folder: press Install again. Or switch on Windows long paths.",
+  mcpxShared: "Shared: start once for all coworkers (saves memory; stops when idle)",
+  mcpxHeavyServer:
+    "This server loads big libraries. Turn on Shared so it does not start once per chat.",
+  mcpxAdapter: "Advanced: connect its local web API",
+  mcpxAdapterNote:
+    "Sahkarmi writes a small MCP adapter that calls this project's web API on this PC only (127.0.0.1). You start the project's own server yourself first; then press Test server.",
+  mcpxAdapterAdd: "Add the adapter (switched off)",
 };
 
 type McpDictionary = Record<keyof typeof mcpEn, string>;
@@ -259,6 +266,12 @@ export const mcpHi: McpDictionary = {
   mcpxInstallLog: "विवरण दिखाएँ",
   mcpxDiag_longPath:
     "किसी फ़ाइल का पाथ Windows की सीमा (260 अक्षर) से लंबा हो गया। Sahkarmi अब छोटे फ़ोल्डर में इंस्टॉल करता है: फिर से इंस्टॉल दबाएँ। या Windows में लंबे पाथ चालू करें।",
+  mcpxShared: "साझा: सभी सहकर्मियों के लिए एक बार चालू करें (मेमोरी बचती है; खाली रहने पर बंद)",
+  mcpxHeavyServer: "यह सर्वर बड़ी लाइब्रेरी लोड करता है। साझा चालू करें ताकि यह हर चैट में अलग से चालू न हो।",
+  mcpxAdapter: "एडवांस्ड: इसका लोकल वेब API जोड़ें",
+  mcpxAdapterNote:
+    "Sahkarmi एक छोटा MCP एडैप्टर लिखता है जो इस प्रोजेक्ट के वेब API को सिर्फ़ इसी PC पर (127.0.0.1) कॉल करता है। पहले प्रोजेक्ट का अपना सर्वर खुद चालू करें; फिर टेस्ट सर्वर दबाएँ।",
+  mcpxAdapterAdd: "एडैप्टर जोड़ें (बंद अवस्था में)",
 };
 
 export const mcpBn: McpDictionary = {
@@ -385,4 +398,10 @@ export const mcpBn: McpDictionary = {
   mcpxInstallLog: "বিস্তারিত দেখুন",
   mcpxDiag_longPath:
     "একটি ফাইলের পাথ Windows-এর সীমার (260 অক্ষর) চেয়ে লম্বা হয়ে গেছে। Sahkarmi এখন ছোট ফোল্ডারে ইনস্টল করে: আবার ইনস্টল চাপুন। অথবা Windows-এ লম্বা পাথ চালু করুন।",
+  mcpxShared: "শেয়ার্ড: সব সহকর্মীর জন্য একবার চালু করুন (মেমরি বাঁচে; অলস থাকলে বন্ধ)",
+  mcpxHeavyServer: "এই সার্ভার বড় লাইব্রেরি লোড করে। শেয়ার্ড চালু করুন, যাতে প্রতিটি চ্যাটে আলাদা করে চালু না হয়।",
+  mcpxAdapter: "অ্যাডভান্সড: এর লোকাল ওয়েব API যুক্ত করুন",
+  mcpxAdapterNote:
+    "Sahkarmi একটি ছোট MCP অ্যাডাপ্টার লেখে, যা এই প্রজেক্টের ওয়েব API শুধু এই PC-তেই (127.0.0.1) কল করে। আগে প্রজেক্টের নিজের সার্ভার নিজে চালু করুন; তারপর টেস্ট সার্ভার চাপুন।",
+  mcpxAdapterAdd: "অ্যাডাপ্টার যোগ করুন (বন্ধ অবস্থায়)",
 };

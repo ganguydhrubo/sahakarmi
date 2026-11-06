@@ -177,6 +177,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     true,
   ),
   feature(
+    "mcp-shared-mode",
+    "MCP servers: shared mode",
+    "A server you mark as shared starts once for the whole app (on first use) and every coworker uses that one copy through a private address on this PC; it stops when idle. Off: each chat starts its own copy.",
+    "labs",
+    [],
+    true,
+    true,
+  ),
+  feature(
     "mcp-guided-install",
     "MCP servers: install for me",
     "After you approve a card that lists every download and command, Sahkarmi installs a server (or a command-line tool as a Skill) into its own folder, and can fetch uv, Python 3.11 or Node.js with checked SHA-256 sums. Off: you install programs yourself.",

@@ -14224,7 +14224,7 @@ fieldset.memory-filters {
 .knowledge-source-error {
   display: block;
   margin-top: 2px;
-  color: var(--danger, #c0392b);
+  color: var(--danger);
   font-size: 12px;
 }
 
@@ -14372,4 +14372,35 @@ fieldset.memory-filters {
 
 .mcp-steps li[data-state="failed"] {
   color: var(--warning);
+}
+
+.mcp-plan-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.mcp-plan-facts dt {
+  color: var(--text-muted);
+}
+
+.mcp-plan-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mcp-steps li code {
+  overflow-wrap: anywhere;
+  font-size: 0.85em;
+}
+
+.mcp-steps li[data-state="failed"] {
+  color: var(--danger);
+}
+
+.mcp-shared {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

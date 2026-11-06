@@ -47,7 +47,13 @@ import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini
 import { ComposioClient } from "../backend/integrations/composio-client";
 import { KnowledgeService } from "../backend/knowledge/knowledge-service";
 import { MailboxStore } from "../backend/mailbox-store";
+import {
+  genericApiSpec,
+  moneyPrinterTurboSpec,
+  writeAdapter,
+} from "../backend/mcp/adapter-template";
 import { McpInstaller } from "../backend/mcp/installer";
+import { SharedMcpBridge } from "../backend/mcp/shared-bridge";
 import { serverEnvironment } from "../backend/mcp/windows-env";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -252,10 +258,15 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
     recheck: () => mcp.recheck(),
     env: () => serverEnvironment({}),
   });
+  // Shared mode (MCP-7): heavy servers run once per app behind a loopback endpoint.
+  const bridge = new SharedMcpBridge((id) => mcp.sharedLaunch(id));
+  mcp.setSharedBridge(bridge);
+  app.on("will-quit", () => void bridge.close());
   // Windows' current PATH (plus Sahkarmi's own tools), read now and whenever Settings opens.
   void installer.tools
     .refreshManagedPath()
     .then(() => mcp.recheck())
+    .then(() => (mcp.hasShared() ? bridge.listen() : undefined))
     .catch(() => {});
   handleTrusted(IPC_CHANNELS.mcpList, () => mcp.list());
   handleTrusted(IPC_CHANNELS.mcpSave, (input: unknown) => {
@@ -323,6 +334,29 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   handleTrusted(IPC_CHANNELS.mcpCancelInstall, (input: unknown) =>
     installer.cancel(requireString(isObject(input) ? input.jobId : null, "jobId")),
   );
+  // Not an MCP server but a local web API: a small adapter Sahkarmi writes (audit §10.6 B).
+  handleTrusted(IPC_CHANNELS.mcpAddAdapter, async (input: unknown) => {
+    const analysis = analysisOf(input);
+    const name = requireString(isObject(input) ? input.name : null, "name");
+    if (!/^[A-Za-z0-9_-]{1,48}$/.test(name))
+      throw new Error("Name: letters, numbers, - and _ only.");
+    if (!analysis.notMcp.includes("http-api")) throw new Error("This repo has no local web API.");
+    const spec = /moneyprinterturbo/i.test(analysis.repo)
+      ? moneyPrinterTurboSpec()
+      : genericApiSpec(analysis.repo.split("/").pop() ?? name, "http://127.0.0.1:8000");
+    const server = await writeAdapter(
+      join(app.getPath("userData"), "mcp", name),
+      name,
+      spec,
+      process.execPath,
+    );
+    return mcp.save(server, `Adapter for GitHub ${analysis.repo}@${analysis.commit.slice(0, 7)}`);
+  });
+  handleTrusted(IPC_CHANNELS.mcpSetShared, async (input: unknown) => {
+    const shared = isObject(input) && input.shared === true;
+    if (shared) await bridge.listen();
+    return mcp.setShared(requireString(isObject(input) ? input.id : null, "id"), shared);
+  });
   handleTrusted(IPC_CHANNELS.mcpAnalyzeGithub, (input: unknown) =>
     mcp.analyzeGithub(text(input, "url")),
   );

@@ -153,6 +153,9 @@ export class McpInstaller {
       /** Added to every install step (tests point caches at a scratch folder). */
       extraEnv?: Record<string, string>;
       shortPath?: ShortPath;
+      /** Fixed install folder (dev scripts); normally chosen by installRoot. */
+      root?: string;
+      longPaths?: () => Promise<boolean>;
     } = {},
   ) {
     this.#userData = userDataPath;
@@ -161,10 +164,22 @@ export class McpInstaller {
     this.tools = options.tools ?? new ToolsManager(userDataPath, this.#fetch);
     this.#extraEnv = options.extraEnv ?? {};
     this.#shortPath = options.shortPath;
+    this.#fixedRoot = options.root;
+    this.#longPaths = options.longPaths;
   }
 
+  readonly #fixedRoot: string | undefined;
+  readonly #longPaths: (() => Promise<boolean>) | undefined;
+
   async #root(): Promise<string> {
-    return installRoot(this.#userData, this.#shortPath ? { shortPath: this.#shortPath } : {});
+    if (this.#fixedRoot) {
+      await mkdir(this.#fixedRoot, { recursive: true });
+      return this.#fixedRoot;
+    }
+    return installRoot(this.#userData, {
+      ...(this.#shortPath ? { shortPath: this.#shortPath } : {}),
+      ...(this.#longPaths ? { longPaths: this.#longPaths } : {}),
+    });
   }
 
   #remember(plan: Plan): McpInstallPlan {
@@ -279,6 +294,7 @@ export class McpInstaller {
       transport: "stdio",
       env,
       requiredEnv: candidate.requiredEnv,
+      ...(analysis.heavy ? { heavy: true } : {}),
     };
     // Arguments the server itself takes, after the package spec (and script) of npx / uvx.
     const given = candidate.server?.args ?? [];
@@ -478,7 +494,8 @@ export class McpInstaller {
     if (!PYPI_NAME.test(cli.package) || !VERSION.test(cli.version) || !SCRIPT.test(cli.script)) {
       throw new Error("Unexpected PyPI package name.");
     }
-    const name = serverFolderName(analysis.repo.split("/").pop() ?? cli.package);
+    // The package name keeps the folder short (deep venv paths, Windows 260-character limit).
+    const name = serverFolderName(cli.package);
     const folder = join(await this.#root(), name);
     const venv = join(folder, ".venv");
     const exe = join(venv, "Scripts", `${cli.script}.exe`);

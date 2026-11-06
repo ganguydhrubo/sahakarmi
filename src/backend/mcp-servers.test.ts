@@ -54,8 +54,10 @@ describe("parseMcpJson", () => {
         env: { TOKEN: "x" },
       },
       { name: "notion", transport: "http", url: "https://mcp.notion.com/mcp", headers: { A: "b" } },
+      // MCP-17: old SSE servers come in as HTTP; "Test server" also tries the /mcp address.
+      { name: "old", transport: "http", url: "https://x.test/sse", headers: {} },
     ]);
-    expect(skipped).toHaveLength(2);
+    expect(skipped).toHaveLength(1);
   });
 
   it("accepts VS Code's servers key and refuses bad JSON clearly", () => {

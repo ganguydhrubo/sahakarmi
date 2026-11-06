@@ -104,7 +104,11 @@ function installer(userData: string, tools: FakeTools) {
   return {
     saved,
     skills,
-    installer: new McpInstaller(userData, hooks, { tools, shortPath: async () => null }),
+    installer: new McpInstaller(userData, hooks, {
+      tools,
+      shortPath: async () => null,
+      longPaths: async () => true,
+    }),
   };
 }
 
@@ -158,14 +162,34 @@ describe("install folder", () => {
     const odd = join(base, "Jürgen Ö");
     const drive = join(base, "drive");
     const root = await installRoot(odd, {
+      longPaths: async () => true,
       shortPath: async () => null,
       systemDrive: drive,
       username: "Jürgen",
     });
     expect(root).toBe(join(`${drive}\\`, "Sahkarmi-mcp", "Jrgen"));
-    expect(await installRoot(odd, { shortPath: async () => "C:\\Users\\JRGEN~1\\mcp" })).toBe(
-      "C:\\Users\\JRGEN~1\\mcp",
-    );
+    expect(
+      await installRoot(odd, {
+        longPaths: async () => true,
+        shortPath: async () => "C:\\Users\\JRGEN~1\\mcp",
+      }),
+    ).toBe("C:\\Users\\JRGEN~1\\mcp");
+  });
+});
+
+describe("install folder without Windows long paths", () => {
+  it("uses a short folder on the system drive (pip failed under a 62-character folder)", async () => {
+    const base = await scratch();
+    const drive = join(base, "d");
+    const long = join(base, "AppData", "Roaming", "Sahkarmi");
+    const root = await installRoot(long, {
+      longPaths: async () => false,
+      shortPath: async () => null,
+      systemDrive: drive,
+      username: "averyveryverylongname",
+    });
+    expect(root).toBe(join(`${drive}\\`, "Sahkarmi-mcp", "averyveryver"));
+    expect(serverFolderName("a".repeat(40))).toHaveLength(24);
   });
 });
 

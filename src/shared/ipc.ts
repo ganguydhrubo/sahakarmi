@@ -183,6 +183,8 @@ export const IPC_CHANNELS = {
   mcpRunInstall: "mcp:run-install",
   mcpInstallStatus: "mcp:install-status",
   mcpCancelInstall: "mcp:cancel-install",
+  mcpSetShared: "mcp:set-shared",
+  mcpAddAdapter: "mcp:add-adapter",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -2138,6 +2140,8 @@ export interface McpServerInput {
   /** Folder to start in (stdio only). */
   cwd?: string;
   requiredEnv?: McpEnvRequirement[];
+  /** Imports heavy libraries (video, speech, ML): Settings suggests shared mode. */
+  heavy?: boolean;
 }
 
 export interface McpImportResult {
@@ -2300,6 +2304,10 @@ export interface McpDesktopApi {
   runInstall: (planId: string) => Promise<McpInstallJob>;
   installStatus: (jobId: string) => Promise<McpInstallJob>;
   cancelInstall: (jobId: string) => Promise<McpInstallJob>;
+  /** Shared mode (MCP-7): start once for all coworkers instead of once per chat. */
+  setShared: (id: string, shared: boolean) => Promise<McpServerSummary[]>;
+  /** Writes a small MCP adapter for a repo whose local web API coworkers should call. */
+  addAdapter: (analysisId: string, name: string) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */

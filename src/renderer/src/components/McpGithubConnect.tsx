@@ -54,6 +54,8 @@ interface Props {
   ) => void;
   /** The "Use as a Skill (CLI)" route for a repo that is not an MCP server. */
   onSkillRoute?: (analysis: McpRepoAnalysis) => void;
+  /** Writes an MCP adapter for the repo's local web API. */
+  onAdapter?: (analysis: McpRepoAnalysis, name: string) => void;
 }
 
 export function McpGithubConnect(props: Props) {
@@ -130,6 +132,26 @@ export function McpGithubConnect(props: Props) {
                     {t("mcpxUseAsSkill")}
                   </button>
                 </div>
+              </Show>
+              <Show when={current().notMcp.includes("http-api") && props.onAdapter}>
+                <details>
+                  <summary>{t("mcpxAdapter")}</summary>
+                  <p class="settings-meta">{t("mcpxAdapterNote")}</p>
+                  <div class="settings-buttons">
+                    <button
+                      type="button"
+                      disabled={props.busy}
+                      onClick={() =>
+                        props.onAdapter?.(
+                          current(),
+                          `${suggestedName(current().repo)}-api`.slice(0, 48),
+                        )
+                      }
+                    >
+                      {t("mcpxAdapterAdd")}
+                    </button>
+                  </div>
+                </details>
               </Show>
             </Show>
             <Show when={current().heavy}>
