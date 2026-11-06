@@ -91,6 +91,7 @@ import type { BotStore } from "./bot-store";
 import {
   BROWSER_DYNAMIC_TOOLS,
   type CoworkerBrowser,
+  type DownloadRequest,
   isOwnTab,
   SAHKARMI_BROWSER_NAMESPACE,
 } from "./browser-host";
@@ -528,6 +529,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#permissions = permissions;
     this.#permissionTimeoutMs = permissionTimeoutMs;
     permissions?.setAsker((request) => this.#askOwner(request));
+    if (permissions) browser.setDownloadAuthorizer?.((request) => this.#authorizeDownload(request));
     this.#computerUsePrerequisites = computerUsePrerequisites;
     this.#requestTimeoutMs = requestTimeoutMs;
     this.#preferredProvider = preferredProvider;
@@ -3111,6 +3113,25 @@ ${carryOver}`
       { ...request, botId, provider },
       this.#workspaceRoots(botId),
     );
+  }
+
+  /**
+   * A page in a coworker's tab started a download. It follows the "downloads" permission; the
+   * Sahkarmi Downloads folder counts as the coworker's own. The owner's own tabs are theirs.
+   */
+  async #authorizeDownload(request: DownloadRequest): Promise<boolean> {
+    if (!this.#permissions || !request.botId) return true;
+    const verdict = await this.#permissions.authorize(
+      {
+        botId: request.botId,
+        provider: "browser",
+        category: "downloads",
+        action: `Download ${request.fileName} from ${request.url.slice(0, 300)}`,
+        paths: [request.path],
+      },
+      [...this.#workspaceRoots(request.botId), this.#store.downloadsRoot],
+    );
+    return verdict.allowed;
   }
 
   /** The owner's latest real instruction in this chat, skipping "ok" and the app's own notes. */
