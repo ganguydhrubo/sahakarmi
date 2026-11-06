@@ -4787,7 +4787,7 @@ ${carryOver}`
       }
       // Too many coworkers working at once slows a small PC to a crawl: this one waits for a
       // free slot (or for free memory) and starts when any running turn ends.
-      const slot = this.#turnSlot(botId, bot);
+      const slot = this.#turnSlot(botId, bot, context.delivery);
       if (slot !== "free") {
         this.#noteWaitingForSlot(botId, slot);
         return;
@@ -4823,13 +4823,21 @@ ${carryOver}`
    * Whether this coworker may start a turn now. Besides the owner's cap on turns at once, a turn
    * that needs a new heavy process (a Claude coworker whose process is closed: ~450 MB) waits
    * while the PC is short of memory, and any turn waits when memory is critical. One turn can
-   * always run, so work never stops completely.
+   * always run, so work never stops completely. A message the owner typed never waits for
+   * memory: only routines, the app's own messages and coworker-to-coworker hops do.
    */
-  #turnSlot(botId: string, bot: BotSummary | undefined): "free" | "busy" | "memory" {
+  #turnSlot(
+    botId: string,
+    bot: BotSummary | undefined,
+    delivery: QueueDelivery,
+  ): "free" | "busy" | "memory" {
     const busy = this.#busyBotIds();
     busy.delete(botId);
     if (busy.size >= this.#engineSettings().maxConcurrentTurns) return "busy";
     if (busy.size === 0) return "free";
+    const fromOwner =
+      delivery.sender.kind === "user" && (!delivery.origin || delivery.origin === "owner");
+    if (fromOwner) return "free";
     if (readMemory().pressure === "critical") return "memory";
     if (bot && providerForBot(bot) === "claude") {
       const client = this.#clients.get("claude");

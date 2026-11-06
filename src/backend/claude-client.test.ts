@@ -448,6 +448,53 @@ fi
     await client.stop();
   });
 
+  it("gives Claude the owner's connected apps (Composio) like a Codex coworker", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-client-"));
+    const output = new TestQueue<SDKMessage>();
+    const generator = output[Symbol.asyncIterator]() as Query;
+    Object.assign(generator, {
+      [Symbol.asyncIterator]: () => generator,
+      interrupt: async () => undefined,
+      close: () => output.close(),
+    });
+    const seen: Array<Record<string, unknown>> = [];
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      (params) => {
+        seen.push(params.options as Record<string, unknown>);
+        return generator;
+      },
+    );
+    client.start();
+    await client.request("thread/start", {
+      cwd: root,
+      developerInstructions: "",
+      dynamicTools: [
+        {
+          type: "namespace",
+          name: "composio",
+          description: "Connected apps",
+          tools: [
+            {
+              type: "function",
+              name: "notion_create_notion_page",
+              description: "[Notion] Create a page.",
+              inputSchema: { type: "object", properties: { title: { type: "string" } } },
+            },
+          ],
+        },
+      ],
+    });
+    await client.request("thread/start", { cwd: root, developerInstructions: "" });
+    const [withApps, withoutApps] = seen.map(
+      (options) => options.mcpServers as Record<string, unknown>,
+    );
+    expect(withApps?.sahkarmi_apps).toBeDefined();
+    // No connected app: no empty apps server.
+    expect(withoutApps?.sahkarmi_apps).toBeUndefined();
+    await client.stop();
+  });
+
   it("adds only the missing suffix from a complete assistant message", async () => {
     const { client, notifications, output, threadId } = await createHarness();
     const turnId = "22222222-2222-4222-8222-222222222222";
