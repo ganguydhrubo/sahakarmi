@@ -66,8 +66,8 @@ export const INSTALL_SCRIPT = [
 export interface LaunchInstallerOptions {
   installer: string;
   /**
-   * "restart": the owner clicked Restart; the installer shows its progress, then opens the new
-   * version (or the old one again, if it failed). "quit": the owner closed Sahkarmi with an
+   * "restart": the owner clicked Restart; it installs silently, then opens the new version
+   * (or the old one again, if it failed). "quit": the owner closed Sahkarmi with an
    * update ready; it installs silently and nothing opens.
    */
   mode: "restart" | "quit";
@@ -111,7 +111,9 @@ export function launchWindowsInstaller(options: LaunchInstallerOptions): Promise
         SK_VERSION: options.version,
         SK_APP: options.appExe,
         SK_RESULT: resultFile,
-        SK_ARGS: options.mode === "restart" ? "--updated --force-run" : "/S --updated",
+        // Silent every time: the visible installer stops on Windows dialogs ("cannot be closed",
+        // Retry/Cancel) when a file is busy, which blocked the retries and confused owners.
+        SK_ARGS: options.mode === "restart" ? "/S --updated --force-run" : "/S --updated",
         SK_RETRY_ARGS: options.mode === "restart" ? "/S --updated --force-run" : "/S --updated",
         SK_REOPEN: options.mode === "restart" ? "1" : "0",
       },
