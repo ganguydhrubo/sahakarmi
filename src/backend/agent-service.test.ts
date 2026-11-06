@@ -1525,7 +1525,7 @@ describe.sequential("AgentService", () => {
     for (const start of starts) {
       const params = start.params as Record<string, unknown>;
       expect(params).toMatchObject({
-        model: "gpt-5.6-luna",
+        model: "gpt-5.6-sol",
         approvalPolicy: "never",
         sandbox: "danger-full-access",
         ephemeral: false,
@@ -1539,7 +1539,7 @@ describe.sequential("AgentService", () => {
       );
     }
     for (const turn of requests.filter((message) => message.method === "turn/start")) {
-      expect(turn.params).toMatchObject({ model: "gpt-5.6-luna", effort: "medium" });
+      expect(turn.params).toMatchObject({ model: "gpt-5.6-sol", effort: "medium" });
     }
     expect((await store.getOrCreate("chief")).threadId).not.toBe(
       (await store.getOrCreate("sales-outbound")).threadId,
@@ -1582,7 +1582,7 @@ describe.sequential("AgentService", () => {
       cliVersion: "0.144.1",
     });
     await expect(service.createBot()).resolves.toMatchObject({
-      model: "gpt-5.6-luna",
+      model: "gpt-5.6-sol",
       reasoningEffort: "medium",
     });
   });
@@ -1598,7 +1598,7 @@ describe.sequential("AgentService", () => {
       "Claude CLI was not found",
     );
     expect(service.listBots().find((bot) => bot.id === "chief")).toMatchObject({
-      model: "gpt-5.6-luna",
+      model: "gpt-5.6-sol",
       threadId: "thread-codex",
     });
   });
@@ -3462,7 +3462,7 @@ describe("0.19 parity: continuation, queued runtime change, delete, sign-in hold
     await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "running");
     const queued = await service.updateBot({ botId: "chief", reasoningEffort: "high" });
     expect(queued.reasoningEffort).toBe("medium");
-    expect(queued.pendingRuntime).toEqual({ model: "gpt-5.6-luna", reasoningEffort: "high" });
+    expect(queued.pendingRuntime).toEqual({ model: "gpt-5.6-sol", reasoningEffort: "high" });
 
     // Choosing the running runtime again drops the queued change; choosing anew queues it again.
     expect(

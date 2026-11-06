@@ -138,7 +138,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
   },
 ];
 
-export const DEFAULT_AGENT_MODEL: AgentModelId = "gpt-5.6-luna";
+export const DEFAULT_AGENT_MODEL: AgentModelId = "gpt-5.6-sol";
 export const DEFAULT_REASONING_EFFORT: AgentReasoningEffort = "medium";
 
 export class BotStore {

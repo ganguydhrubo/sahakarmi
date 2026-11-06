@@ -796,7 +796,7 @@ export function providerForModel(model: AgentModelId): AgentProviderId {
 
 /** The model a new coworker gets when this provider is the one available. */
 export const DEFAULT_MODEL_FOR_PROVIDER: Record<AgentProviderId, AgentModelId> = {
-  codex: "gpt-5.6-luna",
+  codex: "gpt-5.6-sol",
   claude: "claude-opus-5",
   opencode: "opencode-free",
   antigravity: "antigravity-default",

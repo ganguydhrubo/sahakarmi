@@ -140,7 +140,7 @@ async function confirmOnboardingModel(): Promise<void> {
   const trigger = await screen.findByRole("button", { name: "Onboarding model: Luna" });
   await fireEvent.click(trigger);
   const picker = screen.getByRole("dialog", { name: "Choose agent model" });
-  await fireEvent.click(within(picker).getByRole("option", { name: "Luna, default" }));
+  await fireEvent.click(within(picker).getByRole("option", { name: "Luna" }));
   await screen.findByRole("listbox", { name: "What do you want me helping with most?" });
 }
 
@@ -1590,7 +1590,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await fireEvent.click(trigger);
     const picker = screen.getByRole("dialog", { name: "Choose agent model" });
     expect(within(picker).getByText("0.144.1 (Codex CLI)")).toBeInTheDocument();
-    expect(within(picker).getByRole("option", { name: "Luna, default" })).toHaveAttribute(
+    expect(within(picker).getByRole("option", { name: "Luna" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -1654,7 +1654,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await screen.findByRole("button", { name: "Onboarding model: Luna" });
 
     await fireEvent.click(screen.getByRole("button", { name: "Agent model: Luna" }));
-    await fireEvent.click(screen.getByRole("option", { name: "Sol" }));
+    await fireEvent.click(screen.getByRole("option", { name: "Sol, default" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not change model. Try again.",
@@ -1681,7 +1681,7 @@ describe("Sahkarmi connected desktop shell", () => {
     expect(trigger).toBeEnabled();
 
     await fireEvent.click(trigger);
-    await fireEvent.click(screen.getByRole("option", { name: "Sol" }));
+    await fireEvent.click(screen.getByRole("option", { name: "Sol, default" }));
     await waitFor(() =>
       expect(window.sahkarmi.agent.updateBot).toHaveBeenCalledWith(
         expect.objectContaining({ botId: "chief", model: "gpt-5.6-sol" }),
@@ -1837,7 +1837,7 @@ describe("Sahkarmi connected desktop shell", () => {
     );
     picker = screen.getByRole("dialog", { name: "Choose agent model" });
     await fireEvent.click(within(picker).getByRole("tab", { name: /^ChatGPT \(Codex\):/ }));
-    await fireEvent.click(within(picker).getByRole("option", { name: "Sol" }));
+    await fireEvent.click(within(picker).getByRole("option", { name: "Sol, default" }));
     await fireEvent.change(thinking, { target: { value: "xhigh" } });
     await waitFor(() =>
       expect(window.sahkarmi.agent.updateBot).toHaveBeenLastCalledWith({
