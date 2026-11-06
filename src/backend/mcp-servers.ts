@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import type {
   McpEnvRequirement,
+  McpRepoAnalysis,
   McpServerInput,
   McpServerStatus,
   McpServerSummary,
@@ -11,6 +12,7 @@ import { JsonFile } from "./json-file";
 import { argumentPaths, serverProblems } from "./mcp/checks";
 import { testServer } from "./mcp/handshake";
 import { placeholderHits } from "./mcp/placeholders";
+import { RepoAnalyzer } from "./mcp/resolve";
 import { freshPath, lookupCommand, refreshFreshPath, serverEnvironment } from "./mcp/windows-env";
 import { isRecord } from "./protocol";
 
@@ -54,7 +56,7 @@ export type McpServerWire = Pick<
 };
 
 /** Feature switches this store follows; all on when nothing is set (tests, first start). */
-export type McpFeatureId = "mcp-fresh-path" | "mcp-test-first";
+export type McpFeatureId = "mcp-fresh-path" | "mcp-test-first" | "mcp-smart-import";
 export type McpFeatureCheck = (id: McpFeatureId) => boolean;
 
 /** How long a test may take: a first run can download the whole package (npx -y, uvx). */
@@ -88,10 +90,78 @@ export class McpServerStore {
   readonly #fetch: FetchLike;
   #servers: McpServerConfig[] = [];
   #feature: McpFeatureCheck = () => true;
+  readonly #analyzer: RepoAnalyzer;
 
   constructor(userDataPath: string, fetchImpl: FetchLike = fetch as unknown as FetchLike) {
     this.#file = new JsonFile(join(userDataPath, FILE));
     this.#fetch = fetchImpl;
+    this.#analyzer = new RepoAnalyzer(join(userDataPath, "mcp-cache"), fetchImpl);
+  }
+
+  /** The analysis made earlier in this session (install plans refer to it by id). */
+  analysis(id: string): McpRepoAnalysis | undefined {
+    return this.#analyzer.get(id);
+  }
+
+  /**
+   * "Connect from GitHub" (audit §11.4 steps 1-3). With smart import switched off it returns the
+   * repo's .mcp.json files as before, for the paste box.
+   */
+  async analyzeGithub(url: string): Promise<McpRepoAnalysis> {
+    if (!this.#feature("mcp-smart-import")) {
+      const location = parseGithubUrl(url);
+      return {
+        id: "",
+        repo: `${location.owner}/${location.repo}`,
+        url,
+        commit: "",
+        subPath: location.subPath,
+        kind: "unknown",
+        notMcp: [],
+        evidence: [],
+        candidates: [],
+        cli: null,
+        heavy: false,
+        warnings: [],
+        truncated: false,
+        legacyJson: await this.githubJson(url),
+      };
+    }
+    return this.#analyzer.analyze(url);
+  }
+
+  /** Saves a ready-made candidate from an analysis, with the key values the owner typed. */
+  async addCandidate(
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    values: Record<string, string>,
+  ): Promise<McpServerSummary[]> {
+    const analysis = this.#analyzer.get(analysisId);
+    const candidate = analysis?.candidates.find((entry) => entry.id === candidateId);
+    if (!analysis || !candidate?.server) {
+      throw new Error("That suggestion is no longer available. Load the repo again.");
+    }
+    const allowed = new Set([
+      ...candidate.requiredEnv.map((entry) => entry.name),
+      ...Object.keys(candidate.server.env ?? {}),
+    ]);
+    const filled = Object.fromEntries(
+      Object.entries(values).filter(([key, value]) => allowed.has(key) && value.trim() !== ""),
+    );
+    const server = candidate.server;
+    return this.save(
+      {
+        ...server,
+        name,
+        ...(server.transport === "http"
+          ? { headers: { ...(server.headers ?? {}), ...filled } }
+          : { env: { ...(server.env ?? {}), ...filled } }),
+        requiredEnv: candidate.requiredEnv,
+        enabled: this.#feature("mcp-test-first") ? false : undefined,
+      },
+      `GitHub ${analysis.repo}${analysis.commit ? `@${analysis.commit.slice(0, 7)}` : ""}`,
+    );
   }
 
   /** Follows Settings › Features (fresh PATH, test before use). */

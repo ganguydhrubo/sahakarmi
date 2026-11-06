@@ -6,6 +6,7 @@ import type {
   McpServerSummary,
 } from "../../../shared/ipc";
 import { t } from "../i18n";
+import { McpGithubConnect } from "./McpGithubConnect";
 import { McpServerRow } from "./McpServerRow";
 
 /** Fix buttons the window can carry out itself. */
@@ -63,7 +64,6 @@ function draftOf(server: McpServerSummary): Draft {
 export function McpSettings() {
   const [servers, setServers] = createSignal<McpServerSummary[]>([]);
   const [json, setJson] = createSignal("");
-  const [repo, setRepo] = createSignal("");
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -205,29 +205,17 @@ export function McpSettings() {
         )}
       </Show>
 
-      <label class="extension-field">
-        <span>{t("mcpGithubLabel")}</span>
-        <div class="extension-row">
-          <input
-            type="url"
-            placeholder="https://github.com/owner/repo"
-            value={repo()}
-            onInput={(event) => setRepo(event.currentTarget.value)}
-          />
-          <button
-            type="button"
-            disabled={busy() || !repo().trim()}
-            onClick={() =>
-              void run(async () => {
-                // Shown in the box above so the owner sees exactly what would run before importing.
-                setJson(await window.sahkarmi.mcp.githubJson(repo().trim()));
-              })
-            }
-          >
-            {t("mcpFromGithub")}
-          </button>
-        </div>
-      </label>
+      <McpGithubConnect
+        busy={busy()}
+        run={(action) => void run(action)}
+        onLegacyJson={setJson}
+        onServers={(list, name) => {
+          setServers(list);
+          // Test right away, so the owner sees at once whether it works (audit §11.7).
+          const added = list.find((server) => server.name === name);
+          if (added) test(added);
+        }}
+      />
 
       <Show
         when={draft()}

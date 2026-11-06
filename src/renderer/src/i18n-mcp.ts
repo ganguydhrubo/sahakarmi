@@ -67,6 +67,32 @@ export const mcpEn = {
   mcpxConflict: "{names} already exists. Replace it with the pasted one?",
   mcpxReplace: "Replace",
   mcpxKeep: "Keep mine",
+  mcpxKindStdio: "It is an MCP server: coworkers can use its tools.",
+  mcpxKindHttp: "It is a hosted MCP server (a web address).",
+  mcpxKindBuild: "It is an MCP server, but it must be installed from its source first.",
+  mcpxKindNotMcp: "This is not an MCP server.",
+  mcpxKindUnknown: "Sahkarmi could not tell what this is.",
+  mcpxNotMcpCli: "It is a program you run with typed commands (a command-line tool).",
+  mcpxNotMcpApi: "It runs its own small web server (an API) on your PC.",
+  mcpxNotMcpWebapp: "It is an app that opens in your web browser.",
+  mcpxNotMcpWhy:
+    "Coworkers can't plug it in as MCP tools, and adding it as an MCP server would only fail. Sahkarmi can install it for you and write a Skill that tells coworkers how to run it. You approve every run.",
+  mcpxUseAsSkill: "Use as a Skill (CLI)",
+  mcpxHeavy:
+    "This one is big (video, speech or AI libraries). Run one copy at a time: it can slow down an 8 GB laptop.",
+  mcpxEvidence: "How Sahkarmi knows",
+  mcpxPinned: "Checked at commit {commit}.",
+  mcpxChooseWay: "Choose how to run it",
+  mcpxCandidateTemplate: "Still a template ({tokens}): fill these in.",
+  mcpxNeeds: "Needs on this PC: {tools}",
+  mcpxRequired: "required",
+  mcpxOptional: "optional",
+  mcpxInstallForMe: "Install for me…",
+  mcpxAddCandidate: "Add it",
+  mcpxAddedOff:
+    "A new server stays off until Test server passes. Sahkarmi runs the test right after adding.",
+  mcpxUnknownHint:
+    "No MCP settings, package file or MCP code was found. If its README shows MCP JSON, paste it in the box above.",
 };
 
 type McpDictionary = Record<keyof typeof mcpEn, string>;
@@ -135,6 +161,31 @@ export const mcpHi: McpDictionary = {
   mcpxConflict: "{names} पहले से मौजूद है। क्या इसे चिपकाए गए सर्वर से बदल दें?",
   mcpxReplace: "बदलें",
   mcpxKeep: "मेरा वाला रखें",
+  mcpxKindStdio: "यह एक MCP सर्वर है: सहकर्मी इसके टूल इस्तेमाल कर सकते हैं।",
+  mcpxKindHttp: "यह इंटरनेट पर चलने वाला MCP सर्वर है (एक वेब पता)।",
+  mcpxKindBuild: "यह एक MCP सर्वर है, पर पहले इसे इसके सोर्स से इंस्टॉल करना होगा।",
+  mcpxKindNotMcp: "यह MCP सर्वर नहीं है।",
+  mcpxKindUnknown: "Sahkarmi पता नहीं लगा सका कि यह क्या है।",
+  mcpxNotMcpCli: "यह एक प्रोग्राम है जिसे टाइप किए गए कमांड से चलाते हैं (कमांड-लाइन टूल)।",
+  mcpxNotMcpApi: "यह आपके PC पर अपना छोटा वेब सर्वर (API) चलाता है।",
+  mcpxNotMcpWebapp: "यह एक ऐप है जो आपके वेब ब्राउज़र में खुलता है।",
+  mcpxNotMcpWhy:
+    "सहकर्मी इसे MCP टूल की तरह नहीं जोड़ सकते, और इसे MCP सर्वर की तरह जोड़ना सिर्फ़ विफल होगा। Sahkarmi इसे आपके लिए इंस्टॉल कर सकता है और एक स्किल लिख सकता है जो सहकर्मियों को इसे चलाना बताए। हर बार चलाने से पहले आपकी मंज़ूरी ली जाएगी।",
+  mcpxUseAsSkill: "स्किल की तरह इस्तेमाल करें (CLI)",
+  mcpxHeavy:
+    "यह भारी है (वीडियो, आवाज़ या AI लाइब्रेरी)। एक बार में एक ही कॉपी चलाएँ: यह 8 GB लैपटॉप को धीमा कर सकता है।",
+  mcpxEvidence: "Sahkarmi को कैसे पता चला",
+  mcpxPinned: "कमिट {commit} पर जाँचा गया।",
+  mcpxChooseWay: "चुनें कि इसे कैसे चलाना है",
+  mcpxCandidateTemplate: "अभी भी टेम्पलेट है ({tokens}): इन्हें भरें।",
+  mcpxNeeds: "इस PC पर चाहिए: {tools}",
+  mcpxRequired: "ज़रूरी",
+  mcpxOptional: "वैकल्पिक",
+  mcpxInstallForMe: "मेरे लिए इंस्टॉल करें…",
+  mcpxAddCandidate: "जोड़ें",
+  mcpxAddedOff: "नया सर्वर तब तक बंद रहता है जब तक सर्वर जाँच पास न हो। जोड़ते ही Sahkarmi जाँच चलाता है।",
+  mcpxUnknownHint:
+    "कोई MCP सेटिंग, पैकेज फ़ाइल या MCP कोड नहीं मिला। अगर इसके README में MCP JSON है, तो उसे ऊपर वाले बॉक्स में चिपकाएँ।",
 };
 
 export const mcpBn: McpDictionary = {
@@ -200,4 +251,29 @@ export const mcpBn: McpDictionary = {
   mcpxConflict: "{names} আগে থেকেই আছে। পেস্ট করা সার্ভার দিয়ে বদলে দেবেন?",
   mcpxReplace: "বদলান",
   mcpxKeep: "আমারটা রাখুন",
+  mcpxKindStdio: "এটি একটি MCP সার্ভার: সহকর্মীরা এর টুল ব্যবহার করতে পারে।",
+  mcpxKindHttp: "এটি ইন্টারনেটে চলা একটি MCP সার্ভার (একটি ওয়েব ঠিকানা)।",
+  mcpxKindBuild: "এটি একটি MCP সার্ভার, তবে আগে এর সোর্স থেকে ইনস্টল করতে হবে।",
+  mcpxKindNotMcp: "এটি MCP সার্ভার নয়।",
+  mcpxKindUnknown: "Sahkarmi বুঝতে পারেনি এটি কী।",
+  mcpxNotMcpCli: "এটি একটি প্রোগ্রাম যা টাইপ করা কমান্ড দিয়ে চালানো হয় (কমান্ড-লাইন টুল)।",
+  mcpxNotMcpApi: "এটি আপনার পিসিতে নিজের ছোট ওয়েব সার্ভার (API) চালায়।",
+  mcpxNotMcpWebapp: "এটি একটি অ্যাপ যা আপনার ওয়েব ব্রাউজারে খোলে।",
+  mcpxNotMcpWhy:
+    "সহকর্মীরা এটিকে MCP টুল হিসেবে যোগ করতে পারবে না, আর MCP সার্ভার হিসেবে যোগ করলে শুধু ব্যর্থ হবে। Sahkarmi এটি আপনার জন্য ইনস্টল করে একটি স্কিল লিখে দিতে পারে, যা সহকর্মীদের এটি চালাতে শেখাবে। প্রতিবার চালানোর আগে আপনার অনুমতি লাগবে।",
+  mcpxUseAsSkill: "স্কিল হিসেবে ব্যবহার করুন (CLI)",
+  mcpxHeavy:
+    "এটি ভারী (ভিডিও, ভয়েস বা AI লাইব্রেরি)। একবারে একটিই কপি চালান: এটি 8 GB ল্যাপটপকে ধীর করে দিতে পারে।",
+  mcpxEvidence: "Sahkarmi কীভাবে জানল",
+  mcpxPinned: "কমিট {commit}-এ দেখা হয়েছে।",
+  mcpxChooseWay: "কীভাবে চালাবেন বেছে নিন",
+  mcpxCandidateTemplate: "এখনও টেমপ্লেট ({tokens}): এগুলো পূরণ করুন।",
+  mcpxNeeds: "এই পিসিতে লাগবে: {tools}",
+  mcpxRequired: "আবশ্যক",
+  mcpxOptional: "ঐচ্ছিক",
+  mcpxInstallForMe: "আমার জন্য ইনস্টল করুন…",
+  mcpxAddCandidate: "যোগ করুন",
+  mcpxAddedOff: "নতুন সার্ভার পরীক্ষা পাস না হওয়া পর্যন্ত বন্ধ থাকে। যোগ করার পরই Sahkarmi পরীক্ষা চালায়।",
+  mcpxUnknownHint:
+    "কোনো MCP সেটিং, প্যাকেজ ফাইল বা MCP কোড পাওয়া যায়নি। এর README-তে MCP JSON থাকলে উপরের বাক্সে পেস্ট করুন।",
 };

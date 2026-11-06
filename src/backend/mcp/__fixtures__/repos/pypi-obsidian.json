@@ -1,0 +1,129 @@
+{
+  "source": "https://github.com/MarkusPfundstein/mcp-obsidian (pyproject.toml, README.md lines 85-135, Dockerfile), pypi.org",
+  "location": {
+    "owner": "MarkusPfundstein",
+    "repo": "mcp-obsidian",
+    "ref": "fixturecommit0002",
+    "subPath": ""
+  },
+  "files": [
+    {
+      "path": ".dockerignore",
+      "size": 116
+    },
+    {
+      "path": ".env.example",
+      "size": 90
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "size": 464
+    },
+    {
+      "path": ".gitignore",
+      "size": 114
+    },
+    {
+      "path": "Dockerfile",
+      "size": 685
+    },
+    {
+      "path": "LICENSE",
+      "size": 1074
+    },
+    {
+      "path": "README.md",
+      "size": 5928
+    },
+    {
+      "path": "docker-compose.yml",
+      "size": 1177
+    },
+    {
+      "path": "openapi.yaml",
+      "size": 70828
+    },
+    {
+      "path": "pyproject.toml",
+      "size": 644
+    },
+    {
+      "path": "src/mcp_obsidian/__init__.py",
+      "size": 709
+    },
+    {
+      "path": "src/mcp_obsidian/obsidian.py",
+      "size": 15354
+    },
+    {
+      "path": "src/mcp_obsidian/server.py",
+      "size": 2767
+    },
+    {
+      "path": "src/mcp_obsidian/tools.py",
+      "size": 27660
+    },
+    {
+      "path": "tests/__init__.py",
+      "size": 0
+    },
+    {
+      "path": "tests/conftest.py",
+      "size": 66
+    },
+    {
+      "path": "tests/test_get_frontmatter.py",
+      "size": 3104
+    },
+    {
+      "path": "tests/test_obsidian_heading_fallback.py",
+      "size": 8488
+    },
+    {
+      "path": "tests/test_obsidian_put_content.py",
+      "size": 3304
+    },
+    {
+      "path": "tests/test_obsidian_requests.py",
+      "size": 7377
+    },
+    {
+      "path": "tests/test_obsidian_utf8.py",
+      "size": 2014
+    },
+    {
+      "path": "tests/test_search_by_tag.py",
+      "size": 3000
+    },
+    {
+      "path": "tests/test_server.py",
+      "size": 2024
+    },
+    {
+      "path": "tests/test_stdio.py",
+      "size": 582
+    },
+    {
+      "path": "tests/test_tools.py",
+      "size": 9236
+    },
+    {
+      "path": "uv.lock",
+      "size": 84710
+    }
+  ],
+  "texts": {
+    "pyproject.toml": "[project]\nname = \"mcp-obsidian\"\nversion = \"0.2.2\"\ndescription = \"MCP server to work with Obsidian via the remote REST plugin\"\nreadme = \"README.md\"\nrequires-python = \">=3.11\"\ndependencies = [\n \"mcp>=1.1.0,<2.0.0\",\n \"python-dotenv>=1.0.1\",\n \"requests>=2.32.3\",\n]\n[[project.authors]]\nname = \"Markus Pfundstein\"\nemail = \"markus@life-electronic.nl\"\n\n[build-system]\nrequires = [ \"hatchling\",]\nbuild-backend = \"hatchling.build\"\n\n[dependency-groups]\ndev = [\n    \"pyright>=1.1.389\",\n    \"pytest>=8.0\",\n    \"pytest-cov>=7.1.0\",\n]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n\n[project.scripts]\nmcp-obsidian = \"mcp_obsidian:main\"\n",
+    "README.md": "On MacOS: `~/Library/Application\\ Support/Claude/claude_desktop_config.json`\n\nOn Windows: `%APPDATA%/Claude/claude_desktop_config.json`\n\n<details>\n  <summary>Development/Unpublished Servers Configuration</summary>\n  \n```json\n{\n  \"mcpServers\": {\n    \"mcp-obsidian\": {\n      \"command\": \"uv\",\n      \"args\": [\n        \"--directory\",\n        \"<dir_to>/mcp-obsidian\",\n        \"run\",\n        \"mcp-obsidian\"\n      ],\n      \"env\": {\n        \"OBSIDIAN_API_KEY\": \"<your_api_key_here>\",\n        \"OBSIDIAN_HOST\": \"<your_obsidian_host>\",\n        \"OBSIDIAN_PORT\": \"<your_obsidian_port>\"\n      }\n    }\n  }\n}\n```\n</details>\n\n<details>\n  <summary>Published Servers Configuration</summary>\n  \n```json\n{\n  \"mcpServers\": {\n    \"mcp-obsidian\": {\n      \"command\": \"uvx\",\n      \"args\": [\n        \"mcp-obsidian\"\n      ],\n      \"env\": {\n        \"OBSIDIAN_API_KEY\": \"<YOUR_OBSIDIAN_API_KEY>\",\n        \"OBSIDIAN_HOST\": \"<your_obsidian_host>\",\n        \"OBSIDIAN_PORT\": \"<your_obsidian_port>\"\n      }\n    }\n  }\n}\n```\n</details>\n",
+    "Dockerfile": "FROM python:3.11-slim AS base\n\n# Pull the standalone uv/uvx binaries instead of installing via pip.\nCOPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/\n\nENV UV_COMPILE_BYTECODE=1 \\\n    UV_LINK_MODE=copy \\\n    PYTHONUNBUFFERED=1\n\nWORKDIR /app\n\n# Install dependencies first so they're cached independently of source changes.\nCOPY pyproject.toml uv.lock ./\nRUN uv sync --frozen --no-install-project --no-dev\n\nCOPY src ./src\nCOPY README.md ./\nRUN uv sync --frozen --no-dev\n\nENV PATH=\"/app/.venv/bin:$PATH\"\n\n# The server speaks MCP over stdio, so it must be run with stdin attached\n# (e.g. `docker compose run --rm -T mcp-obsidian`), not `docker compose up`.\nENTRYPOINT [\"mcp-obsidian\"]\n"
+  },
+  "registry": [],
+  "packages": {
+    "pypi": {
+      "mcp-obsidian": {
+        "version": "0.2.3",
+        "urls": []
+      }
+    }
+  }
+}

@@ -346,6 +346,13 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     test: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpTest, { id }),
     setCoworkers: (id: string, coworkerIds: string[] | null) =>
       ipcRenderer.invoke(IPC_CHANNELS.mcpSetCoworkers, { id, coworkerIds }),
+    analyzeGithub: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpAnalyzeGithub, { url }),
+    addCandidate: (
+      analysisId: string,
+      candidateId: string,
+      name: string,
+      env: Record<string, string>,
+    ) => ipcRenderer.invoke(IPC_CHANNELS.mcpAddCandidate, { analysisId, candidateId, name, env }),
   },
   workflow: {
     export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),

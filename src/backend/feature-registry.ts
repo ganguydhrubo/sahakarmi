@@ -177,6 +177,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     true,
   ),
   feature(
+    "mcp-smart-import",
+    "MCP servers: smart GitHub connect",
+    "Reads a GitHub repo, the official MCP Registry and npm/PyPI to say whether it is an MCP server and how to run it. Off: only the repo's .mcp.json is read.",
+    "labs",
+    [],
+    true,
+    true,
+  ),
+  feature(
     "marketplace",
     "Marketplace",
     "Add ready-made coworkers and install skills in one click.",

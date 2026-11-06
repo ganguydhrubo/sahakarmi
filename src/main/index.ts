@@ -263,6 +263,23 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
     mcp.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
   handleTrusted(IPC_CHANNELS.mcpRecheck, () => mcp.recheck());
+  handleTrusted(IPC_CHANNELS.mcpAnalyzeGithub, (input: unknown) =>
+    mcp.analyzeGithub(text(input, "url")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpAddCandidate, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid MCP server.");
+    const values = isObject(input.env) ? input.env : {};
+    return mcp.addCandidate(
+      requireString(input.analysisId, "analysisId"),
+      requireString(input.candidateId, "candidateId"),
+      requireString(input.name, "name"),
+      Object.fromEntries(
+        Object.entries(values).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+    );
+  });
   handleTrusted(IPC_CHANNELS.mcpTest, (input: unknown) =>
     mcp.test(requireString(isObject(input) ? input.id : null, "id")),
   );

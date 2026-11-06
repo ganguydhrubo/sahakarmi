@@ -175,6 +175,8 @@ export const IPC_CHANNELS = {
   mcpRecheck: "mcp:recheck",
   mcpTest: "mcp:test",
   mcpSetCoworkers: "mcp:set-coworkers",
+  mcpAnalyzeGithub: "mcp:analyze-github",
+  mcpAddCandidate: "mcp:add-candidate",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -2139,6 +2141,70 @@ export interface McpImportResult {
   conflicts: string[];
 }
 
+/** What "Connect from GitHub" found a repo to be (audit §11.5). */
+export type McpRepoKind = "mcp-stdio" | "mcp-http" | "mcp-needs-build" | "not-mcp" | "unknown";
+export type McpNotMcpKind = "cli" | "http-api" | "webapp";
+
+/** How a candidate gets onto this PC; every source is pinned to a version or a commit. */
+export type McpInstallSource =
+  | { type: "npm"; package: string; version: string }
+  | { type: "pypi"; package: string; version: string; script: string; requiresPython?: string }
+  | { type: "oci"; image: string }
+  | {
+      type: "clone-node";
+      repoUrl: string;
+      commit: string;
+      subPath: string;
+      bin: string;
+      build: boolean;
+    }
+  | {
+      type: "clone-python";
+      repoUrl: string;
+      commit: string;
+      subPath: string;
+      script: string | null;
+      entry: string | null;
+      requiresPython?: string;
+    };
+
+/** One way to run the server, with where each part came from. */
+export interface McpCandidate {
+  id: string;
+  label: string;
+  runtime: "node" | "python" | "docker" | "remote" | "other";
+  /** Ready-to-save settings; missing when the server must be installed first. */
+  server?: McpServerInput;
+  install: McpInstallSource | null;
+  evidence: string[];
+  requiredEnv: McpEnvRequirement[];
+  /** Template values still in the settings (MCP-1). */
+  placeholders: string[];
+  /** Programs it needs on this PC: node, uv, python, docker, git. */
+  needs: string[];
+}
+
+export interface McpRepoAnalysis {
+  id: string;
+  /** owner/repo */
+  repo: string;
+  url: string;
+  commit: string;
+  subPath: string;
+  kind: McpRepoKind;
+  notMcp: McpNotMcpKind[];
+  evidence: string[];
+  candidates: McpCandidate[];
+  /** A command-line program from PyPI it ships, for the "Use as a Skill" route. */
+  cli: { package: string; version: string; script: string; requiresPython?: string } | null;
+  /** Big libraries (video, speech, ML): better run once, shared, or as a Skill. */
+  heavy: boolean;
+  warnings: string[];
+  truncated: boolean;
+  /** Smart import switched off: the repo's .mcp.json files, merged, for the paste box. */
+  legacyJson?: string;
+}
+
 export interface McpDesktopApi {
   list: () => Promise<McpServerSummary[]>;
   save: (input: McpServerInput) => Promise<McpServerSummary[]>;
@@ -2153,6 +2219,15 @@ export interface McpDesktopApi {
   test: (id: string) => Promise<McpServerSummary[]>;
   /** null = every coworker. */
   setCoworkers: (id: string, coworkerIds: string[] | null) => Promise<McpServerSummary[]>;
+  /** Reads a GitHub repo (and the MCP Registry) and says what it is and how it could run. */
+  analyzeGithub: (url: string) => Promise<McpRepoAnalysis>;
+  /** Saves one ready-made candidate (switched off until tested), with the env values filled in. */
+  addCandidate: (
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    env: Record<string, string>,
+  ) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */
