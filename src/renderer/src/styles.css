@@ -13451,6 +13451,10 @@ fieldset.memory-filters {
   color: var(--warning);
 }
 
+.extension-review {
+  color: var(--warning);
+}
+
 /* The generic settings-card button style must not flatten the switch. */
 .extension-settings .feature-switch {
   border: 0;

@@ -133,7 +133,7 @@ import {
   readInstructions,
   saveInstructions,
 } from "./coworker-instructions";
-import { CustomSkills, customSkillLines } from "./custom-skills";
+import { CustomSkills, customSkillLines, UNTRUSTED_SKILL_NOTE } from "./custom-skills";
 import { DesktopControlService } from "./desktop/desktop-control";
 import type { DesktopHostLike } from "./desktop/desktop-host";
 import { desktopDynamicTools, SAHKARMI_DESKTOP_NAMESPACE } from "./desktop/desktop-tools";
@@ -3615,6 +3615,7 @@ ${carryOver}`
                 id: skill.id,
                 name: skill.name,
                 whenToUse: skill.description,
+                ...(skill.reviewNeeded ? { untrusted: UNTRUSTED_SKILL_NOTE } : {}),
                 path: join(this.#store.sharedRoot, skill.sharedPath),
               })),
               learned: learned.map((skill) => ({

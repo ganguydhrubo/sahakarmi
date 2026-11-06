@@ -238,6 +238,9 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   handleTrusted(IPC_CHANNELS.customSkillsRemove, (input: unknown) =>
     skills.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
+  handleTrusted(IPC_CHANNELS.customSkillsMarkReviewed, (input: unknown) =>
+    skills.markReviewed(requireString(isObject(input) ? input.id : null, "id")),
+  );
   handleTrusted(IPC_CHANNELS.mcpList, () => mcp.list());
   handleTrusted(IPC_CHANNELS.mcpSave, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid MCP server.");

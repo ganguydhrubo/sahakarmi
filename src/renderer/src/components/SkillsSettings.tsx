@@ -191,11 +191,35 @@ export function SkillsSettings() {
               <li class="extension-item">
                 <span class="extension-item-text">
                   <strong>{skill.name}</strong>
+                  <Show when={skill.reviewNeeded}>
+                    <span class="extension-badge extension-badge-warn">
+                      {t("skillsReviewBadge")}
+                    </span>
+                  </Show>
                   <Show when={skill.description}>
                     <small>{skill.description}</small>
                   </Show>
                   <small class="extension-source">{skill.source}</small>
+                  <Show when={skill.reviewNeeded}>
+                    <small class="extension-review" role="note">
+                      {t("skillsReviewWhy")} {t("skillsReviewFlagged")}{" "}
+                      {(skill.risks ?? []).join("; ")} ({skill.sharedPath})
+                    </small>
+                  </Show>
                 </span>
+                <Show when={skill.reviewNeeded}>
+                  <button
+                    type="button"
+                    disabled={busy()}
+                    onClick={() =>
+                      void run(async () =>
+                        setSkills(await window.sahkarmi.customSkills.markReviewed(skill.id)),
+                      )
+                    }
+                  >
+                    {t("skillsMarkReviewed")}
+                  </button>
+                </Show>
                 <button
                   type="button"
                   disabled={busy()}
