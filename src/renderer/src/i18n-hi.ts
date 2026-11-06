@@ -1,6 +1,7 @@
 /** The Hindi pack. i18n.ts loads it on demand, so English-only users never parse it. */
 
 import type { Dictionary } from "./i18n";
+import { apisHi } from "./i18n-apis";
 import { backgroundHi } from "./i18n-background";
 import { engineHi } from "./i18n-engine";
 import { extensionsHi } from "./i18n-extensions-hi";
@@ -301,6 +302,7 @@ export const hi: Dictionary = {
   ...backgroundHi,
   ...memoryHi,
   ...securityHi,
+  ...apisHi,
   ...engineHi,
   ...mcpHi,
   ...onboardingHi,

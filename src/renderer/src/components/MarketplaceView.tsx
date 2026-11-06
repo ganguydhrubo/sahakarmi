@@ -18,9 +18,10 @@ import type { BotProfile } from "../data";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
+import { ApiIntegrationsPanel } from "./ApiIntegrationsPanel";
 import { AppsPanel } from "./AppsPanel";
 
-type Tab = "agents" | "apps" | "skills";
+type Tab = "agents" | "apps" | "apis" | "skills";
 type Filter = "all" | "featured" | "added" | AgentCategory;
 
 const PAGE_SIZE = 24;
@@ -327,6 +328,15 @@ export function MarketplaceView(props: {
             <button
               type="button"
               role="tab"
+              aria-selected={tab() === "apis"}
+              classList={{ "marketplace-tab-active": tab() === "apis" }}
+              onClick={() => setTab("apis")}
+            >
+              {t("apisTab")}
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={tab() === "skills"}
               classList={{ "marketplace-tab-active": tab() === "skills" }}
               onClick={() => setTab("skills")}
@@ -351,7 +361,9 @@ export function MarketplaceView(props: {
             ? t("marketAgentsIntro")
             : tab() === "apps"
               ? t("marketAppsIntro")
-              : t("marketSkillsIntro")}
+              : tab() === "apis"
+                ? t("apisIntro")
+                : t("marketSkillsIntro")}
         </p>
         <Show when={error()}>
           <p class="center-view-error" role="alert">
@@ -460,6 +472,10 @@ export function MarketplaceView(props: {
 
         <Show when={tab() === "apps"}>
           <AppsPanel query={query()} />
+        </Show>
+
+        <Show when={tab() === "apis"}>
+          <ApiIntegrationsPanel query={query()} />
         </Show>
 
         <Show when={tab() === "skills"}>

@@ -1,6 +1,7 @@
 /** The Bengali pack. i18n.ts loads it on demand, so English-only users never parse it. */
 
 import type { Dictionary } from "./i18n";
+import { apisBn } from "./i18n-apis";
 import { backgroundBn } from "./i18n-background";
 import { engineBn } from "./i18n-engine";
 import { extensionsBn } from "./i18n-extensions-bn";
@@ -300,6 +301,7 @@ export const bn: Dictionary = {
   ...backgroundBn,
   ...memoryBn,
   ...securityBn,
+  ...apisBn,
   ...engineBn,
   ...mcpBn,
   ...onboardingBn,

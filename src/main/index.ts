@@ -28,6 +28,7 @@ import electronUpdater from "electron-updater";
 import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
 import { memoryCategory } from "../backend/agent-memory-store";
 import { AgentService } from "../backend/agent-service";
+import { ApiIntegrationService } from "../backend/api-integrations/api-service";
 import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
@@ -94,6 +95,7 @@ import {
   type AgentProviderId,
   type AiRuntimeStatus,
   type AiToolId,
+  type ApiAuthKind,
   type AppInfo,
   type ApprovalCategory,
   type AppSetupState,
@@ -650,6 +652,7 @@ function registerIpcHandlers(
   orchestrator: AdaptiveOrchestrator,
   store: BotStore,
   composio: ComposioClient,
+  apis: ApiIntegrationService,
 ): void {
   const featureContext = () => ({
     platform: process.platform as DesktopPlatform,
@@ -1099,6 +1102,56 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.businessDeleteTarget, (targetId: unknown) =>
     business.deleteTarget(requireString(targetId, "targetId")),
   );
+
+  handleTrusted(IPC_CHANNELS.apisList, () => apis.list());
+  handleTrusted(IPC_CHANNELS.apisDiscover, (input: unknown) => {
+    if (!isObject(input) || typeof input.apiKey !== "string") throw new Error("Paste an API key.");
+    return apis.discover({
+      apiKey: input.apiKey,
+      name: optionalText(input.name),
+      docsUrl: optionalText(input.docsUrl),
+      specUrl: optionalText(input.specUrl),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.apisUpdate, (input: unknown) => {
+    if (!isObject(input) || !isObject(input.patch)) throw new Error("Invalid API details.");
+    const patch = input.patch;
+    const auth =
+      isObject(patch.auth) && typeof patch.auth.kind === "string"
+        ? { kind: patch.auth.kind as ApiAuthKind, name: optionalText(patch.auth.name) ?? null }
+        : undefined;
+    return apis.update(requireString(input.id, "id"), {
+      name: optionalText(patch.name),
+      provider: optionalText(patch.provider),
+      baseUrl: optionalText(patch.baseUrl),
+      docsUrl: optionalText(patch.docsUrl),
+      specUrl: optionalText(patch.specUrl),
+      example: optionalText(patch.example),
+      auth,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.apisRunTests, (id: unknown) => apis.runTests(requireString(id, "id")));
+  handleTrusted(IPC_CHANNELS.apisActivate, (id: unknown) => apis.activate(requireString(id, "id")));
+  handleTrusted(IPC_CHANNELS.apisSetEnabled, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    return apis.setEnabled(requireString(input.id, "id"), input.enabled === true);
+  });
+  handleTrusted(IPC_CHANNELS.apisSetAccess, (input: unknown) => {
+    if (!isObject(input) || !isObject(input.access)) throw new Error("Invalid access.");
+    const access = input.access;
+    const strings = (value: unknown) =>
+      Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    return apis.setAccess(requireString(input.id, "id"), {
+      everyone: access.everyone === true,
+      ceo: access.ceo === true,
+      botIds: strings(access.botIds),
+      workspaceIds: strings(access.workspaceIds),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.apisActivity, (id: unknown) => apis.activity(requireString(id, "id")));
+  handleTrusted(IPC_CHANNELS.apisRevoke, (id: unknown) => apis.revoke(requireString(id, "id")));
 
   handleTrusted(IPC_CHANNELS.composioGetStatus, () => composio.getStatus());
   handleTrusted(IPC_CHANNELS.composioSetApiKey, (input: unknown) => {
@@ -2024,6 +2077,7 @@ if (!hasSingleInstanceLock) {
       const setupFile = join(app.getPath("userData"), SETUP_FILE);
       const setupState = await readSetupState(setupFile);
       const permissions = new PermissionService(app.getPath("userData"));
+      const approvals = new ApprovalStore(app.getPath("userData"));
       agentService = new AgentService(
         store,
         mailboxStore,
@@ -2031,7 +2085,7 @@ if (!hasSingleInstanceLock) {
         readComputerUsePrerequisites,
         30_000,
         setupState.preferredProvider ?? "opencode",
-        new ApprovalStore(app.getPath("userData")),
+        approvals,
         permissions,
       );
       const service = agentService;
@@ -2074,6 +2128,26 @@ if (!hasSingleInstanceLock) {
       });
       service.setUsageService(usage);
       service.setComposioClient(composioClient);
+      // Web APIs the owner connects in Marketplace → APIs: nothing runs until a coworker calls one.
+      const apis = new ApiIntegrationService({
+        filePath: join(app.getPath("userData"), "api-integrations.json"),
+        secrets: {
+          get: (name) => secretStore?.get(name) ?? Promise.resolve(null),
+          set: async (name, value) => {
+            if (!secretStore) throw new Error("Encrypted key storage is not ready yet.");
+            await secretStore.set(name, value);
+          },
+        },
+        coworkers: () =>
+          service.listBots().map((bot) => ({ id: bot.id, workspaceId: bot.workspaceId ?? null })),
+        ceoOf: (workspaceId) =>
+          service.listWorkspaces().workspaces.find((workspace) => workspace.id === workspaceId)
+            ?.ceoBotId ?? null,
+        approvals,
+        nameFor: (botId) => service.listBots().find((bot) => bot.id === botId)?.name,
+        onApprovalCreated: (approval) => service.apiApprovalCreated(approval),
+      });
+      service.setApiIntegrations(apis);
       if (desktopControlSupported()) {
         // Started on a coworker's first desktop step; Sahkarmi's own windows stay off limits.
         desktopHost = new DesktopHost({
@@ -2378,6 +2452,7 @@ if (!hasSingleInstanceLock) {
         orchestrator,
         store,
         composioClient,
+        apis,
       );
       const telegram = new TelegramBridge({
         userDataPath: app.getPath("userData"),
@@ -2926,4 +3001,8 @@ function previewThumbnail(dataUrl: string): string | null {
   const { width } = image.getSize();
   const small = width > 640 ? image.resize({ width: 640, quality: "good" }) : image;
   return `data:image/jpeg;base64,${small.toJPEG(72).toString("base64")}`;
+}
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 2_000) : undefined;
 }
