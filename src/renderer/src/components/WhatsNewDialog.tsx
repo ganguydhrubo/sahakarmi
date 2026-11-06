@@ -10,6 +10,20 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.25.1": [
+    {
+      icon: "🔌",
+      badge: "Fixed",
+      title: "Claude coworkers use your connected apps",
+      desc: "Notion, Gmail, GitHub and every app you connect in Marketplace now work with Claude coworkers too. Changes still ask for your approval.",
+    },
+    {
+      icon: "⚡",
+      badge: "Fixed",
+      title: "Your messages start right away",
+      desc: "What you type never waits for free memory. Only background work waits when the PC is busy.",
+    },
+  ],
   "0.25.0": [
     {
       icon: "🔄",

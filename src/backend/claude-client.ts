@@ -92,6 +92,14 @@ interface ThreadConfig {
   customMcpServers: McpServerWire[];
   /** The connected-API tools' description, when this coworker may use any web API. */
   apiToolsDescription: string | null;
+  /** The owner's connected apps (Composio: Notion, Gmail, GitHub...), as Codex receives them. */
+  appTools: AppTool[];
+}
+
+interface AppTool {
+  name: string;
+  description: string;
+  inputSchema: unknown;
 }
 
 interface ActiveTurn {
@@ -497,7 +505,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     // The owner's own servers first, so Sahkarmi's tools always keep their names.
     const mcpServers = {
       ...withoutClaudeKey(claudeMcpServers(config.customMcpServers)),
-      ...this.#createSahkarmiServers(threadId, config.apiToolsDescription),
+      ...this.#createSahkarmiServers(threadId, config.apiToolsDescription, config.appTools),
     } as Record<string, SdkMcpServerConfig>;
     const claudeQuery = this.#createQuery({
       prompt: input,
@@ -1092,7 +1100,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return { thread: { id: threadId, turns } };
   }
 
-  #createSahkarmiServers(threadId: string, apiToolsDescription: string | null = null) {
+  #createSahkarmiServers(
+    threadId: string,
+    apiToolsDescription: string | null = null,
+    appTools: AppTool[] = [],
+  ) {
     const call = (namespace: string, name: string, args: unknown) =>
       this.#callDynamicTool(threadId, namespace, name, args);
     return {
@@ -1363,6 +1375,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       }),
       ...desktopSdkServers(call),
       ...(apiToolsDescription ? apiSdkServer(call, apiToolsDescription) : {}),
+      ...(appTools.length ? appsSdkServer(call, appTools) : {}),
     };
   }
 
@@ -1599,7 +1612,28 @@ function readThreadConfig(params: unknown): ThreadConfig {
     additionalDirectories: [...new Set([cwd, ...roots])],
     customMcpServers: readCustomMcpServers(params),
     apiToolsDescription: readApiToolsDescription(params),
+    appTools: readAppTools(params),
   };
+}
+
+/** The Composio namespace of the chat's dynamic tools (the same list a Codex coworker gets). */
+function readAppTools(params: unknown): AppTool[] {
+  const tools = isRecord(params) && Array.isArray(params.dynamicTools) ? params.dynamicTools : [];
+  const entry = tools.find(
+    (tool) => isRecord(tool) && tool.type === "namespace" && tool.name === "composio",
+  );
+  if (!isRecord(entry) || !Array.isArray(entry.tools)) return [];
+  return entry.tools.filter(isRecord).flatMap((tool) =>
+    typeof tool.name === "string"
+      ? [
+          {
+            name: tool.name,
+            description: typeof tool.description === "string" ? tool.description : "",
+            inputSchema: tool.inputSchema ?? { type: "object" },
+          },
+        ]
+      : [],
+  );
 }
 
 function readApiToolsDescription(params: unknown): string | null {
@@ -1764,6 +1798,82 @@ function messageOfError(error: unknown): string {
   return [base.split("\n")[0], detail?.killed ? "(timed out)" : "", stderr]
     .filter(Boolean)
     .join(" ");
+}
+
+/**
+ * The owner's connected apps for a Claude coworker. Composio gives hundreds of tools with their
+ * own JSON schemas, so Claude gets two: find the right tool, then run it. Every run goes through
+ * the same Composio safety check and approval as a Codex coworker's call.
+ */
+function appsSdkServer(
+  call: (namespace: string, name: string, args: unknown) => Promise<CallToolResult>,
+  appTools: AppTool[],
+) {
+  const known = new Map(appTools.map((tool) => [tool.name.toLowerCase(), tool]));
+  const apps = [
+    ...new Set(appTools.map((tool) => /^\[([^\]]+)\]/.exec(tool.description)?.[1] ?? "")),
+  ].filter(Boolean);
+  const text = (value: string): CallToolResult => ({ content: [{ type: "text", text: value }] });
+  return {
+    sahkarmi_apps: createSdkMcpServer({
+      name: "sahkarmi_apps",
+      version: "0.1.0",
+      instructions: `The owner's connected apps: ${apps.join(", ")}. Find a tool with list_app_tools, then call run_app_tool.`,
+      tools: [
+        tool(
+          "list_app_tools",
+          `Search the tools of the owner's connected apps (${apps.join(", ")}) and get each tool's name and input schema. Reading is immediate; anything that sends, creates, changes or deletes pauses for the owner's approval.`,
+          { search: z.string().max(200).optional() },
+          (args) => {
+            const words = (args.search ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+            const found = appTools
+              .filter((tool) => {
+                const hay = `${tool.name} ${tool.description}`.toLowerCase();
+                return words.every((word) => hay.includes(word));
+              })
+              .slice(0, 25);
+            if (found.length === 0) {
+              return Promise.resolve(
+                text(`No app tool matches. Connected apps: ${apps.join(", ") || "none"}.`),
+              );
+            }
+            return Promise.resolve(
+              text(
+                JSON.stringify(
+                  found.map((tool) => ({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                  })),
+                ),
+              ),
+            );
+          },
+        ),
+        tool(
+          "run_app_tool",
+          "Run one tool of the owner's connected apps by its name from list_app_tools. When it pauses for approval, the owner's approval arrives as a message; then call it again with the same arguments and the approval_id.",
+          {
+            tool: z.string().min(1).max(200),
+            arguments: z.record(z.string(), z.unknown()).optional(),
+            approval_id: z.string().max(120).optional(),
+          },
+          (args) => {
+            if (!known.has(args.tool.toLowerCase())) {
+              return Promise.resolve({
+                ...text(`Unknown app tool "${args.tool}". Find the exact name with list_app_tools.`),
+                isError: true,
+              });
+            }
+            return call("composio", args.tool.toLowerCase(), {
+              ...(args.arguments ?? {}),
+              ...(args.approval_id ? { approval_id: args.approval_id } : {}),
+            });
+          },
+        ),
+      ],
+    }),
+  };
 }
 
 /** The owner's connected web APIs, for a Claude coworker that may use at least one. */

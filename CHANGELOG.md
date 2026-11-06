@@ -5,6 +5,17 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-11-07
+
+### Fixed
+
+- Claude coworkers can now use the apps you connect in Marketplace > Apps (Notion, Gmail,
+  GitHub and the rest). Before, only Codex coworkers received them, so a Claude coworker said
+  "no Notion tools reached this session" while the app showed Connected. Anything that sends,
+  creates, changes or deletes still asks for your approval first.
+- A message you type to a coworker no longer waits for free memory. Only routines, scheduled
+  work and coworker-to-coworker messages wait when the PC is short of memory.
+
 ## [0.25.0] - 2026-11-06
 
 ### Fixed

@@ -1766,7 +1766,7 @@ describe.sequential("AgentService", () => {
       // The first turn always runs, so work never stops completely.
       await service.sendMessage({ botId: "chief", text: "First" });
       await waitFor(() => events.some((event) => event.type === "turn-started"));
-      await service.sendMessage({ botId: "asha-accounts", text: "Second" });
+      await service.sendMessage({ botId: "asha-accounts", text: "Second", origin: "routine" });
       await waitFor(() =>
         events.some(
           (event) =>
@@ -1775,6 +1775,10 @@ describe.sequential("AgentService", () => {
             /short of free memory/.test(event.message),
         ),
       );
+      expect(service.listQueue("asha-accounts").deliveries[0]?.status).toBe("queued");
+      // What the owner types never waits for memory: only background work does.
+      await service.sendMessage({ botId: "sales-outbound", text: "Owner asks now" });
+      await waitFor(() => service?.listQueue("sales-outbound").deliveries[0]?.status === "running");
       expect(service.listQueue("asha-accounts").deliveries[0]?.status).toBe("queued");
       free = 4 * GB;
       await waitFor(() => service?.listQueue("asha-accounts").deliveries[0]?.status === "running");
