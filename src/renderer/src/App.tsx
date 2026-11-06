@@ -500,6 +500,12 @@ export function App() {
       case "routines-changed":
         setRoutines(event.state);
         return;
+      case "open-requested":
+        // A clicked notification: the coworker's chat shows its pending approval cards inline;
+        // a request with no known coworker opens the Approvals inbox.
+        if (event.botId && botList().some((bot) => bot.id === event.botId)) selectBot(event.botId);
+        else if (event.approvalId) setView("approvals");
+        return;
       case "turn-started":
         clearRetry(event.botId);
         clearRecentReply(event.botId);

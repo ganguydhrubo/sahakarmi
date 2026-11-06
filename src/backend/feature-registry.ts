@@ -79,6 +79,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
   ),
   feature("schedules", "Schedules", "Run a task daily, weekly or once at a set time.", "core"),
   feature(
+    "background-tray",
+    "Keep running in the tray",
+    "Closing the window keeps Sahkarmi running in the notification area, so schedules, routines and Telegram keep working. Quit from the tray icon. Windows only.",
+    "core",
+    [{ type: "platform", platforms: ["win32"] }],
+    true,
+    false,
+  ),
+  feature(
     "browser",
     "Built-in browser",
     "Coworkers browse in their own tabs; you can take over for logins and OTPs.",
