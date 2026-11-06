@@ -3051,6 +3051,16 @@ describe("lean runtime: lazy providers, one-message updates, cached chat reads",
     await service.readConversation("arjun-research");
     await service.sendMessage({ botId: "arjun-research", text: "What's in Shared?" });
     await waitFor(() => service?.listQueue("arjun-research").deliveries[0]?.status === "completed");
+    // The whole chat goes out when the turn ends; the delivery can be marked done a moment before.
+    await waitFor(() =>
+      events.some(
+        (event) =>
+          event.type === "conversation" &&
+          event.snapshot.botId === "arjun-research" &&
+          event.snapshot.activeTurnId === null &&
+          event.snapshot.messages.some((message) => message.id === "cmd-1"),
+      ),
+    );
 
     const upserts = events.filter(
       (event) => event.type === "message-upsert" && event.message?.id === "cmd-1",
@@ -3058,14 +3068,16 @@ describe("lean runtime: lazy providers, one-message updates, cached chat reads",
     expect(
       upserts.map((event) => event.type === "message-upsert" && event.message?.tool?.status),
     ).toEqual(["running", "completed"]);
-    // No full chat was sent for the tool steps themselves...
+    // Tool steps travel as single messages; a whole chat holding the tool may also go out once
+    // when the turn/start answer arrives late, but never once per step...
     const fullWithTool = events.filter(
       (event) =>
         event.type === "conversation" &&
         event.snapshot.botId === "arjun-research" &&
         event.snapshot.messages.some((message) => message.id === "cmd-1"),
     );
-    // ...only once the turn ended (with the final answer).
+    expect(fullWithTool.length).toBeLessThanOrEqual(2);
+    // ...and the last one is the whole chat after the turn ended (with the final answer).
     expect(fullWithTool.length).toBeGreaterThan(0);
     const last = fullWithTool.at(-1);
     expect(last?.type === "conversation" && last.snapshot.activeTurnId).toBeNull();
