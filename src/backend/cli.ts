@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { constants, existsSync, readdirSync } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, win32 } from "node:path";
 import { promisify } from "node:util";
@@ -41,6 +41,103 @@ let runtimeDirectory: string | null = null;
 /** Where Sahkarmi keeps AI tools it downloaded itself (userData/tools). Set once at startup. */
 export function setToolsDirectory(directory: string): void {
   toolsDirectory = directory;
+}
+
+let versionCacheFile: string | null = null;
+let versionCache: Map<string, { stamp: string; stdout: string }> | null = null;
+let versionCacheWrite: Promise<void> = Promise.resolve();
+
+/**
+ * Where the `--version` answers are remembered (userData), keyed by the executable's path,
+ * size and time. Each start used to run `--version` of every AI tool, which for a 200 MB
+ * single-file binary took seconds; an unchanged file now gives the remembered answer.
+ */
+export function setCliVersionCache(path: string | null): void {
+  versionCacheFile = path;
+  versionCache = null;
+}
+
+async function loadVersionCache(): Promise<Map<string, { stamp: string; stdout: string }>> {
+  if (versionCache) return versionCache;
+  const cache = new Map<string, { stamp: string; stdout: string }>();
+  if (versionCacheFile) {
+    try {
+      const parsed = JSON.parse(await readFile(versionCacheFile, "utf8")) as unknown;
+      const entries =
+        parsed && typeof parsed === "object" && "entries" in parsed
+          ? (parsed as { entries: unknown }).entries
+          : null;
+      if (entries && typeof entries === "object") {
+        for (const [path, value] of Object.entries(entries)) {
+          if (
+            value &&
+            typeof value === "object" &&
+            typeof (value as { stamp?: unknown }).stamp === "string" &&
+            typeof (value as { stdout?: unknown }).stdout === "string"
+          ) {
+            cache.set(path, value as { stamp: string; stdout: string });
+          }
+        }
+      }
+    } catch {
+      // No cache yet, or an unreadable one: versions are read again.
+    }
+  }
+  versionCache = cache;
+  return cache;
+}
+
+function saveVersionCache(cache: Map<string, { stamp: string; stdout: string }>): void {
+  const file = versionCacheFile;
+  if (!file) return;
+  const body = JSON.stringify({ version: 1, entries: Object.fromEntries(cache) });
+  versionCacheWrite = versionCacheWrite
+    .then(async () => {
+      await mkdir(dirname(file), { recursive: true });
+      const temporary = `${file}.${process.pid}.tmp`;
+      await writeFile(temporary, body, "utf8");
+      await rename(temporary, file);
+    })
+    .catch(() => undefined);
+}
+
+async function fileStamp(path: string): Promise<string | null> {
+  try {
+    const info = await stat(path);
+    return info.isFile() ? `${info.size}|${info.mtimeMs}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `--version` of a CLI, remembered while the file stays the same. Only for real executables:
+ * an npm shim (.cmd) or script stays byte-identical when the package behind it is updated.
+ */
+export async function cachedCliVersion(candidate: string): Promise<string> {
+  if (!isBinaryExecutable(candidate)) return readCliVersion(candidate);
+  const stamp = await fileStamp(candidate);
+  const cache = await loadVersionCache();
+  const known = stamp ? cache.get(candidate) : undefined;
+  if (known && known.stamp === stamp) return known.stdout;
+  const stdout = await readCliVersion(candidate);
+  if (stamp) {
+    cache.set(candidate, { stamp, stdout });
+    // Copies that were removed or replaced since drop out over time.
+    if (cache.size > 64) cache.delete(cache.keys().next().value as string);
+    saveVersionCache(cache);
+  }
+  return stdout;
+}
+
+function isBinaryExecutable(path: string): boolean {
+  const extension = extname(path).toLowerCase();
+  return process.platform === "win32" ? extension === ".exe" : extension === "";
+}
+
+/** Waits for the version cache file to be written (tests). */
+export function flushCliVersionCache(): Promise<void> {
+  return versionCacheWrite;
 }
 
 /** Where Sahkarmi keeps a newer OpenCode runtime it downloaded itself. Set once at startup. */
@@ -138,7 +235,7 @@ async function newerManagedCopy(
 ): Promise<{ executable: string; version: string } | null> {
   if (!managed || managed === found?.executable) return null;
   try {
-    const version = parseVersion(await readCliVersion(managed));
+    const version = parseVersion(await cachedCliVersion(managed));
     return !found || compareVersionStrings(version, found.version) > 0
       ? { executable: managed, version }
       : null;
@@ -185,7 +282,7 @@ export async function resolveCodexCli(): Promise<CodexCliInfo> {
     if (!(await isExecutable(candidate))) continue;
 
     try {
-      const stdout = await readCliVersion(candidate);
+      const stdout = await cachedCliVersion(candidate);
       const version = parseCodexVersion(stdout);
       if (!isMinimumVersion(version)) {
         throw new CodexCliError(
@@ -257,7 +354,7 @@ export async function resolveClaudeCli(
     foundCandidate = true;
 
     try {
-      const stdout = await readCliVersion(candidate);
+      const stdout = await cachedCliVersion(candidate);
       found = { executable: candidate, version: parseClaudeVersion(stdout) };
       break;
     } catch {
@@ -330,7 +427,7 @@ export async function resolveOpenCodeCli(
     try {
       return {
         executable: candidate,
-        version: parseSemver(await readCliVersion(candidate), "OpenCode"),
+        version: parseSemver(await cachedCliVersion(candidate), "OpenCode"),
         bundled: managed.includes(candidate) || bundled.includes(candidate),
       };
     } catch {

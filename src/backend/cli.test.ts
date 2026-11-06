@@ -1,11 +1,13 @@
 // @vitest-environment node
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CodexCliError,
+  cachedCliVersion,
+  flushCliVersionCache,
   managedOpenCodePaths,
   managedRuntimeBinary,
   managedToolBinary,
@@ -14,6 +16,7 @@ import {
   parseCodexVersion,
   resolveClaudeCli,
   resolveCodexCli,
+  setCliVersionCache,
   setRuntimeDirectory,
   windowsFallbackPaths,
 } from "./cli";
@@ -143,6 +146,44 @@ describe("Windows CLI fallback paths", () => {
         "Codex CLI was found but could not be started. Run `codex --version` in a new terminal.",
     });
   });
+});
+
+describe("remembered CLI versions", () => {
+  afterEach(() => setCliVersionCache(null));
+
+  it.runIf(process.platform === "win32")(
+    "asks an unchanged executable for its version once; npm shims are always asked",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sahkarmi-cli-test-"));
+      temporaryPaths.push(root);
+      const cacheFile = join(root, "cli-versions.json");
+      const tool = join(root, "tool.exe");
+      await copyFile(process.execPath, tool);
+      setCliVersionCache(cacheFile);
+      expect((await cachedCliVersion(tool)).trim()).toBe(process.version);
+      await flushCliVersionCache();
+      const saved = JSON.parse(await readFile(cacheFile, "utf8"));
+      expect(saved.entries[tool].stdout.trim()).toBe(process.version);
+
+      // A fresh start with the same file: the remembered answer, without running it.
+      saved.entries[tool].stdout = "remembered 9.9.9";
+      await writeFile(cacheFile, JSON.stringify(saved));
+      setCliVersionCache(cacheFile);
+      expect(await cachedCliVersion(tool)).toBe("remembered 9.9.9");
+      // The file changed (an update): asked again.
+      const later = new Date(Date.now() + 60_000);
+      await utimes(tool, later, later);
+      expect((await cachedCliVersion(tool)).trim()).toBe(process.version);
+
+      // A shim stays byte-identical when the package behind it updates: never remembered.
+      const shim = join(root, "codex.cmd");
+      await writeFile(shim, "@echo off\r\necho codex-cli 0.150.0\r\n");
+      expect((await cachedCliVersion(shim)).trim()).toBe("codex-cli 0.150.0");
+      await flushCliVersionCache();
+      expect(JSON.parse(await readFile(cacheFile, "utf8")).entries[shim]).toBeUndefined();
+    },
+    30_000,
+  );
 });
 
 async function createWindowsNpmShims(): Promise<void> {
