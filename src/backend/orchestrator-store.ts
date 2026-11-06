@@ -141,6 +141,11 @@ export class OrchestratorStore {
     return JSON.parse(JSON.stringify(run));
   }
 
+  /** Resolves once every save so far is on disk (shutdown, tests). */
+  async flush(): Promise<void> {
+    await this.#writeQueue.catch(() => undefined);
+  }
+
   async #persist(): Promise<void> {
     this.#writeQueue = this.#writeQueue
       .catch(() => {})

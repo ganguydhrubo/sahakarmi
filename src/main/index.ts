@@ -1855,6 +1855,14 @@ if (!hasSingleInstanceLock) {
           },
           checkpoints: () =>
             features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
+          review: () => features.isEnabled("cross-model-review"),
+          planner: (workspaceId) => {
+            if (!features.isEnabled("team-run-ai-planning")) return null;
+            const workspaces = service.listWorkspaces().workspaces;
+            const workspace =
+              workspaces.find((candidate) => candidate.id === workspaceId) ?? workspaces[0];
+            return workspace?.ceoBotId ?? null;
+          },
         },
         {
           // The owner's check command runs only where the permission rules allow it.

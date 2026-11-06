@@ -244,10 +244,15 @@ async function runStatus(
   });
 }
 
-async function build(agent: FakeAgent) {
+async function build(agent: FakeAgent, planner: string | null = null, review = false) {
   const store = new OrchestratorStore(root);
   await store.initialize();
-  const orchestrator = new AdaptiveOrchestrator(store, { port: agent, retryGraceMs: 30 });
+  const orchestrator = new AdaptiveOrchestrator(store, {
+    port: agent,
+    retryGraceMs: 30,
+    planner: () => planner,
+    review: () => review,
+  });
   cleanups.push(() => orchestrator.dispose());
   return { store, orchestrator };
 }
@@ -508,5 +513,130 @@ describe("team runs on the durable engine", () => {
     await agent.decide("apr-1", "approved");
     const done = await runStatus(second.orchestrator, run.id, "completed");
     expect(done.tasks[0]?.inputs.result).toBe("Paid after your approval.");
+  });
+});
+
+describe("the CEO plans a team run (team-run-ai-planning)", () => {
+  const goal = "Build a GST invoice page with PDF export, email reminders and full tests for it";
+
+  it("runs the CEO's checked plan, in order, on the coworkers it named", async () => {
+    const agent = new FakeAgent(["ceo", ...BOTS]);
+    agent.responder = (botId, text) => {
+      if (botId === "ceo" && text.startsWith("[Team run planning]")) {
+        return {
+          reply: `Here is the plan:
+\`\`\`json
+${JSON.stringify({
+  tasks: [
+    {
+      title: "Draft the page",
+      description: "Write invoice.html",
+      role: "frontend",
+      coworkerId: "dev-code",
+    },
+    {
+      title: "Check it",
+      description: "Review invoice.html",
+      role: "qa",
+      coworkerId: "tara-ops",
+      dependsOn: [1],
+    },
+  ],
+})}
+\`\`\``,
+        };
+      }
+      return { reply: `${botId} finished.` };
+    };
+    const { orchestrator } = await build(agent, "ceo");
+    const run = await orchestrator.startRun(
+      { objective: goal, forcedStrategy: "multi-agent" },
+      root,
+    );
+    expect(run.status).toBe("planning");
+    const done = await runStatus(orchestrator, run.id, "completed");
+    expect(done.plannedBy).toBe("ceo");
+    expect(done.replans).toBe(0);
+    expect(done.tasks.map((task) => [task.title, task.assignedBotId])).toEqual([
+      ["Draft the page", "dev-code"],
+      ["Check it", "tara-ops"],
+    ]);
+    expect(done.tasks[1]?.dependencies).toEqual([done.tasks[0]?.id]);
+    const work = agent.sent.filter((item) => item.botId !== "ceo");
+    expect(work.map((item) => item.botId)).toEqual(["dev-code", "tara-ops"]);
+  });
+
+  it("sends an unusable plan back at most twice, then uses the standard plan", async () => {
+    const agent = new FakeAgent(["ceo", ...BOTS]);
+    agent.responder = (botId, text) =>
+      botId === "ceo" && text.startsWith("[Team run planning]")
+        ? { reply: '{"tasks":[{"title":"Loop","description":"x","dependsOn":[1]}]}' }
+        : { reply: "Done." };
+    const events: AgentEvent[] = [];
+    const { orchestrator } = await build(agent, "ceo");
+    orchestrator.onEvent((event) => events.push(event));
+    const run = await orchestrator.startRun(
+      { objective: goal, forcedStrategy: "multi-agent" },
+      root,
+    );
+    const done = await runStatus(orchestrator, run.id, "completed");
+    expect(done.plannedBy).toBe("template");
+    expect(done.replans).toBe(2);
+    const asks = agent.sent.filter((item) => item.botId === "ceo");
+    expect(asks).toHaveLength(3);
+    expect(asks[1]?.text).toContain("may only depend on earlier tasks");
+    expect(done.tasks).toHaveLength(3);
+    expect(
+      events.some((event) => event.type === "notice" && event.code === "team_run_plan_fallback"),
+    ).toBe(true);
+  });
+});
+
+describe("a second model reviews team-run work (cross-model-review)", () => {
+  it("sends the task back when the reviewer asks for changes, then passes on approval", async () => {
+    const agent = new FakeAgent(BOTS);
+    const reviewer = agent.bots[1];
+    if (reviewer) reviewer.model = "antigravity:gemini-3-pro";
+    let reviews = 0;
+    agent.responder = (botId, text) => {
+      if (text.startsWith("[Team run review]")) {
+        reviews += 1;
+        return {
+          reply: reviews === 1 ? "CHANGES: the total is missing GST." : "APPROVE looks right.",
+        };
+      }
+      return { reply: `${botId} wrote the invoice.` };
+    };
+    const { orchestrator } = await build(agent, null, true);
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    const done = await runStatus(orchestrator, run.id, "completed");
+    const task = done.tasks[0];
+    expect(task?.attemptCount).toBe(2);
+    const work = agent.sent.filter((item) => !item.text.startsWith("[Team run review]"));
+    expect(work[1]?.text).toContain("the total is missing GST");
+    expect(task?.evidence.some((item) => item.verdict === "passed" && item.type === "review")).toBe(
+      true,
+    );
+    expect(agent.sent.filter((item) => item.text.startsWith("[Team run review]"))).toHaveLength(2);
+    expect(agent.sent.find((item) => item.text.startsWith("[Team run review]"))?.botId).toBe(
+      reviewer?.id,
+    );
+  });
+
+  it("leaves a task unverified, not blocked, when every coworker uses the same model", async () => {
+    const agent = new FakeAgent(BOTS);
+    const { orchestrator } = await build(agent, null, true);
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    const done = await runStatus(orchestrator, run.id, "completed");
+    expect(done.tasks[0]?.verification).toBe("unverified");
+    expect(agent.sent.some((item) => item.text.startsWith("[Team run review]"))).toBe(false);
   });
 });

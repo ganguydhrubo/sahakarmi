@@ -239,6 +239,16 @@ export function OrchestratorView(props: {
                       <span class="orch-detail-time">
                         {new Date(run().startedAt).toLocaleTimeString()}
                       </span>
+                      <Show when={run().plannedBy}>
+                        <span class="orch-detail-time">
+                          {run().plannedBy === "ceo"
+                            ? t("enginePlannedByCeo", { name: "CEO" })
+                            : t("enginePlannedByTemplate")}
+                          {(run().replans ?? 0) > 0
+                            ? ` · ${t("engineReplanned", { count: String(run().replans) })}`
+                            : ""}
+                        </span>
+                      </Show>
                     </div>
                     <h2>{run().objective}</h2>
                   </div>

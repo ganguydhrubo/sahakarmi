@@ -24,6 +24,15 @@ export interface OrchestratorEngineOptions {
   retryGraceMs?: number;
   /** Where checkpoints live; read when the engine first loads. Default: SQLite. */
   checkpoints?: () => "sqlite" | "json";
+  /**
+   * The workspace CEO that plans a multi-agent run (flag team-run-ai-planning), or null to use
+   * the standard three-step template.
+   */
+  planner?: (workspaceId: string | null) => string | null;
+  /** How long the CEO may take to plan (tests shorten it). */
+  planTimeoutMs?: number;
+  /** Flag cross-model-review, read for every finished task. */
+  review?: () => boolean;
 }
 
 export interface OrchestratorDependencies {
@@ -80,6 +89,7 @@ export class AdaptiveOrchestrator {
             emit: (event) => this.#emit(event),
             retryGraceMs: options.retryGraceMs,
             checkpoints: options.checkpoints?.() ?? "sqlite",
+            review: options.review,
           }),
       );
       this.#engine.catch(() => {
@@ -110,6 +120,7 @@ export class AdaptiveOrchestrator {
   async dispose(): Promise<void> {
     const engine = await this.#engine?.catch(() => null);
     engine?.dispose();
+    await this.#store.flush();
   }
 
   onEvent(listener: OrchestratorEventListener): () => void {
@@ -210,11 +221,18 @@ export class AdaptiveOrchestrator {
     run.checkCommand = input.checkCommand?.trim() || null;
     run.plannedBy = "template";
     this.#assignRealCoworkers(run, input.workspaceId ?? null);
-    run.status = "running";
+    const ceoBotId =
+      strategy === "multi-agent"
+        ? (this.#engineOptions?.planner?.(input.workspaceId ?? null) ?? null)
+        : null;
+    run.status = ceoBotId ? "planning" : "running";
     await this.#store.saveRun(run);
     this.#emit({ type: "orchestrator-run-updated", run });
-    enginePromise.then(
-      (engine) => engine.start(run, workspacePath),
+    const planned = ceoBotId
+      ? this.#planWithCeo(run, ceoBotId, workspacePath)
+      : Promise.resolve(run);
+    Promise.all([enginePromise, planned]).then(
+      ([engine, ready]) => (ready.status === "running" ? engine.start(ready, workspacePath) : null),
       async (error: unknown) => {
         const failed = await this.#store.getRun(runId);
         if (!failed) return;
@@ -226,6 +244,93 @@ export class AdaptiveOrchestrator {
       },
     );
     return run;
+  }
+
+  /**
+   * The workspace CEO plans the run as JSON (checked against a schema, sent back with the reason
+   * at most twice). Any failure keeps the standard template, so a run always gets a plan.
+   */
+  async #planWithCeo(
+    run: OrchestratorRun,
+    ceoBotId: string,
+    workspacePath: string,
+  ): Promise<OrchestratorRun> {
+    const port = this.#engineOptions?.port;
+    const { planWithCeo } = await import("./team-run-planner");
+    const bots = port?.listBots() ?? [];
+    const team = bots.filter(
+      (bot) => bot.id !== ceoBotId && (!run.workspaceId || bot.workspaceId === run.workspaceId),
+    );
+    const outcome = port
+      ? await planWithCeo(port, ceoBotId, run.objective, team.length ? team : bots, {
+          timeoutMs: this.#engineOptions?.planTimeoutMs,
+          retryGraceMs: this.#engineOptions?.retryGraceMs,
+        }).catch((error: unknown) => ({ ok: false as const, error: String(error), replans: 0 }))
+      : null;
+    const latest = (await this.#store.getRun(run.id)) ?? run;
+    // Cancelled or paused while the CEO was planning: leave it as the owner left it.
+    if (latest.status !== "planning") return latest;
+    latest.replans = outcome?.replans ?? 0;
+    if (outcome?.ok) {
+      this.#applyCeoPlan(latest, outcome.plan.tasks, workspacePath, bots);
+      latest.plannedBy = "ceo";
+    } else {
+      this.#emit({
+        type: "notice",
+        botId: ceoBotId,
+        code: "team_run_plan_fallback",
+        message: `The CEO's plan for "${latest.objective.slice(0, 80)}" could not be used (${outcome?.error ?? "no planner"}), so the team run uses the standard plan.`,
+      });
+    }
+    latest.status = "running";
+    const saved = await this.#store.saveRun(latest);
+    this.#emit({ type: "orchestrator-run-updated", run: saved });
+    return saved;
+  }
+
+  #applyCeoPlan(
+    run: OrchestratorRun,
+    planned: import("./team-run-planner").PlannedTask[],
+    workspacePath: string,
+    bots: BotSummary[],
+  ): void {
+    const now = new Date().toISOString();
+    const ids = planned.map(() => `task-${randomUUID().slice(0, 8)}`);
+    const instances: OrchestratorRun["instances"] = [];
+    const tasks: OrchestratorTask[] = planned.map((item, index) => {
+      const chosen = bots.find((bot) => bot.id === item.coworkerId);
+      const instance = this.#factory.createInstance(item.role, workspacePath, bots);
+      if (chosen) {
+        instance.botId = chosen.id;
+        instance.botName = chosen.name;
+      }
+      const id = ids[index] ?? `task-${index}`;
+      instance.assignedTaskId = id;
+      instances.push(instance);
+      return {
+        id,
+        runId: run.id,
+        title: item.title,
+        description: item.description,
+        role: item.role,
+        assignedBotId: instance.botId,
+        assignedInstanceId: instance.instanceId,
+        dependencies: item.dependsOn.map((number) => ids[number - 1]).filter(Boolean) as string[],
+        inputs: { objective: run.objective },
+        deliverables: [{ name: item.title, summary: item.description.slice(0, 200) }],
+        acceptanceCriteria: item.acceptanceCriteria,
+        status: "pending",
+        attemptCount: 0,
+        maxAttempts: 3,
+        error: null,
+        evidence: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    run.tasks = tasks;
+    run.instances = instances;
+    this.#assignRealCoworkers(run, run.workspaceId === "default" ? null : run.workspaceId);
   }
 
   /**
