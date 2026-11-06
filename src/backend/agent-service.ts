@@ -6652,7 +6652,7 @@ export function taskGrantKey(
             request.browser?.type ?? "",
             browserButtonName(request.browser?.label ?? ""),
             request.browser?.text ?? "",
-            pageWithoutQuery(url),
+            pageWithoutQuery(url ?? ""),
           ].join("\n"),
         )
         .digest("hex"),

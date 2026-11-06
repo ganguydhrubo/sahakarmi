@@ -9,6 +9,7 @@ import type {
   DecideApprovalInput,
 } from "../shared/ipc";
 import { ApprovalStore } from "./approval-store";
+import { SecretCodec } from "./secret-store";
 import {
   PAIRING_COOLDOWN_MS,
   PAIRING_MAX_ATTEMPTS,
@@ -323,6 +324,43 @@ describe("TelegramBridge", () => {
     await until(() => telegram.sent.length === before + 1);
     expect(telegram.sent.at(-1)?.chat_id).toBe(42);
     expect(JSON.parse(readFileSync(join(dir, "telegram.json"), "utf8")).chatId).toBe(42);
+  });
+
+  it("keeps the bot token encrypted on disk and seals a token saved in plain text", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sahkarmi-telegram-"));
+    const codec = new SecretCodec({
+      isEncryptionAvailable: () => true,
+      encryptString: (text) => Buffer.from(`x${[...text].reverse().join("")}`),
+      decryptString: (buffer) => [...buffer.toString().slice(1)].reverse().join(""),
+    });
+    // What 0.23.0 wrote.
+    writeFileSync(
+      join(dir, "telegram.json"),
+      JSON.stringify({ token: TOKEN, botUsername: "sahkarmi_test_bot", pairingCode: "123456" }),
+    );
+    const telegram = fakeTelegram();
+    const bridge = new TelegramBridge({
+      userDataPath: dir,
+      agent: fakeAgent().agent,
+      fetch: telegram.fetcher,
+      codec,
+    });
+    bridges.push(bridge);
+    await bridge.initialize();
+    expect(bridge.status()).toMatchObject({ configured: true, pairingCode: "123456" });
+    const stored = readFileSync(join(dir, "telegram.json"), "utf8");
+    expect(stored).not.toContain(TOKEN);
+    expect(JSON.parse(stored).token).toMatch(/^sahkarmi-sealed:v1:/);
+    await bridge.stop();
+    const reopened = new TelegramBridge({
+      userDataPath: dir,
+      agent: fakeAgent().agent,
+      fetch: telegram.fetcher,
+      codec,
+    });
+    bridges.push(reopened);
+    await reopened.initialize();
+    expect(reopened.status()).toMatchObject({ configured: true, botUsername: "sahkarmi_test_bot" });
   });
 
   it("burns the pairing code after five wrong guesses and pauses pairing", async () => {

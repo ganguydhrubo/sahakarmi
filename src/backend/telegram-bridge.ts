@@ -9,6 +9,7 @@ import type {
   PermissionPolicyState,
   TelegramStatus,
 } from "../shared/ipc";
+import type { SecretCodec } from "./secret-store";
 
 const STATE_FILE = "telegram.json";
 const API = "https://api.telegram.org";
@@ -81,6 +82,8 @@ export interface TelegramBridgeOptions {
   approvalsEnabled?: boolean;
   /** The clock for the pairing cool-down (tests move it). */
   now?: () => number;
+  /** Encrypts the bot token in telegram.json (DPAPI). Without one it is stored as before. */
+  codec?: SecretCodec;
 }
 
 interface TelegramUpdate {
@@ -236,9 +239,13 @@ export class TelegramBridge {
   #wrongPairingCodes = 0;
   #pairingPausedUntil = 0;
   readonly #now: () => number;
+  readonly #codec: SecretCodec | null;
+  /** The file still holds the token in plain text: sealed on the next save. */
+  #plainTokenOnDisk = false;
 
   constructor(options: TelegramBridgeOptions) {
     this.#now = options.now ?? (() => Date.now());
+    this.#codec = options.codec ?? null;
     this.#path = join(options.userDataPath, STATE_FILE);
     this.#agent = options.agent;
     this.#fetch = options.fetch ?? fetch;
@@ -254,9 +261,11 @@ export class TelegramBridge {
   async initialize(): Promise<void> {
     try {
       const raw = JSON.parse(await readFile(this.#path, "utf8")) as Partial<StoredTelegram>;
-      if (typeof raw.token === "string" && raw.token) {
+      const token = typeof raw.token === "string" && raw.token ? this.#openToken(raw.token) : null;
+      if (token) {
+        this.#plainTokenOnDisk = !this.#codec?.isSealed(raw.token ?? "");
         this.#state = {
-          token: raw.token,
+          token,
           botUsername: typeof raw.botUsername === "string" ? raw.botUsername : null,
           pairingCode: typeof raw.pairingCode === "string" ? raw.pairingCode : newPairingCode(),
           chatId: typeof raw.chatId === "number" ? raw.chatId : null,
@@ -277,7 +286,21 @@ export class TelegramBridge {
         this.#log("warn", "TELEGRAM_BOT_TOKEN was not accepted", error);
       }
     }
-    if (this.#state) this.#start();
+    if (this.#state) {
+      // An older install kept the token in plain text: encrypt it now.
+      if (this.#plainTokenOnDisk && this.#codec?.available) {
+        await this.#save().catch((error) => this.#log("warn", "telegram.json not resaved", error));
+      }
+      this.#start();
+    }
+  }
+
+  /** A sealed token from another Windows account cannot be read: set up again. */
+  #openToken(stored: string): string | null {
+    if (!this.#codec) return stored;
+    const token = this.#codec.open(stored);
+    if (token === null) this.#log("warn", "The saved Telegram token could not be decrypted");
+    return token;
   }
 
   status(): TelegramStatus {
@@ -1113,11 +1136,28 @@ export class TelegramBridge {
   }
 
   async #save(): Promise<void> {
-    // The token gives full control of the bot, so the file is readable by the owner only.
-    await writeFile(this.#path, JSON.stringify(this.#state ?? {}), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+    // The token gives full control of the bot, so the file is readable by the owner only, and
+    // the token itself is encrypted when Windows can do it.
+    const state = this.#state;
+    const sealed = state && this.#codec?.available ? this.#codec.seal(state.token) : null;
+    const write = (token: string | undefined) =>
+      writeFile(this.#path, JSON.stringify(state ? { ...state, token } : {}), {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    if (!state || !sealed || sealed === state.token) {
+      await write(state?.token);
+      return;
+    }
+    await write(sealed);
+    // Plain text goes only once the sealed copy reads back as the same token.
+    const back = await readFile(this.#path, "utf8")
+      .then((text) => JSON.parse(text) as { token?: unknown })
+      .catch(() => null);
+    const readable =
+      typeof back?.token === "string" && this.#codec?.open(back.token) === state.token;
+    if (readable) this.#plainTokenOnDisk = false;
+    else await write(state.token);
   }
 
   #changed(): TelegramStatus {

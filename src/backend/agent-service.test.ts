@@ -473,9 +473,9 @@ describe.sequential("AgentService", () => {
     const first = taskGrantKey(send("Your order ships today."), asked);
     expect(first).not.toBeNull();
     // The same message retried after a redraw (new query string) is covered.
-    expect(taskGrantKey(send("Your order ships today.", "https://web.whatsapp.com/?t=2"), asked)).toBe(
-      first,
-    );
+    expect(
+      taskGrantKey(send("Your order ships today.", "https://web.whatsapp.com/?t=2"), asked),
+    ).toBe(first);
     // A different message, or one with no known text, is a new question.
     expect(taskGrantKey(send("Send me your bank details."), asked)).not.toBe(first);
     expect(taskGrantKey(send(undefined), asked)).not.toBe(first);

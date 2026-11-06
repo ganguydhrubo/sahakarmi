@@ -5,6 +5,7 @@ import type { McpServerInput, McpServerSummary } from "../shared/ipc";
 import { type FetchLike, fetchRepoText, fetchRepoTree, parseGithubUrl } from "./github-repo";
 import { JsonFile } from "./json-file";
 import { isRecord } from "./protocol";
+import type { SecretCodec } from "./secret-store";
 
 const FILE = "mcp-servers.json";
 export const MAX_MCP_SERVERS = 30;
@@ -56,16 +57,41 @@ function stringMap(value: unknown): Record<string, string> {
 export class McpServerStore {
   readonly #file: JsonFile<StoredFile>;
   readonly #fetch: FetchLike;
+  readonly #codec: SecretCodec | null;
   #servers: McpServerConfig[] = [];
 
-  constructor(userDataPath: string, fetchImpl: FetchLike = fetch as unknown as FetchLike) {
+  /** `codec` encrypts env and header values on disk (DPAPI); in memory they stay plain. */
+  constructor(
+    userDataPath: string,
+    fetchImpl: FetchLike = fetch as unknown as FetchLike,
+    codec: SecretCodec | null = null,
+  ) {
     this.#file = new JsonFile(join(userDataPath, FILE));
     this.#fetch = fetchImpl;
+    this.#codec = codec;
   }
 
   async load(): Promise<McpServerSummary[]> {
     const stored = await this.#file.read(() => ({ version: 1, servers: [] }), isStored);
-    this.#servers = stored.servers.filter((server) => isRecord(server) && NAME.test(server.name));
+    let plainOnDisk = false;
+    const open = (map: unknown) => {
+      const values = stringMap(map);
+      if (!this.#codec) return values;
+      const result: Record<string, string> = {};
+      for (const [key, value] of Object.entries(values)) {
+        if (value && !this.#codec.isSealed(value)) plainOnDisk = true;
+        // A value sealed on another PC cannot be read: it comes back empty, to be typed again.
+        result[key] = this.#codec.open(value) ?? "";
+      }
+      return result;
+    };
+    this.#servers = stored.servers
+      .filter((server) => isRecord(server) && NAME.test(server.name))
+      .map((server) =>
+        this.#codec ? { ...server, env: open(server.env), headers: open(server.headers) } : server,
+      );
+    // Keys saved by an older Sahkarmi in plain text are encrypted now.
+    if (plainOnDisk && this.#codec?.available) await this.#persist();
     return this.list();
   }
 
@@ -181,7 +207,17 @@ export class McpServerStore {
   }
 
   async #persist(): Promise<void> {
-    await this.#file.write({ version: 1, servers: this.#servers });
+    const codec = this.#codec;
+    const seal = (map: Record<string, string>) =>
+      codec ? Object.fromEntries(Object.entries(map).map(([k, v]) => [k, codec.seal(v)])) : map;
+    await this.#file.write({
+      version: 1,
+      servers: this.#servers.map((server) => ({
+        ...server,
+        env: seal(server.env),
+        headers: seal(server.headers),
+      })),
+    });
   }
 }
 

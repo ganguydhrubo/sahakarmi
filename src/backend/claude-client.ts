@@ -45,6 +45,7 @@ import {
   type RpcError,
   type ThreadResponse,
 } from "./protocol";
+import { envForProvider, hideInheritedKeys } from "./secret-store";
 
 const execFileAsync = promisify(execFile);
 const PLAN_USAGE_TIMEOUT_MS = 8_000;
@@ -329,7 +330,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     };
     // The owner's own servers first, so Sahkarmi's tools always keep their names.
     const mcpServers = {
-      ...claudeMcpServers(config.customMcpServers),
+      ...withoutClaudeKey(claudeMcpServers(config.customMcpServers)),
       ...this.#createSahkarmiServers(threadId),
     } as Record<string, SdkMcpServerConfig>;
     const claudeQuery = this.#createQuery({
@@ -345,7 +346,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           preset: "claude_code",
           append: config.developerInstructions,
         },
-        settingSources: ["user", "project", "local"],
+        // Only the owner's own Claude settings. A coworker can write files in its folder, so
+        // .claude/settings.json there must never load: its allow rules and hooks run before
+        // canUseTool and would bypass Sahkarmi's permission policy. The coworker's rules
+        // (AGENTS.md / CLAUDE.md) still reach Claude through developerInstructions.
+        settingSources: CLAUDE_SETTING_SOURCES,
         // Every tool call goes through canUseTool, where Sahkarmi's permission policy decides.
         permissionMode: "default",
         includePartialMessages: true,
@@ -1467,6 +1472,9 @@ export function thinkingTokens(effort: string): number {
   );
 }
 
+/** Filesystem settings a coworker's Claude loads: the user's only, never the workspace's. */
+export const CLAUDE_SETTING_SOURCES: Array<"user" | "project" | "local"> = ["user"];
+
 /** How long a steered turn waits for Claude's idle report before it is closed anyway. */
 const STEER_IDLE_WAIT_MS = 90_000;
 
@@ -1479,13 +1487,31 @@ function isUuid(value: string): boolean {
  * make a coworker's Claude think it is nested in it. Its own login settings are kept.
  */
 export function cleanClaudeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // Claude gets its own key only: the other providers' keys stay out of its shell and tools.
   return Object.fromEntries(
-    Object.entries(env).filter(
+    Object.entries(envForProvider("claude", env)).filter(
       ([name]) =>
         name !== "CLAUDECODE" &&
         name !== "CLAUDE_CODE_ENTRYPOINT" &&
         !name.startsWith("CLAUDE_CODE_SSE"),
     ),
+  );
+}
+
+/** The owner's stdio MCP servers would inherit Claude's key from its environment; hide it. */
+function withoutClaudeKey(
+  servers: Record<string, Record<string, unknown>>,
+): Record<string, Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(servers).map(([name, server]) => [
+      name,
+      server.type === "stdio"
+        ? {
+            ...server,
+            env: hideInheritedKeys((server.env ?? {}) as Record<string, string>, "claude"),
+          }
+        : server,
+    ]),
   );
 }
 

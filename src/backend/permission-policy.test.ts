@@ -152,7 +152,7 @@ describe("permission policy", () => {
       "dir ^& calc",
       "echo `whoami`",
       "echo $(whoami)",
-      "echo ${HOME}",
+      "echo $" + "{HOME}",
       "%COMSPEC% /c del x",
       "dir %TEMP%",
       "find . -execdir rm {} ;",
@@ -383,7 +383,10 @@ describe.sequential("PermissionService", () => {
 
   it("records automatic decisions in a bounded, redacted ring that survives a restart", async () => {
     let clock = Date.parse("2026-11-06T10:00:00Z");
-    const service = new PermissionService(root, () => new Date((clock += 1_000)));
+    const service = new PermissionService(root, () => {
+      clock += 1_000;
+      return new Date(clock);
+    });
     await service.initialize();
     for (let index = 0; index < 1_005; index += 1) {
       await service.authorize(

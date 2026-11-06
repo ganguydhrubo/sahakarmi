@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isRecord } from "../protocol";
+import type { SecretStore } from "../secret-store";
 import { COMPOSIO_CATALOG, COMPOSIO_LOGO_BASE } from "./composio-catalog";
 import { describeTool, isActionSensitive } from "./composio-policy";
 import type {
@@ -79,7 +80,12 @@ export interface ComposioClientOptions {
   baseUrl?: string;
   baseRetryDelayMs?: number;
   now?: () => number;
+  /** Keeps the key encrypted (DPAPI). Without it the key lives in composio_api_key.txt. */
+  secrets?: SecretStore;
 }
+
+/** The secret store's name for the Composio key. */
+export const COMPOSIO_SECRET = "COMPOSIO_API_KEY";
 
 interface CacheEntry<T> {
   at: number;
@@ -109,6 +115,7 @@ interface CatalogueFile {
  */
 export class ComposioClient {
   readonly #userDataPath: string;
+  readonly #secrets: SecretStore | null;
   readonly #fetch: typeof fetch;
   readonly #baseUrl: string;
   readonly #baseRetryDelayMs: number;
@@ -131,6 +138,7 @@ export class ComposioClient {
 
   constructor(options: ComposioClientOptions) {
     this.#userDataPath = options.userDataPath;
+    this.#secrets = options.secrets ?? null;
     this.#fetch = options.fetchImpl ?? globalThis.fetch;
     this.#baseUrl = (options.baseUrl ?? DEFAULT_COMPOSIO_BASE_URL).replace(/\/+$/, "");
     this.#baseRetryDelayMs = options.baseRetryDelayMs ?? 500;
@@ -175,7 +183,9 @@ export class ComposioClient {
       return fromEnv;
     }
     try {
-      const key = (await readFile(this.keyFilePath, "utf8")).trim();
+      const key = this.#secrets
+        ? await this.#secrets.get(COMPOSIO_SECRET)
+        : (await readFile(this.keyFilePath, "utf8")).trim();
       this.#cachedKey = key || null;
     } catch {
       this.#cachedKey = null;
@@ -200,9 +210,13 @@ export class ComposioClient {
     if (!trimmed) {
       this.#cachedKey = null;
       this.#keyLoaded = true;
-      await writeFile(this.keyFilePath, "", { encoding: "utf8", mode: 0o600 }).catch(
-        () => undefined,
-      );
+      if (this.#secrets) {
+        await this.#secrets.set(COMPOSIO_SECRET, null).catch(() => undefined);
+      } else {
+        await writeFile(this.keyFilePath, "", { encoding: "utf8", mode: 0o600 }).catch(
+          () => undefined,
+        );
+      }
       this.resetCaches();
       return this.getStatus();
     }
@@ -227,7 +241,8 @@ export class ComposioClient {
       }
       if (!res.ok) throw new Error(await this.#failure("check the key", res));
     }
-    await writeFile(this.keyFilePath, `${trimmed}\n`, { encoding: "utf8", mode: 0o600 });
+    if (this.#secrets) await this.#secrets.set(COMPOSIO_SECRET, trimmed);
+    else await writeFile(this.keyFilePath, `${trimmed}\n`, { encoding: "utf8", mode: 0o600 });
     this.#cachedKey = trimmed;
     this.#keyLoaded = true;
     this.resetCaches();

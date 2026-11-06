@@ -22,6 +22,7 @@ import {
   type ThreadResponse,
   type TurnRecord,
 } from "./protocol";
+import { envForProvider, hideInheritedKeys } from "./secret-store";
 
 /**
  * Agent Client Protocol (https://agentclientprotocol.com) adapter.
@@ -226,7 +227,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       : this.#config.args;
     const child = spawn(launchExecutable, launchArgs, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...this.#config.env },
+      // Each agent gets its own key only, not the other providers' keys.
+      env: { ...envForProvider(this.#config.provider, process.env), ...this.#config.env },
       windowsVerbatimArguments: isWindowsBatch,
       windowsHide: true,
     });
@@ -457,7 +459,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const mcpServers = [
       ...(await this.#mcpServersFor(mcpToken, route)),
       ...acpMcpServers(
-        readCustomMcpServers(params),
+        // A stdio server would inherit this agent's key from its environment; hide it.
+        readCustomMcpServers(params).map((server) =>
+          server.transport === "stdio"
+            ? { ...server, env: hideInheritedKeys(server.env, this.#config.provider) }
+            : server,
+        ),
         isRecord(this.#agentCapabilities.mcpCapabilities) &&
           this.#agentCapabilities.mcpCapabilities.http === true,
       ),
