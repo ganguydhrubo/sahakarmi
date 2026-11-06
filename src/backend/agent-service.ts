@@ -405,6 +405,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   >();
   /** Task approvals: one "yes" covers the same kind of step on the same site for this task. */
   readonly #taskGrants = new Map<string, number>();
+  /**
+   * Task refusals: the owner said "no" to this exact step for this task, so a retry (the
+   * coworker's own, or an automatic re-send after a failure) is refused without a new card.
+   */
+  readonly #taskDeclines = new Map<string, number>();
   /** The text a coworker last typed or pasted on each of its tabs: what a "Send" click sends. */
   readonly #typedOnTab = new Map<string, string>();
   /** A question already on its way to the owner: an identical one waits for the same answer. */
@@ -1457,6 +1462,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           this.#approvedLater.set(deferred.key, Date.now() + APPROVED_LATER_MS);
           if (deferred.grantKey)
             this.#taskGrants.set(deferred.grantKey, Date.now() + TASK_GRANT_MS);
+        } else {
+          this.#rememberDecline(declineKey(deferred.key, this.#ownerAsked(deferred.botId)));
         }
         await this.#notifyBot(
           deferred.botId,
@@ -3549,6 +3556,13 @@ ${carryOver}`
       if (until !== undefined) this.#taskGrants.delete(grantKey);
     }
     const key = permissionKey(request);
+    // The owner already said no to this exact step in this task: no second card for a retry.
+    const refusal = declineKey(key, this.#ownerAsked(request.botId));
+    const declinedUntil = this.#taskDeclines.get(refusal);
+    if (declinedUntil !== undefined) {
+      if (declinedUntil > Date.now()) return "rejected";
+      this.#taskDeclines.delete(refusal);
+    }
     const asking = this.#askingOwner.get(key);
     if (asking) return asking;
     const answer = this.#askOwnerOnce(request, key, grantKey);
@@ -3558,9 +3572,20 @@ ${carryOver}`
       if (outcome === "approved" && grantKey) {
         this.#taskGrants.set(grantKey, Date.now() + TASK_GRANT_MS);
       }
+      if (outcome === "rejected") this.#rememberDecline(refusal);
       return outcome;
     } finally {
       if (this.#askingOwner.get(key) === answer) this.#askingOwner.delete(key);
+    }
+  }
+
+  #rememberDecline(refusal: string): void {
+    this.#taskDeclines.set(refusal, Date.now() + TASK_GRANT_MS);
+    // Bounded: the oldest refusals go first.
+    while (this.#taskDeclines.size > MAX_TASK_DECLINES) {
+      const oldest = this.#taskDeclines.keys().next().value;
+      if (oldest === undefined) break;
+      this.#taskDeclines.delete(oldest);
     }
   }
 
@@ -7591,6 +7616,14 @@ function shortenReason(reason: string): string {
 export const SHORT_TOOL_WAIT_MS: Partial<Record<string, number>> = { antigravity: 150_000 };
 /** How long one approval covers the same kind of step on the same site for the same task. */
 const TASK_GRANT_MS = 2 * 60 * 60_000;
+const MAX_TASK_DECLINES = 500;
+
+/** One "no": the same step (permissionKey) under the same owner instruction. */
+export function declineKey(key: string, ownerInstruction: string | null): string {
+  return `${key}
+${ownerInstruction ?? ""}`;
+}
+
 /** Steps that one approval may cover for a whole task; money and account changes never are. */
 const TASK_GRANT_CATEGORIES = new Set<string>([
   "publication",

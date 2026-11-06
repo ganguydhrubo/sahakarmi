@@ -563,6 +563,59 @@ describe.sequential("AgentService", () => {
     expect(permissions.audit()[0]).toMatchObject({ category: "payments", decision: "approved" });
   });
 
+  it("asks once per task: a retry after the owner says no gets no second card", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    const { store, mailbox } = stores();
+    const permissions = new PermissionService(join(root, "user-data"));
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      new ApprovalStore(join(root, "user-data")),
+      permissions,
+    );
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Pay the vendor today" });
+    await waitFor(() =>
+      service?.listQueue("asha-accounts").deliveries.every((d) => d.status === "completed"),
+    );
+    const pending = () =>
+      service?.listApprovals().filter((approval) => approval.status === "pending") ?? [];
+    const pay = {
+      botId: "asha-accounts",
+      provider: "codex",
+      category: "payments" as const,
+      action: "Pay Rs 5,000 to the vendor",
+      paths: [],
+      browser: { type: "click", label: "Pay now button", url: "https://pay.example.in/checkout" },
+    };
+    const first = permissions.authorize(pay, [root]);
+    await waitFor(() => pending().length === 1);
+    await service.decideApproval({ approvalId: pending()[0]?.id ?? "", decision: "rejected" });
+    expect(await first).toMatchObject({ allowed: false });
+
+    // The same step again in the same task (the coworker retries, or an automatic re-send after
+    // a failure): refused at once, with no new card for the owner.
+    expect(await permissions.authorize(pay, [root])).toMatchObject({
+      allowed: false,
+      reason: "The owner declined this action.",
+    });
+    expect(pending()).toHaveLength(0);
+    expect(service.listApprovals()).toHaveLength(1);
+
+    // A new instruction from the owner is a new task: it asks again.
+    await service.sendMessage({ botId: "asha-accounts", text: "Pay the other vendor now" });
+    await waitFor(() =>
+      service?.listQueue("asha-accounts").deliveries.every((d) => d.status === "completed"),
+    );
+    void permissions.authorize(pay, [root]);
+    await waitFor(() => pending().length === 1);
+    expect(service.listApprovals()).toHaveLength(2);
+  });
+
   it("sends a coworker's browser downloads through the downloads permission", async () => {
     const { store, mailbox } = stores();
     let authorize: ((request: DownloadRequest) => Promise<boolean>) | null = null;
