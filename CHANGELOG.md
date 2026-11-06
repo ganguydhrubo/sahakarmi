@@ -5,6 +5,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-06
+
 ### Fixed
 
 - Windows updates: "Restart to update" no longer loops. Sahkarmi now closes completely before a
