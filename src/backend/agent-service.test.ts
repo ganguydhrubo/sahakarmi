@@ -9,6 +9,7 @@ import {
   AgentService,
   isNoisyDiagnostic,
   isQuotaError,
+  isTransientError,
   previewText,
   quotaNotice,
   SHORT_TOOL_WAIT_MS,
@@ -1357,7 +1358,7 @@ describe.sequential("AgentService", () => {
     await waitFor(() => events.some((event) => event.type === "turn-started"));
     const active = events.find((event) => event.type === "turn-started");
     if (active?.type !== "turn-started") throw new Error("Turn did not start.");
-    await service.sendMessage({ botId: "chief", text: "Also check the footer" });
+    await service.sendMessage({ botId: "chief", text: "Also check the footer", steer: true });
 
     const steer = (await protocolMessages()).find((message) => message.method === "turn/steer");
     const params = steer?.params as Record<string, unknown> | undefined;
@@ -1368,6 +1369,47 @@ describe.sequential("AgentService", () => {
     expect(
       (await protocolMessages()).filter((message) => message.method === "turn/start"),
     ).toHaveLength(1);
+  });
+
+  it.each([
+    ["routine", "Routine step 2: send the report"],
+    ["team-run", "Team run: launch. Your task: QA"],
+    ["schedule", "[Scheduled task] Daily summary"],
+  ] as const)(
+    "queues a %s message sent during a busy turn instead of steering it in",
+    async (origin, text) => {
+      const { store, mailbox } = stores();
+      service = new AgentService(store, mailbox, fakeBrowser());
+      const events: AgentEvent[] = [];
+      service.on("event", (event) => events.push(event));
+      await service.initialize();
+
+      await service.sendMessage({ botId: "chief", text: "Start" });
+      await waitFor(() => events.some((event) => event.type === "turn-started"));
+      await service.sendMessage({ botId: "chief", text, origin });
+
+      expect((await protocolMessages()).some((message) => message.method === "turn/steer")).toBe(
+        false,
+      );
+      const queue = service.listQueue("chief");
+      expect(queue.deliveries.map((item) => item.status)).toEqual(["running", "queued"]);
+      expect(queue.deliveries[1]?.origin).toBe(origin);
+    },
+  );
+
+  it("queues an owner message without the composer's steer flag (Telegram, buttons)", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    await service.sendMessage({ botId: "chief", text: "Start" });
+    await waitFor(() => events.some((event) => event.type === "turn-started"));
+    await service.sendMessage({ botId: "chief", text: "Next thing" });
+    expect(service.listQueue("chief").deliveries.map((item) => item.status)).toEqual([
+      "running",
+      "queued",
+    ]);
   });
 
   it("queues FIFO when the running turn cannot take the message, and pause/resume controls draining", async () => {
@@ -1382,7 +1424,7 @@ describe.sequential("AgentService", () => {
     await waitFor(() => events.some((event) => event.type === "turn-started"));
     const active = events.find((event) => event.type === "turn-started");
     if (active?.type !== "turn-started") throw new Error("Turn did not start.");
-    await service.sendMessage({ botId: "chief", text: "Run after the first task" });
+    await service.sendMessage({ botId: "chief", text: "Run after the first task", steer: true });
 
     let queue = service.listQueue("chief");
     expect(queue.deliveries.map((item) => item.status)).toEqual(["running", "queued"]);
@@ -2709,6 +2751,37 @@ describe("plan and credit limits", () => {
     for (const reason of ["ENOENT: no such file", "Tool call failed: timeout", ""]) {
       expect(isQuotaError(reason), reason).toBe(false);
     }
+  });
+
+  it.each([
+    ["HTTP 429", true],
+    ["status: 429", true],
+    ["Request failed with status code 429", true],
+    ["429 Too Many Requests", true],
+    ["rate_limit_error: Number of requests exceeded", true],
+    ["Failed to edit src/billing.ts: old_string not found", false],
+    ["Could not connect to localhost port 4290", false],
+    ["Wrote 1429 rows to report.csv", false],
+    ["Overloaded", false],
+    ["overloaded_error (529)", false],
+    ["Unable to open quota-report.xlsx", false],
+  ])("isQuotaError(%j) is %s", (reason, expected) => {
+    expect(isQuotaError(reason)).toBe(expected);
+  });
+
+  it.each([
+    ["Overloaded", true],
+    ["API Error: 529 overloaded_error", true],
+    ["HTTP 503 Service Unavailable", true],
+    ["request to https://api.example failed, reason: socket hang up", true],
+    ["fetch failed", true],
+    ["read ECONNRESET", true],
+    ["Could not connect to localhost port 5030", false],
+    ["Failed to edit src/billing.ts", false],
+    ["HTTP 429", false],
+    ["ENOENT: no such file", false],
+  ])("isTransientError(%j) is %s", (reason, expected) => {
+    expect(isTransientError(reason)).toBe(expected);
   });
 });
 

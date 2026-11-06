@@ -55,7 +55,9 @@ import {
   type BranchConversationInput,
   type ConversationMessage,
   type CreateFolderInput,
+  DEFAULT_ENGINE_SETTINGS,
   DEFAULT_MODEL_FOR_PROVIDER,
+  type EngineSettings,
   isAcpAgentProvider,
   isAvatarColor,
   isAvatarShape,
@@ -413,6 +415,28 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #quotaNoticeAt = new Map<string, number>();
   /** Deliveries already re-sent on the free model: one fallback per message, never a loop. */
   readonly #fallbackRetried = new Set<string>();
+  /** Brief-fault retries already spent on a message, by the delivery now carrying it. */
+  readonly #transientRetries = new Map<string, number>();
+  /** Coworkers whose queue waits while a re-send is being prepared (model switch, backoff). */
+  readonly #heldDrains = new Set<string>();
+  /** Coworkers with a queued message waiting for a free turn slot (the concurrent-turn cap). */
+  readonly #waitingForSlot = new Set<string>();
+  /** Last sign of life from each coworker's running turn (the no-progress watchdog). */
+  readonly #progressAt = new Map<string, number>();
+  #watchdogTimer: NodeJS.Timeout | null = null;
+  /** Last hop-limit notice per coworker. */
+  readonly #hopNoticeAt = new Map<string, number>();
+  #engineSettings: () => EngineSettings = () => DEFAULT_ENGINE_SETTINGS;
+  /** A coworker's own model and conversation while one message runs on a fallback model. */
+  readonly #ownRuntime = new Map<
+    string,
+    {
+      model: BotSummary["model"];
+      reasoningEffort: BotSummary["reasoningEffort"];
+      threadId: string | null;
+      fallbackModel?: BotSummary["model"];
+    }
+  >();
   /** The last error text each coworker's turn reported, to recognise a quota failure. */
   readonly #lastTurnError = new Map<string, string>();
   /** Per coworker: how often the current request was continued, and the open steps last seen. */
@@ -471,8 +495,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #geminiRotation: GeminiRotation | null = null;
   /** The Google account the running Gemini server was started with. */
   #geminiClientAccount: string | null = null;
-  /** When Google last reported a quota or rate limit (stderr only; the turn just ends empty). */
-  #geminiQuotaAt = 0;
+  /**
+   * When Google last reported a quota or rate limit, per Google account (stderr only; the turn
+   * just ends empty). Per account, so a limit on one account never blames the next one.
+   */
+  readonly #geminiQuotaAt = new Map<string, number>();
   readonly #geminiIdle = new IdleWatch({
     isBusy: () => this.#providerBusy("antigravity") || this.#providerStarts.has("antigravity"),
     onIdle: () => this.#sleepProvider("antigravity"),
@@ -488,8 +515,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #preferredProvider: AgentProvider;
   #initialized = false;
   #stopping = false;
-  #restartAttempts = 0;
-  #restartTimer: NodeJS.Timeout | null = null;
+  /** Restarts tried per provider since it was last ready: one crash loop never blocks another. */
+  readonly #restartAttempts = new Map<AgentProvider, number>();
+  readonly #restartTimers = new Map<AgentProvider, NodeJS.Timeout>();
   #models = structuredClone(FALLBACK_MODELS);
   readonly #providerCatalogs = new Map<AgentProvider, AgentModelOption[]>();
   readonly #signedOutCheckAt = new Map<AgentProvider, number>();
@@ -1670,7 +1698,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   async #notifyBot(botId: string, text: string): Promise<void> {
     if (!this.#store.list().some((bot) => bot.id === botId)) return;
     try {
-      await this.sendMessage({ botId, text });
+      await this.sendMessage({ botId, text, origin: "system" });
     } catch (error) {
       this.#emitError("notify_failed", error, botId);
     }
@@ -1915,8 +1943,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#stopping = true;
     this.#flushDeliverables();
     this.#initialized = false;
-    if (this.#restartTimer) clearTimeout(this.#restartTimer);
-    this.#restartTimer = null;
+    for (const timer of this.#restartTimers.values()) clearTimeout(timer);
+    this.#restartTimers.clear();
+    if (this.#watchdogTimer) clearInterval(this.#watchdogTimer);
+    this.#watchdogTimer = null;
     this.#clearCompactionRuntime();
     this.#pendingPrompts.clear();
     this.#scheduledDrains.clear();
@@ -2057,6 +2087,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (this.#mailbox.listQueue(bot.id).paused) await this.#mailbox.setPaused(bot.id, false);
     const receipt = await this.#mailbox.enqueue({
       sender: { kind: "user" },
+      origin: input.origin ?? "owner",
       recipientBotIds: [bot.id],
       text: input.text,
       draftIds: input.attachmentDraftIds ?? [],
@@ -2073,7 +2104,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "bots-changed", bots: this.#store.list() });
     this.#emitConversation(snapshot);
     this.#emitQueue(bot.id);
-    if (await this.#steerActiveTurn(bot, delivery)) {
+    // Only what the owner types in the composer joins a running turn. Team-run tasks, routine
+    // steps, schedules and the app's own notes queue, so each gets a turn (and a reply) of its own.
+    if (input.steer === true && (await this.#steerActiveTurn(bot, delivery))) {
       this.#syncMailboxMessages(snapshot);
       this.#emitConversation(snapshot);
       this.#emitQueue(bot.id);
@@ -2120,25 +2153,57 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         delivery.text,
       ].join("\n");
     }
-    try {
-      await this.#mailbox.markStarting(delivery.id);
-      await withTimeout(
-        client.request("turn/steer", {
-          threadId: bot.threadId,
-          expectedTurnId: turnId,
-          clientUserMessageId: delivery.id,
-          input: [{ type: "text", text }],
-        }),
-        STEER_TIMEOUT_MS,
-      );
-    } catch (error) {
-      this.emit("log", `steering ${bot.id} failed, queued instead: ${String(error)}`);
+    await this.#mailbox.markStarting(delivery.id);
+    const request = client.request("turn/steer", {
+      threadId: bot.threadId,
+      expectedTurnId: turnId,
+      clientUserMessageId: delivery.id,
+      input: [{ type: "text", text }],
+    });
+    const outcome = await steerOutcome(request, () =>
+      this.#steerLanded(client, bot.threadId ?? "", turnId, delivery.id),
+    );
+    if (outcome === "refused") {
+      this.emit("log", `steering ${bot.id} was refused, queued instead`);
       await this.#mailbox.markQueuedAgain(delivery.id).catch(() => undefined);
       return false;
+    }
+    if (outcome === "unconfirmed") {
+      // Sending it again could run the same request twice (a second payment, a second post),
+      // so an unanswered steer counts as delivered and the owner is told to check.
+      this.#emit({
+        type: "notice",
+        botId: bot.id,
+        code: "steer_unconfirmed",
+        message: `${bot.name} did not confirm it received your last message. If it does not react to it, send it again.`,
+      });
     }
     await this.#mailbox.markRunning(delivery.id, turnId);
     await this.#mailbox.markTerminal(delivery.id, "completed");
     return true;
+  }
+
+  /** True when the running turn holds the steered message, null when the thread cannot be read. */
+  async #steerLanded(
+    client: AgentClient,
+    threadId: string,
+    turnId: string,
+    deliveryId: string,
+  ): Promise<boolean | null> {
+    try {
+      const response = await client.request<ThreadResponse>(
+        "thread/read",
+        { threadId, includeTurns: true },
+        5_000,
+      );
+      const turn = response.thread.turns?.find((candidate) => candidate.id === turnId);
+      if (!turn) return null;
+      return Boolean(
+        turn.items?.some((item) => item.type === "userMessage" && item.clientId === deliveryId),
+      );
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -2243,6 +2308,88 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await this.#mailbox.setReaction(bot.id, input.messageId, input.emoji);
     this.#syncMailboxMessages(current);
     this.#emitConversation(current);
+  }
+
+  /** Any sign of life from a coworker's turn: text, a tool, a plan change. Feeds the watchdog. */
+  #noteProgress(botId: string): void {
+    this.#progressAt.set(botId, Date.now());
+    if (this.#watchdogTimer || this.#stopping) return;
+    this.#watchdogTimer = setInterval(() => void this.#checkWatchdog(), WATCHDOG_TICK_MS);
+    this.#watchdogTimer.unref?.();
+  }
+
+  /**
+   * A turn with no sign of life for the owner's watchdog time is stopped with a plain note, so
+   * a hung provider never holds a coworker (and a turn slot) forever. A turn waiting on the
+   * owner (an approval, a password card, a browser takeover) is waiting, not hung.
+   */
+  async #checkWatchdog(): Promise<void> {
+    const limitMs = this.#engineSettings().watchdogMinutes * 60_000;
+    const now = Date.now();
+    let active = 0;
+    for (const [botId, snapshot] of this.#snapshots) {
+      const turnId = snapshot.activeTurnId;
+      if (!turnId) continue;
+      active += 1;
+      const last = this.#progressAt.get(botId) ?? this.#turnStartedAt.get(botId) ?? now;
+      if (now - last < limitMs || this.#waitingOnOwner(botId)) continue;
+      this.#progressAt.set(botId, now);
+      await this.stopTurn(botId, turnId, "watchdog").catch((error) =>
+        this.#emitError("watchdog_interrupt_failed", error, botId),
+      );
+    }
+    if (active === 0 && this.#watchdogTimer) {
+      clearInterval(this.#watchdogTimer);
+      this.#watchdogTimer = null;
+    }
+  }
+
+  #waitingOnOwner(botId: string): boolean {
+    if (this.#takeover.humanInControl) return true;
+    if ((this.#approvals?.list() ?? []).some((a) => a.botId === botId && a.status === "pending")) {
+      return true;
+    }
+    return [...this.#secureInputs.values()].some((pending) => pending.request.botId === botId);
+  }
+
+  /**
+   * Stops one turn without pausing the coworker's queue (unlike the owner's Stop): used by the
+   * watchdog and by a cancelled team run. The coworker's chat says why.
+   */
+  async stopTurn(botId: string, turnId: string, reason: "watchdog" | "team-run"): Promise<void> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot?.threadId) return;
+    const client = this.#clientForBot(bot);
+    if (!client) return;
+    await this.#cancelPausedToolCalls(botId);
+    await client.request("turn/interrupt", { threadId: bot.threadId, turnId });
+    const minutes = this.#engineSettings().watchdogMinutes;
+    this.#emit({
+      type: "notice",
+      botId,
+      code: reason === "watchdog" ? "turn_watchdog" : "team_run_stopped",
+      message:
+        reason === "watchdog"
+          ? `${bot.name} showed no progress for ${minutes} minutes, so Sahkarmi stopped this turn. Send the message again to retry, or change the time limit in Settings > Features.`
+          : `The team run was stopped, so ${bot.name}'s task for it was stopped too.`,
+    });
+  }
+
+  /**
+   * Withdraws a task the app sent (a cancelled team run): a queued copy is removed, a running
+   * one is stopped. Anything already finished is left as it is.
+   */
+  async withdrawDelivery(botId: string, deliveryId: string): Promise<void> {
+    const delivery = this.#mailbox.getDelivery(deliveryId)?.delivery;
+    if (!delivery || delivery.recipientBotId !== botId) return;
+    if (delivery.status === "queued") {
+      await this.cancelQueuedMessage(botId, deliveryId);
+      return;
+    }
+    const turnId = delivery.turnId ?? this.#snapshots.get(botId)?.activeTurnId ?? null;
+    if ((delivery.status === "running" || delivery.status === "starting") && turnId) {
+      await this.stopTurn(botId, turnId, "team-run");
+    }
   }
 
   async interrupt(botId: string, turnId: string): Promise<void> {
@@ -2460,7 +2607,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         ? await this.#probeComputerUse(codexClient)
         : "unavailable";
     if (this.#stopping) return;
-    this.#restartAttempts = 0;
+    for (const provider of requestedProviders) {
+      if (this.#clients.has(provider)) this.#restartAttempts.delete(provider);
+    }
     this.#setStatus({
       phase: "ready",
       cliVersion: this.#cli.get(primaryProvider)?.version ?? null,
@@ -2768,7 +2917,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const quota = quotaNotice(client.provider, message);
       if (quota) {
         const now = Date.now();
-        if (client.provider === "antigravity") this.#geminiQuotaAt = now;
+        if (client.provider === "antigravity") {
+          this.#geminiQuotaAt.set(this.#geminiClientAccount ?? "", now);
+        }
         for (const botId of this.#botsWorkingOn(client.provider)) {
           if (now - (this.#quotaNoticeAt.get(botId) ?? 0) < QUOTA_NOTICE_INTERVAL_MS) continue;
           this.#quotaNoticeAt.set(botId, now);
@@ -2822,7 +2973,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     const anotherProviderIsReady = this.#clients.size > 0;
 
-    if (this.#restartAttempts >= 3) {
+    const attempts = this.#restartAttempts.get(client.provider) ?? 0;
+    if (attempts >= 3) {
       this.#setStatus(
         anotherProviderIsReady
           ? {
@@ -2841,8 +2993,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       return;
     }
 
-    const delayMs = 500 * 2 ** this.#restartAttempts;
-    this.#restartAttempts += 1;
+    const delayMs = 500 * 2 ** attempts;
+    this.#restartAttempts.set(client.provider, attempts + 1);
     this.#setStatus(
       anotherProviderIsReady
         ? {
@@ -2855,13 +3007,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             phase: "restarting",
             providers,
             capabilities: { ...this.#status.capabilities, chat: "unavailable" },
-            message: `${providerLabel(client.provider)} stopped. Retrying (${this.#restartAttempts}/3)…`,
+            message: `${providerLabel(client.provider)} stopped. Retrying (${attempts + 1}/3)…`,
           },
     );
-    this.#restartTimer = setTimeout(() => {
-      this.#restartTimer = null;
-      void this.#connect("restarting", [client.provider]);
-    }, delayMs);
+    const previous = this.#restartTimers.get(client.provider);
+    if (previous) clearTimeout(previous);
+    this.#restartTimers.set(
+      client.provider,
+      setTimeout(() => {
+        this.#restartTimers.delete(client.provider);
+        void this.#connect("restarting", [client.provider]);
+      }, delayMs),
+    );
   }
 
   async #buildDynamicTools(botId: string): Promise<unknown[]> {
@@ -4029,9 +4186,17 @@ ${carryOver}`
       throw new Error("replyToMessageId must be a message id.");
     }
     if (typeof params.arguments.text !== "string") throw new Error("text is required.");
+    const hops = this.#nextHop(params.turnId);
+    if (hops > MAX_AGENT_HOPS) {
+      this.#noteHopLimit(senderBotId);
+      throw new Error(
+        `Stopped: this chain of coworker messages reached ${MAX_AGENT_HOPS} hops without the owner. Do not send more messages for it; finish with what you have and report to the owner.`,
+      );
+    }
 
     const receipt = await this.#mailbox.enqueue({
       sender: { kind: "bot", botId: senderBotId },
+      hops,
       recipientBotIds: recipientValues,
       text: params.arguments.text,
       sourcePaths: paths,
@@ -4206,6 +4371,7 @@ ${carryOver}`
       this.#stopping ||
       this.#drainingBots.has(botId) ||
       this.#compactingBots.has(botId) ||
+      this.#heldDrains.has(botId) ||
       this.#status.phase !== "ready"
     )
       return;
@@ -4237,16 +4403,96 @@ ${carryOver}`
         }
         return;
       }
+      // Too many coworkers working at once slows a small PC to a crawl: this one waits for a
+      // free slot and starts when any running turn ends.
+      if (!this.#hasTurnSlot(botId)) {
+        this.#noteWaitingForSlot(botId);
+        return;
+      }
+      this.#waitingForSlot.delete(botId);
       attempted = true;
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
         return;
       }
+      await this.#restoreOwnRuntime(botId, context);
       await this.#startDelivery(context);
     } finally {
       this.#drainingBots.delete(botId);
       if (attempted && this.#mailbox.nextQueued(botId)) this.#scheduleDrain(botId);
+      if (attempted) this.#drainWaitingForSlot();
     }
+  }
+
+  /** Coworkers with a turn running or starting right now. */
+  #busyBotIds(): Set<string> {
+    const busy = new Set<string>();
+    for (const [id, snapshot] of this.#snapshots) if (snapshot.activeTurnId) busy.add(id);
+    for (const id of this.#drainingBots) busy.add(id);
+    for (const deliveryId of this.#startingDeliveries) {
+      const recipient = this.#mailbox.getDelivery(deliveryId)?.delivery.recipientBotId;
+      if (recipient) busy.add(recipient);
+    }
+    return busy;
+  }
+
+  #hasTurnSlot(botId: string): boolean {
+    const busy = this.#busyBotIds();
+    busy.delete(botId);
+    return busy.size < this.#engineSettings().maxConcurrentTurns;
+  }
+
+  #noteWaitingForSlot(botId: string): void {
+    if (this.#waitingForSlot.has(botId)) return;
+    this.#waitingForSlot.add(botId);
+    const limit = this.#engineSettings().maxConcurrentTurns;
+    this.#emit({
+      type: "notice",
+      botId,
+      code: "waiting_for_turn_slot",
+      message: `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
+    });
+  }
+
+  /** Google reported a limit for the account Gemini runs on right now, a moment ago. */
+  #geminiQuotaJustHit(): boolean {
+    const at = this.#geminiQuotaAt.get(this.#geminiClientAccount ?? "") ?? 0;
+    return Date.now() - at < GEMINI_QUOTA_WINDOW_MS;
+  }
+
+  /** A turn ended: coworkers waiting for a slot get their chance, oldest first. */
+  #drainWaitingForSlot(): void {
+    for (const botId of [...this.#waitingForSlot]) {
+      if (!this.#mailbox.nextQueued(botId)) {
+        this.#waitingForSlot.delete(botId);
+        continue;
+      }
+      this.#scheduleDrain(botId);
+    }
+  }
+
+  /**
+   * Coworker-to-coworker hops in a row, counting the message this turn would send. A turn the
+   * owner started begins at one; a turn started by a colleague's message adds one to its count.
+   */
+  #nextHop(turnId: string): number {
+    const incoming = this.#mailbox.findDeliveryByTurn(turnId)?.delivery;
+    if (incoming?.sender.kind !== "bot") return 1;
+    return (incoming.hops ?? 1) + 1;
+  }
+
+  /** The owner sees why a chain of coworker messages stopped (once a minute per coworker). */
+  #noteHopLimit(botId: string): void {
+    const now = Date.now();
+    if (now - (this.#hopNoticeAt.get(botId) ?? 0) < 60_000) return;
+    this.#hopNoticeAt.set(botId, now);
+    const name = this.#store.list().find((bot) => bot.id === botId)?.name ?? "A coworker";
+    this.#emit({
+      type: "notice",
+      botId,
+      code: "agent_hop_limit",
+      message: `${name}'s coworkers passed this task back and forth ${MAX_AGENT_HOPS} times without you, so Sahkarmi stopped the chain. Read the latest replies and tell them how to go on.`,
+    });
   }
 
   /** Tells a CEO which employees it is still waiting on, so it reports once, with everything. */
@@ -4363,6 +4609,7 @@ ${carryOver}`
         }
       }
       this.#turnStartedAt.set(bot.id, Date.now() - 1_000);
+      this.#noteProgress(bot.id);
       const input: Array<Record<string, unknown>> = [{ type: "text", text }];
       for (const attachment of managedAttachments) {
         input.push(
@@ -4772,6 +5019,7 @@ ${carryOver}`
     const threadId = getString(params, "threadId");
     const botId = threadId ? this.#threadToBot.get(threadId) : undefined;
     this.#rememberFileChange(notification);
+    if (botId) this.#noteProgress(botId);
 
     switch (notification.method) {
       case "turn/started": {
@@ -5036,7 +5284,7 @@ ${carryOver}`
       // Google's server answers a quota error with an "ok" and no text; a blank is not an answer.
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       const label = bot ? PROVIDER_LABELS[providerForBot(bot)] : "The AI";
-      const quotaJustHit = Date.now() - this.#geminiQuotaAt < GEMINI_QUOTA_WINDOW_MS;
+      const quotaJustHit = this.#geminiQuotaJustHit();
       const fellBack = delivery
         ? (quotaJustHit && (await this.#rotateGeminiAccount(botId, delivery))) ||
           (await this.#fallBackToFreeModel(botId, delivery, "sent back an empty reply"))
@@ -5058,6 +5306,8 @@ ${carryOver}`
         if (!(await this.#rotateGeminiAccount(botId, delivery))) {
           await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
         }
+      } else if (isTransientError(reason)) {
+        await this.#retryTransient(botId, turnId, delivery);
       }
     }
     this.#lastTurnError.delete(botId);
@@ -5079,6 +5329,7 @@ ${carryOver}`
     }
     if (shouldCompact) await this.#requestContextCompaction(botId, threadId);
     else this.#scheduleDrain(botId);
+    this.#drainWaitingForSlot();
   }
 
   /** The rules file as it was before the turn, so a change by the coworker can be announced. */
@@ -5142,6 +5393,11 @@ ${carryOver}`
     plan: TurnPlan | undefined,
   ): Promise<void> {
     if (!this.#continuationEnabled() || delivery.sender.kind !== "user") return;
+    // A team-run task or routine step is judged by its engine, which waits for this reply; a
+    // "[Continue]" turn behind its back would hand the engine a half-finished answer.
+    if ("origin" in delivery && (delivery.origin === "team-run" || delivery.origin === "routine")) {
+      return;
+    }
     // The owner already sent the next thing: nothing to prompt.
     if (this.#mailbox.nextQueued(botId)) return;
     const previous = this.#continuations.get(botId) ?? null;
@@ -5165,6 +5421,12 @@ ${carryOver}`
   /** Lets the app switch automatic continuation off (Settings > Features). */
   configureContinuation(enabled: () => boolean): void {
     this.#continuationEnabled = enabled;
+  }
+
+  /** The owner's concurrent-turn cap and no-progress watchdog (read live, so changes act at once). */
+  configureEngineSettings(settings: () => EngineSettings): void {
+    this.#engineSettings = settings;
+    this.#drainWaitingForSlot();
   }
 
   /**
@@ -5369,9 +5631,15 @@ ${carryOver}`
       this.#mailbox.hasBotMessageFromTurnTo(botId, turnId, recipientBotId)
     )
       return;
+    const hops = (delivery.delivery.hops ?? 0) + 1;
+    if (hops > MAX_AGENT_HOPS) {
+      this.#noteHopLimit(botId);
+      return;
+    }
 
     await this.#mailbox.enqueue({
       sender: { kind: "bot", botId },
+      hops,
       recipientBotIds: [recipientBotId],
       text,
       replyToMessageId: messageId,
@@ -5627,11 +5895,96 @@ ${carryOver}`
   }
 
   /**
-   * A paid provider that cannot answer (quota, rate limit, blank reply) must not leave the
-   * owner staring at nothing: the coworker moves to the bundled free model, the owner is told
-   * why, and the same message is sent again there. Only once per message, and never when the
-   * coworker already runs on the free model or that model is unavailable.
+   * The checks every automatic re-send shares: a text message (no files) from the owner or the
+   * app on the owner's behalf, sent again at most once per copy.
    */
+  #canResend(delivery: DeliveryContext): boolean {
+    return (
+      delivery.delivery.sender.kind === "user" &&
+      Boolean(delivery.delivery.text.trim()) &&
+      delivery.managedAttachments.length === 0 &&
+      !this.#fallbackRetried.has(delivery.delivery.id)
+    );
+  }
+
+  /**
+   * Sends a failed message again. The new copy is queued and linked to the failed one at once
+   * (so a team run or routine waiting on the failed copy follows it), the failed copy is hidden,
+   * and the queue only moves on after `prepare` (a model or account switch) and `delayMs`.
+   */
+  async #resend(
+    botId: string,
+    delivery: DeliveryContext,
+    options: { prepare?: () => Promise<void>; delayMs?: number } = {},
+  ): Promise<string> {
+    this.#fallbackRetried.add(delivery.delivery.id);
+    this.#heldDrains.add(botId);
+    let nextId: string;
+    try {
+      const receipt = await this.#mailbox.enqueue({
+        sender: { kind: "user" },
+        origin: delivery.delivery.origin ?? "owner",
+        recipientBotIds: [botId],
+        text: delivery.delivery.text,
+      });
+      nextId = receipt.deliveries[0].id;
+      // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
+      await this.#mailbox.markRetried(delivery.delivery.id, nextId).catch(() => undefined);
+      this.#transientRetries.set(nextId, this.#transientRetries.get(delivery.delivery.id) ?? 0);
+      if (this.#mailbox.listQueue(botId).paused) await this.#mailbox.setPaused(botId, false);
+      const snapshot = this.#ensureSnapshot(
+        botId,
+        this.#store.list().find((bot) => bot.id === botId)?.threadId ?? null,
+      );
+      this.#syncMailboxMessages(snapshot);
+      this.#emitConversation(snapshot);
+      this.#emitQueue(botId);
+      await options.prepare?.();
+    } finally {
+      if (!options.delayMs) this.#heldDrains.delete(botId);
+    }
+    if (options.delayMs) {
+      const timer = setTimeout(() => {
+        this.#heldDrains.delete(botId);
+        this.#scheduleDrain(botId);
+      }, options.delayMs);
+      timer.unref?.();
+    } else {
+      this.#scheduleDrain(botId);
+    }
+    return nextId;
+  }
+
+  /**
+   * A brief provider fault (overloaded, 5xx, network) is tried again on the same model after a
+   * short wait: at most twice per message (2 s, then 8 s), and never when the failed turn already
+   * used a tool, so nothing the coworker did is repeated.
+   */
+  async #retryTransient(
+    botId: string,
+    turnId: string,
+    delivery: DeliveryContext,
+  ): Promise<boolean> {
+    if (!this.#canResend(delivery)) return false;
+    const attempts = this.#transientRetries.get(delivery.delivery.id) ?? 0;
+    if (attempts >= MAX_TRANSIENT_RETRIES) return false;
+    const snapshot = this.#snapshots.get(botId);
+    const usedTools = snapshot?.messages.some(
+      (message) =>
+        message.turnId === turnId && (message.itemType === "toolCall" || Boolean(message.tool)),
+    );
+    if (usedTools) return false;
+    const delayMs = TRANSIENT_RETRY_DELAYS_MS[attempts] ?? 8_000;
+    this.#emitError(
+      "transient_retry",
+      `The AI service had a brief problem, so this message is being sent again in ${Math.round(delayMs / 1000)} s (try ${attempts + 1} of ${MAX_TRANSIENT_RETRIES}).`,
+      botId,
+    );
+    const nextId = await this.#resend(botId, delivery, { delayMs });
+    this.#transientRetries.set(nextId, attempts + 1);
+    return true;
+  }
+
   /**
    * A Gemini coworker's message hit Google's usage limit: move Gemini to the owner's next
    * signed-in Google account, restart Google's server on it and send the message again there.
@@ -5642,9 +5995,7 @@ ${carryOver}`
     const rotation = this.#geminiRotation;
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
     if (!rotation || !bot || providerForBot(bot) !== "antigravity") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    if (!this.#canResend(delivery)) return false;
     let plan: Awaited<ReturnType<GeminiRotation["plan"]>>;
     try {
       plan = await rotation.plan(botId, this.#geminiClientAccount);
@@ -5652,82 +6003,88 @@ ${carryOver}`
       return false;
     }
     if (plan.kind === "none") return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
     this.#emitError(
       "fallback_model",
       `Google's limit for this account is used up, so Gemini moved to your next Google account and ${bot.name} is answering your message again there.`,
       botId,
     );
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    if (plan.kind === "switch") {
-      this.emit("log", "antigravity moved to the next Google account after a usage limit");
-      await this.#restartProvider("antigravity").catch(() => undefined);
-    }
-    await this.sendMessage({ botId, text: delivery.delivery.text });
-    return true;
-  }
-
-  async #fallBackToFreeModel(
-    botId: string,
-    delivery: DeliveryContext,
-    reason: string,
-  ): Promise<boolean> {
-    const bot = this.#store.list().find((candidate) => candidate.id === botId);
-    if (!bot || providerForBot(bot) === "opencode") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
-    const free = this.#status.providers?.find((provider) => provider.id === "opencode");
-    if (free?.state !== "available") return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
-    const from = PROVIDER_LABELS[providerForBot(bot)];
-    try {
-      await this.updateBot({ botId, model: "opencode-free" });
-    } catch {
-      this.#fallbackRetried.delete(delivery.delivery.id);
-      return false;
-    }
-    this.#emitError(
-      "fallback_model",
-      `${from} ${reason}, so ${bot.name} switched to the free model and is answering your message again there. Switch back from the model picker whenever you like.`,
-      botId,
-    );
-    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    await this.sendMessage({ botId, text: delivery.delivery.text });
+    await this.#resend(botId, delivery, {
+      prepare: async () => {
+        if (plan.kind !== "switch") return;
+        this.emit("log", "antigravity moved to the next Google account after a usage limit");
+        await this.#restartProvider("antigravity").catch(() => undefined);
+      },
+    });
     return true;
   }
 
   /**
-   * OpenCode's free limit is used up for every free model: move the coworker to another free
-   * provider the owner has already connected (Gemini, GitHub Copilot, Kiro) and send the message
-   * again there, once per message. Nothing connected → the owner keeps the clear limit message.
+   * A paid provider that cannot answer (quota, rate limit, blank reply) must not leave the
+   * owner staring at nothing: this one message is answered on a free model, the owner is told
+   * why, and the coworker goes back to its own model (and its own conversation) with the next
+   * message. Only once per message, and never when the free target is unavailable.
    */
-  async #fallBackToOtherFreeProvider(botId: string, delivery: DeliveryContext): Promise<boolean> {
+  async #fallBackTo(
+    botId: string,
+    delivery: DeliveryContext,
+    model: BotSummary["model"],
+    notice: (botName: string) => string,
+  ): Promise<boolean> {
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
-    if (!bot || providerForBot(bot) !== "opencode") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
+    if (!bot || !this.#canResend(delivery)) return false;
+    const own = this.#ownRuntime.get(botId) ?? {
+      model: bot.model,
+      reasoningEffort: bot.reasoningEffort,
+      threadId: bot.threadId,
+    };
+    try {
+      await this.#resend(botId, delivery, {
+        prepare: async () => {
+          await this.updateBot({ botId, model });
+          this.#ownRuntime.set(botId, { ...own, fallbackModel: model });
+        },
+      });
+    } catch {
+      return false;
+    }
+    this.#emitError("fallback_model", notice(bot.name), botId);
+    return true;
+  }
+
+  #fallBackToFreeModel(botId: string, delivery: DeliveryContext, reason: string): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot || providerForBot(bot) === "opencode") return Promise.resolve(false);
+    const free = this.#status.providers?.find((provider) => provider.id === "opencode");
+    if (free?.state !== "available") return Promise.resolve(false);
+    const from = PROVIDER_LABELS[providerForBot(bot)];
+    return this.#fallBackTo(
+      botId,
+      delivery,
+      "opencode-free",
+      (name) =>
+        `${from} ${reason}, so ${name} is answering this message on the free model. Your next message goes back to ${from}.`,
+    );
+  }
+
+  /**
+   * OpenCode's free limit is used up for every free model: answer this message on another free
+   * provider the owner has already connected (Gemini, GitHub Copilot, Kiro), once per message.
+   * Nothing connected → the owner keeps the clear limit message.
+   */
+  #fallBackToOtherFreeProvider(botId: string, delivery: DeliveryContext): Promise<boolean> {
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot || providerForBot(bot) !== "opencode") return Promise.resolve(false);
     const target = FREE_FALLBACK_PROVIDERS.find(
       (id) => this.#status.providers?.find((provider) => provider.id === id)?.state === "available",
     );
-    if (!target) return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
-    try {
-      await this.updateBot({ botId, model: DEFAULT_MODEL_FOR_PROVIDER[target] });
-    } catch {
-      this.#fallbackRetried.delete(delivery.delivery.id);
-      return false;
-    }
-    this.#emitError(
-      "fallback_model",
-      `OpenCode's free limit is used up, so ${bot.name} switched to ${PROVIDER_LABELS[target]} (also free) and is answering your message again there. Switch back from the model picker whenever you like.`,
+    if (!target) return Promise.resolve(false);
+    return this.#fallBackTo(
       botId,
+      delivery,
+      DEFAULT_MODEL_FOR_PROVIDER[target],
+      (name) =>
+        `OpenCode's free limit is used up, so ${name} is answering this message on ${PROVIDER_LABELS[target]} (also free). Your next message goes back to its own model.`,
     );
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    await this.sendMessage({ botId, text: delivery.delivery.text });
-    return true;
   }
 
   /**
@@ -5736,20 +6093,60 @@ ${carryOver}`
    */
   async #resendOnNextFreeModel(botId: string, delivery: DeliveryContext): Promise<boolean> {
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
-    if (bot?.model !== "opencode-free") return false;
-    if (delivery.delivery.sender.kind !== "user" || !delivery.delivery.text.trim()) return false;
-    if (delivery.managedAttachments.length) return false;
-    if (this.#fallbackRetried.has(delivery.delivery.id)) return false;
-    this.#fallbackRetried.add(delivery.delivery.id);
+    if (bot?.model !== "opencode-free" || !this.#canResend(delivery)) return false;
     this.#emitError(
       "fallback_model",
       `${bot.name} is sending your message again on the next free model.`,
       botId,
     );
-    // Hide the failed copy before the new one goes out, so a fast reply never shows it twice.
-    await this.#mailbox.markRetried(delivery.delivery.id).catch(() => undefined);
-    await this.sendMessage({ botId, text: delivery.delivery.text });
+    await this.#resend(botId, delivery);
     return true;
+  }
+
+  /**
+   * A coworker answered one message on a fallback model: before its next message starts it goes
+   * back to its own model and its own conversation. A model the owner picked meanwhile wins.
+   */
+  async #restoreOwnRuntime(botId: string, context: DeliveryContext): Promise<void> {
+    const own = this.#ownRuntime.get(botId);
+    if (!own) return;
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    if (!bot) {
+      this.#ownRuntime.delete(botId);
+      return;
+    }
+    // The re-sent copy itself runs on the fallback model.
+    const resent = this.#mailbox
+      .listQueue(botId)
+      .deliveries.some((item) => item.retriedAs === context.delivery.id);
+    if (resent) return;
+    this.#ownRuntime.delete(botId);
+    if (bot.model !== own.fallbackModel) return;
+    try {
+      await this.updateBot({ botId, model: own.model, reasoningEffort: own.reasoningEffort });
+      const restored = this.#store.list().find((candidate) => candidate.id === botId);
+      if (own.threadId && restored && !restored.threadId) {
+        await this.#store.setThreadId(botId, own.threadId);
+        const stale = this.#snapshots.get(botId);
+        this.#snapshots.set(botId, {
+          botId,
+          threadId: own.threadId,
+          activeTurnId: null,
+          revision: (stale?.revision ?? 0) + 1,
+          messages: [],
+        });
+        this.#threadToBot.set(own.threadId, botId);
+      }
+      this.#emit({
+        type: "notice",
+        botId,
+        code: "fallback_restored",
+        message: `${bot.name} is back on its own model for this message.`,
+      });
+      this.#emit({ type: "bots-changed", bots: this.#store.list() });
+    } catch (error) {
+      this.#emitError("fallback_restore_failed", error, botId);
+    }
   }
 
   /** Coworkers with a turn running on this provider: who a provider-wide notice belongs to. */
@@ -6527,7 +6924,6 @@ const QUOTA_NOTICE_INTERVAL_MS = 30_000;
 /** Providers that take an owner message into a running turn (Codex turn/steer, Claude SDK). */
 const STEERABLE_PROVIDERS: ReadonlySet<AgentProvider> = new Set(["codex", "claude"]);
 const STEER_TIMEOUT_MS = 10_000;
-
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
@@ -6536,6 +6932,48 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       timer = setTimeout(() => reject(new Error("Timed out.")), ms);
     }),
   ]).finally(() => clearTimeout(timer));
+}
+/** After the steer timeout, how much longer a late answer is still awaited. */
+const STEER_LATE_ANSWER_MS = 20_000;
+
+/** Resolves "settled" or "rejected" when the promise does within `ms`, otherwise "pending". */
+function settleWithin(
+  promise: Promise<unknown>,
+  ms: number,
+): Promise<"settled" | "rejected" | "pending"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise.then(
+      () => "settled" as const,
+      () => "rejected" as const,
+    ),
+    new Promise<"pending">((resolve) => {
+      timer = setTimeout(() => resolve("pending"), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Whether a steering message reached the running turn. A refusal means it did not (it queues).
+ * A request still unanswered after the timeout may have landed anyway: it gets a while longer,
+ * then the turn is read for the message; when even that cannot tell, the answer is
+ * "unconfirmed", which counts as delivered. Never sending it twice is the safer mistake: a
+ * repeated message can repeat a payment or a post, a lost one the owner just sends again.
+ */
+export async function steerOutcome(
+  request: Promise<unknown>,
+  landed: () => Promise<boolean | null>,
+  timeoutMs = STEER_TIMEOUT_MS,
+  lateMs = STEER_LATE_ANSWER_MS,
+): Promise<"landed" | "refused" | "unconfirmed"> {
+  const first = await settleWithin(request, timeoutMs);
+  if (first === "settled") return "landed";
+  if (first === "rejected") return "refused";
+  const late = await settleWithin(request, lateMs);
+  if (late === "settled") return "landed";
+  if (late === "rejected") return "refused";
+  const seen = await landed().catch(() => null);
+  return seen === true ? "landed" : "unconfirmed";
 }
 /** An empty Gemini reply this soon after Google reported a limit counts as that limit. */
 const GEMINI_QUOTA_WINDOW_MS = 2 * 60_000;
@@ -6566,10 +7004,34 @@ export function quotaNotice(provider: AgentProvider, message: string): string | 
  * your usage limit"), OpenAI keys ("insufficient_quota") and Google (429, RESOURCE_EXHAUSTED).
  */
 export function isQuotaError(reason: string): boolean {
-  return /429|quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|overloaded|credit balance|out of (?:credits|extra usage)|hit your (?:usage )?limit|plan limit|billing/i.test(
+  // "429" counts only as an HTTP status ("HTTP 429", "status: 429", "Error 429", "429 Too Many
+  // Requests"), never as digits in a port, a path or an id. "Billing" and "overloaded" are not
+  // here: a file called billing.ts is not a spent plan, and an overloaded server is a brief
+  // fault that gets a retry (isTransientError), not a model switch.
+  return /(?:\b(?:HTTP|status(?: code)?|error|code)\b[\s:=#(]*429\b)|\b429 Too Many Requests\b|\bToo Many Requests\b|insufficient_quota|(?<![\w.\-/\\])quota(?![\w.\-/\\])|\busage limit|\brate.?limit|RESOURCE_EXHAUSTED|credit balance|out of (?:credits|extra usage)|hit your (?:usage )?limit|plan limit/i.test(
     reason,
   );
 }
+
+/**
+ * A brief fault worth one more try on the same model: an overloaded server (Claude's 529), an
+ * HTTP 5xx status, or the network dropping. Digits alone never count.
+ */
+export function isTransientError(reason: string): boolean {
+  if (isQuotaError(reason)) return false;
+  return /\boverloaded\b|(?:\b(?:HTTP|status(?: code)?|error|code)\b[\s:=#(]*5(?:0[0-4]|29)\b)|\b(?:Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)\b|\b(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EPIPE)\b|socket hang up|fetch failed|network (?:error|connection was lost)/i.test(
+    reason,
+  );
+}
+
+/** Coworker-to-coworker messages in a row before the app stops the chain for the owner. */
+export const MAX_AGENT_HOPS = 6;
+/** How often the no-progress watchdog looks at running turns. */
+const WATCHDOG_TICK_MS = 60_000;
+
+/** At most this many brief-fault retries per message, after these waits. */
+const MAX_TRANSIENT_RETRIES = 2;
+const TRANSIENT_RETRY_DELAYS_MS = [2_000, 8_000] as const;
 
 /** Google's harness logs pages of startup chatter at ERROR level that mean nothing to the owner. */
 export function isNoisyDiagnostic(provider: AgentProvider, message: string): boolean {

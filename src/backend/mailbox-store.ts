@@ -9,6 +9,7 @@ import type {
   ConversationMessage,
   DraftAttachment,
   KnowledgeCitation,
+  MessageOrigin,
   MessageReaction,
   QueueDelivery,
   QueueDeliveryStatus,
@@ -35,6 +36,10 @@ interface StoredDraft extends StoredAttachment {
 interface StoredMessage {
   id: string;
   sender: { kind: "user" } | { kind: "bot"; botId: string };
+  /** Who really sent a "user" message (absent in older data: the owner). */
+  origin?: MessageOrigin;
+  /** Coworker-to-coworker hops in a row that led to this message. */
+  hops?: number;
   text: string;
   attachments: StoredAttachment[];
   replyToMessageId: string | null;
@@ -51,6 +56,8 @@ interface StoredDelivery {
   createdAt: string;
   /** Sent again automatically on another model; the failed copy is hidden from the chat. */
   retried?: boolean;
+  /** The delivery that carries the message again after this one failed. */
+  retriedAs?: string;
   /** Knowledge Base excerpts this owner message was grounded on (for the [S1] pills). */
   citations?: KnowledgeCitation[];
 }
@@ -74,6 +81,8 @@ interface StoredReaction {
 
 interface EnqueueInput {
   sender: StoredMessage["sender"];
+  origin?: MessageOrigin;
+  hops?: number;
   recipientBotIds: string[];
   text: string;
   replyToMessageId?: string | null;
@@ -274,6 +283,8 @@ export class MailboxStore {
     const message: StoredMessage = {
       id: messageId,
       sender: input.sender,
+      ...(input.origin && input.origin !== "owner" ? { origin: input.origin } : {}),
+      ...(input.hops ? { hops: input.hops } : {}),
       text,
       attachments,
       replyToMessageId: input.replyToMessageId ?? null,
@@ -650,10 +661,12 @@ export class MailboxStore {
   }
 
   /** Hides a failed delivery once the app has re-sent the same message on another model. */
-  async markRetried(deliveryId: string): Promise<void> {
+  /** Hides a failed copy; `nextDeliveryId` links it to the copy sent again, for waiters to follow. */
+  async markRetried(deliveryId: string, nextDeliveryId?: string): Promise<void> {
     const delivery = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
     if (!delivery) return;
     delivery.retried = true;
+    if (nextDeliveryId) delivery.retriedAs = nextDeliveryId;
     await this.#persist();
   }
 
@@ -752,6 +765,8 @@ export class MailboxStore {
     return {
       ...delivery,
       sender: structuredClone(message.sender),
+      ...(message.origin ? { origin: message.origin } : {}),
+      ...(message.hops ? { hops: message.hops } : {}),
       text: message.text,
       attachments: message.attachments.map(toAttachmentSummary),
       replyToMessageId: message.replyToMessageId,

@@ -49,6 +49,7 @@ import { KnowledgeService } from "../backend/knowledge/knowledge-service";
 import { MailboxStore } from "../backend/mailbox-store";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
+import { classifyCommand } from "../backend/permission-policy";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
 import { createRoutineExecutor } from "../backend/routine-executor";
@@ -59,6 +60,7 @@ import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { TelegramBridge } from "../backend/telegram-bridge";
 import { UsageService } from "../backend/usage-service";
+import { VerificationRepairEngine } from "../backend/verification-repair-engine";
 import { VoiceService } from "../backend/voice/voice-service";
 import {
   chatWorkflow,
@@ -995,6 +997,10 @@ function registerIpcHandlers(
     if (!isObject(input) || typeof input.objective !== "string") {
       throw new Error("Invalid StartOrchestratorRunInput");
     }
+    const check = input.checkCommand ?? null;
+    if (check !== null && (typeof check !== "string" || check.length > 500)) {
+      throw new Error("Invalid check command.");
+    }
     const workspacePath = store.sharedRoot;
     const existingBots = store.list();
     return orchestrator.startRun(
@@ -1814,10 +1820,6 @@ if (!hasSingleInstanceLock) {
       await orchestratorStore.initialize();
       const orchestrator = new AdaptiveOrchestrator(
         orchestratorStore,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
         {
           port: {
             sendMessage: (input) => service.sendMessage(input),
@@ -1827,8 +1829,24 @@ if (!hasSingleInstanceLock) {
             off: (event, listener) => service.off(event, listener),
             listBots: () => service.listBots(),
             listApprovals: () => service.listApprovals(),
+            withdrawDelivery: (botId, deliveryId) => service.withdrawDelivery(botId, deliveryId),
           },
-          enabled: () => features.isEnabled("team-run-engine"),
+        },
+        {
+          // The owner's check command runs only where the permission rules allow it.
+          verifier: new VerificationRepairEngine(({ botId, command, cwd }) =>
+            permissions.authorize(
+              {
+                botId,
+                provider: "sahkarmi",
+                category: classifyCommand(command),
+                action: `Run the team run's check command: ${command}`,
+                paths: [cwd],
+                reason: "The owner set this check for the team run.",
+              },
+              [cwd],
+            ),
+          ),
         },
       );
       orchestrator.onEvent((event) => forwardAgentEvent(event));
@@ -1897,6 +1915,7 @@ if (!hasSingleInstanceLock) {
             await service.sendMessage({
               botId: task.botId,
               text: `[Scheduled task] ${task.text}`,
+              origin: "schedule",
             });
           });
           routines.start(createRoutineExecutor(service));
@@ -2072,6 +2091,8 @@ function parseSendMessage(value: unknown): SendMessageInput {
     text: value.text,
     attachmentDraftIds,
     replyToMessageId: replyToMessageId?.trim() || null,
+    // The composer asks to join a running turn; the renderer can never claim another origin.
+    ...(value.steer === true ? { steer: true } : {}),
   };
 }
 

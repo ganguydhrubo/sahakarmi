@@ -48,6 +48,8 @@ import {
 
 const execFileAsync = promisify(execFile);
 const PLAN_USAGE_TIMEOUT_MS = 8_000;
+/** Model-and-tool steps one Claude turn may take before the SDK stops it. */
+export const CLAUDE_MAX_TURNS = 200;
 
 /** One claude.ai plan window (5-hour, weekly, per model) as Claude reports it. */
 export interface ClaudePlanLimit {
@@ -349,6 +351,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         // Every tool call goes through canUseTool, where Sahkarmi's permission policy decides.
         permissionMode: "default",
         includePartialMessages: true,
+        // A runaway tool loop stops here instead of running all night on the owner's plan.
+        maxTurns: CLAUDE_MAX_TURNS,
         additionalDirectories: config.additionalDirectories,
         canUseTool,
         mcpServers,
@@ -651,7 +655,12 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       : message.subtype === "success"
         ? "completed"
         : "failed";
-    const error = "errors" in message ? message.errors.join("\n") : null;
+    const error =
+      message.subtype === "error_max_turns"
+        ? `Stopped after ${CLAUDE_MAX_TURNS} steps in one turn, so a loop cannot run forever. Ask the coworker to continue if the work is not finished.`
+        : "errors" in message
+          ? message.errors.join("\n")
+          : null;
     if (turn && turn.steers > 0 && runtime.stateEvents && status !== "interrupted") {
       // A steering message may still run as its own pass; its reply belongs to this turn.
       if (turn.deferred) clearTimeout(turn.deferred.timer);
