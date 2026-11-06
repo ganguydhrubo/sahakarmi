@@ -3229,8 +3229,12 @@ async function createFakeClaude(
   if (process.platform === "win32") {
     await writeFile(
       executable,
-      `${callLog ? `@echo %1>>"${callLog}"
-` : ""}@if "%1"=="--version" (
+      `${
+        callLog
+          ? `@echo %1>>"${callLog}"
+`
+          : ""
+      }@if "%1"=="--version" (
   @echo 2.1.231 (Claude Code)
 ) else if "%1"=="auth" (
   @echo ${status}
@@ -3241,8 +3245,12 @@ async function createFakeClaude(
     await writeFile(
       executable,
       `#!/bin/sh
-${callLog ? `echo "$1" >> '${callLog}'
-` : ""}if [ "$1" = "--version" ]; then
+${
+  callLog
+    ? `echo "$1" >> '${callLog}'
+`
+    : ""
+}if [ "$1" = "--version" ]; then
   printf '%s\\n' '2.1.231 (Claude Code)'
 elif [ "$1" = "auth" ]; then
   printf '%s' '${status}'

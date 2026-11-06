@@ -200,6 +200,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #mcpPort: number | null = null;
   /** Sessions being opened right now (a model list can wait for one instead of opening its own). */
   readonly #sessionOpens = new Set<Promise<unknown>>();
+  /**
+   * The agent's own session id for a Sahkarmi thread whose first session could not be reloaded
+   * and was replaced. Kept on disk: without it every start asked the agent for the old, gone
+   * session, failed, and opened yet another empty one, so the coworker forgot every chat.
+   */
+  #sessionAliases: Map<string, string> | null = null;
   readonly #instanceId = randomUUID();
 
   constructor(config: AcpAgentConfig) {
@@ -486,6 +492,41 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  #sessionAliasPath(): string {
+    return join(this.#config.transcriptDir, "session-aliases.json");
+  }
+
+  async #readSessionAliases(): Promise<Map<string, string>> {
+    if (this.#sessionAliases) return this.#sessionAliases;
+    const aliases = new Map<string, string>();
+    try {
+      const parsed: unknown = JSON.parse(await readFile(this.#sessionAliasPath(), "utf8"));
+      if (isRecord(parsed)) {
+        for (const [thread, session] of Object.entries(parsed)) {
+          if (typeof session === "string" && session) aliases.set(thread, session);
+        }
+      }
+    } catch {
+      /* None saved yet, or unreadable: each thread then tries its own id first. */
+    }
+    this.#sessionAliases = aliases;
+    return aliases;
+  }
+
+  async #saveSessionAlias(threadId: string, acpSessionId: string): Promise<void> {
+    const aliases = await this.#readSessionAliases();
+    if (threadId === acpSessionId) aliases.delete(threadId);
+    else aliases.set(threadId, acpSessionId);
+    try {
+      await mkdir(this.#config.transcriptDir, { recursive: true });
+      const file = this.#sessionAliasPath();
+      await writeFile(`${file}.tmp`, JSON.stringify(Object.fromEntries(aliases)));
+      await rename(`${file}.tmp`, file);
+    } catch {
+      /* Best effort: the next start opens a new session again, as before. */
+    }
+  }
+
   /** Tool routes held now (for tests). */
   get mcpRouteCount(): number {
     return this.#mcpRoutes.size;
@@ -513,10 +554,14 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     ];
 
     let result: Record<string, unknown> | null = null;
-    let acpSessionId = existingThreadId;
-    if (existingThreadId && this.#agentCapabilities.loadSession === true) {
+    const aliases =
+      existingThreadId && this.#agentCapabilities.loadSession === true
+        ? await this.#readSessionAliases()
+        : null;
+    let acpSessionId = (existingThreadId && aliases?.get(existingThreadId)) || existingThreadId;
+    if (acpSessionId && this.#agentCapabilities.loadSession === true) {
       try {
-        result = await this.#call("session/load", { sessionId: existingThreadId, cwd, mcpServers });
+        result = await this.#call("session/load", { sessionId: acpSessionId, cwd, mcpServers });
       } catch (error) {
         this.emit(
           "diagnostic",
@@ -544,6 +589,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         }
       }
       acpSessionId = requiredString(result, "sessionId");
+      if (existingThreadId && this.#agentCapabilities.loadSession === true) {
+        await this.#saveSessionAlias(existingThreadId, acpSessionId);
+      }
     }
     const threadId = existingThreadId ?? (acpSessionId as string);
     route.threadId = threadId;

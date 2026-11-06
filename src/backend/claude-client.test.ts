@@ -998,7 +998,7 @@ describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
         event.method === "turn/completed" &&
         (event.params as { threadId: string }).threadId === badId,
     );
-    expect((failed?.params as { turn: { status: string } }).turn.status).toBe("failed");
+    expect(failed?.params).toMatchObject({ turn: { status: "failed" } });
     expect(await turn(client, notifications, good.id, "fine")).toBe("I remember: fine");
     expect(exits).toEqual([]);
     // The broken thread opens again on its next message.
