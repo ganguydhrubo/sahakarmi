@@ -890,6 +890,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // A signed-out provider is checked again at most every few minutes: each check starts its
       // CLI, and on every window focus that was a burst of processes that made the app stutter.
       if (this.#providerState(provider) === "sign-in-required") {
+        // Nobody works on it: only the Connect button checks it again. (A signed-out AI the
+        // owner once looked at in Settings was started every few minutes all day: 477 failed
+        // sign-in checks in three days in one owner's log, each a new CLI process.)
+        if (provider !== this.#preferredProvider && !this.#providerInUse(provider)) continue;
         const last = this.#signedOutCheckAt.get(provider) ?? 0;
         if (Date.now() - last < SIGNED_OUT_RECHECK_MS) continue;
         this.#signedOutCheckAt.set(provider, Date.now());

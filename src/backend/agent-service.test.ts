@@ -2455,6 +2455,23 @@ describe.sequential("AgentService", () => {
     await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "interrupted");
   }, 20_000);
 
+  it("does not keep starting a signed-out AI that no coworker uses", async () => {
+    const calls = join(root, "claude-calls.txt");
+    process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root, false, calls);
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.probeProviders();
+    expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
+      "sign-in-required",
+    );
+    const before = (await readFile(calls, "utf8").catch(() => "")).length;
+    expect(before).toBeGreaterThan(0);
+    await service.refreshModels(true);
+    await service.refreshModels(true);
+    expect((await readFile(calls, "utf8").catch(() => "")).length).toBe(before);
+  }, 20_000);
+
   it("starts queued messages after restart when provider process exits mid-turn", async () => {
     process.env.SAHKARMI_FAKE_EXIT_ON_TURN = "1";
     process.env.SAHKARMI_FAKE_REFUSE_STEER = "1";
@@ -3198,7 +3215,12 @@ process.stdin.on("data", (chunk) => {
   return scriptPath;
 }
 
-async function createFakeClaude(directory: string, loggedIn = true): Promise<string> {
+async function createFakeClaude(
+  directory: string,
+  loggedIn = true,
+  /** Each run appends a line here, to count how often the app started Claude. */
+  callLog?: string,
+): Promise<string> {
   const executable =
     process.platform === "win32" ? join(directory, "claude.cmd") : join(directory, "claude");
   const status = loggedIn
@@ -3207,7 +3229,8 @@ async function createFakeClaude(directory: string, loggedIn = true): Promise<str
   if (process.platform === "win32") {
     await writeFile(
       executable,
-      `@if "%1"=="--version" (
+      `${callLog ? `@echo %1>>"${callLog}"
+` : ""}@if "%1"=="--version" (
   @echo 2.1.231 (Claude Code)
 ) else if "%1"=="auth" (
   @echo ${status}
@@ -3218,7 +3241,8 @@ async function createFakeClaude(directory: string, loggedIn = true): Promise<str
     await writeFile(
       executable,
       `#!/bin/sh
-if [ "$1" = "--version" ]; then
+${callLog ? `echo "$1" >> '${callLog}'
+` : ""}if [ "$1" = "--version" ]; then
   printf '%s\\n' '2.1.231 (Claude Code)'
 elif [ "$1" = "auth" ]; then
   printf '%s' '${status}'
