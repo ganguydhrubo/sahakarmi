@@ -10,6 +10,38 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.24.0": [
+    {
+      icon: "🧠",
+      badge: "Smarter",
+      title: "New coworkers start on the top model",
+      desc: "New coworkers use the most capable model of your AI (Codex Sol, Claude Opus). Coworkers you already set up keep theirs.",
+    },
+    {
+      icon: "✅",
+      badge: "Approvals",
+      title: "Asked once, never in a loop",
+      desc: "Say no once and the coworker's retries of that step are refused without asking again. Cards say plainly when a command does more than one thing.",
+    },
+    {
+      icon: "⚡",
+      badge: "Lighter",
+      title: "Faster and lighter on memory",
+      desc: "Only the AI tools you use start, idle sessions sleep and resume, and long chats stay smooth. See what uses space in Settings > Storage.",
+    },
+    {
+      icon: "🧩",
+      badge: "MCP",
+      title: "MCP servers that just work",
+      desc: "Test a server for real, get plain-word fixes, connect from GitHub, or let Sahkarmi install it after one approval. Tools like MoneyPrinterTurbo can become a Skill.",
+    },
+    {
+      icon: "🔒",
+      badge: "Safer",
+      title: "Safer by default",
+      desc: "Every command follows your approval rules, keys are encrypted with Windows, and each AI tool gets only its own key.",
+    },
+  ],
   "0.23.0": [
     {
       icon: "💬",
