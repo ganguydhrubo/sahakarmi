@@ -2,7 +2,7 @@ import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child
 import { randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { basename, dirname, extname, join } from "node:path";
@@ -172,6 +172,10 @@ interface Pending {
 }
 
 const MAX_MCP_BODY_BYTES = 5 * 1024 * 1024;
+/** Tool routes kept for open sessions; older ones with no session are dropped past this. */
+const MAX_MCP_ROUTES = 64;
+/** A transcript larger than this is trimmed to its last 500 turns after an append. */
+const TRANSCRIPT_COMPACT_BYTES = 4 * 1024 * 1024;
 
 export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly provider: AgentProvider;
@@ -260,6 +264,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     });
     this.#mcpServer = null;
     this.#mcpPort = null;
+    // The agent's sessions and their tool routes end with its process.
+    this.#mcpRoutes.clear();
+    this.#sessions.clear();
     if (!child || child.exitCode !== null) return;
     child.stdin.end();
     await new Promise<void>((resolve) => {
@@ -453,7 +460,42 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const cwd = requiredString(params, "cwd");
     const mcpToken = randomBytes(24).toString("hex");
     const route: McpRoute = { threadId: existingThreadId, namespaces: readNamespaces(params) };
-    this.#mcpRoutes.set(mcpToken, route);
+    this.#addMcpRoute(mcpToken, route);
+    try {
+      return await this.#openSessionWithRoute(params, existingThreadId, cwd, mcpToken, route);
+    } catch (error) {
+      const opened = [...this.#sessions.values()].some((item) => item.mcpToken === mcpToken);
+      if (!opened) this.#mcpRoutes.delete(mcpToken);
+      throw error;
+    }
+  }
+
+  /**
+   * Each opened session has one tool route. A route is dropped when its session is replaced or
+   * the agent stops, and past MAX_MCP_ROUTES the oldest routes no open session uses go first.
+   */
+  #addMcpRoute(token: string, route: McpRoute): void {
+    this.#mcpRoutes.set(token, route);
+    if (this.#mcpRoutes.size <= MAX_MCP_ROUTES) return;
+    const inUse = new Set([...this.#sessions.values()].map((session) => session.mcpToken));
+    for (const candidate of this.#mcpRoutes.keys()) {
+      if (this.#mcpRoutes.size <= MAX_MCP_ROUTES) break;
+      if (candidate !== token && !inUse.has(candidate)) this.#mcpRoutes.delete(candidate);
+    }
+  }
+
+  /** Tool routes held now (for tests). */
+  get mcpRouteCount(): number {
+    return this.#mcpRoutes.size;
+  }
+
+  async #openSessionWithRoute(
+    params: unknown,
+    existingThreadId: string | null,
+    cwd: string,
+    mcpToken: string,
+    route: McpRoute,
+  ): Promise<AcpSession> {
     const mcpServers = [
       ...(await this.#mcpServersFor(mcpToken, route)),
       ...acpMcpServers(
@@ -512,6 +554,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       drainingSince: null,
       lastStaleUpdateAt: 0,
     };
+    const replaced = this.#sessions.get(threadId);
+    if (replaced && replaced.mcpToken !== mcpToken) this.#mcpRoutes.delete(replaced.mcpToken);
     this.#sessions.set(threadId, session);
     await this.#applyModel(session, getString(params, "model"));
     return session;
@@ -903,25 +947,52 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   // ---------------------------------------------------------------------------
   // Transcripts (ACP has no "read thread" call, so Sahkarmi keeps its own history)
 
-  #transcriptPath(threadId: string): string {
-    return join(this.#config.transcriptDir, `${threadId.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);
+  /** One turn per line (`.jsonl`); chats saved before 0.24 used one `.json` file per thread. */
+  #transcriptPath(threadId: string, legacy = false): string {
+    const name = threadId.replace(/[^A-Za-z0-9_-]/g, "_");
+    return join(this.#config.transcriptDir, `${name}.${legacy ? "json" : "jsonl"}`);
   }
 
   async #readTranscript(threadId: string): Promise<ThreadResponse> {
+    const lines = await readFile(this.#transcriptPath(threadId), "utf8").catch(() => null);
+    const turns =
+      lines === null ? await this.#readLegacyTranscript(threadId) : parseTurnLines(lines);
+    return { thread: { id: threadId, turns } };
+  }
+
+  async #readLegacyTranscript(threadId: string): Promise<TurnRecord[]> {
     try {
-      const parsed: unknown = JSON.parse(await readFile(this.#transcriptPath(threadId), "utf8"));
-      const turns =
-        isRecord(parsed) && Array.isArray(parsed.turns) ? (parsed.turns as TurnRecord[]) : [];
-      return { thread: { id: threadId, turns } };
+      const parsed: unknown = JSON.parse(
+        await readFile(this.#transcriptPath(threadId, true), "utf8"),
+      );
+      return isRecord(parsed) && Array.isArray(parsed.turns) ? (parsed.turns as TurnRecord[]) : [];
     } catch {
-      return { thread: { id: threadId, turns: [] } };
+      return [];
     }
   }
 
+  /**
+   * Writes `turns` as the whole `.jsonl` file (atomic rename), then removes an old `.json` copy.
+   * Used once to convert a chat saved in the old format, and to trim a very long one.
+   */
+  async #rewriteTranscript(threadId: string, turns: TurnRecord[]): Promise<void> {
+    const path = this.#transcriptPath(threadId);
+    const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    const body = turns.map((item) => `${JSON.stringify(item)}\n`).join("");
+    await writeFile(temporary, body, { mode: 0o600 });
+    await rename(temporary, path);
+    await rm(this.#transcriptPath(threadId, true), { force: true });
+  }
+
   async #appendTranscript(session: AcpSession, turn: ActiveTurn, status: string): Promise<void> {
-    const { thread } = await this.#readTranscript(session.threadId);
-    const turns = thread.turns ?? [];
-    turns.push({
+    await mkdir(this.#config.transcriptDir, { recursive: true, mode: 0o700 });
+    const path = this.#transcriptPath(session.threadId);
+    const existing = await stat(path).catch(() => null);
+    if (!existing) {
+      const legacy = await this.#readLegacyTranscript(session.threadId);
+      if (legacy.length) await this.#rewriteTranscript(session.threadId, legacy.slice(-500));
+    }
+    const record: TurnRecord = {
       id: turn.id,
       status,
       startedAt: Math.floor(Date.now() / 1_000),
@@ -937,14 +1008,14 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           ? [{ id: turn.itemId, type: "agentMessage", text: stripLeakedToolCalls(turn.text) }]
           : []),
       ],
-    });
-    await mkdir(this.#config.transcriptDir, { recursive: true, mode: 0o700 });
-    const path = this.#transcriptPath(session.threadId);
-    const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporary, `${JSON.stringify({ version: 1, turns: turns.slice(-500) })}\n`, {
-      mode: 0o600,
-    });
-    await rename(temporary, path);
+    };
+    // Each turn adds one line instead of rewriting the whole chat.
+    await appendFile(path, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+    // A very long chat is trimmed to its last 500 turns now and then (as the old format was).
+    if ((existing?.size ?? 0) > TRANSCRIPT_COMPACT_BYTES) {
+      const turns = parseTurnLines(await readFile(path, "utf8"));
+      if (turns.length > 500) await this.#rewriteTranscript(session.threadId, turns.slice(-500));
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1468,6 +1539,22 @@ export function stripLeakedToolCalls(text: string): string {
     .replace(/<\|[a-z_]+\|>/g, "")
     .replace(/[ \t]+\n/g, "\n")
     .trim();
+}
+
+/** Turns from a `.jsonl` transcript; a torn last line from a crash is skipped. */
+function parseTurnLines(text: string): TurnRecord[] {
+  const turns: TurnRecord[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (isRecord(parsed) && typeof parsed.id === "string")
+        turns.push(parsed as unknown as TurnRecord);
+    } catch {
+      // Skip a partial line.
+    }
+  }
+  return turns;
 }
 
 function killProcessTree(pid: number): void {

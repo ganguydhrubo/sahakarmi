@@ -1,12 +1,12 @@
 // @vitest-environment node
 
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_MODEL_FOR_PROVIDER } from "../shared/ipc";
 import { readModelOptions, stripLeakedToolCalls } from "./acp-client";
-import { openCodeModelValue, readAntigravityAccount } from "./acp-providers";
+import { createOpenCodeClient, openCodeModelValue, readAntigravityAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
@@ -469,6 +469,74 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       "assistant",
     ]);
     expect(messages[2]?.text).toBe("Namaste! Done.");
+  });
+
+  it("appends turns to a .jsonl transcript and converts a chat saved in the old format", async () => {
+    const folder = join(root, "user-data", "acp-transcripts", "opencode");
+    const start = async () => {
+      const store = new BotStore(join(root, "user-data"), join(root, "home"));
+      const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+      service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "opencode");
+      await service.initialize();
+    };
+    const sendAndWait = async (text: string, replies: number) => {
+      await service?.sendMessage({ botId: "meera-support", text });
+      await waitFor(async () => {
+        const messages = (await service?.readConversation("meera-support"))?.messages ?? [];
+        return messages.filter((message) => message.text === "Namaste! Done.").length === replies;
+      });
+      await waitFor(() =>
+        service
+          ?.listQueue("meera-support")
+          .deliveries.every((delivery) => delivery.status === "completed"),
+      );
+    };
+    await start();
+    await sendAndWait("Hello", 1);
+    await service?.stop();
+    const [file] = (await readdir(folder)).filter((name) => name.endsWith(".jsonl"));
+    expect(file).toBeDefined();
+    const turns = (await readFile(join(folder, file), "utf8")).trim().split("\n");
+    expect(turns).toHaveLength(1);
+
+    // Turn it back into the pre-0.24 single-file format.
+    const legacy = join(folder, file.replace(/\.jsonl$/, ".json"));
+    await writeFile(
+      legacy,
+      JSON.stringify({ version: 1, turns: turns.map((line) => JSON.parse(line)) }),
+    );
+    await rm(join(folder, file));
+    await start();
+    expect(
+      (await service?.readConversation("meera-support"))?.messages.map((item) =>
+        item.tool ? "tool" : item.author,
+      ),
+    ).toEqual(["user", "tool", "assistant"]);
+    await sendAndWait("Again", 2);
+    expect((await readdir(folder)).filter((name) => !name.endsWith(".jsonl"))).toEqual([]);
+    expect((await readFile(join(folder, file), "utf8")).trim().split("\n")).toHaveLength(2);
+  });
+
+  it("drops the tool routes of an agent's sessions when it stops", async () => {
+    const client = createOpenCodeClient(
+      { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
+      join(root, "transcripts"),
+    );
+    client.start();
+    try {
+      const threads: string[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        const opened = await client.request<{ thread: { id: string } }>("thread/start", {
+          cwd: root,
+        });
+        threads.push(opened.thread.id);
+      }
+      await client.request("thread/resume", { threadId: threads[0], cwd: root });
+      expect(client.mcpRouteCount).toBe(new Set(threads).size);
+    } finally {
+      await client.stop();
+    }
+    expect(client.mcpRouteCount).toBe(0);
   });
 });
 
