@@ -188,6 +188,9 @@ jobs:
     timeout-minutes: 35
     env:
       RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+      # A step's `if` cannot see its own env, so the signing secrets are set at job level.
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
     steps:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -212,20 +215,61 @@ jobs:
       - name: Build unsigned NSIS installer
         run: bun run dist:win
 
-      - name: Sign Windows installer via SignPath (if configured)
-        continue-on-error: true
-        if: env.SIGNPATH_API_TOKEN != ''
-        env:
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
-          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
-        uses: signpath/github-action-submit-signing-request@v1
+      # Signing is optional. Without both SignPath secrets the steps below are skipped and the
+      # unsigned installer, latest.yml and block map from dist:win ship unchanged.
+      - name: Detect Windows signing credentials
+        id: signing
+        shell: bash
+        run: |
+          if [[ -n "$SIGNPATH_API_TOKEN" && -n "$SIGNPATH_ORGANIZATION_ID" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::SignPath secrets not set; publishing an UNSIGNED Windows installer."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stage unsigned installer for signing
+        id: unsigned
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          name: windows-unsigned-installer
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign Windows installer via SignPath
+        id: sign
+        if: steps.signing.outputs.enabled == 'true'
+        # A signing outage must not block the release; it then ships the unsigned build, whose
+        # update metadata is still consistent because the next step only runs on success.
+        continue-on-error: true
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ env.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
           project-slug: 'sahakarmi'
           signing-policy-slug: 'release-signing'
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
           wait-for-completion: true
-          output-artifact-directory: 'dist'
+          output-artifact-directory: 'dist-signed'
+
+      # Signing changes the installer bytes, so latest.yml (sha512, size) and the differential
+      # update block map are rebuilt from the signed file before any checksum is taken.
+      - name: Use signed installer and refresh update metadata
+        if: steps.signing.outputs.enabled == 'true' && steps.sign.outcome == 'success'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $unsigned = @(Get-ChildItem -Path dist -File -Filter *.exe)
+          if ($unsigned.Count -ne 1) { Write-Error "Expected one unsigned installer in dist." }
+          $signed = @(Get-ChildItem -Path dist-signed -File -Recurse -Filter $unsigned[0].Name)
+          if ($signed.Count -ne 1) { Write-Error "SignPath did not return $($unsigned[0].Name)." }
+          $status = (Get-AuthenticodeSignature -LiteralPath $signed[0].FullName).Status
+          if ($status -ne "Valid") { Write-Error "Signed installer signature status is $status." }
+          Copy-Item -LiteralPath $signed[0].FullName -Destination $unsigned[0].FullName -Force
+          bun scripts/refresh-windows-update-metadata.ts dist
+          if ($LASTEXITCODE -ne 0) { Write-Error "Could not refresh latest.yml after signing." }
 
       - name: Verify packaged application metadata and launch
         run: bun run verify:package:win --require-update-metadata
@@ -240,6 +284,14 @@ jobs:
           }
           $signature = Get-AuthenticodeSignature -LiteralPath $installers[0].FullName
           Write-Host "Authenticode signature status: $($signature.Status)"
+          # latest.yml must describe the installer exactly as published, or every update fails.
+          $sha512 = [Convert]::ToBase64String([System.Security.Cryptography.SHA512]::Create().ComputeHash([System.IO.File]::ReadAllBytes($installers[0].FullName)))
+          if (-not (Select-String -Path dist/latest.yml -SimpleMatch "sha512: $sha512" -Quiet)) {
+            Write-Error "latest.yml sha512 does not match the installer."
+          }
+          if (-not (Select-String -Path dist/latest.yml -SimpleMatch "size: $($installers[0].Length)" -Quiet)) {
+            Write-Error "latest.yml size does not match the installer."
+          }
           Select-String -Path dist/latest.yml -SimpleMatch "version: $env:RELEASE_VERSION"
           Select-String -Path dist/latest.yml -SimpleMatch ".exe"
 

@@ -400,6 +400,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #approvedLater = new Map<string, number>();
   readonly #fileChangePaths = new Map<string, string[]>();
   readonly #permissionTimeoutMs: number;
+  /** Whether the owner is at the window; while away, approvals wait longer before expiring. */
+  #ownerPresent: () => boolean = () => true;
   #usage: UsageService | null = null;
   #takeover: BrowserTakeoverState = { humanInControl: false, requests: [] };
   /** Coworkers refused the browser during a takeover; told when the owner hands it back. */
@@ -3153,6 +3155,29 @@ ${carryOver}`
     }
   }
 
+  /**
+   * Main tells the service whether the owner is looking at the window. A request raised while
+   * they are away waits OWNER_AWAY_TIMEOUT_FACTOR times longer (15 min becomes 1 hour), so an
+   * approval does not silently expire while they are at lunch.
+   */
+  setOwnerPresence(present: () => boolean): void {
+    this.#ownerPresent = present;
+  }
+
+  static OWNER_AWAY_TIMEOUT_FACTOR = 4;
+
+  #permissionWaitMs(): number {
+    let present = true;
+    try {
+      present = this.#ownerPresent();
+    } catch {
+      present = true;
+    }
+    return present
+      ? this.#permissionTimeoutMs
+      : this.#permissionTimeoutMs * AgentService.OWNER_AWAY_TIMEOUT_FACTOR;
+  }
+
   async #askOwnerOnce(
     request: PermissionRequest,
     key: string,
@@ -3173,8 +3198,9 @@ ${carryOver}`
     // A runtime that gives up on a tool call after a few minutes is answered before that; the
     // request stays in the inbox and the coworker hears the owner's decision as a message.
     const shortWait = SHORT_TOOL_WAIT_MS[request.provider];
-    const defer = shortWait !== undefined && shortWait < this.#permissionTimeoutMs;
-    const waitMs = defer ? shortWait : this.#permissionTimeoutMs;
+    const permissionTimeoutMs = this.#permissionWaitMs();
+    const defer = shortWait !== undefined && shortWait < permissionTimeoutMs;
+    const waitMs = defer ? shortWait : permissionTimeoutMs;
     const bot = this.#store.list().find((candidate) => candidate.id === request.botId);
     const wording = describePermissionRequest(
       request,
@@ -3198,7 +3224,7 @@ ${carryOver}`
       ...this.#approvalContext(request.botId),
       // The tool call is parked on the same timeout, so the deadline shown to the owner in
       // Telegram is the real one.
-      expiresAt: new Date(Date.now() + this.#permissionTimeoutMs).toISOString(),
+      expiresAt: new Date(Date.now() + permissionTimeoutMs).toISOString(),
     });
     await this.#routeApproval(approval);
     this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });

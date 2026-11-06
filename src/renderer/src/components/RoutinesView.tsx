@@ -6,6 +6,7 @@ import type {
   RoutineRun,
   RoutineStepStatus,
   RoutinesState,
+  RoutineTrigger,
   SaveRoutineInput,
   WorkflowImportPreview,
 } from "../../../shared/ipc";
@@ -36,7 +37,7 @@ const STEP_STATUS: Record<RoutineStepStatus, MessageKey> = {
   skipped: "stepStatusSkipped",
 };
 
-type ScheduleMode = "manual" | "scheduled" | "interval";
+type ScheduleMode = "manual" | "scheduled" | "interval" | "folder";
 
 interface Draft {
   id?: string;
@@ -45,10 +46,16 @@ interface Draft {
   scheduleMode: ScheduleMode;
   cadence: CadenceDraft;
   minutes: number;
+  /** Watched folder for the "When a file is added" trigger. */
+  folder: string;
   enabled: boolean;
 }
 
-export function describeRoutineCadence(cadence: RoutineCadence | null): string {
+export function describeRoutineCadence(
+  cadence: RoutineCadence | null,
+  trigger?: RoutineTrigger | null,
+): string {
+  if (trigger?.kind === "folder") return t("routineFolderStarts", { folder: trigger.folder });
   if (!cadence) return t("routineManual");
   if (cadence.kind === "interval") return `${t("routineEvery")} · ${cadence.minutes} min`;
   return describeCadence(cadence);
@@ -67,6 +74,7 @@ function draftFrom(routine: Routine | null, bots: BotProfile[]): Draft {
     scheduleMode: "manual",
     cadence: defaultCadenceDraft(),
     minutes: 60,
+    folder: "",
     enabled: true,
   };
   if (!routine) return base;
@@ -78,7 +86,10 @@ function draftFrom(routine: Routine | null, bots: BotProfile[]): Draft {
     enabled: routine.enabled,
   };
   const cadence = routine.cadence;
-  if (cadence?.kind === "interval") {
+  if (routine.trigger?.kind === "folder") {
+    draft.scheduleMode = "folder";
+    draft.folder = routine.trigger.folder;
+  } else if (cadence?.kind === "interval") {
     draft.scheduleMode = "interval";
     draft.minutes = cadence.minutes;
   } else if (cadence) {
@@ -158,8 +169,14 @@ export function RoutinesView(props: {
   }
 
   async function save(current: Draft) {
+    const trigger: RoutineTrigger | null =
+      current.scheduleMode === "folder" ? { kind: "folder", folder: current.folder } : null;
+    if (trigger && !trigger.folder) {
+      setError(t("routineFolderRequired"));
+      return;
+    }
     const cadence: RoutineCadence | null =
-      current.scheduleMode === "manual"
+      current.scheduleMode === "manual" || current.scheduleMode === "folder"
         ? null
         : current.scheduleMode === "interval"
           ? { kind: "interval", minutes: Math.round(current.minutes) }
@@ -175,6 +192,7 @@ export function RoutinesView(props: {
         name: current.name,
         steps: current.steps,
         cadence,
+        trigger,
         enabled: current.enabled,
         confirmFrequent,
       });
@@ -347,7 +365,9 @@ export function RoutinesView(props: {
                                 </span>
                                 <span>
                                   <small>{t("routineStarts")}</small>
-                                  <strong>{describeRoutineCadence(routine().cadence)}</strong>
+                                  <strong>
+                                    {describeRoutineCadence(routine().cadence, routine().trigger)}
+                                  </strong>
                                 </span>
                                 <span
                                   class="routine-state-pill"
@@ -480,7 +500,9 @@ export function RoutinesView(props: {
                                     <small>
                                       {run.trigger === "manual"
                                         ? t("routineTriggerManual")
-                                        : t("routineTriggerSchedule")}{" "}
+                                        : run.trigger === "folder"
+                                          ? t("routineTriggerFolder")
+                                          : t("routineTriggerSchedule")}{" "}
                                       · {run.steps.filter((step) => step.status === "done").length}/
                                       {run.steps.length}
                                     </small>
@@ -525,6 +547,7 @@ export function RoutinesView(props: {
                         ["manual", "routineManual"],
                         ["scheduled", "routineScheduled"],
                         ["interval", "routineEvery"],
+                        ["folder", "routineOnFolder"],
                       ] as Array<[ScheduleMode, MessageKey]>
                     }
                   >
@@ -563,6 +586,26 @@ export function RoutinesView(props: {
                   <Show when={current().minutes < FREQUENT_INTERVAL_MINUTES}>
                     <p class="settings-meta routine-warning">{t("routineFrequentConfirm")}</p>
                   </Show>
+                </Show>
+                <Show when={current().scheduleMode === "folder"}>
+                  <div class="routine-folder-trigger">
+                    <span>{t("routineFolderLabel")}</span>
+                    <code class="routine-folder-path" data-testid="routine-folder-path">
+                      {current().folder || t("routineFolderNone")}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void act(async () => {
+                          const folder = await window.sahkarmi.routines.pickFolder();
+                          if (folder) updateDraft({ folder });
+                        })
+                      }
+                    >
+                      {t("routineFolderChoose")}
+                    </button>
+                    <p class="settings-meta">{t("routineFolderHelp")}</p>
+                  </div>
                 </Show>
               </fieldset>
               <fieldset class="routine-field">

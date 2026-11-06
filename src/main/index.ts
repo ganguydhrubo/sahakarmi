@@ -6,6 +6,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import {
   app,
   BrowserWindow,
+  crashReporter,
   desktopCapturer,
   dialog,
   Menu,
@@ -45,6 +46,7 @@ import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
+import { onCorruptFileRecovered } from "../backend/json-file";
 import { KnowledgeService } from "../backend/knowledge/knowledge-service";
 import { MailboxStore } from "../backend/mailbox-store";
 import { McpServerStore } from "../backend/mcp-servers";
@@ -53,7 +55,7 @@ import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
 import { createRoutineExecutor } from "../backend/routine-executor";
 import { importDesktopRoutinesOnce } from "../backend/routine-import";
-import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
+import { parseRoutineCadence, parseRoutineTrigger, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
@@ -117,10 +119,16 @@ import {
   type WorkflowDoc,
 } from "../shared/ipc";
 import { AgentInitializationGate } from "./agent-initialization";
-import { notificationForAgentEvent } from "./agent-notifications";
+import {
+  type AgentNotificationContent,
+  notificationForAgentEvent,
+  notificationsForNewApprovals,
+} from "./agent-notifications";
 import { AiRuntimeService } from "./ai-runtime-service";
 import { AppLog } from "./app-log";
+import { BackgroundTray, shouldHideToTray } from "./background-tray";
 import { useOwnClaudeAccount } from "./claude-account";
+import { pruneCrashDumps, redactErrorForLog } from "./crash-dumps";
 import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
 import { cleanUpRuntimes } from "./runtime-cleanup";
 import { readSetupState, writeSetupState } from "./setup-store";
@@ -160,6 +168,86 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const appLog = new AppLog(app.getPath("userData"));
+
+// Crash dumps are written locally only (nothing is uploaded) next to the app data, so a crash
+// can be looked at; pruneCrashDumps keeps the newest few.
+try {
+  app.setPath("crashDumps", join(app.getPath("userData"), "Crashpad"));
+  crashReporter.start({ uploadToServer: false });
+} catch (error) {
+  appLog.write("warn", "crash reporter did not start", String(error));
+}
+
+/** True once the window has loaded; before that a main-process error is a failed start. */
+let mainProcessStarted = false;
+const mainProcessErrors: number[] = [];
+
+/**
+ * A stray exception in a timer or callback used to show Electron's error dialog over the app.
+ * It is logged (secrets masked) and the app carries on: coworkers run in their own processes and
+ * every store writes atomically. A burst is logged only partly so the log cannot fill up.
+ */
+function logMainProcessError(kind: string, error: unknown): void {
+  const now = Date.now();
+  while (mainProcessErrors.length && now - (mainProcessErrors[0] ?? 0) > 60_000) {
+    mainProcessErrors.shift();
+  }
+  mainProcessErrors.push(now);
+  if (mainProcessErrors.length > 20) return;
+  console.error(`Main process ${kind}:`, error);
+  appLog.write("error", `main process ${kind}`, redactErrorForLog(error, homedir()));
+}
+
+process.on("uncaughtException", (error) => {
+  logMainProcessError("uncaught exception", error);
+  if (mainProcessStarted) return;
+  dialog.showErrorBox(
+    "Sahkarmi couldn’t start",
+    `${error.message}\n\nYour local data was not reset or overwritten. See the troubleshooting guide for recovery steps.`,
+  );
+  app.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  logMainProcessError("unhandled promise rejection", reason);
+});
+
+/** Store files that were unreadable at startup and replaced by defaults; told to the owner once. */
+const corruptFileNotices: string[] = [];
+onCorruptFileRecovered((recovery) => {
+  appLog.write("warn", "store file unreadable; moved aside and started with defaults", {
+    reason: recovery.reason,
+    backup: recovery.backupPath,
+  });
+  corruptFileNotices.push(`${recovery.reason}\nKept as: ${recovery.backupPath}`);
+  showCorruptFileNotices();
+});
+
+function showCorruptFileNotices(): void {
+  if (!mainProcessStarted || !mainWindow || mainWindow.isDestroyed()) return;
+  if (corruptFileNotices.length === 0) return;
+  // A box owned by a hidden window stays hidden too (first start, or the tray): wait for it.
+  if (!mainWindow.isVisible()) {
+    mainWindow.once("show", showCorruptFileNotices);
+    return;
+  }
+  const detail = corruptFileNotices.splice(0).join("\n\n");
+  void dialog
+    .showMessageBox(mainWindow, {
+      type: "warning",
+      title: "Sahkarmi",
+      message: "Some settings could not be read and were reset",
+      detail: `${detail}\n\nSahkarmi started with default settings for these. The unreadable copies were kept, not deleted. Check your permissions in Settings.`,
+    })
+    .catch((error) => appLog.write("warn", "could not show the reset notice", String(error)));
+}
+
+/** Settings → Features → "Keep running in the tray"; set once the feature list is loaded. */
+let keepRunningInTray: () => boolean = () => false;
+let backgroundTray: BackgroundTray | null = null;
+let trayHintShown = false;
+/** Coworker queues that "Pause all coworkers" paused, so resuming leaves the owner's own pauses. */
+const pausedByTray = new Set<string>();
+let allPaused = false;
 /** Window focus refreshes models, updates and AI tools at most this often. */
 const FOCUS_REFRESH_MS = 10 * 60_000;
 let mainWindow: BrowserWindow | null = null;
@@ -930,7 +1018,7 @@ function registerIpcHandlers(
     const doc = parseWorkflowJson(await readFile(path, "utf8"));
     return { doc, suggestions: suggestAssignments(doc, service.listBots()) };
   });
-  handleTrusted(IPC_CHANNELS.routinesSave, (input: unknown) => {
+  handleTrusted(IPC_CHANNELS.routinesSave, async (input: unknown) => {
     if (!isObject(input) || !Array.isArray(input.steps)) throw new Error("Invalid routine.");
     const known = new Set(service.listBots().map((bot) => bot.id));
     const steps = input.steps.map((step) => {
@@ -943,14 +1031,24 @@ function registerIpcHandlers(
         instruction: typeof step.instruction === "string" ? step.instruction : "",
       };
     });
+    const trigger = input.trigger ? await parseRoutineTrigger(input.trigger) : null;
     return routines.save({
       id: typeof input.id === "string" && input.id ? input.id : undefined,
       name: typeof input.name === "string" ? input.name : "",
       steps,
-      cadence: input.cadence === null ? null : parseRoutineCadence(input.cadence),
+      cadence: trigger || input.cadence === null ? null : parseRoutineCadence(input.cadence),
+      trigger,
       enabled: input.enabled === true,
       confirmFrequent: input.confirmFrequent === true,
     });
+  });
+  handleTrusted(IPC_CHANNELS.routinesPickFolder, async () => {
+    const options: OpenDialogOptions = { properties: ["openDirectory"] };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    const folder = result.filePaths[0];
+    return result.canceled || !folder ? null : folder;
   });
   handleTrusted(IPC_CHANNELS.routinesDelete, (routineId: unknown) =>
     routines.delete(requireString(routineId, "routineId")),
@@ -1171,7 +1269,22 @@ function createWindow(): BrowserWindow {
     if (process.platform === "darwin" && !isQuitting) {
       event.preventDefault();
       window.hide();
+    } else if (
+      shouldHideToTray({
+        platform: process.platform,
+        enabled: keepRunningInTray(),
+        quitting: isQuitting,
+      })
+    ) {
+      // Background mode: schedules, routines and Telegram keep running; Quit is in the tray.
+      event.preventDefault();
+      window.hide();
+      showBackgroundTray();
     }
+  });
+  // Windows is signing out or shutting down: never hold it up by hiding to the tray.
+  window.on("session-end", () => {
+    isQuitting = true;
   });
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
@@ -1289,21 +1402,112 @@ function configureApplicationMenu(service: AgentService, updater: UpdateService)
   );
 }
 
+/** Approval requests that already raised a notification (or appeared while the owner looked). */
+const notifiedApprovals = new Set<string>();
+
+/** The owner is looking at Sahkarmi: the window is shown, not minimised, and focused. */
+function ownerIsPresent(): boolean {
+  return Boolean(
+    mainWindow &&
+      !mainWindow.isDestroyed() &&
+      mainWindow.isVisible() &&
+      !mainWindow.isMinimized() &&
+      mainWindow.isFocused(),
+  );
+}
+
 function forwardAgentEvent(event: AgentEvent): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(IPC_CHANNELS.agentEvent, event);
+  if (event.type === "approvals-changed") {
+    // Tracked even while the owner is looking, so a card they already saw never pops up later.
+    const contents = notificationsForNewApprovals(
+      event.approvals,
+      agentService?.listBots() ?? [],
+      notifiedApprovals,
+    );
+    if (ownerIsPresent() || !Notification.isSupported()) return;
+    for (const content of contents) showAgentNotification(content);
+    return;
+  }
   if (mainWindow.isFocused() || !Notification.isSupported()) return;
 
   const content = notificationForAgentEvent(event, agentService?.listBots() ?? []);
   if (!content) return;
-  const notification = new Notification(content);
-  notification.on("click", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  });
+  showAgentNotification(content);
+}
+
+function showAgentNotification(content: AgentNotificationContent): void {
+  const notification = new Notification({ title: content.title, body: content.body });
+  notification.on("click", () => openMainWindow(content.botId ?? null, content.approvalId));
   notification.show();
+}
+
+/** Brings the window back (from the tray too) and, when given, opens that coworker's chat. */
+function openMainWindow(botId: string | null = null, approvalId?: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (botId || approvalId) {
+    mainWindow.webContents.send(IPC_CHANNELS.agentEvent, {
+      type: "open-requested",
+      botId,
+      ...(approvalId ? { approvalId } : {}),
+    } satisfies AgentEvent);
+  }
+}
+
+function showBackgroundTray(): void {
+  if (!backgroundTray) {
+    const icon = windowIcon() ?? nativeImage.createEmpty();
+    backgroundTray = new BackgroundTray(icon, {
+      open: () => openMainWindow(),
+      setPaused: (paused) => void setAllCoworkersPaused(paused),
+      isPaused: () => allPaused,
+      quit: () => app.quit(),
+    });
+  }
+  backgroundTray.show();
+  if (!trayHintShown && Notification.isSupported()) {
+    trayHintShown = true;
+    const hint = new Notification({
+      title: "Sahkarmi is still running",
+      body: "Schedules and routines keep working. Right-click the tray icon to pause or quit.",
+    });
+    hint.on("click", () => openMainWindow());
+    hint.show();
+  }
+}
+
+/**
+ * Tray → "Pause all coworkers": stops running turns, pauses every queue and holds schedules and
+ * routines until resumed. Not remembered across a restart.
+ */
+async function setAllCoworkersPaused(paused: boolean): Promise<void> {
+  allPaused = paused;
+  scheduleStore?.setPaused(paused);
+  routineStore?.setPaused(paused);
+  const service = agentService;
+  if (!service) return;
+  try {
+    if (paused) {
+      await service.interruptAll();
+      for (const bot of service.listBots()) {
+        if (service.listQueue(bot.id).paused && !pausedByTray.has(bot.id)) continue;
+        pausedByTray.add(bot.id);
+        await service.setQueuePaused(bot.id, true);
+      }
+    } else {
+      for (const botId of [...pausedByTray]) {
+        pausedByTray.delete(botId);
+        await service.setQueuePaused(botId, false).catch(() => undefined);
+      }
+    }
+  } catch (error) {
+    appLog.write("error", paused ? "pause all failed" : "resume all failed", String(error));
+  }
+  backgroundTray?.refresh();
 }
 
 let selfUpdateCheck: Promise<boolean> | null = null;
@@ -1635,6 +1839,9 @@ if (!hasSingleInstanceLock) {
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+      keepRunningInTray = () => features.isEnabled("background-tray");
+      // Approvals raised while the owner is away wait longer before they expire.
+      service.setOwnerPresence(ownerIsPresent);
       const knowledge = new KnowledgeService(app.getPath("userData"));
       knowledgeService = knowledge;
       await knowledge.initialize().catch((error) => {
@@ -1890,24 +2097,31 @@ if (!hasSingleInstanceLock) {
       registerTelegramIpc(telegram);
       configureApplicationMenu(service, updateService);
       await loadRenderer(mainWindow);
-      void agentInitialization
-        .start()
-        .then(() => {
-          schedules.start(async (task) => {
-            await service.sendMessage({
-              botId: task.botId,
-              text: `[Scheduled task] ${task.text}`,
-            });
-          });
-          routines.start(createRoutineExecutor(service));
-          void telegram
-            .initialize()
-            .catch((error) => appLog.write("error", "Telegram bridge did not start", error));
+      mainProcessStarted = true;
+      showCorruptFileNotices();
+      void pruneCrashDumps(app.getPath("crashDumps"))
+        .then((deleted) => {
+          if (deleted) appLog.write("info", "removed old crash dumps", { deleted });
         })
-        .catch((error) => {
-          console.error("Unable to initialize the local agent backend:", error);
-          appLog.write("error", "Unable to initialize the local agent backend", error);
+        .catch(() => undefined);
+      // Runs after the first successful start, including a retry from the window after a failed
+      // first try; before, a failed first try left these off until the app restarted.
+      agentInitialization.onReady(() => {
+        schedules.start(async (task) => {
+          await service.sendMessage({
+            botId: task.botId,
+            text: `[Scheduled task] ${task.text}`,
+          });
         });
+        routines.start(createRoutineExecutor(service));
+        void telegram
+          .initialize()
+          .catch((error) => appLog.write("error", "Telegram bridge did not start", error));
+      });
+      void agentInitialization.start().catch((error) => {
+        console.error("Unable to initialize the local agent backend:", error);
+        appLog.write("error", "Unable to initialize the local agent backend", error);
+      });
 
       app.on("activate", () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1993,6 +2207,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", (event) => {
   isQuitting = true;
+  backgroundTray?.destroy();
   if (shutdownStarted) return;
   event.preventDefault();
   // A stuck agent process or dialog must never keep the app open after the owner quit it.

@@ -599,3 +599,19 @@
   background: var(--surface-2);
   color: var(--text-secondary);
 }
+
+/* "When a file is added" trigger: the chosen folder and its picker. */
+.routine-folder-trigger {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.routine-folder-trigger > button {
+  justify-self: start;
+}
+
+.routine-folder-path {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}

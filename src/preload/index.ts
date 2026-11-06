@@ -216,6 +216,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     setEnabled: (routineId, enabled) =>
       ipcRenderer.invoke(IPC_CHANNELS.routinesSetEnabled, { routineId, enabled }),
     runNow: (routineId) => ipcRenderer.invoke(IPC_CHANNELS.routinesRunNow, routineId),
+    pickFolder: () => ipcRenderer.invoke(IPC_CHANNELS.routinesPickFolder),
   },
   files: {
     list: (directory) => ipcRenderer.invoke(IPC_CHANNELS.filesList, directory ?? ""),

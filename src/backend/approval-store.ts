@@ -70,7 +70,7 @@ export class ApprovalStore {
   #state: ApprovalState = { version: 1, approvals: [] };
 
   constructor(userDataPath: string) {
-    this.#file = new JsonFile(join(userDataPath, "approvals.json"));
+    this.#file = new JsonFile(join(userDataPath, "approvals.json"), { recoverCorrupt: true });
   }
 
   async initialize(): Promise<void> {

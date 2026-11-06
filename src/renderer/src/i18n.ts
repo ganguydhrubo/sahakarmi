@@ -1,3 +1,4 @@
+import { backgroundBn, backgroundEn, backgroundHi } from "./i18n-background";
 import { extensionsBn, extensionsEn, extensionsHi } from "./i18n-extensions";
 import { as, gu, kn, ml, mr, or, pa, ta, te } from "./i18n-indic";
 import { marketplaceBn, marketplaceEn, marketplaceHi } from "./i18n-marketplace";
@@ -292,6 +293,7 @@ const en = {
   ...workspaceEn,
   ...marketplaceEn,
   ...extensionsEn,
+  ...backgroundEn,
   ...onboardingEn,
 };
 
@@ -583,6 +585,7 @@ const hi: Dictionary = {
   ...workspaceHi,
   ...marketplaceHi,
   ...extensionsHi,
+  ...backgroundHi,
   ...onboardingHi,
 };
 
@@ -870,6 +873,7 @@ const bn: Dictionary = {
   ...workspaceBn,
   ...marketplaceBn,
   ...extensionsBn,
+  ...backgroundBn,
   ...onboardingBn,
 };
 
