@@ -99,6 +99,8 @@ export function staleReloadDelay(
   tab: {
     stale: boolean;
     ownerTouched: boolean;
+    /** Keys the owner typed since the page loaded, even before the coworker's change. */
+    ownerTyped?: boolean;
     coworkerTyped: boolean;
     loadFailed: boolean;
     lastAutoReload: number;
@@ -106,7 +108,9 @@ export function staleReloadDelay(
   now: number,
   minimumGapMs: number,
 ): number | null {
-  if (!tab.stale || tab.ownerTouched || tab.coworkerTyped || tab.loadFailed) return null;
+  if (!tab.stale || tab.ownerTouched || tab.ownerTyped || tab.coworkerTyped || tab.loadFailed) {
+    return null;
+  }
   return Math.max(0, tab.lastAutoReload + minimumGapMs - now);
 }
 

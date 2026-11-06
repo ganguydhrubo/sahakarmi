@@ -272,7 +272,8 @@ async function main(): Promise<void> {
     process.stdout.write("BrowserHost: child-tab ownership passed.\n");
 
     const screenshot = await browser.screenshot(tab.id);
-    if (!screenshot.startsWith("data:image/png;base64,")) throw new Error("Screenshot failed.");
+    // Screenshots are resized JPEG, small enough to send to a model.
+    if (!screenshot.startsWith("data:image/jpeg;base64,")) throw new Error("Screenshot failed.");
     process.stdout.write("BrowserHost: screenshot passed.\n");
 
     await browser.open(`${origin}/cookie?set=1`, "smoke-thread");
@@ -405,13 +406,15 @@ async function main(): Promise<void> {
     };
     await saveDraft("first");
     await waitFor(async () => (await browser.snapshot(ownerDraft.id)).text.includes("draft:first"));
-    // Once the owner types in their tab, it is never reloaded over their work.
-    await saveDraft("second");
+    // Once the owner types in their tab, it is never reloaded over their work. The key press is
+    // delivered first, so a slow machine cannot let the refresh timer win the race.
     const ownerContents = webContents
       .getAllWebContents()
       .filter((contents) => contents.getURL() === `${origin}/draft`)
       .sort((left, right) => left.id - right.id)[0];
     ownerContents?.sendInputEvent({ type: "keyDown", keyCode: "a" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await saveDraft("second");
     await new Promise((resolve) => setTimeout(resolve, BrowserHost.STALE_REFRESH_MS + 1_000));
     const untouched = await browser.snapshot(ownerDraft.id);
     if (!untouched.text.includes("draft:first")) {
@@ -515,7 +518,7 @@ async function main(): Promise<void> {
     if ((await sheetCells()).MENU !== "open")
       throw new Error("An SVG icon button could not be clicked.");
     const hiddenShot = await browser.screenshot(sheet.id);
-    if (!hiddenShot.startsWith("data:image/png;base64,") || hiddenShot.length < 1_000) {
+    if (!hiddenShot.startsWith("data:image/jpeg;base64,") || hiddenShot.length < 1_000) {
       throw new Error("A hidden tab could not be captured.");
     }
     await browser.close(sheet.id);

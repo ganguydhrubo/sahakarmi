@@ -150,8 +150,14 @@ describe.sequential("AgentService", () => {
     if (!turnId) throw new Error("Expected an active turn");
     await service.interrupt("chief", turnId);
     await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "interrupted");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    await service.refreshModels(true);
+    // The deferred restart waits for the turn to settle; under a busy test run that takes a while.
+    await waitFor(async () => {
+      await service?.refreshModels(true);
+      return (
+        service?.getStatus().providers?.find((provider) => provider.id === "codex")?.version ===
+        "0.144.2"
+      );
+    });
     expect(
       service.getStatus().providers?.find((provider) => provider.id === "codex")?.version,
     ).toBe("0.144.2");
