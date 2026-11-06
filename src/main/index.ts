@@ -225,13 +225,20 @@ onCorruptFileRecovered((recovery) => {
 function showCorruptFileNotices(): void {
   if (!mainProcessStarted || !mainWindow || mainWindow.isDestroyed()) return;
   if (corruptFileNotices.length === 0) return;
+  // A box owned by a hidden window stays hidden too (first start, or the tray): wait for it.
+  if (!mainWindow.isVisible()) {
+    mainWindow.once("show", showCorruptFileNotices);
+    return;
+  }
   const detail = corruptFileNotices.splice(0).join("\n\n");
-  void dialog.showMessageBox(mainWindow, {
-    type: "warning",
-    title: "Sahkarmi",
-    message: "Some settings could not be read and were reset",
-    detail: `${detail}\n\nSahkarmi started with default settings for these. The unreadable copies were kept, not deleted. Check your permissions in Settings.`,
-  });
+  void dialog
+    .showMessageBox(mainWindow, {
+      type: "warning",
+      title: "Sahkarmi",
+      message: "Some settings could not be read and were reset",
+      detail: `${detail}\n\nSahkarmi started with default settings for these. The unreadable copies were kept, not deleted. Check your permissions in Settings.`,
+    })
+    .catch((error) => appLog.write("warn", "could not show the reset notice", String(error)));
 }
 
 /** Settings → Features → "Keep running in the tray"; set once the feature list is loaded. */
