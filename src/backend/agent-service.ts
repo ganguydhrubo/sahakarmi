@@ -147,6 +147,7 @@ import {
   LIST_MEMORIES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
   READ_DOCUMENT_SECTION_DESCRIPTION,
+  READ_SKILL_DESCRIPTION,
   SAVE_MEMORY_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
   SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
@@ -3658,12 +3659,14 @@ ${carryOver}`
               installed: installedSkillNames(this.#store.sharedRoot),
               custom: (await new CustomSkills(this.#store.sharedRoot).list()).map((skill) => ({
                 id: skill.id,
+                type: "custom",
                 name: skill.name,
                 whenToUse: skill.description,
                 path: join(this.#store.sharedRoot, skill.sharedPath),
               })),
               learned: learned.map((skill) => ({
                 id: skill.id,
+                type: "learned",
                 name: skill.name,
                 whenToUse: skill.whenToUse,
                 version: skill.version,
@@ -3677,11 +3680,25 @@ ${carryOver}`
 
     if (params.tool === "read_skill") {
       const args = isRecord(params.arguments) ? params.arguments : {};
-      const id = typeof args.id === "string" ? args.id : "";
+      const { id, type } = skillRef(args);
+      const learned =
+        type === "custom" ? null : await new LearnedSkills(this.#store.sharedRoot).read(id);
+      const custom =
+        type === "learned" ? null : await new CustomSkills(this.#store.sharedRoot).read(id);
+      if (learned === null && custom === null) {
+        throw new Error(`No skill with id "${id}". Call list_skills.`);
+      }
+      // A learned and a custom skill can share an id: without a type, both are shown, labelled.
       const text =
-        (await new LearnedSkills(this.#store.sharedRoot).read(id)) ??
-        (await new CustomSkills(this.#store.sharedRoot).read(id));
-      if (text === null) throw new Error(`No skill with id "${id}". Call list_skills.`);
+        learned !== null && custom !== null
+          ? [
+              `Two skills have the id "${id}". Call read_skill with type "learned" or "custom" to read one.`,
+              "--- learned skill ---",
+              learned,
+              "--- custom skill ---",
+              custom,
+            ].join("\n")
+          : (learned ?? custom ?? "");
       return { success: true, contentItems: [{ type: "inputText", text }] };
     }
 
@@ -6286,10 +6303,13 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "read_skill",
-      description: "Read one learned or custom skill's full playbook by its id (from list_skills).",
+      description: READ_SKILL_DESCRIPTION,
       inputSchema: {
         type: "object",
-        properties: { id: { type: "string", minLength: 1, maxLength: 80 } },
+        properties: {
+          id: { type: "string", minLength: 1, maxLength: 90 },
+          type: { type: "string", enum: ["learned", "custom"] },
+        },
         required: ["id"],
         additionalProperties: false,
       },
@@ -6697,6 +6717,23 @@ export function searchExcerpt(text: string, index: number, length: number): stri
   const start = Math.max(0, index - 48);
   const end = Math.min(flat.length, index + length + 72);
   return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
+}
+
+/** A read_skill id, with its type from `type` or a "learned:" / "custom:" prefix. */
+export function skillRef(args: Record<string, unknown>): {
+  id: string;
+  type: "learned" | "custom" | null;
+} {
+  const raw = typeof args.id === "string" ? args.id.trim() : "";
+  const prefixed = /^(learned|custom)[:/](.+)$/i.exec(raw);
+  const explicit = args.type === "learned" || args.type === "custom" ? args.type : null;
+  if (prefixed) {
+    return {
+      id: prefixed[2] ?? "",
+      type: explicit ?? ((prefixed[1] ?? "").toLowerCase() as "learned" | "custom"),
+    };
+  }
+  return { id: raw, type: explicit };
 }
 
 /** Codex says "inProgress", Claude and ACP say "in_progress". */

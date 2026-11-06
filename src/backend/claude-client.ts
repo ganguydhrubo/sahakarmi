@@ -32,6 +32,7 @@ import {
   LIST_MEMORIES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
   READ_DOCUMENT_SECTION_DESCRIPTION,
+  READ_SKILL_DESCRIPTION,
   SAVE_MEMORY_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
   SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
@@ -1114,8 +1115,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "read_skill",
-            "Read one learned or custom skill's full playbook by its id (from list_skills).",
-            { id: z.string().min(1).max(80) },
+            READ_SKILL_DESCRIPTION,
+            { id: z.string().min(1).max(90), type: z.enum(["learned", "custom"]).optional() },
             (args) => call("sahkarmi", "read_skill", args),
           ),
           tool(

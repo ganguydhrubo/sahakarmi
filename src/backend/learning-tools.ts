@@ -17,3 +17,5 @@ export const SEARCH_MEMORY_DESCRIPTION =
   "Search this workspace's team memory by words (word forms match, e.g. invoice finds invoices; it does not search by meaning). Returns the best matches first, up to limit (default 20).";
 export const LIST_MEMORIES_DESCRIPTION =
   "List this workspace's team memory, newest first, one page at a time: limit (default 20, at most 50) and offset for the next page. Use search_memory to find something specific.";
+export const READ_SKILL_DESCRIPTION =
+  "Read one learned or custom skill's full playbook by its id (from list_skills). Give type (learned or custom, as list_skills shows) when a learned and a custom skill share the id.";

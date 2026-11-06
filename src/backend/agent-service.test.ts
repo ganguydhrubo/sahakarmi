@@ -13,15 +13,18 @@ import {
   quotaNotice,
   SHORT_TOOL_WAIT_MS,
   searchExcerpt,
+  skillRef,
   taskGrantKey,
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost } from "./browser-host";
+import { CustomSkills } from "./custom-skills";
 import { KnowledgeService } from "./knowledge/knowledge-service";
 import { MailboxStore } from "./mailbox-store";
 import { PermissionService } from "./permission-service";
 import { RoutineStore } from "./routine-store";
+import { LearnedSkills } from "./skill-library";
 
 let root: string;
 let logPath: string;
@@ -986,6 +989,43 @@ describe.sequential("AgentService", () => {
     expect(reply?.result).toMatchObject({ success: false });
     expect(JSON.stringify(reply?.result)).toContain("passwords");
     expect(errors.filter((event) => JSON.stringify(event).includes("server_request"))).toEqual([]);
+  });
+
+  it("reads the skill of the type asked for when a learned and a custom skill share an id", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "read_skill",
+      arguments: { id: "invoice-check", type: "custom" },
+    });
+    const { store, mailbox } = stores();
+    await new LearnedSkills(store.sharedRoot).save({
+      name: "Invoice check",
+      whenToUse: "Checking invoices",
+      steps: "1. Learned steps.",
+      author: "Asha",
+    });
+    await new CustomSkills(store.sharedRoot).addFromText(
+      "---\nname: invoice-check\ndescription: Owner's own check\n---\n\nCustom steps from the owner.",
+    );
+    const customId = (await new CustomSkills(store.sharedRoot).list())[0]?.id;
+    expect(customId).toBe("invoice-check");
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Check the invoice" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    const text = JSON.stringify(reply?.result);
+    expect(text).toContain("Custom steps from the owner.");
+    expect(text).not.toContain("Learned steps.");
+    expect(skillRef({ id: "learned:invoice-check" })).toEqual({
+      id: "invoice-check",
+      type: "learned",
+    });
+    expect(skillRef({ id: "invoice-check" })).toEqual({ id: "invoice-check", type: null });
   });
 
   it("lets a coworker recall its own earlier chats with every word matching", async () => {
