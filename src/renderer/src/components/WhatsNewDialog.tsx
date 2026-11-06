@@ -15,7 +15,7 @@ const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
       icon: "🔌",
       badge: "New",
       title: "Connect any web API with just its key",
-      desc: "Marketplace → APIs: paste a key, Sahkarmi works out how the API works, tests it for real and turns it on when you say so. Then just ask, for example \"tomorrow's weather in Kolkata\".",
+      desc: 'Marketplace → APIs: paste a key, Sahkarmi works out how the API works, tests it for real and turns it on when you say so. Then just ask, for example "tomorrow\'s weather in Kolkata".',
     },
     {
       icon: "🧠",
