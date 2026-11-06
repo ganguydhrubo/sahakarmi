@@ -104,6 +104,9 @@ interface ConversationProps {
   modelOptions: AgentModelOption[];
   messages: BotMessage[];
   loaded: boolean;
+  /** Older messages not loaded yet (the chat opens on its newest ones). */
+  earlierCount?: number;
+  onLoadEarlier?: () => void;
   activeTurnId: string | null | undefined;
   agentPickerOpen: boolean;
   creatingAgent: boolean;
@@ -194,7 +197,13 @@ const SETTINGS_PANEL_MIN = 180;
 const SETTINGS_PANEL_MAX = 1600;
 const BROWSER_PANEL_STORAGE_KEY = "sahkarmi:browser-panel-width";
 const BROWSER_COMPACT_STORAGE_KEY = "sahkarmi:browser-compact";
-const BROWSER_PREVIEW_REFRESH_MS = 2_500;
+/**
+ * Page cards refresh when a page navigates or finishes loading (a browser-changed event), and
+ * otherwise at most this often. Every 2.5 s, whatever the page did, cost the app CPU for nothing.
+ */
+const BROWSER_PREVIEW_REFRESH_MS = 10_000;
+/** A page whose address, title and loading state did not change is pictured again only this often. */
+const BROWSER_PREVIEW_UNCHANGED_MS = 30_000;
 /** Pages other than the active one get a fresh picture every this many refreshes. */
 const BROWSER_BACKGROUND_PREVIEW_EVERY = 3;
 const BROWSER_FIRST_PREVIEWS = 6;
@@ -1530,6 +1539,8 @@ export function Conversation(props: ConversationProps) {
   let browserVisibilityFrame: number | undefined;
   let browserBoundsFrame: number | undefined;
   let browserBoundsTimer: ReturnType<typeof setInterval> | undefined;
+  /** When each page card was last pictured, and what the page showed then. */
+  const previewCaptures = new Map<string, { key: string; at: number }>();
   let browserSentBounds = "";
   let browserVisibilityGeneration = 0;
   let pickerInput: HTMLInputElement | undefined;
@@ -2077,6 +2088,12 @@ export function Conversation(props: ConversationProps) {
     let tick = 0;
     let nextBackground = 0;
     const capture = (tabId: string) => {
+      const tab = tabs.find((candidate) => candidate.id === tabId);
+      const key = tab ? `${tab.url}\n${tab.title}\n${tab.loading}` : "";
+      const last = previewCaptures.get(tabId);
+      const now = Date.now();
+      if (last && last.key === key && now - last.at < BROWSER_PREVIEW_UNCHANGED_MS) return;
+      previewCaptures.set(tabId, { key, at: now });
       void window.sahkarmi.browser
         .preview(tabId)
         .then((image) => {
@@ -2089,7 +2106,7 @@ export function Conversation(props: ConversationProps) {
     };
     const refresh = () => {
       // Nobody is looking: pictures cost the whole app time, for nothing.
-      if (document.hidden) return;
+      if (document.hidden || !document.hasFocus()) return;
       if (activeId) capture(activeId);
       const others = tabs.filter((tab) => tab.id !== activeId);
       if (others.length > 0) {
@@ -2805,6 +2822,13 @@ export function Conversation(props: ConversationProps) {
                 </button>
               </Show>
             </section>
+          </Show>
+          <Show when={(props.earlierCount ?? 0) > 0 && props.onLoadEarlier}>
+            <div class="load-earlier">
+              <button type="button" class="link-button" onClick={() => props.onLoadEarlier?.()}>
+                {t("loadEarlier", { count: String(props.earlierCount ?? 0) })}
+              </button>
+            </div>
           </Show>
           <Show when={props.messages.length > 0}>
             <div class="time-marker">
