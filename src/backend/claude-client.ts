@@ -29,10 +29,14 @@ import type { ClaudeCliInfo } from "./cli";
 import { desktopSdkServers } from "./desktop/desktop-claude-tools";
 import {
   LIST_KNOWLEDGE_BASES_DESCRIPTION,
+  LIST_MEMORIES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
   READ_DOCUMENT_SECTION_DESCRIPTION,
+  READ_SKILL_DESCRIPTION,
+  SAVE_MEMORY_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
   SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
+  SEARCH_MEMORY_DESCRIPTION,
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import { claudeMcpServers, type McpServerWire, readCustomMcpServers } from "./mcp-servers";
@@ -1043,7 +1047,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "save_memory",
-            "Save a persistent piece of knowledge, project decision, technical fact, or owner preference into long-term team memory.",
+            SAVE_MEMORY_DESCRIPTION,
             {
               key: z.string().min(1).max(120),
               content: z.string().min(1).max(8000),
@@ -1054,18 +1058,21 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "search_memory",
-            "Search long-term team memory by keyword to recall previous decisions, standards, or facts.",
+            SEARCH_MEMORY_DESCRIPTION,
             {
               query: z.string(),
               category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
+              limit: z.number().int().min(1).max(50).optional(),
             },
             (args) => call("sahkarmi", "search_memory", args),
           ),
           tool(
             "list_memories",
-            "List all memories currently retained in the team long-term memory hub.",
+            LIST_MEMORIES_DESCRIPTION,
             {
               category: z.enum(["architecture", "preference", "decision", "fact"]).optional(),
+              limit: z.number().int().min(1).max(50).optional(),
+              offset: z.number().int().min(0).optional(),
             },
             (args) => call("sahkarmi", "list_memories", args),
           ),
@@ -1108,8 +1115,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           ),
           tool(
             "read_skill",
-            "Read one learned or custom skill's full playbook by its id (from list_skills).",
-            { id: z.string().min(1).max(80) },
+            READ_SKILL_DESCRIPTION,
+            { id: z.string().min(1).max(90), type: z.enum(["learned", "custom"]).optional() },
             (args) => call("sahkarmi", "read_skill", args),
           ),
           tool(

@@ -2197,6 +2197,8 @@ export interface VoiceDesktopApi {
 
 export interface AgentMemory {
   id: string;
+  /** The workspace the memory belongs to (memories never cross workspaces). */
+  workspaceId?: string;
   category: "architecture" | "preference" | "decision" | "fact";
   key: string;
   content: string;
@@ -2366,10 +2368,29 @@ export interface KnowledgeDesktopApi {
   removeSemantic: () => Promise<KnowledgeSemanticStatus>;
 }
 
+export interface MemoryListInput {
+  workspaceId: string;
+  /** Words to search for; empty lists the newest. */
+  query?: string;
+  category?: AgentMemoryCategory;
+  limit?: number;
+  offset?: number;
+}
+
+export interface MemoryListResult {
+  memories: AgentMemory[];
+  /** All memories of the workspace (and category), not only this page. */
+  total: number;
+  offset: number;
+}
+
 export interface MemoryDesktopApi {
-  list: (category?: string) => Promise<AgentMemory[]>;
+  list: (input: MemoryListInput) => Promise<MemoryListResult>;
   save: (
-    entry: Omit<AgentMemory, "id" | "createdAt" | "updatedAt"> & { id?: string },
+    entry: Omit<AgentMemory, "id" | "createdAt" | "updatedAt" | "workspaceId"> & {
+      id?: string;
+      workspaceId: string;
+    },
   ) => Promise<AgentMemory>;
-  delete: (id: string) => Promise<boolean>;
+  delete: (id: string, workspaceId: string) => Promise<boolean>;
 }

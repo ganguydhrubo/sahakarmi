@@ -5,6 +5,15 @@ import solidPlugin from "vite-plugin-solid";
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        // The Knowledge Bases worker runs in its own utility process, next to index.js.
+        input: {
+          index: "src/main/index.ts",
+          "knowledge-worker": "src/backend/knowledge/knowledge-worker.ts",
+        },
+      },
+    },
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

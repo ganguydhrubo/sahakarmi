@@ -21,9 +21,11 @@ import {
   session,
   shell,
   systemPreferences,
+  utilityProcess,
 } from "electron";
 import electronUpdater from "electron-updater";
 import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
+import { memoryCategory } from "../backend/agent-memory-store";
 import { AgentService } from "../backend/agent-service";
 import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
@@ -46,8 +48,13 @@ import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
+<<<<<<< HEAD
 import { onCorruptFileRecovered } from "../backend/json-file";
 import { KnowledgeService } from "../backend/knowledge/knowledge-service";
+=======
+import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
+import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
+>>>>>>> audit/w3-knowledge
 import { MailboxStore } from "../backend/mailbox-store";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -260,7 +267,7 @@ let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
 let aiRuntimeService: AiRuntimeService | null = null;
 let scheduleStore: ScheduleStore | null = null;
-let knowledgeService: KnowledgeService | null = null;
+let knowledgeService: KnowledgeApi | null = null;
 let routineStore: RoutineStore | null = null;
 let telegramBridge: TelegramBridge | null = null;
 let usageService: UsageService | null = null;
@@ -344,7 +351,7 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   );
 }
 
-function registerKnowledgeIpc(knowledge: KnowledgeService): void {
+function registerKnowledgeIpc(knowledge: KnowledgeApi): void {
   const kbId = (value: unknown) => requireString(value, "knowledgeBaseId");
   handleTrusted(IPC_CHANNELS.knowledgeList, () => knowledge.list());
   handleTrusted(IPC_CHANNELS.knowledgeCreate, (input: unknown) => {
@@ -441,7 +448,7 @@ function registerKnowledgeIpc(knowledge: KnowledgeService): void {
   });
   handleTrusted(IPC_CHANNELS.knowledgeOpenSource, async (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid request.");
-    const path = knowledge.sourcePath(
+    const path = await knowledge.sourcePath(
       kbId(input.kbId),
       requireString(input.documentId, "documentId"),
     );
@@ -1113,33 +1120,42 @@ function registerIpcHandlers(
     if (typeof runId !== "string") throw new Error("Invalid runId");
     return orchestrator.cancelRun(runId);
   });
-  handleTrusted(IPC_CHANNELS.memoryList, (category: unknown) => {
-    return service.memoryStore.list(typeof category === "string" ? category : undefined);
+  handleTrusted(IPC_CHANNELS.memoryList, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid memory list request.");
+    const workspaceId = requireString(input.workspaceId, "workspaceId");
+    const category = typeof input.category === "string" ? input.category : undefined;
+    const limit = typeof input.limit === "number" ? input.limit : 200;
+    const offset = typeof input.offset === "number" ? input.offset : 0;
+    const query = typeof input.query === "string" ? input.query.trim() : "";
+    if (query) {
+      const memories = await service.memoryStore.search(workspaceId, query, { category, limit });
+      return { memories, total: memories.length, offset: 0 };
+    }
+    return service.memoryStore.list(workspaceId, { category, limit, offset });
   });
   handleTrusted(IPC_CHANNELS.memorySave, (entry: unknown) => {
     if (!isObject(entry) || typeof entry.key !== "string" || typeof entry.content !== "string") {
       throw new Error("Invalid memory entry: key and content required");
     }
-    const rawCat = typeof entry.category === "string" ? entry.category : "fact";
-    const category =
-      rawCat === "architecture" || rawCat === "preference" || rawCat === "decision"
-        ? rawCat
-        : "fact";
     const tags = Array.isArray(entry.tags)
       ? entry.tags.filter((t): t is string => typeof t === "string")
       : [];
     return service.memoryStore.save({
+      workspaceId: requireString(entry.workspaceId, "workspaceId"),
       key: entry.key,
       content: entry.content,
-      category,
+      category: memoryCategory(entry.category),
       tags,
       authorBotId: typeof entry.authorBotId === "string" ? entry.authorBotId : undefined,
       id: typeof entry.id === "string" ? entry.id : undefined,
     });
   });
-  handleTrusted(IPC_CHANNELS.memoryDelete, (id: unknown) => {
-    if (typeof id !== "string") throw new Error("Invalid memory id");
-    return service.memoryStore.delete(id);
+  handleTrusted(IPC_CHANNELS.memoryDelete, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid memory id");
+    return service.memoryStore.delete(
+      requireString(input.id, "id"),
+      requireString(input.workspaceId, "workspaceId"),
+    );
   });
 }
 
@@ -1839,19 +1855,32 @@ if (!hasSingleInstanceLock) {
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+<<<<<<< HEAD
       keepRunningInTray = () => features.isEnabled("background-tray");
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
       const knowledge = new KnowledgeService(app.getPath("userData"));
+=======
+      // Knowledge Bases run in a utility process (indexing never blocks the window); the host
+      // falls back to this process if it cannot start.
+      const knowledge = new KnowledgeHost(app.getPath("userData"), {
+        fork: () =>
+          utilityProcess.fork(join(__dirname, "knowledge-worker.js"), [], {
+            serviceName: "Sahkarmi Knowledge",
+          }),
+      });
+>>>>>>> audit/w3-knowledge
       knowledgeService = knowledge;
+      knowledge.on("event", forwardAgentEvent);
+      knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
       await knowledge.initialize().catch((error) => {
         appLog.write("error", "knowledge bases unreadable; starting empty", String(error));
       });
-      knowledge.on("event", forwardAgentEvent);
-      knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
+      service.configureMemory(() => features.isEnabled("memory-auto-context"));
       service.attachKnowledge(
         knowledge,
         () => features.isEnabled("knowledge-base") && features.isEnabled("knowledge-auto-context"),
+        () => features.isEnabled("knowledge-base"),
       );
       registerKnowledgeIpc(knowledge);
       await features.initialize().catch((error) => {

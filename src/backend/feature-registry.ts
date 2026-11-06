@@ -77,6 +77,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     true,
     true,
   ),
+  feature(
+    "memory-auto-context",
+    "Team memory in every message",
+    "Up to three notes your coworkers saved that match your message are added to it, so they remember decisions and preferences without being asked to look.",
+    "core",
+    [],
+    true,
+    true,
+  ),
   feature("schedules", "Schedules", "Run a task daily, weekly or once at a set time.", "core"),
   feature(
     "background-tray",

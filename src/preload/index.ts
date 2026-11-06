@@ -304,9 +304,9 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     removeSemantic: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeSemanticRemove),
   },
   memory: {
-    list: (category) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, category),
+    list: (input) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, input),
     save: (entry) => ipcRenderer.invoke(IPC_CHANNELS.memorySave, entry),
-    delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, id),
+    delete: (id, workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, { id, workspaceId }),
   },
   composio: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.composioGetStatus),

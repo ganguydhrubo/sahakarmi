@@ -124,4 +124,23 @@ describe("LearnedSkills", () => {
     expect(learnedSkillId("../../Secret Plan!")).toBe("secret-plan");
     expect(() => learnedSkillId("!!!")).toThrow(/name/);
   });
+
+  it("serialises saves of one skill so no improvement is lost", async () => {
+    const skills = new LearnedSkills(shared);
+    const saved = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        new LearnedSkills(shared).save({
+          name: "Bank reconciliation",
+          whenToUse: "Matching entries",
+          steps: `Step version ${i}`,
+          changeNote: `change ${i}`,
+          author: `Coworker ${i}`,
+        }),
+      ),
+    );
+    expect(saved.map((skill) => skill.version).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    const text = (await skills.read("bank-reconciliation")) ?? "";
+    expect(text).toContain("Version: 6");
+    for (let i = 0; i < 6; i += 1) expect(text).toContain(`change ${i}`);
+  });
 });

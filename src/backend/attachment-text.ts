@@ -161,9 +161,21 @@ export function decodeXml(text: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** No single unpacked part of a Word, Excel or PowerPoint file is bigger than this. */
+export const ZIP_ENTRY_MAX_BYTES = 200 * 1024 * 1024;
+/** All parts of one file together. */
+export const ZIP_TOTAL_MAX_BYTES = 400 * 1024 * 1024;
+
 /** Reads every entry of a ZIP in memory (stored or deflated), keyed by its path. */
-export function readZip(buffer: Buffer): Map<string, Buffer> {
+export function readZip(
+  buffer: Buffer,
+  limits: { entry: number; total: number } = {
+    entry: ZIP_ENTRY_MAX_BYTES,
+    total: ZIP_TOTAL_MAX_BYTES,
+  },
+): Map<string, Buffer> {
   const entries = new Map<string, Buffer>();
+  let budget = limits.total;
   const minimum = Math.max(0, buffer.length - 65_557);
   let eocd = -1;
   for (let offset = buffer.length - 22; offset >= minimum; offset -= 1) {
@@ -189,7 +201,31 @@ export function readZip(buffer: Buffer): Map<string, Buffer> {
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
     const data = buffer.subarray(dataStart, dataStart + compressedSize);
     if (!name.endsWith("/")) {
-      entries.set(name, method === 8 ? inflateRawSync(data) : Buffer.from(data));
+      let content: Buffer;
+      try {
+        // A tiny compressed entry can expand to gigabytes (a "zip bomb"): stop at a sane size.
+        content =
+          method === 8
+            ? inflateRawSync(data, { maxOutputLength: Math.min(limits.entry, budget) })
+            : Buffer.from(data);
+      } catch (error) {
+        if (
+          error instanceof RangeError ||
+          (error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE"
+        ) {
+          throw new Error(
+            "This file unpacks to far more data than a document holds; it was not read.",
+          );
+        }
+        throw error;
+      }
+      budget -= content.length;
+      if (budget <= 0) {
+        throw new Error(
+          "This file unpacks to far more data than a document holds; it was not read.",
+        );
+      }
+      entries.set(name, content);
     }
     offset += 46 + nameLength + extraLength + commentLength;
   }

@@ -8,7 +8,6 @@ import type {
   AccountUsageLimit,
   AccountUsageWindow,
   AgentEvent,
-  AgentMemoryCategory,
   AgentModelOption,
   AgentPromptQuestion,
   AgentProviderStatus,
@@ -72,7 +71,7 @@ import { createAcpAgentClient, resolveAcpAgentCli } from "./acp-agents";
 import { FREE_LIMIT_REACHED_HINT, NEXT_FREE_MODEL_HINT } from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
-import { AgentMemoryStore } from "./agent-memory-store";
+import { AgentMemoryStore, MEMORY_PAGE_MAX, memoryCategory } from "./agent-memory-store";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
 import {
@@ -141,18 +140,23 @@ import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
 import { isActionSensitive } from "./integrations/composio-policy";
 import { ComposioSecurityGuard } from "./integrations/composio-security";
+import type { KnowledgeApi } from "./knowledge/knowledge-api";
 import { citationLabel } from "./knowledge/knowledge-search";
-import type { KnowledgeService } from "./knowledge/knowledge-service";
 import {
   LIST_KNOWLEDGE_BASES_DESCRIPTION,
+  LIST_MEMORIES_DESCRIPTION,
   LIST_SKILLS_DESCRIPTION,
   READ_DOCUMENT_SECTION_DESCRIPTION,
+  READ_SKILL_DESCRIPTION,
+  SAVE_MEMORY_DESCRIPTION,
   SAVE_SKILL_DESCRIPTION,
   SEARCH_KNOWLEDGE_BASE_DESCRIPTION,
+  SEARCH_MEMORY_DESCRIPTION,
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { codexMcpConfig, type McpServerStore } from "./mcp-servers";
+import { memoryContextLines } from "./memory/memory-context";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
   classifyAcpTool,
@@ -498,8 +502,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #signInNoticeAt = new Map<string, number>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
-  #knowledge: KnowledgeService | null = null;
+  #knowledge: KnowledgeApi | null = null;
   #knowledgeAutoContext: () => boolean = () => true;
+  #knowledgeEnabled: () => boolean = () => true;
+  #memoryAutoContext: () => boolean = () => true;
   #routineHost: RoutineHost | null = null;
   #composioClient: ComposioClient | null = null;
   #mcpServers: McpServerStore | null = null;
@@ -520,7 +526,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   ) {
     super();
     this.#store = store;
-    this.#memoryStore = new AgentMemoryStore(store.userDataPath);
+    this.#memoryStore = new AgentMemoryStore(store.userDataPath, {
+      workspaceOfBot: (botId) => store.list().find((bot) => bot.id === botId)?.workspaceId,
+      activeWorkspace: () => store.workspaces().activeWorkspaceId,
+      log: (_level, line) => this.emit("log", line),
+    });
     this.#codexThreads = new CodexThreadLedger(store.userDataPath);
     this.#mailbox = mailbox;
     this.#browser = browser;
@@ -1045,7 +1055,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         /* The branch file was removed: the coworker simply starts fresh. */
       }
     }
-    const bases = this.#knowledge?.basesForBot(bot) ?? [];
+    const bases = this.#knowledgeEnabled() ? (this.#knowledge?.basesForBot(bot) ?? []) : [];
     if (bases.length > 0) {
       extra.push(
         `Knowledge Bases (the owner's indexed documents you may search): ${bases
@@ -1934,6 +1944,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await Promise.allSettled([...this.#turnAssociations.values()]);
     await Promise.allSettled([...this.#completionTasks]);
     this.#turnAssociations.clear();
+    // The memory database reopens on next use.
+    this.#memoryStore.close();
+    this.#recallIndexed.clear();
     this.#setStatus({ phase: "stopped", message: null });
   }
 
@@ -1998,6 +2011,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#syncMailboxMessages(snapshot);
       this.#snapshots.set(botId, snapshot);
       this.#threadToBot.set(bot.threadId, botId);
+      void this.#indexForRecall([bot]);
       return structuredClone(snapshot);
     } catch (error) {
       this.#emitError("thread_read_failed", error, botId);
@@ -2165,7 +2179,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   /**
    * A coworker's recall: messages that contain every word of the query, from its own chats or
-   * the whole team's, newest first.
+   * the whole team's (team-rules.ts decides), newest first. Chats the app has seen are kept in
+   * the memory database's search index, so recall is one lookup and never wakes a sleeping AI
+   * to read its chat; without that index only chats already in memory are searched.
    */
   async #recallChats(senderBotId: string, args: Record<string, unknown>) {
     const words = (typeof args.query === "string" ? args.query : "")
@@ -2181,14 +2197,78 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const bots = self
       ? recallableBots(self, everyone, args.scope, this.#workspaceOf(self.workspaceId)?.ceoBotId)
       : [];
+    await this.#indexForRecall(bots);
+    const indexed = await this.#memoryStore
+      .recall(
+        bots.map((bot) => bot.id),
+        words,
+        limit,
+      )
+      .catch((error: unknown) => {
+        this.emit("log", `chat recall index failed: ${String(error)}`);
+        return null;
+      });
+    if (indexed) {
+      const names = new Map(bots.map((bot) => [bot.id, bot.name]));
+      return indexed.map((message): MessageSearchHit => {
+        const lower = message.text.toLowerCase();
+        const first = words[0] as string;
+        const index = Math.max(0, lower.indexOf(first));
+        return {
+          botId: message.botId,
+          botName: names.get(message.botId) ?? message.botId,
+          messageId: message.messageId.slice(message.botId.length + 1),
+          author: message.author as MessageSearchHit["author"],
+          excerpt: searchExcerpt(message.text, index, first.length),
+          createdAt: message.createdAt,
+        };
+      });
+    }
     return this.#searchConversations(
-      bots,
+      bots.filter((bot) => this.#snapshots.has(bot.id)),
       (text) => {
         if (!words.every((word) => text.includes(word))) return null;
         return { index: text.indexOf(words[0] as string), length: (words[0] as string).length };
       },
       limit,
     );
+  }
+
+  /** What each chat looked like when it was last indexed for recall. */
+  readonly #recallIndexed = new Map<string, string>();
+
+  /** Adds the finished messages of chats in memory to the recall index (only what changed). */
+  async #indexForRecall(bots: BotSummary[]): Promise<void> {
+    for (const bot of bots) {
+      const snapshot = this.#snapshots.get(bot.id);
+      if (!snapshot) continue;
+      const last = snapshot.messages.at(-1);
+      const signature = `${snapshot.messages.length}|${last?.id ?? ""}|${last?.status ?? ""}|${last?.text?.length ?? 0}`;
+      if (this.#recallIndexed.get(bot.id) === signature) continue;
+      const messages = snapshot.messages.flatMap((message) =>
+        message.text &&
+        message.status !== "streaming" &&
+        message.itemType !== "toolCall" &&
+        message.itemType !== "commentary"
+          ? [
+              {
+                messageId: `${bot.id}:${message.id}`,
+                botId: bot.id,
+                author: message.author,
+                createdAt: message.createdAt,
+                text: message.text,
+              },
+            ]
+          : [],
+      );
+      try {
+        await this.#memoryStore.recordMessages(messages);
+        this.#recallIndexed.set(bot.id, signature);
+      } catch (error) {
+        this.emit("log", `chat recall index for ${bot.id} failed: ${String(error)}`);
+        return;
+      }
+    }
   }
 
   async #searchConversations(
@@ -3605,12 +3685,14 @@ ${carryOver}`
               installed: installedSkillNames(this.#store.sharedRoot),
               custom: (await new CustomSkills(this.#store.sharedRoot).list()).map((skill) => ({
                 id: skill.id,
+                type: "custom",
                 name: skill.name,
                 whenToUse: skill.description,
                 path: join(this.#store.sharedRoot, skill.sharedPath),
               })),
               learned: learned.map((skill) => ({
                 id: skill.id,
+                type: "learned",
                 name: skill.name,
                 whenToUse: skill.whenToUse,
                 version: skill.version,
@@ -3624,11 +3706,25 @@ ${carryOver}`
 
     if (params.tool === "read_skill") {
       const args = isRecord(params.arguments) ? params.arguments : {};
-      const id = typeof args.id === "string" ? args.id : "";
+      const { id, type } = skillRef(args);
+      const learned =
+        type === "custom" ? null : await new LearnedSkills(this.#store.sharedRoot).read(id);
+      const custom =
+        type === "learned" ? null : await new CustomSkills(this.#store.sharedRoot).read(id);
+      if (learned === null && custom === null) {
+        throw new Error(`No skill with id "${id}". Call list_skills.`);
+      }
+      // A learned and a custom skill can share an id: without a type, both are shown, labelled.
       const text =
-        (await new LearnedSkills(this.#store.sharedRoot).read(id)) ??
-        (await new CustomSkills(this.#store.sharedRoot).read(id));
-      if (text === null) throw new Error(`No skill with id "${id}". Call list_skills.`);
+        learned !== null && custom !== null
+          ? [
+              `Two skills have the id "${id}". Call read_skill with type "learned" or "custom" to read one.`,
+              "--- learned skill ---",
+              learned,
+              "--- custom skill ---",
+              custom,
+            ].join("\n")
+          : (learned ?? custom ?? "");
       return { success: true, contentItems: [{ type: "inputText", text }] };
     }
 
@@ -3659,6 +3755,64 @@ ${carryOver}`
     throw new Error(`Unknown tool: ${params.tool}`);
   }
 
+  /** Team memory of the coworker's own workspace: save (one per key), search, list a page. */
+  async #handleMemoryTool(
+    senderBotId: string,
+    params: DynamicToolCallParams,
+  ): Promise<{ success: boolean; contentItems: Array<{ type: "inputText"; text: string }> }> {
+    const bot = this.#store.list().find((candidate) => candidate.id === senderBotId);
+    if (!bot) throw new Error("The sending coworker is unknown.");
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    const category = typeof args.category === "string" ? args.category : undefined;
+    const reply = (value: unknown) => ({
+      success: true,
+      contentItems: [{ type: "inputText" as const, text: JSON.stringify(value) }],
+    });
+    if (params.tool === "save_memory") {
+      const key = typeof args.key === "string" ? args.key.trim() : "";
+      const saved = await this.#memoryStore.save({
+        workspaceId: bot.workspaceId,
+        key: key || "Note",
+        content: typeof args.content === "string" ? args.content : "",
+        category: memoryCategory(args.category),
+        tags: Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string") : [],
+        authorBotId: senderBotId,
+      });
+      const updated = saved.createdAt !== saved.updatedAt;
+      return reply({
+        success: true,
+        message: `${updated ? "Memory updated" : "Memory saved"} under the key "${saved.key}".`,
+        memory: saved,
+      });
+    }
+    if (params.tool === "search_memory") {
+      const query = typeof args.query === "string" ? args.query : "";
+      const limit = typeof args.limit === "number" ? args.limit : 20;
+      const memories = await this.#memoryStore.search(bot.workspaceId, query, { category, limit });
+      return reply({ success: true, count: memories.length, memories });
+    }
+    // list_memories: one page, never the whole store.
+    const limit =
+      typeof args.limit === "number" ? Math.max(1, Math.min(MEMORY_PAGE_MAX, args.limit)) : 20;
+    const offset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
+    const page = await this.#memoryStore.list(bot.workspaceId, { category, limit, offset });
+    const next = page.offset + page.memories.length;
+    return reply({
+      success: true,
+      total: page.total,
+      offset: page.offset,
+      count: page.memories.length,
+      memories: page.memories.map((memory) => ({
+        ...memory,
+        content:
+          memory.content.length > 600
+            ? `${memory.content.slice(0, 600)}… (search_memory for all)`
+            : memory.content,
+      })),
+      ...(next < page.total ? { nextOffset: next } : {}),
+    });
+  }
+
   async #handleKnowledgeTool(
     senderBotId: string,
     params: DynamicToolCallParams,
@@ -3669,6 +3823,9 @@ ${carryOver}`
     const knowledge = this.#knowledge;
     const bot = this.#store.list().find((candidate) => candidate.id === senderBotId);
     if (!knowledge || !bot) throw new Error("Knowledge Bases are not available.");
+    if (!this.#knowledgeEnabled()) {
+      throw new Error("The owner has switched Knowledge Bases off (Settings > Features).");
+    }
     const args = isRecord(params.arguments) ? params.arguments : {};
     const reply = (value: unknown) => ({
       success: true,
@@ -3721,7 +3878,7 @@ ${carryOver}`
       if (!knowledge.basesForBot(bot).some((base) => base.id === kbId)) {
         throw new Error("You may not read that knowledge base.");
       }
-      const section = knowledge.readSection(kbId, documentId, {
+      const section = await knowledge.readSection(kbId, documentId, {
         page: typeof args.page === "number" ? args.page : null,
         chunkIndex: typeof args.chunkIndex === "number" ? args.chunkIndex : null,
       });
@@ -3941,79 +4098,23 @@ ${carryOver}`
       }
     }
 
-    if (params.tool === "save_memory") {
-      const args = isRecord(params.arguments) ? params.arguments : {};
-      const key = typeof args.key === "string" ? args.key.trim() : "Note";
-      const content = typeof args.content === "string" ? args.content.trim() : "";
-      const rawCategory = typeof args.category === "string" ? args.category : "";
-      const category: AgentMemoryCategory =
-        rawCategory === "architecture" || rawCategory === "preference" || rawCategory === "decision"
-          ? rawCategory
-          : "fact";
-      const tags = Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string") : [];
-
-      const saved = await this.#memoryStore.save({
-        key,
-        content,
-        category,
-        tags,
-        authorBotId: senderBotId,
-      });
-
-      return {
-        success: true,
-        contentItems: [
-          {
-            type: "inputText",
-            text: JSON.stringify({
-              success: true,
-              message: `Memory saved successfully with key: "${saved.key}"`,
-              memory: saved,
-            }),
-          },
-        ],
-      };
-    }
-
-    if (params.tool === "search_memory") {
-      const args = isRecord(params.arguments) ? params.arguments : {};
-      const query = typeof args.query === "string" ? args.query : "";
-      const category = typeof args.category === "string" ? args.category : undefined;
-      const results = await this.#memoryStore.search(query, category);
-
-      return {
-        success: true,
-        contentItems: [
-          {
-            type: "inputText",
-            text: JSON.stringify({
-              success: true,
-              count: results.length,
-              memories: results,
-            }),
-          },
-        ],
-      };
-    }
-
-    if (params.tool === "list_memories") {
-      const args = isRecord(params.arguments) ? params.arguments : {};
-      const category = typeof args.category === "string" ? args.category : undefined;
-      const results = await this.#memoryStore.list(category);
-
-      return {
-        success: true,
-        contentItems: [
-          {
-            type: "inputText",
-            text: JSON.stringify({
-              success: true,
-              count: results.length,
-              memories: results,
-            }),
-          },
-        ],
-      };
+    if (MEMORY_TOOLS.has(params.tool)) {
+      try {
+        return await this.#handleMemoryTool(senderBotId, params);
+      } catch (error) {
+        return {
+          success: false,
+          contentItems: [
+            {
+              type: "inputText",
+              text: JSON.stringify({
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            },
+          ],
+        };
+      }
     }
 
     if (params.tool !== "send_message" || !isRecord(params.arguments)) {
@@ -4386,6 +4487,20 @@ ${carryOver}`
           }
         } catch (error) {
           this.emit("log", `knowledge grounding for ${bot.id} failed: ${String(error)}`);
+        }
+      }
+      if (
+        delivery.sender.kind === "user" &&
+        this.#memoryAutoContext() &&
+        delivery.text &&
+        !isContinuationText(delivery.text) &&
+        !delivery.text.startsWith("[")
+      ) {
+        try {
+          const memories = await this.#memoryStore.relevant(bot.workspaceId, delivery.text);
+          if (memories.length > 0) text += `\n\n${memoryContextLines(memories).join("\n")}`;
+        } catch (error) {
+          this.emit("log", `team memory for ${bot.id} failed: ${String(error)}`);
         }
       }
       this.#turnStartedAt.set(bot.id, Date.now() - 1_000);
@@ -5193,19 +5308,30 @@ ${carryOver}`
     this.#continuationEnabled = enabled;
   }
 
+  /** Lets the app switch related team memories in each owner message off (Settings > Features). */
+  configureMemory(autoContext: () => boolean): void {
+    this.#memoryAutoContext = autoContext;
+  }
+
   /**
    * Gives coworkers the owner's Knowledge Bases: three tools, and (while `autoContext` says so)
-   * matching excerpts at the start of every owner message.
+   * matching excerpts at the start of every owner message. With `enabled` false (the
+   * Knowledge Bases feature switched off) the tools refuse and the bases are not mentioned.
    */
-  attachKnowledge(knowledge: KnowledgeService, autoContext: () => boolean): void {
+  attachKnowledge(
+    knowledge: KnowledgeApi,
+    autoContext: () => boolean,
+    enabled: () => boolean = () => true,
+  ): void {
     this.#knowledge = knowledge;
     this.#knowledgeAutoContext = autoContext;
+    this.#knowledgeEnabled = enabled;
     knowledge.on("event", (event: AgentEvent) => {
       if (event.type === "knowledge-changed") this.#reloadInstructions(this.#store.list());
     });
   }
 
-  get knowledge(): KnowledgeService | null {
+  get knowledge(): KnowledgeApi | null {
     return this.#knowledge;
   }
 
@@ -5864,6 +5990,7 @@ function finiteNumberOrNull(value: unknown): number | null {
 }
 
 const LEARNING_TOOLS = new Set(["search_past_chats", "list_skills", "read_skill", "save_skill"]);
+const MEMORY_TOOLS = new Set(["save_memory", "search_memory", "list_memories"]);
 const KNOWLEDGE_TOOLS = new Set([
   "list_knowledge_bases",
   "search_knowledge_base",
@@ -6106,8 +6233,7 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "save_memory",
-      description:
-        "Save a persistent piece of knowledge, project decision, technical fact, or owner preference into long-term team memory. Persists across conversations.",
+      description: SAVE_MEMORY_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
@@ -6141,17 +6267,17 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "search_memory",
-      description:
-        "Search long-term team memory by keyword or semantic query to recall previous decisions, standards, or facts.",
+      description: SEARCH_MEMORY_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Keyword or query to search for" },
+          query: { type: "string", description: "Words to look for" },
           category: {
             type: "string",
             enum: ["architecture", "preference", "decision", "fact"],
             description: "Optional category filter",
           },
+          limit: { type: "integer", minimum: 1, maximum: 50 },
         },
         required: ["query"],
         additionalProperties: false,
@@ -6160,7 +6286,7 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "list_memories",
-      description: "List all memories currently retained in the team long-term memory hub.",
+      description: LIST_MEMORIES_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
@@ -6169,6 +6295,8 @@ const SAHKARMI_DYNAMIC_TOOLS = {
             enum: ["architecture", "preference", "decision", "fact"],
             description: "Optional category filter",
           },
+          limit: { type: "integer", minimum: 1, maximum: 50 },
+          offset: { type: "integer", minimum: 0 },
         },
         additionalProperties: false,
       },
@@ -6201,10 +6329,13 @@ const SAHKARMI_DYNAMIC_TOOLS = {
     {
       type: "function",
       name: "read_skill",
-      description: "Read one learned or custom skill's full playbook by its id (from list_skills).",
+      description: READ_SKILL_DESCRIPTION,
       inputSchema: {
         type: "object",
-        properties: { id: { type: "string", minLength: 1, maxLength: 80 } },
+        properties: {
+          id: { type: "string", minLength: 1, maxLength: 90 },
+          type: { type: "string", enum: ["learned", "custom"] },
+        },
         required: ["id"],
         additionalProperties: false,
       },
@@ -6340,6 +6471,7 @@ function skillInstructions(sharedRoot: string): string[] {
       : []),
     "Learn as you work: before a task call sahkarmi.list_skills and follow a matching skill. After finishing a task that took several steps, needed a fix, or got a correction from the owner, call sahkarmi.save_skill to save the playbook, or to improve the existing one under the same name.",
     "To recall earlier conversations (what was decided, sent or promised), call sahkarmi.search_past_chats instead of guessing.",
+    "Team memory: save lasting facts, decisions and owner preferences with sahkarmi.save_memory (same key updates it); find them with sahkarmi.search_memory or sahkarmi.list_memories. Related memories may already be in the owner's message as <team_memory>.",
   ];
 }
 
@@ -6611,6 +6743,23 @@ export function searchExcerpt(text: string, index: number, length: number): stri
   const start = Math.max(0, index - 48);
   const end = Math.min(flat.length, index + length + 72);
   return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
+}
+
+/** A read_skill id, with its type from `type` or a "learned:" / "custom:" prefix. */
+export function skillRef(args: Record<string, unknown>): {
+  id: string;
+  type: "learned" | "custom" | null;
+} {
+  const raw = typeof args.id === "string" ? args.id.trim() : "";
+  const prefixed = /^(learned|custom)[:/](.+)$/i.exec(raw);
+  const explicit = args.type === "learned" || args.type === "custom" ? args.type : null;
+  if (prefixed) {
+    return {
+      id: prefixed[2] ?? "",
+      type: explicit ?? ((prefixed[1] ?? "").toLowerCase() as "learned" | "custom"),
+    };
+  }
+  return { id: raw, type: explicit };
 }
 
 /** Codex says "inProgress", Claude and ACP say "in_progress". */
