@@ -18,6 +18,8 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
+import { API_TOOL_NAMESPACE } from "./api-integrations/api-service";
+import { CALL_API_DESCRIPTION, LIST_APIS_DESCRIPTION } from "./api-integrations/api-tools";
 import {
   APPROVAL_DETAILS_HELP,
   APPROVAL_TITLE_HELP,
@@ -82,6 +84,8 @@ interface ThreadConfig {
   additionalDirectories: string[];
   /** MCP servers the owner added in Settings. */
   customMcpServers: McpServerWire[];
+  /** The connected-API tools' description, when this coworker may use any web API. */
+  apiToolsDescription: string | null;
 }
 
 interface ActiveTurn {
@@ -471,7 +475,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     // The owner's own servers first, so Sahkarmi's tools always keep their names.
     const mcpServers = {
       ...withoutClaudeKey(claudeMcpServers(config.customMcpServers)),
-      ...this.#createSahkarmiServers(threadId),
+      ...this.#createSahkarmiServers(threadId, config.apiToolsDescription),
     } as Record<string, SdkMcpServerConfig>;
     const claudeQuery = this.#createQuery({
       prompt: input,
@@ -1035,7 +1039,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return { thread: { id: threadId, turns } };
   }
 
-  #createSahkarmiServers(threadId: string) {
+  #createSahkarmiServers(threadId: string, apiToolsDescription: string | null = null) {
     const call = (namespace: string, name: string, args: unknown) =>
       this.#callDynamicTool(threadId, namespace, name, args);
     return {
@@ -1305,6 +1309,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         ],
       }),
       ...desktopSdkServers(call),
+      ...(apiToolsDescription ? apiSdkServer(call, apiToolsDescription) : {}),
     };
   }
 
@@ -1540,7 +1545,16 @@ function readThreadConfig(params: unknown): ThreadConfig {
     developerInstructions: getString(params, "developerInstructions") ?? "",
     additionalDirectories: [...new Set([cwd, ...roots])],
     customMcpServers: readCustomMcpServers(params),
+    apiToolsDescription: readApiToolsDescription(params),
   };
+}
+
+function readApiToolsDescription(params: unknown): string | null {
+  const tools = isRecord(params) && Array.isArray(params.dynamicTools) ? params.dynamicTools : [];
+  const entry = tools.find(
+    (tool) => isRecord(tool) && tool.type === "namespace" && tool.name === API_TOOL_NAMESPACE,
+  );
+  return isRecord(entry) && typeof entry.description === "string" ? entry.description : null;
 }
 
 function requiredString(value: unknown, key: string): string {
@@ -1697,4 +1711,40 @@ function messageOfError(error: unknown): string {
   return [base.split("\n")[0], detail?.killed ? "(timed out)" : "", stderr]
     .filter(Boolean)
     .join(" ");
+}
+
+/** The owner's connected web APIs, for a Claude coworker that may use at least one. */
+function apiSdkServer(
+  call: (namespace: string, name: string, args: unknown) => Promise<CallToolResult>,
+  description: string,
+) {
+  return {
+    [API_TOOL_NAMESPACE]: createSdkMcpServer({
+      name: API_TOOL_NAMESPACE,
+      version: "0.1.0",
+      instructions: description,
+      tools: [
+        tool(
+          "list_apis",
+          `${LIST_APIS_DESCRIPTION} ${description}`,
+          { search: z.string().max(200).optional() },
+          (args) => call(API_TOOL_NAMESPACE, "list_apis", args),
+        ),
+        tool(
+          "call_api",
+          CALL_API_DESCRIPTION,
+          {
+            api: z.string().min(1).max(120),
+            operation: z.string().max(120).optional(),
+            method: z.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+            path: z.string().max(2_000).optional(),
+            params: z.record(z.string(), z.unknown()).optional(),
+            body: z.unknown().optional(),
+            approval_id: z.string().max(120).optional(),
+          },
+          (args) => call(API_TOOL_NAMESPACE, "call_api", args),
+        ),
+      ],
+    }),
+  };
 }

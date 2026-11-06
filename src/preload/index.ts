@@ -329,6 +329,17 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     disconnect: (connectionId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.composioDisconnectApp, { connectionId }),
   },
+  apis: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.apisList),
+    discover: (input) => ipcRenderer.invoke(IPC_CHANNELS.apisDiscover, input),
+    update: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.apisUpdate, { id, patch }),
+    runTests: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisRunTests, id),
+    activate: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisActivate, id),
+    setEnabled: (id, enabled) => ipcRenderer.invoke(IPC_CHANNELS.apisSetEnabled, { id, enabled }),
+    setAccess: (id, access) => ipcRenderer.invoke(IPC_CHANNELS.apisSetAccess, { id, access }),
+    activity: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisActivity, id),
+    revoke: (id) => ipcRenderer.invoke(IPC_CHANNELS.apisRevoke, id),
+  },
   telegram: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.telegramStatus),
     setToken: (token: string) => ipcRenderer.invoke(IPC_CHANNELS.telegramSetToken, { token }),

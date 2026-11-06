@@ -12490,6 +12490,198 @@ fieldset.memory-filters {
   background: var(--success-soft);
 }
 
+/* Marketplace → APIs: one card per API with checks, access and activity. */
+.apis-list {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+.apis-card,
+.apis-add-card {
+  align-items: stretch;
+}
+.apis-card-head {
+  align-items: center;
+}
+.apis-status-needs-info,
+.apis-status-ready-to-test,
+.apis-status-tested {
+  color: #9a5b00;
+  background: color-mix(in srgb, #e8a93a 22%, transparent);
+}
+.apis-status-failed {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.apis-status-active {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.apis-status-disabled {
+  color: var(--text-secondary);
+  background: var(--surface-2);
+}
+.apis-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.apis-fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.apis-more summary,
+.apis-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.apis-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.88rem;
+}
+.apis-facts dt {
+  color: var(--text-muted);
+}
+.apis-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.apis-notes,
+.apis-ops,
+.apis-test-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.88rem;
+}
+.apis-notes li::before {
+  content: "• ";
+  color: var(--text-muted);
+}
+.apis-missing {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #e8a93a 50%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, #e8a93a 8%, transparent);
+}
+.apis-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.apis-row .marketplace-action {
+  margin-left: auto;
+}
+.apis-test {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.apis-test-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 12px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+.apis-test-passed .apis-test-icon {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.apis-test-failed .apis-test-icon {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.apis-test-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.apis-test-outcome,
+.apis-test-text small {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.apis-ready p {
+  margin: 0 0 8px;
+}
+.apis-access {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 10px;
+}
+.apis-access legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.apis-access label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+.apis-access-group {
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+.apis-ops li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.apis-ops small {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+}
+.apis-method {
+  font-weight: 700;
+}
+.apis-activity {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.apis-activity th,
+.apis-activity td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--sahkarmi-line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.apis-activity-failed td {
+  color: var(--danger);
+}
+.apis-controls {
+  border-top: 1px solid var(--sahkarmi-line);
+  padding-top: 10px;
+}
+
 /* Key card: Composio mark in the title and three numbered steps with sign-in logos. */
 .apps-key-title {
   display: flex;

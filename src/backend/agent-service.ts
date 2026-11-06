@@ -75,6 +75,8 @@ import { FREE_LIMIT_REACHED_HINT, NEXT_FREE_MODEL_HINT } from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore, MEMORY_PAGE_MAX, memoryCategory } from "./agent-memory-store";
+import { API_TOOL_NAMESPACE, type ApiIntegrationService } from "./api-integrations/api-service";
+import { API_TOOL_DEFINITIONS, API_TOOLS_DESCRIPTION } from "./api-integrations/api-tools";
 import { AppServerError, CodexAppServerClient } from "./app-server-client";
 import type { ApprovalStore } from "./approval-store";
 import {
@@ -568,6 +570,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #memoryAutoContext: () => boolean = () => true;
   #routineHost: RoutineHost | null = null;
   #composioClient: ComposioClient | null = null;
+  #apis: ApiIntegrationService | null = null;
   #mcpServers: McpServerStore | null = null;
   #composioSecurity: ComposioSecurityGuard | null = null;
   /** Windows desktop control (sahkarmi_desktop tools); null until main hands over the host. */
@@ -777,6 +780,20 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       botName: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name ?? "A coworker",
     });
     this.#setStatus({ capabilities: { ...this.#status.capabilities, computerUse: "ready" } });
+  }
+
+  /** Web APIs the owner connected in Marketplace → APIs. */
+  setApiIntegrations(service: ApiIntegrationService): void {
+    this.#apis = service;
+  }
+
+  /** Approvals raised by a connected API call: routed and shown like any other. */
+  apiApprovalCreated(approval: ApprovalRequest): void {
+    void this.#routeApproval(approval).finally(() => {
+      if (this.#approvals) {
+        this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+      }
+    });
   }
 
   setComposioClient(client: ComposioClient): void {
@@ -3269,6 +3286,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       SAHKARMI_DYNAMIC_TOOLS,
       ...desktopDynamicTools(),
     ];
+    const apis = (await this.#apis?.availableTo(botId).catch(() => [])) ?? [];
+    if (apis.length) tools.push(apiDynamicTools(apis.map((api) => api.name)));
     if (!this.#composioClient) return tools;
     try {
       const composioTools = await this.#composioClient.getDynamicTools();
@@ -3843,6 +3862,22 @@ ${carryOver}`
                     ],
                   },
             );
+            return;
+          }
+          if (request.params.namespace === API_TOOL_NAMESPACE) {
+            const senderBotId = this.#threadToBot.get(request.params.threadId);
+            const result =
+              this.#apis && senderBotId
+                ? await this.#apis.handleTool(
+                    senderBotId,
+                    request.params.tool,
+                    request.params.arguments,
+                  )
+                : { success: false, text: "No web APIs are connected." };
+            client.respond(request.id, {
+              success: result.success,
+              contentItems: [{ type: "inputText", text: result.text }],
+            });
             return;
           }
           if (request.params.namespace === "composio") {
@@ -6766,6 +6801,16 @@ const KNOWLEDGE_TOOLS = new Set([
   "search_knowledge_base",
   "read_document_section",
 ]);
+
+/** The owner's connected web APIs, listed by name so the model knows when to reach for them. */
+function apiDynamicTools(names: string[]) {
+  return {
+    type: "namespace",
+    name: API_TOOL_NAMESPACE,
+    description: `${API_TOOLS_DESCRIPTION} Connected for you: ${names.join(", ")}.`,
+    tools: API_TOOL_DEFINITIONS,
+  };
+}
 
 const SAHKARMI_DYNAMIC_TOOLS = {
   type: "namespace",

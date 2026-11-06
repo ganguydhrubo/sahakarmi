@@ -166,6 +166,15 @@ export const IPC_CHANNELS = {
   composioConnectApp: "composio:connect-app",
   composioConnectionStatus: "composio:connection-status",
   composioDisconnectApp: "composio:disconnect-app",
+  apisList: "apis:list",
+  apisDiscover: "apis:discover",
+  apisUpdate: "apis:update",
+  apisRunTests: "apis:run-tests",
+  apisActivate: "apis:activate",
+  apisSetEnabled: "apis:set-enabled",
+  apisSetAccess: "apis:set-access",
+  apisActivity: "apis:activity",
+  apisRevoke: "apis:revoke",
   telegramStatus: "telegram:status",
   telegramSetToken: "telegram:set-token",
   telegramSetCoworker: "telegram:set-coworker",
@@ -2119,6 +2128,7 @@ export interface SahkarmiDesktopApi {
   memory: MemoryDesktopApi;
   knowledge: KnowledgeDesktopApi;
   composio: ComposioDesktopApi;
+  apis: ApiIntegrationsDesktopApi;
   telegram: TelegramDesktopApi;
   customSkills: CustomSkillsDesktopApi;
   mcp: McpDesktopApi;
@@ -2595,6 +2605,138 @@ export interface ComposioDesktopApi {
   connect: (appId: string) => Promise<ComposioConnectionInitiateResult>;
   connectionStatus: (connectionId: string) => Promise<ComposioConnectionStatus>;
   disconnect: (connectionId: string) => Promise<boolean>;
+}
+
+/** Where an API key goes on every request. */
+export type ApiAuthKind = "bearer" | "header" | "query" | "basic" | "none";
+
+export interface ApiAuth {
+  kind: ApiAuthKind;
+  /** The header or query parameter name (for "header" and "query"). */
+  name: string | null;
+}
+
+export interface ApiParam {
+  name: string;
+  in: "path" | "query" | "header" | "body";
+  required: boolean;
+  type: string;
+  description: string;
+}
+
+/** One endpoint a coworker may call. */
+export interface ApiOperation {
+  id: string;
+  method: string;
+  path: string;
+  summary: string;
+  params: ApiParam[];
+  /** Sends, creates, changes or deletes something: asks the owner first. */
+  risky: boolean;
+}
+
+/** What discovery could not find on its own; the owner is asked only for these. */
+export type ApiMissingField = "provider" | "baseUrl" | "example";
+
+export type ApiIntegrationStatus =
+  | "needs-info"
+  | "ready-to-test"
+  | "tested"
+  | "failed"
+  | "active"
+  | "disabled";
+
+export type ApiTestId =
+  | "auth"
+  | "connectivity"
+  | "endpoint"
+  | "request"
+  | "parsing"
+  | "permissions"
+  | "errors";
+
+export interface ApiTestResult {
+  id: ApiTestId;
+  outcome: "passed" | "failed" | "skipped";
+  detail: string;
+}
+
+/** Who may use an API. Nobody may until the owner chooses. */
+export interface ApiAccess {
+  everyone: boolean;
+  ceo: boolean;
+  botIds: string[];
+  workspaceIds: string[];
+}
+
+export interface ApiActivityEntry {
+  at: string;
+  botId: string | null;
+  operation: string;
+  status: number | null;
+  ok: boolean;
+  ms: number;
+  error: string | null;
+}
+
+export interface ApiIntegrationSummary {
+  id: string;
+  name: string;
+  provider: string | null;
+  baseUrl: string | null;
+  docsUrl: string | null;
+  specUrl: string | null;
+  auth: ApiAuth;
+  /** The key with all but its last 4 characters hidden. */
+  keyMasked: string;
+  operations: ApiOperation[];
+  /** How many endpoints the specification had (only the first ones are kept). */
+  operationTotal: number;
+  /** The request the tests use, for example "GET /data/2.5/weather?q=Kolkata". */
+  testRequest: string | null;
+  status: ApiIntegrationStatus;
+  missing: ApiMissingField[];
+  /** What discovery did, in plain words. */
+  notes: string[];
+  tests: ApiTestResult[];
+  testedAt: string | null;
+  access: ApiAccess;
+  createdAt: string;
+  activatedAt: string | null;
+  calls: number;
+  errors: number;
+  lastUsedAt: string | null;
+}
+
+export interface ApiDiscoverInput {
+  apiKey: string;
+  name?: string;
+  docsUrl?: string;
+  specUrl?: string;
+}
+
+/** The owner's answers to what discovery asked for. */
+export interface ApiIntegrationPatch {
+  name?: string;
+  provider?: string;
+  baseUrl?: string;
+  docsUrl?: string;
+  specUrl?: string;
+  /** A full example request URL (with real values), or a path on the base address. */
+  example?: string;
+  auth?: ApiAuth;
+}
+
+export interface ApiIntegrationsDesktopApi {
+  list: () => Promise<ApiIntegrationSummary[]>;
+  discover: (input: ApiDiscoverInput) => Promise<ApiIntegrationSummary>;
+  update: (id: string, patch: ApiIntegrationPatch) => Promise<ApiIntegrationSummary>;
+  runTests: (id: string) => Promise<ApiIntegrationSummary>;
+  activate: (id: string) => Promise<ApiIntegrationSummary>;
+  setEnabled: (id: string, enabled: boolean) => Promise<ApiIntegrationSummary>;
+  setAccess: (id: string, access: ApiAccess) => Promise<ApiIntegrationSummary>;
+  activity: (id: string) => Promise<ApiActivityEntry[]>;
+  revoke: (id: string) => Promise<boolean>;
 }
 
 /** One downloadable voice model as Settings → Voice shows it. */
