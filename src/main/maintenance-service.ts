@@ -8,7 +8,21 @@ import { app, type BrowserWindow, dialog } from "electron";
 import type { AgentService } from "../backend/agent-service";
 import type { CoworkerBrowser } from "../backend/browser-host";
 import type { MailboxStore } from "../backend/mailbox-store";
-import type { BotSummary, ExportResult } from "../shared/ipc";
+import type {
+  BotSummary,
+  ExportResult,
+  StorageCleanInput,
+  StorageCleanResult,
+  StorageUsage,
+} from "../shared/ipc";
+import { cleanUpRuntimes } from "./runtime-cleanup";
+import {
+  type RemovalResult,
+  removeOldLogs,
+  removeOrphanGeminiHomes,
+  removeOrphanPartitions,
+  storageUsage,
+} from "./storage-cleanup";
 import type { UpdateService } from "./update-service";
 
 const execFileAsync = promisify(execFile);
@@ -197,4 +211,48 @@ function toBackupBot(bot: BotSummary): Omit<BotSummary, "workspacePath"> {
     avatarShape: bot.avatarShape,
     avatarColor: bot.avatarColor,
   };
+}
+
+export interface StorageContext {
+  userData: string;
+  transfersRoot: string;
+  botIds: () => string[];
+  mailbox: Pick<MailboxStore, "removeAttachmentsOlderThan">;
+}
+
+export function readStorageUsage(context: StorageContext): Promise<StorageUsage> {
+  return storageUsage({ userData: context.userData, transfersRoot: context.transfersRoot });
+}
+
+/** Settings > Storage "Clean": each category removes only what is safe to remove. */
+export async function cleanStorage(
+  context: StorageContext,
+  input: StorageCleanInput,
+): Promise<StorageCleanResult> {
+  const fromRemoval = (result: RemovalResult): StorageCleanResult => ({
+    removedItems: result.removed.length,
+    bytes: result.bytes,
+    skipped: result.failed.length,
+  });
+  switch (input.category) {
+    case "browser":
+      return fromRemoval(await removeOrphanPartitions(context.userData, context.botIds()));
+    case "accounts":
+      return fromRemoval(await removeOrphanGeminiHomes(context.userData));
+    case "logs":
+      return fromRemoval(await removeOldLogs(context.userData));
+    case "runtimes": {
+      const result = await cleanUpRuntimes(context.userData);
+      return {
+        removedItems: result.removed.length,
+        bytes: result.bytes ?? 0,
+        skipped: result.failed.length,
+      };
+    }
+    case "attachments": {
+      const days = Math.max(1, Math.floor(input.olderThanDays));
+      const result = await context.mailbox.removeAttachmentsOlderThan(days);
+      return { removedItems: result.removed, bytes: result.bytes, skipped: 0 };
+    }
+  }
 }

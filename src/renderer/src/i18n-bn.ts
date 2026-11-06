@@ -4,6 +4,7 @@ import type { Dictionary } from "./i18n";
 import { extensionsBn } from "./i18n-extensions-bn";
 import { marketplaceBn } from "./i18n-marketplace-bn";
 import { onboardingBn } from "./i18n-onboarding";
+import { storageBn } from "./i18n-storage";
 import { workspaceBn } from "./i18n-workspace-bn";
 
 export const bn: Dictionary = {
@@ -290,5 +291,6 @@ export const bn: Dictionary = {
   ...workspaceBn,
   ...marketplaceBn,
   ...extensionsBn,
+  ...storageBn,
   ...onboardingBn,
 };

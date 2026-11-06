@@ -366,6 +366,40 @@ describe("MailboxStore", () => {
   });
 });
 
+describe("MailboxStore storage cleanup", () => {
+  it("removes files of old delivered messages, never of one still waiting", async () => {
+    const send = async (name: string) => {
+      const source = join(root, name);
+      await writeFile(source, "x".repeat(50));
+      const [draft] = await store.prepareAttachments([source]);
+      return store.enqueue({
+        sender: { kind: "user" },
+        recipientBotIds: ["chief"],
+        text: name,
+        draftIds: [draft.id],
+      });
+    };
+    const done = await send("done.csv");
+    const id = done.deliveries[0].id;
+    await store.markStarting(id);
+    await store.markRunning(id, "turn-1");
+    await store.markTerminal(id, "completed");
+    const waiting = await send("waiting.csv");
+
+    const later = new MailboxStore(join(root, "user-data"), join(root, "Shared"), {
+      now: () => Date.now() + 40 * 24 * 60 * 60_000,
+      archiveAfterDays: Number.POSITIVE_INFINITY,
+    });
+    await later.initialize();
+    expect(await later.removeAttachmentsOlderThan(30)).toEqual({ removed: 1, bytes: 50 });
+    const transfers = join(root, "Shared", "Transfers");
+    await expect(access(join(transfers, done.messageId))).rejects.toThrow();
+    await expect(access(join(transfers, waiting.messageId))).resolves.toBeUndefined();
+    // Newer than the limit: kept.
+    expect(await later.removeAttachmentsOlderThan(60)).toEqual({ removed: 0, bytes: 0 });
+  });
+});
+
 describe("MailboxStore archive", () => {
   const later = () => Date.now() + 40 * 24 * 60 * 60_000;
   const reopen = async (options = { now: later }) => {

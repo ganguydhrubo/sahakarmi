@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import { extensionsEn } from "./i18n-extensions";
 import { marketplaceEn } from "./i18n-marketplace";
 import { onboardingEn } from "./i18n-onboarding";
+import { storageEn } from "./i18n-storage";
 import { workspaceEn } from "./i18n-workspace";
 import { type LanguageCode, language } from "./preferences";
 
@@ -292,6 +293,7 @@ const en = {
   ...workspaceEn,
   ...marketplaceEn,
   ...extensionsEn,
+  ...storageEn,
   ...onboardingEn,
 };
 

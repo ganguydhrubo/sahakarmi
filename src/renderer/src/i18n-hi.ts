@@ -4,6 +4,7 @@ import type { Dictionary } from "./i18n";
 import { extensionsHi } from "./i18n-extensions-hi";
 import { marketplaceHi } from "./i18n-marketplace-hi";
 import { onboardingHi } from "./i18n-onboarding";
+import { storageHi } from "./i18n-storage";
 import { workspaceHi } from "./i18n-workspace-hi";
 
 export const hi: Dictionary = {
@@ -291,5 +292,6 @@ export const hi: Dictionary = {
   ...workspaceHi,
   ...marketplaceHi,
   ...extensionsHi,
+  ...storageHi,
   ...onboardingHi,
 };

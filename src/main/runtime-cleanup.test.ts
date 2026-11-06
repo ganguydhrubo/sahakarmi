@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanUpRuntimes } from "./runtime-cleanup";
+import { cleanUpRuntimes, markRuntimeStarted, STARTED_MARKER } from "./runtime-cleanup";
 
 describe("cleanUpRuntimes", () => {
   let root = "";
@@ -29,6 +29,9 @@ describe("cleanUpRuntimes", () => {
     ])
       await mkdir(join(runtime, dir), { recursive: true });
     await writeFile(join(runtime, "opencode", "current.json"), '{"version":"1.19.5"}');
+    // Every copy in use has started at least once.
+    for (const dir of ["claude/2.1.318", "codex/0.166.0", "opencode/1.19.5"])
+      await writeFile(join(runtime, dir, STARTED_MARKER), "");
     await mkdir(join(userData, "tools", "codex"), { recursive: true });
     await mkdir(join(userData, "tools", "qwen"), { recursive: true });
     await mkdir(join(userData, "Partitions", "persist_bot"), { recursive: true });
@@ -65,6 +68,33 @@ describe("cleanUpRuntimes", () => {
     expect(existsSync(join(temp, "sahkarmi-runtime-old"))).toBe(false);
     expect(existsSync(join(temp, "sahkarmi-runtime-new"))).toBe(true);
     expect(existsSync(join(temp, "sahkarmi-export-old"))).toBe(true);
+  });
+
+  it("keeps the previous copy until the new one has started once", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-cleanup-"));
+    const userData = join(root, "userData");
+    const codex = join(userData, "runtime", "codex");
+    for (const version of ["0.165.0", "0.166.0", "0.167.0"]) {
+      await mkdir(join(codex, version, "bin"), { recursive: true });
+      await writeFile(join(codex, version, "bin", "codex.exe"), "");
+    }
+    await writeFile(join(codex, "0.166.0", STARTED_MARKER), "");
+
+    await cleanUpRuntimes(userData, join(root, "temp"));
+    // 0.167.0 never ran yet: 0.166.0 (the last one that worked) stays as the fallback.
+    expect(existsSync(join(codex, "0.167.0"))).toBe(true);
+    expect(existsSync(join(codex, "0.166.0"))).toBe(true);
+    expect(existsSync(join(codex, "0.165.0"))).toBe(false);
+
+    expect(await markRuntimeStarted(userData, join(codex, "0.167.0", "bin", "codex.exe"))).toBe(
+      true,
+    );
+    // Only Sahkarmi's own copies are marked.
+    expect(await markRuntimeStarted(userData, join(root, "elsewhere", "codex.exe"))).toBe(false);
+    const result = await cleanUpRuntimes(userData, join(root, "temp"));
+    expect(existsSync(join(codex, "0.166.0"))).toBe(false);
+    expect(existsSync(join(codex, "0.167.0"))).toBe(true);
+    expect(result.removed).toEqual([join(codex, "0.166.0")]);
   });
 
   it("leaves the legacy Codex download when it is the only copy", async () => {

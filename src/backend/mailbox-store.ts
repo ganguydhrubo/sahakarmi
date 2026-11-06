@@ -4,6 +4,7 @@ import {
   appendFile,
   copyFile,
   mkdir,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -689,6 +690,43 @@ export class MailboxStore {
         candidate.turnId === null,
     );
     return delivery ? this.#context(delivery) : null;
+  }
+
+  /**
+   * Settings > Storage: removes files sent with messages older than `days`. A message still
+   * waiting to be delivered keeps its files whatever its age. The chat keeps the message; its
+   * file card then says the file is gone.
+   */
+  async removeAttachmentsOlderThan(days: number): Promise<{ removed: number; bytes: number }> {
+    const cutoff = this.#now() - Math.max(0, days) * 24 * 60 * 60_000;
+    const pendingMessages = new Set(
+      this.#state.deliveries
+        .filter((delivery) => !TERMINAL_STATUSES.has(delivery.status))
+        .map((delivery) => delivery.messageId),
+    );
+    let removed = 0;
+    let bytes = 0;
+    for (const entry of await readdir(this.#transfersRoot, { withFileTypes: true }).catch(
+      () => [],
+    )) {
+      if (!entry.isDirectory() || pendingMessages.has(entry.name)) continue;
+      const folder = join(this.#transfersRoot, entry.name);
+      const message = this.#messageIndex.get(entry.name);
+      const created = message ? Date.parse(message.createdAt) : Number.NaN;
+      const age = Number.isFinite(created)
+        ? created
+        : ((await stat(folder).catch(() => null))?.mtimeMs ?? Number.POSITIVE_INFINITY);
+      if (age >= cutoff) continue;
+      const size = await folderBytes(folder);
+      try {
+        await rm(folder, { recursive: true, force: true, maxRetries: 2 });
+        removed += 1;
+        bytes += size;
+      } catch {
+        // A file still open elsewhere; try again another time.
+      }
+    }
+    return { removed, bytes };
   }
 
   async deleteBotData(botId: string): Promise<void> {
@@ -1383,4 +1421,14 @@ function parseArchivedRecord(line: string): ArchivedRecord | null {
 function isWithin(root: string, path: string): boolean {
   const candidate = relative(root, path);
   return candidate !== "" && !candidate.startsWith("..") && !isAbsolute(candidate);
+}
+
+async function folderBytes(folder: string): Promise<number> {
+  let total = 0;
+  for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
+    const path = join(folder, entry.name);
+    if (entry.isDirectory()) total += await folderBytes(path);
+    else total += (await stat(path).catch(() => null))?.size ?? 0;
+  }
+  return total;
 }
