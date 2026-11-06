@@ -3,7 +3,6 @@ import type {
   AgentCollaborationMessage,
   AgentEvent,
   BotSummary,
-  OrchestratorDeliverable,
   OrchestratorRun,
   OrchestratorSpecialistRole,
   OrchestratorTask,
@@ -14,45 +13,45 @@ import { AgentCollaborationBus } from "./agent-collaboration-bus";
 import { AgentExecutionFactory } from "./agent-execution-factory";
 import type { OrchestratorStore } from "./orchestrator-store";
 import type { TeamRunAgentPort, TeamRunEngine } from "./team-run-engine";
-import { ToolRegistry } from "./tool-registry";
 import { VerificationRepairEngine } from "./verification-repair-engine";
 
 export type OrchestratorEventListener = (event: AgentEvent) => void;
 
-/**
- * Hooks for the durable engine. Without a port the orchestrator keeps its older in-memory loop,
- * which is also what the "Team runs: durable engine" switch falls back to.
- */
+/** Hooks for the durable engine: the real coworkers it hands tasks to. */
 export interface OrchestratorEngineOptions {
   port: TeamRunAgentPort;
-  /** Read on every start and resume, so the switch acts at once. */
-  enabled: () => boolean;
+  /** How long a failed task message is watched for a re-send (tests shorten it). */
+  retryGraceMs?: number;
 }
 
+export interface OrchestratorDependencies {
+  factory?: AgentExecutionFactory;
+  bus?: AgentCollaborationBus;
+  verifier?: VerificationRepairEngine;
+}
+
+/**
+ * Plans team runs and hands them to the durable TeamRunEngine (LangGraph), which sends each task
+ * to a real coworker. There is no other execution path: without a port nothing can run.
+ */
 export class AdaptiveOrchestrator {
   readonly #store: OrchestratorStore;
   readonly #factory: AgentExecutionFactory;
   readonly #bus: AgentCollaborationBus;
-  readonly #tools: ToolRegistry;
   readonly #verifier: VerificationRepairEngine;
   readonly #eventListeners = new Set<OrchestratorEventListener>();
-  readonly #activeRuns = new Map<string, { paused: boolean; cancelled: boolean }>();
   readonly #engineOptions: OrchestratorEngineOptions | null;
   #engine: Promise<TeamRunEngine> | null = null;
 
   constructor(
     store: OrchestratorStore,
-    factory: AgentExecutionFactory = new AgentExecutionFactory(),
-    bus: AgentCollaborationBus = new AgentCollaborationBus(),
-    tools: ToolRegistry = new ToolRegistry(),
-    verifier: VerificationRepairEngine = new VerificationRepairEngine(),
     engine: OrchestratorEngineOptions | null = null,
+    dependencies: OrchestratorDependencies = {},
   ) {
     this.#store = store;
-    this.#factory = factory;
-    this.#bus = bus;
-    this.#tools = tools;
-    this.#verifier = verifier;
+    this.#factory = dependencies.factory ?? new AgentExecutionFactory();
+    this.#bus = dependencies.bus ?? new AgentCollaborationBus();
+    this.#verifier = dependencies.verifier ?? new VerificationRepairEngine();
     this.#engineOptions = engine;
 
     this.#bus.subscribe((msg: AgentCollaborationMessage) => {
@@ -66,7 +65,7 @@ export class AdaptiveOrchestrator {
    */
   #loadEngine(): Promise<TeamRunEngine> | null {
     const options = this.#engineOptions;
-    if (!options?.enabled()) return null;
+    if (!options) return null;
     if (!this.#engine) {
       this.#engine = import("./team-run-engine").then(
         ({ TeamRunEngine }) =>
@@ -77,6 +76,7 @@ export class AdaptiveOrchestrator {
             verifier: this.#verifier,
             checkpointDir: this.#store.checkpointDir,
             emit: (event) => this.#emit(event),
+            retryGraceMs: options.retryGraceMs,
           }),
       );
       this.#engine.catch(() => {
@@ -86,11 +86,21 @@ export class AdaptiveOrchestrator {
     return this.#engine;
   }
 
-  /** Durable runs keep working after the switch is turned off; only new runs use the old loop. */
+  /** Older runs made by the removed in-memory loop cannot be driven: they are only shown. */
   async #engineFor(run: OrchestratorRun): Promise<TeamRunEngine | null> {
-    if (run.engine !== "graph" || !this.#engineOptions) return null;
-    if (!this.#engine && !this.#engineOptions.enabled()) return null;
+    if (run.engine !== "graph") return null;
     return (await this.#loadEngine()) ?? null;
+  }
+
+  /**
+   * After a restart: a run paused on an approval listens for the owner's decision again. The
+   * engine loads only when such a run exists, so start-up stays as fast as before.
+   */
+  async restoreWaitingRuns(): Promise<void> {
+    const runs = await this.#store.getRuns();
+    if (!runs.some((run) => run.engine === "graph" && run.waitingOn)) return;
+    const engine = await this.#loadEngine();
+    await engine?.restore();
   }
 
   /** Stops listening and lets running graphs settle. For tests and shutdown. */
@@ -102,10 +112,6 @@ export class AdaptiveOrchestrator {
   onEvent(listener: OrchestratorEventListener): () => void {
     this.#eventListeners.add(listener);
     return () => this.#eventListeners.delete(listener);
-  }
-
-  get tools(): ToolRegistry {
-    return this.#tools;
   }
 
   evaluateComplexity(objective: string): TaskExecutionStrategy {
@@ -195,36 +201,27 @@ export class AdaptiveOrchestrator {
     }
 
     const enginePromise = this.#loadEngine();
-    if (enginePromise) {
-      run.engine = "graph";
-      run.waitingOn = null;
-      this.#assignRealCoworkers(run, input.workspaceId ?? null);
-      run.status = "running";
-      await this.#store.saveRun(run);
-      this.#emit({ type: "orchestrator-run-updated", run });
-      enginePromise.then(
-        (engine) => engine.start(run, workspacePath),
-        async (error: unknown) => {
-          const failed = await this.#store.getRun(runId);
-          if (!failed) return;
-          failed.status = "failed";
-          failed.error = `The team-run engine could not start: ${error instanceof Error ? error.message : String(error)}`;
-          failed.completedAt = new Date().toISOString();
-          await this.#store.saveRun(failed);
-          this.#emit({ type: "orchestrator-run-updated", run: failed });
-        },
-      );
-      return run;
-    }
-
+    if (!enginePromise) throw new Error("Team runs are not available right now.");
+    run.engine = "graph";
+    run.waitingOn = null;
+    run.checkCommand = input.checkCommand?.trim() || null;
+    run.plannedBy = "template";
+    this.#assignRealCoworkers(run, input.workspaceId ?? null);
     run.status = "running";
     await this.#store.saveRun(run);
-    this.#activeRuns.set(runId, { paused: false, cancelled: false });
     this.#emit({ type: "orchestrator-run-updated", run });
-
-    // Execute run asynchronously without blocking the caller
-    void this.#executeRun(runId, workspacePath);
-
+    enginePromise.then(
+      (engine) => engine.start(run, workspacePath),
+      async (error: unknown) => {
+        const failed = await this.#store.getRun(runId);
+        if (!failed) return;
+        failed.status = "failed";
+        failed.error = `The team-run engine could not start: ${error instanceof Error ? error.message : String(error)}`;
+        failed.completedAt = new Date().toISOString();
+        await this.#store.saveRun(failed);
+        this.#emit({ type: "orchestrator-run-updated", run: failed });
+      },
+    );
     return run;
   }
 
@@ -253,16 +250,13 @@ export class AdaptiveOrchestrator {
   async pauseRun(runId: string): Promise<OrchestratorRun | null> {
     const run = await this.#store.getRun(runId);
     if (!run) return null;
-    const engine = await this.#engineFor(run);
-    if (engine) {
-      engine.pause(runId);
-    } else {
-      const ctrl = this.#activeRuns.get(runId);
-      if (ctrl) ctrl.paused = true;
-    }
     if (run.status === "completed" || run.status === "failed") return run;
-    run.status = "paused";
-    const saved = await this.#store.saveRun(run);
+    const engine = await this.#engineFor(run);
+    await engine?.pause(runId);
+    // Read again: pausing took the coworkers' task messages back and noted that on the tasks.
+    const latest = (await this.#store.getRun(runId)) ?? run;
+    latest.status = "paused";
+    const saved = await this.#store.saveRun(latest);
     this.#emit({ type: "orchestrator-run-updated", run: saved });
     return saved;
   }
@@ -272,46 +266,27 @@ export class AdaptiveOrchestrator {
     if (!run) return null;
     if (run.status === "completed" || run.status === "failed") return run;
     const engine = await this.#engineFor(run);
-    if (engine) {
-      if (engine.isActive(runId)) return run;
-      run.status = "running";
-      const saved = await this.#store.saveRun(run);
-      this.#emit({ type: "orchestrator-run-updated", run: saved });
-      await engine.resume(saved, workspacePath);
-      return (await this.#store.getRun(runId)) ?? saved;
-    }
-    const ctrl = this.#activeRuns.get(runId);
-    if (ctrl) {
-      ctrl.paused = false;
-    } else {
-      this.#activeRuns.set(runId, { paused: false, cancelled: false });
-    }
+    if (!engine) return run;
+    if (engine.isActive(runId)) return run;
     run.status = "running";
     const saved = await this.#store.saveRun(run);
     this.#emit({ type: "orchestrator-run-updated", run: saved });
-
-    void this.#executeRun(runId, workspacePath);
-    return saved;
+    await engine.resume(saved, workspacePath);
+    return (await this.#store.getRun(runId)) ?? saved;
   }
 
   async cancelRun(runId: string): Promise<OrchestratorRun | null> {
     const run = await this.#store.getRun(runId);
     if (!run) return null;
     const engine = await this.#engineFor(run);
-    if (engine) {
-      await engine.cancel(runId);
-    } else {
-      const ctrl = this.#activeRuns.get(runId);
-      if (ctrl) {
-        ctrl.cancelled = true;
-        ctrl.paused = false;
-      }
-    }
-    run.status = "failed";
-    run.error = "Run cancelled by user.";
-    run.completedAt = new Date().toISOString();
-    run.waitingOn = null;
-    const saved = await this.#store.saveRun(run);
+    await engine?.cancel(runId);
+    this.#bus.resetRun(runId);
+    const latest = (await this.#store.getRun(runId)) ?? run;
+    latest.status = "failed";
+    latest.error = "Run cancelled by user.";
+    latest.completedAt = new Date().toISOString();
+    latest.waitingOn = null;
+    const saved = await this.#store.saveRun(latest);
     this.#emit({ type: "orchestrator-run-updated", run: saved });
     return saved;
   }
@@ -448,129 +423,6 @@ export class AdaptiveOrchestrator {
 
     run.tasks = [task1, task2, task3];
     run.instances = [archInstance, codeInstance, qaInstance];
-  }
-
-  async #executeRun(runId: string, workspacePath: string): Promise<void> {
-    while (true) {
-      const ctrl = this.#activeRuns.get(runId);
-      if (!ctrl || ctrl.cancelled) return;
-      if (ctrl.paused) {
-        await new Promise((r) => setTimeout(r, 500));
-        continue;
-      }
-
-      const run = await this.#store.getRun(runId);
-      if (!run || run.status === "completed" || run.status === "failed") return;
-
-      // Find tasks that are ready to run (dependencies completed and task is pending or repairing)
-      const completedTaskIds = new Set(
-        run.tasks.filter((t) => t.status === "completed").map((t) => t.id),
-      );
-
-      const readyTasks = run.tasks.filter((t) => {
-        if (t.status !== "pending" && t.status !== "repairing") return false;
-        return t.dependencies.every((depId) => completedTaskIds.has(depId));
-      });
-
-      if (readyTasks.length === 0) {
-        // Check if all tasks are completed
-        const allCompleted = run.tasks.every((t) => t.status === "completed");
-        const anyFailed = run.tasks.some((t) => t.status === "failed");
-
-        if (allCompleted) {
-          run.status = "completed";
-          run.completedAt = new Date().toISOString();
-          const deliverables: OrchestratorDeliverable[] = run.tasks.flatMap((t) => t.deliverables);
-          run.deliverables = deliverables;
-          await this.#store.saveRun(run);
-          this.#emit({ type: "orchestrator-run-updated", run });
-          this.#activeRuns.delete(runId);
-          return;
-        }
-
-        if (anyFailed) {
-          run.status = "failed";
-          run.completedAt = new Date().toISOString();
-          const failedTask = run.tasks.find((t) => t.status === "failed");
-          run.error = failedTask?.error ?? "One or more tasks failed verification.";
-          await this.#store.saveRun(run);
-          this.#emit({ type: "orchestrator-run-updated", run });
-          this.#activeRuns.delete(runId);
-          return;
-        }
-
-        // Wait briefly for currently running tasks to finish
-        await new Promise((r) => setTimeout(r, 300));
-        continue;
-      }
-
-      // Execute ready tasks concurrently
-      await Promise.all(readyTasks.map((task) => this.#executeTask(run, task, workspacePath)));
-    }
-  }
-
-  async #executeTask(
-    run: OrchestratorRun,
-    task: OrchestratorTask,
-    workspacePath: string,
-  ): Promise<void> {
-    task.status = "running";
-    task.updatedAt = new Date().toISOString();
-    await this.#store.updateTask(run.id, task);
-    this.#emit({ type: "orchestrator-task-updated", runId: run.id, task });
-
-    const instance = run.instances.find((i) => i.instanceId === task.assignedInstanceId);
-    if (instance) {
-      instance.status = "running";
-      instance.turnCount += 1;
-      await this.#store.updateInstance(run.id, instance);
-    }
-
-    // Inter-agent handoff notification
-    if (instance && task.dependencies.length > 0) {
-      const priorTask = run.tasks.find((t) => t.id === task.dependencies[0]);
-      if (priorTask?.assignedInstanceId) {
-        const priorInstance = run.instances.find(
-          (i) => i.instanceId === priorTask.assignedInstanceId,
-        );
-        if (priorInstance) {
-          const handoffMsg = this.#bus.sendMessage(
-            run.id,
-            priorInstance,
-            instance.botId,
-            instance.role,
-            "task_handoff",
-            `Handing off deliverables of ${priorTask.title} to ${instance.botName}`,
-            { taskId: task.id, priorTaskId: priorTask.id },
-            instance.instanceId,
-          );
-          await this.#store.addMessage(handoffMsg);
-        }
-      }
-    }
-
-    // Execute verification checks
-    const verification = await this.#verifier.verifyTask(task, {
-      workspacePath,
-      types: task.role === "qa" || task.role === "code",
-    });
-
-    const updatedTask = this.#verifier.handleVerificationResult(
-      task,
-      verification.passed,
-      verification.evidence,
-    );
-
-    if (instance) {
-      instance.status = updatedTask.status === "running" ? "running" : "completed";
-      if (updatedTask.status === "completed" || updatedTask.status === "failed") {
-        instance.completedAt = new Date().toISOString();
-      }
-      await this.#store.updateInstance(run.id, instance);
-    }
-
-    await this.#store.updateTask(run.id, updatedTask);
-    this.#emit({ type: "orchestrator-task-updated", runId: run.id, task: updatedTask });
   }
 
   #emit(event: AgentEvent): void {

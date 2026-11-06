@@ -50,7 +50,8 @@ class FakeAgent extends EventEmitter implements TeamRunAgentPort {
   readonly deliveries = new Map<string, QueueDelivery[]>();
   readonly messages = new Map<string, ConversationMessage[]>();
   readonly approvals: ApprovalRequest[] = [];
-  readonly sent: Array<{ botId: string; text: string }> = [];
+  readonly sent: Array<{ botId: string; text: string; origin?: string }> = [];
+  readonly withdrawn: string[] = [];
   responder: (botId: string, text: string) => Answer = () => ({ reply: "Done." });
   #turns = 0;
 
@@ -97,7 +98,7 @@ class FakeAgent extends EventEmitter implements TeamRunAgentPort {
   }
 
   async sendMessage(input: SendMessageInput): Promise<QueuedMessageReceipt> {
-    this.sent.push({ botId: input.botId, text: input.text });
+    this.sent.push({ botId: input.botId, text: input.text, origin: input.origin });
     const delivery: QueueDelivery = {
       id: `d-${this.sent.length}`,
       messageId: `m-${this.sent.length}`,
@@ -135,6 +136,18 @@ class FakeAgent extends EventEmitter implements TeamRunAgentPort {
       botId: approval.botId,
       text: `[Approval ${status.toUpperCase()}] "${approval.title}" (approval id ${approval.id}).`,
     });
+  }
+
+  async withdrawDelivery(botId: string, deliveryId: string): Promise<void> {
+    const delivery = this.deliveries.get(botId)?.find((candidate) => candidate.id === deliveryId);
+    if (!delivery) return;
+    this.withdrawn.push(deliveryId);
+    if (delivery.status === "queued") delivery.status = "cancelled";
+    else if (delivery.status === "running") {
+      delivery.status = "interrupted";
+      delivery.error = "Stopped.";
+    }
+    this.#emitQueue(botId);
   }
 
   /** What a restart does to a turn that was running: the mailbox marks it interrupted. */
@@ -231,13 +244,10 @@ async function runStatus(
   });
 }
 
-async function build(agent: FakeAgent, enabled = true) {
+async function build(agent: FakeAgent) {
   const store = new OrchestratorStore(root);
   await store.initialize();
-  const orchestrator = new AdaptiveOrchestrator(store, undefined, undefined, undefined, undefined, {
-    port: agent,
-    enabled: () => enabled,
-  });
+  const orchestrator = new AdaptiveOrchestrator(store, { port: agent, retryGraceMs: 30 });
   cleanups.push(() => orchestrator.dispose());
   return { store, orchestrator };
 }
@@ -412,20 +422,91 @@ describe("team runs on the durable engine", () => {
     ).rejects.toThrow("Add a coworker");
   });
 
-  it("keeps the older loop when the switch is off", async () => {
+  it("sends every task as a team-run message, never steered into a running turn", async () => {
     const agent = new FakeAgent(BOTS);
-    const { orchestrator } = await build(agent, false);
+    const { orchestrator } = await build(agent);
     const run = await orchestrator.startRun(
       { objective: "Quick fix", forcedStrategy: "single-agent" },
       root,
       agent.bots,
     );
-    expect(run.engine).toBeUndefined();
-    // The old loop runs code checks in the folder; a temp folder has none, so it may fail.
+    const done = await runStatus(orchestrator, run.id, "completed");
+    expect(agent.sent.map((item) => item.origin)).toEqual(["team-run"]);
+    // "Done." names no file and the run has no check: completed, but honestly unverified.
+    expect(done.tasks[0]?.verification).toBe("unverified");
+    expect(done.tasks[0]?.evidence.at(-1)?.verdict).toBe("unverified");
+  });
+
+  it("cancel stops the coworker's running task and removes queued ones", async () => {
+    const agent = new FakeAgent(BOTS);
+    agent.responder = () => ({ hang: true });
+    const { orchestrator } = await build(agent);
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
     await until(async () => {
       const current = await orchestrator.getRun(run.id);
-      return current && current.status !== "running" ? current : null;
-    }, 20_000);
-    expect(agent.sent).toHaveLength(0);
+      return current?.tasks[0]?.inputs.attemptDeliveries ? true : null;
+    });
+    await until(() =>
+      agent.listQueue("dev-code").deliveries.some((item) => item.status === "running")
+        ? true
+        : null,
+    );
+    const cancelled = await orchestrator.cancelRun(run.id);
+    expect(cancelled?.status).toBe("failed");
+    expect(agent.withdrawn).toEqual(["d-1"]);
+    expect(agent.listQueue("dev-code").deliveries[0]?.status).toBe("interrupted");
+  });
+
+  it("pause takes the task back and Resume sends it again", async () => {
+    const agent = new FakeAgent(BOTS);
+    let hang = true;
+    agent.responder = () => (hang ? { hang: true } : { reply: "Done." });
+    const { orchestrator } = await build(agent);
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    await until(async () => {
+      const current = await orchestrator.getRun(run.id);
+      return current?.tasks[0]?.inputs.attemptDeliveries ? true : null;
+    });
+    await orchestrator.pauseRun(run.id);
+    await runStatus(orchestrator, run.id, "paused");
+    expect(agent.withdrawn).toEqual(["d-1"]);
+    hang = false;
+    await orchestrator.resumeRun(run.id, root);
+    const done = await runStatus(orchestrator, run.id, "completed");
+    expect(agent.sent).toHaveLength(2);
+    // The same attempt again, not a "repair" attempt: pausing is not a failure.
+    expect(agent.sent[1]?.text).not.toContain("attempt 2");
+    expect(done.tasks[0]?.attemptCount).toBe(1);
+  });
+
+  it("an approval decided after a restart wakes the run", async () => {
+    const agent = new FakeAgent(BOTS);
+    agent.responder = (_botId, text) =>
+      text.startsWith("[Approval")
+        ? { reply: "Paid after your approval." }
+        : { approval: "Pay the vendor" };
+    const first = await build(agent);
+    const run = await first.orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    await runStatus(first.orchestrator, run.id, "paused");
+    await first.orchestrator.dispose();
+
+    // The app opens again; nobody presses Resume.
+    const second = await build(agent);
+    await second.orchestrator.restoreWaitingRuns();
+    await agent.decide("apr-1", "approved");
+    const done = await runStatus(second.orchestrator, run.id, "completed");
+    expect(done.tasks[0]?.inputs.result).toBe("Paid after your approval.");
   });
 });

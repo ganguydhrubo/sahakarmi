@@ -150,15 +150,6 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     false,
   ),
   feature(
-    "team-run-engine",
-    "Team runs: durable engine",
-    "Team runs hand each task to a real coworker, pause for your approval and continue after a restart. Off: the older in-memory planner.",
-    "labs",
-    [],
-    true,
-    true,
-  ),
-  feature(
     "marketplace",
     "Marketplace",
     "Add ready-made coworkers and install skills in one click.",

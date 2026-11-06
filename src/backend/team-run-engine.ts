@@ -1,6 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { access } from "node:fs/promises";
-import { join } from "node:path";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import {
   Annotation,
@@ -20,9 +18,9 @@ import type {
   OrchestratorTask,
   OrchestratorVerificationEvidence,
   OrchestratorWait,
-  QueueDelivery,
 } from "../shared/ipc";
 import type { AgentCollaborationBus } from "./agent-collaboration-bus";
+import { type DeliveryOutcome, waitForDelivery } from "./delivery-wait";
 import type { OrchestratorStore } from "./orchestrator-store";
 import type { RoutineAgentPort } from "./routine-executor";
 import { TeamRunCheckpointSaver } from "./team-run-checkpoints";
@@ -36,6 +34,8 @@ AsyncLocalStorageProviderSingleton.initializeGlobalInstance(new AsyncLocalStorag
 export interface TeamRunAgentPort extends RoutineAgentPort {
   listBots(): BotSummary[];
   listApprovals(): ApprovalRequest[];
+  /** Takes back a task message: removes it while queued, stops the turn while it runs. */
+  withdrawDelivery?(botId: string, deliveryId: string): Promise<void>;
 }
 
 export interface TeamRunEngineOptions {
@@ -48,6 +48,8 @@ export interface TeamRunEngineOptions {
   emit: (event: AgentEvent) => void;
   /** A coworker turn waiting on approvals can take long, but never forever. */
   stepTimeoutMs?: number;
+  /** How long a failed task message is watched for a re-send on another model. */
+  retryGraceMs?: number;
 }
 
 /** Owner decision handed back into the paused graph. */
@@ -74,12 +76,6 @@ interface WorkInput {
   priorResults: Array<{ title: string; result: string }>;
 }
 
-const TERMINAL = new Set<QueueDelivery["status"]>([
-  "completed",
-  "failed",
-  "interrupted",
-  "cancelled",
-]);
 const DEFAULT_STEP_TIMEOUT_MS = 6 * 60 * 60_000;
 /** Longest the engine waits for the approval follow-up turn to be queued after a decision. */
 const FOLLOWUP_APPEAR_MS = 15_000;
@@ -113,15 +109,6 @@ function shorten(text: string | null | undefined, max = MAX_RESULT_CHARS): strin
   const trimmed = (text ?? "").trim();
   if (!trimmed) return null;
   return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** The message a coworker receives for its task. Earlier results are data, never instructions. */
@@ -178,6 +165,7 @@ export class TeamRunEngine {
   readonly #verifier: VerificationRepairEngine;
   readonly #emit: (event: AgentEvent) => void;
   readonly #stepTimeoutMs: number;
+  readonly #retryGraceMs: number | undefined;
   readonly #saver: TeamRunCheckpointSaver;
   readonly #graph: ReturnType<typeof buildGraph>;
   readonly #active = new Map<string, AbortController>();
@@ -196,6 +184,7 @@ export class TeamRunEngine {
     this.#verifier = options.verifier;
     this.#emit = options.emit;
     this.#stepTimeoutMs = options.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+    this.#retryGraceMs = options.retryGraceMs;
     this.#saver = new TeamRunCheckpointSaver(options.checkpointDir);
     this.#graph = buildGraph(this.#saver, {
       run: (runId) => this.#store.getRun(runId),
@@ -260,9 +249,13 @@ export class TeamRunEngine {
     void this.#drive(run.id, null);
   }
 
-  /** Pauses after the step in progress; the coworker's current turn is not interrupted. */
-  pause(runId: string): void {
+  /**
+   * Pauses the run. A coworker's task for it is taken back too (stopped while it runs, removed
+   * while it waits in the queue), and sent again from the start of that step on Resume.
+   */
+  async pause(runId: string): Promise<void> {
     this.#active.get(runId)?.abort();
+    await this.#withdrawTasks(runId, true);
   }
 
   async cancel(runId: string): Promise<void> {
@@ -270,7 +263,54 @@ export class TeamRunEngine {
     for (const [approvalId, waitingRunId] of this.#waiting) {
       if (waitingRunId === runId) this.#waiting.delete(approvalId);
     }
+    await this.#withdrawTasks(runId, false);
+    this.#bus.resetRun(runId);
     await this.#saver.deleteThread(runId).catch(() => undefined);
+  }
+
+  /**
+   * After a restart, runs paused on an approval are listened for again, so a decision the
+   * owner makes now wakes the run; a decision made while the app was closed wakes it at once.
+   */
+  async restore(): Promise<void> {
+    for (const run of await this.#store.getRuns()) {
+      if (run.engine !== "graph" || !run.waitingOn || this.#active.has(run.id)) continue;
+      if (run.status === "completed" || run.status === "failed") continue;
+      const approval = this.#port
+        .listApprovals()
+        .find((candidate) => candidate.id === run.waitingOn?.approvalId);
+      if (approval && approval.status !== "pending") {
+        void this.#drive(run.id, new Command({ resume: decisionFrom(approval) }));
+      } else if (approval) {
+        this.#waiting.set(approval.id, run.id);
+      }
+    }
+  }
+
+  /** The task messages of a run's unfinished tasks: the latest attempt of each. */
+  async #withdrawTasks(runId: string, forgetForResend: boolean): Promise<void> {
+    const run = await this.#store.getRun(runId);
+    if (!run || !this.#port.withdrawDelivery) return;
+    for (const task of run.tasks) {
+      if (task.status === "completed" || task.status === "failed") continue;
+      const sent = (task.inputs.attemptDeliveries as Record<string, string> | undefined) ?? {};
+      const attempt = String(task.attemptCount + 1);
+      const deliveryId = sent[attempt];
+      if (!deliveryId) continue;
+      const instance = run.instances.find((i) => i.instanceId === task.assignedInstanceId);
+      const botId = instance?.botId ?? task.assignedBotId;
+      const delivery = this.#port
+        .listQueue(botId)
+        .deliveries.find((candidate) => candidate.id === deliveryId);
+      if (!delivery || delivery.status === "completed") continue;
+      await this.#port.withdrawDelivery(botId, deliveryId).catch(() => undefined);
+      if (forgetForResend) {
+        const { [attempt]: _withdrawn, ...rest } = sent;
+        task.inputs = { ...task.inputs, attemptDeliveries: rest };
+        if (task.status === "running") task.status = "pending";
+        await this.#store.updateTask(run.id, task);
+      }
+    }
   }
 
   #config(runId: string) {
@@ -322,6 +362,9 @@ export class TeamRunEngine {
       }
       const verdict = state.values.verdict as RunStateType["verdict"];
       const error = state.values.error as RunStateType["error"];
+      if (verdict === "completed" || verdict === "failed" || state.next.length === 0) {
+        this.#bus.resetRun(runId);
+      }
       if (verdict === "completed") {
         await this.#saver.deleteThread(runId).catch(() => undefined);
         await this.#save({
@@ -433,6 +476,7 @@ export class TeamRunEngine {
       const receipt = await this.#port.sendMessage({
         botId,
         text: taskPrompt(task, input.objective, input.priorResults, attempt),
+        origin: "team-run",
       });
       const delivery = receipt.deliveries.find((candidate) => candidate.recipientBotId === botId);
       if (!delivery) {
@@ -483,17 +527,30 @@ export class TeamRunEngine {
       outcome = await this.#waitForFollowUp(botId, decided, signal);
     }
 
+    const where = { botId, workspacePath: bot.workspacePath, sharedRoot: input.workspacePath };
     if (!outcome.ok) {
-      return this.#verifyAndFinish(run, task, attempt, null, [
-        {
-          type: "review",
-          passed: false,
-          summary: outcome.error ?? "The coworker did not finish the task.",
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      return this.#verifyAndFinish(
+        run,
+        task,
+        attempt,
+        null,
+        [
+          {
+            type: "review",
+            passed: false,
+            verdict: "failed",
+            summary: outcome.error ?? "The coworker did not finish the task.",
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        where,
+      );
     }
-    return this.#verifyAndFinish(run, task, attempt, shorten(outcome.reply), []);
+    // Files are checked against the full reply; state keeps a shortened copy.
+    return this.#verifyAndFinish(run, task, attempt, shorten(outcome.reply), [], {
+      ...where,
+      fullReply: outcome.reply,
+    });
   }
 
   async #verifyAndFinish(
@@ -502,34 +559,33 @@ export class TeamRunEngine {
     attempt: number,
     result: string | null,
     evidence: OrchestratorVerificationEvidence[],
+    where: { botId: string; workspacePath: string; sharedRoot: string; fullReply?: string | null },
   ): Promise<TaskProgress> {
     let passed = evidence.every((item) => item.passed);
-    if (passed) {
-      // Code checks make sense only inside a project; the Shared folder is not one.
-      const project = await exists(join(run.instances[0]?.workspacePath ?? "", "package.json"));
-      const verification = await this.#verifier.verifyTask(
+    if (passed && result === null) {
+      passed = false;
+      evidence = [
         {
-          ...task,
-          deliverables: task.deliverables.length ? task.deliverables : [{ name: "Reply" }],
+          type: "review",
+          passed: false,
+          verdict: "failed",
+          summary: "The coworker sent no reply.",
+          timestamp: new Date().toISOString(),
         },
-        {
-          workspacePath: run.instances[0]?.workspacePath ?? ".",
-          types: project && (task.role === "code" || task.role === "qa"),
-        },
-      );
+      ];
+    } else if (passed) {
+      // Outside evidence only: the files it names, in its own folder or Shared, and the
+      // owner's own check command when the run has one.
+      const verification = await this.#verifier.verifyTask(task, {
+        workspacePath: where.workspacePath || where.sharedRoot,
+        sharedRoot: where.sharedRoot,
+        reply: where.fullReply ?? result,
+        checkCommand: run.checkCommand ?? null,
+        checkCwd: where.sharedRoot,
+        botId: where.botId,
+      });
       evidence = verification.evidence;
-      passed = verification.passed && result !== null;
-      if (verification.passed && result === null) {
-        evidence = [
-          ...evidence,
-          {
-            type: "review",
-            passed: false,
-            summary: "The coworker sent no reply.",
-            timestamp: new Date().toISOString(),
-          },
-        ];
-      }
+      passed = verification.passed;
     }
     const verified = this.#verifier.handleVerificationResult(
       { ...task, attemptCount: attempt - 1 },
@@ -625,7 +681,7 @@ export class TeamRunEngine {
     botId: string,
     approval: ApprovalRequest,
     signal?: AbortSignal,
-  ): Promise<{ ok: boolean; reply: string | null; error: string | null; turnId: string | null }> {
+  ): Promise<DeliveryOutcome> {
     const decidedAt = Date.parse(approval.decidedAt ?? "") || Date.now();
     const followUp = await this.#waitUntil(
       () =>
@@ -646,6 +702,7 @@ export class TeamRunEngine {
         reply: null,
         error: "The approval decision did not reach the coworker.",
         turnId: null,
+        deliveryId: approval.id,
       };
     }
     return this.#waitForDelivery(botId, followUp.id, signal);
@@ -688,55 +745,14 @@ export class TeamRunEngine {
     botId: string,
     deliveryId: string,
     signal?: AbortSignal,
-  ): Promise<{ ok: boolean; reply: string | null; error: string | null; turnId: string | null }> {
-    const delivery = await this.#waitUntil(
-      () => {
-        const found = this.#port
-          .listQueue(botId)
-          .deliveries.find((candidate) => candidate.id === deliveryId);
-        if (!found) return { gone: true as const };
-        return TERMINAL.has(found.status) ? { gone: false as const, delivery: found } : null;
-      },
-      botId,
-      this.#stepTimeoutMs,
+  ): Promise<DeliveryOutcome> {
+    const outcome = await waitForDelivery(this.#port, botId, deliveryId, {
+      timeoutMs: this.#stepTimeoutMs,
       signal,
-    );
-    if (signal?.aborted) throw new Error("Paused.");
-    if (!delivery) {
-      return { ok: false, reply: null, error: "The task did not finish in time.", turnId: null };
-    }
-    if (delivery.gone) {
-      return {
-        ok: false,
-        reply: null,
-        error: "The task was removed from the queue.",
-        turnId: null,
-      };
-    }
-    const turnId = delivery.delivery.turnId;
-    if (delivery.delivery.status !== "completed") {
-      return {
-        ok: false,
-        reply: null,
-        error: delivery.delivery.error ?? `The task was ${delivery.delivery.status}.`,
-        turnId,
-      };
-    }
-    let reply: string | null = null;
-    if (turnId) {
-      const snapshot = await this.#port.readConversation(botId).catch(() => null);
-      reply =
-        [...(snapshot?.messages ?? [])]
-          .reverse()
-          .find(
-            (message) =>
-              message.author === "assistant" &&
-              message.turnId === turnId &&
-              message.itemType !== "commentary" &&
-              message.text.trim(),
-          )?.text ?? null;
-    }
-    return { ok: true, reply, error: null, turnId };
+      retryGraceMs: this.#retryGraceMs,
+    });
+    if (outcome.aborted || signal?.aborted) throw new Error("Paused.");
+    return outcome;
   }
 }
 
