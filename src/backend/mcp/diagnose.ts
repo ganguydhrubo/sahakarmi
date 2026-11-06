@@ -59,6 +59,14 @@ const RULES: Rule[] = [
       ) || e.exitCode === 9009,
   },
   {
+    code: "long-path",
+    fix: "reinstall",
+    test: (_e, text) =>
+      /Windows Long Path support|enable-long-paths|Filename too long|path too long|ENAMETOOLONG/i.test(
+        text,
+      ),
+  },
+  {
     code: "path-not-found",
     fix: "edit",
     test: (_e, text) =>

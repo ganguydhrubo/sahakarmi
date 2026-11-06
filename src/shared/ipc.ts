@@ -177,6 +177,12 @@ export const IPC_CHANNELS = {
   mcpSetCoworkers: "mcp:set-coworkers",
   mcpAnalyzeGithub: "mcp:analyze-github",
   mcpAddCandidate: "mcp:add-candidate",
+  mcpPlanInstall: "mcp:plan-install",
+  mcpPlanSkill: "mcp:plan-skill",
+  mcpPlanTool: "mcp:plan-tool",
+  mcpRunInstall: "mcp:run-install",
+  mcpInstallStatus: "mcp:install-status",
+  mcpCancelInstall: "mcp:cancel-install",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -2050,6 +2056,7 @@ export type McpDiagnosisCode =
   | "port-in-use"
   | "first-run-timeout"
   | "path-not-found"
+  | "long-path"
   | "build-tools"
   | "python-version"
   | "exited"
@@ -2205,6 +2212,56 @@ export interface McpRepoAnalysis {
   legacyJson?: string;
 }
 
+/** One step of a guided install, as the approval card shows it (audit §11.8). */
+export interface McpInstallStepView {
+  kind:
+    | "download-uv"
+    | "download-node"
+    | "python-install"
+    | "venv"
+    | "pip"
+    | "npm"
+    | "clone"
+    | "build"
+    | "docker-pull"
+    | "verify"
+    | "skill"
+    | "save"
+    | "test";
+  /** The exact command (or download address) that will run. */
+  command: string;
+}
+
+/** What the owner approves before anything is downloaded or run. */
+export interface McpInstallPlan {
+  id: string;
+  kind: "server" | "skill" | "tool";
+  name: string;
+  /** Repo + pinned commit, or package + version. */
+  source: string;
+  folder: string;
+  /** Rough download size in MB, when known. */
+  sizeMb: { min: number; max: number } | null;
+  heavy: boolean;
+  steps: McpInstallStepView[];
+  warnings: string[];
+}
+
+export interface McpInstallJob {
+  id: string;
+  planId: string;
+  state: "running" | "done" | "failed" | "cancelled";
+  steps: { kind: McpInstallStepView["kind"]; state: "waiting" | "running" | "done" | "failed" }[];
+  /** The last lines the programs printed. */
+  log: string;
+  error: string | null;
+  diagnosis: McpDiagnosis | null;
+  /** The server list after a server install (with the automatic test result). */
+  servers?: McpServerSummary[];
+  /** The skill written by the Skill route. */
+  skillName?: string;
+}
+
 export interface McpDesktopApi {
   list: () => Promise<McpServerSummary[]>;
   save: (input: McpServerInput) => Promise<McpServerSummary[]>;
@@ -2228,6 +2285,21 @@ export interface McpDesktopApi {
     name: string,
     env: Record<string, string>,
   ) => Promise<McpServerSummary[]>;
+  /** Builds (does not run) the plan to install a candidate into its own folder. */
+  planInstall: (
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    env: Record<string, string>,
+  ) => Promise<McpInstallPlan>;
+  /** Builds the "Use as a Skill (CLI)" plan for a repo that is not an MCP server. */
+  planSkill: (analysisId: string) => Promise<McpInstallPlan>;
+  /** Builds the plan to download a missing tool (uv, Python 3.11 or Node.js). */
+  planTool: (tool: "uv" | "python" | "node") => Promise<McpInstallPlan>;
+  /** Runs a plan the owner approved. */
+  runInstall: (planId: string) => Promise<McpInstallJob>;
+  installStatus: (jobId: string) => Promise<McpInstallJob>;
+  cancelInstall: (jobId: string) => Promise<McpInstallJob>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */

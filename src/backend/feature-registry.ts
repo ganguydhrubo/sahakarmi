@@ -177,6 +177,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     true,
   ),
   feature(
+    "mcp-guided-install",
+    "MCP servers: install for me",
+    "After you approve a card that lists every download and command, Sahkarmi installs a server (or a command-line tool as a Skill) into its own folder, and can fetch uv, Python 3.11 or Node.js with checked SHA-256 sums. Off: you install programs yourself.",
+    "labs",
+    [],
+    true,
+    true,
+  ),
+  feature(
     "mcp-smart-import",
     "MCP servers: smart GitHub connect",
     "Reads a GitHub repo, the official MCP Registry and npm/PyPI to say whether it is an MCP server and how to run it. Off: only the repo's .mcp.json is read.",

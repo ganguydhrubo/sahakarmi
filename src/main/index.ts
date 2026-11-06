@@ -39,7 +39,7 @@ import {
   setToolsDirectory,
 } from "../backend/cli";
 import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
-import { CustomSkills } from "../backend/custom-skills";
+import { CustomSkills, parseSkillMarkdown } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
 import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { FeatureRegistry } from "../backend/feature-registry";
@@ -47,6 +47,8 @@ import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini
 import { ComposioClient } from "../backend/integrations/composio-client";
 import { KnowledgeService } from "../backend/knowledge/knowledge-service";
 import { MailboxStore } from "../backend/mailbox-store";
+import { McpInstaller } from "../backend/mcp/installer";
+import { serverEnvironment } from "../backend/mcp/windows-env";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
 import { PermissionService } from "../backend/permission-service";
@@ -236,8 +238,25 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   handleTrusted(IPC_CHANNELS.customSkillsRemove, (input: unknown) =>
     skills.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
-  // Windows' current PATH, read once now and again whenever Settings opens or Re-check is pressed.
-  void mcp.recheck().catch(() => {});
+  // Guided installs (audit §11.6): plans are built here and run only after the owner approves.
+  const installer = new McpInstaller(app.getPath("userData"), {
+    saveServer: (input, source) => mcp.save(input, source),
+    testServer: async (name) => {
+      const server = mcp.list().find((entry) => entry.name === name);
+      return server ? mcp.test(server.id) : mcp.list();
+    },
+    addSkill: async (skillText) => {
+      await skills.addFromText(skillText);
+      return parseSkillMarkdown(skillText).name;
+    },
+    recheck: () => mcp.recheck(),
+    env: () => serverEnvironment({}),
+  });
+  // Windows' current PATH (plus Sahkarmi's own tools), read now and whenever Settings opens.
+  void installer.tools
+    .refreshManagedPath()
+    .then(() => mcp.recheck())
+    .catch(() => {});
   handleTrusted(IPC_CHANNELS.mcpList, () => mcp.list());
   handleTrusted(IPC_CHANNELS.mcpSave, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid MCP server.");
@@ -263,6 +282,47 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
     mcp.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
   handleTrusted(IPC_CHANNELS.mcpRecheck, () => mcp.recheck());
+  const analysisOf = (input: unknown) => {
+    const analysis = mcp.analysis(
+      requireString(isObject(input) ? input.analysisId : null, "analysisId"),
+    );
+    if (!analysis) throw new Error("Load the repo again; that check has expired.");
+    return analysis;
+  };
+  handleTrusted(IPC_CHANNELS.mcpPlanInstall, (input: unknown) => {
+    const analysis = analysisOf(input);
+    const candidateId = requireString(isObject(input) ? input.candidateId : null, "candidateId");
+    const candidate = analysis.candidates.find((entry) => entry.id === candidateId);
+    if (!candidate) throw new Error("That suggestion is no longer available.");
+    const values = isObject(input) && isObject(input.env) ? input.env : {};
+    return installer.planCandidate(
+      analysis,
+      candidate,
+      requireString(isObject(input) ? input.name : null, "name"),
+      Object.fromEntries(
+        Object.entries(values).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.mcpPlanSkill, (input: unknown) =>
+    installer.planSkill(analysisOf(input)),
+  );
+  handleTrusted(IPC_CHANNELS.mcpPlanTool, (input: unknown) => {
+    const tool = isObject(input) ? input.tool : null;
+    if (tool !== "uv" && tool !== "python" && tool !== "node") throw new Error("Unknown tool.");
+    return installer.planTool(tool);
+  });
+  handleTrusted(IPC_CHANNELS.mcpRunInstall, (input: unknown) =>
+    installer.run(requireString(isObject(input) ? input.planId : null, "planId")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpInstallStatus, (input: unknown) =>
+    installer.status(requireString(isObject(input) ? input.jobId : null, "jobId")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpCancelInstall, (input: unknown) =>
+    installer.cancel(requireString(isObject(input) ? input.jobId : null, "jobId")),
+  );
   handleTrusted(IPC_CHANNELS.mcpAnalyzeGithub, (input: unknown) =>
     mcp.analyzeGithub(text(input, "url")),
   );

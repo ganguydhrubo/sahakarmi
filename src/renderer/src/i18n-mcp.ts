@@ -93,6 +93,43 @@ export const mcpEn = {
     "A new server stays off until Test server passes. Sahkarmi runs the test right after adding.",
   mcpxUnknownHint:
     "No MCP settings, package file or MCP code was found. If its README shows MCP JSON, paste it in the box above.",
+  mcpxStep_downloadUv: "Download uv (Python package manager) into Sahkarmi's tools folder",
+  mcpxStep_downloadNode: "Download Node.js (portable) into Sahkarmi's tools folder",
+  mcpxStep_pythonInstall: "Get a private copy of Python (does not change your system)",
+  mcpxStep_venv: "Make a separate Python environment for it",
+  mcpxStep_pip: "Install the package (pinned version)",
+  mcpxStep_npm: "Install the Node.js package into its own folder",
+  mcpxStep_clone: "Download the code at the pinned commit",
+  mcpxStep_build: "Build it",
+  mcpxStep_dockerPull: "Download the Docker image",
+  mcpxStep_verify: "Check that the program starts",
+  mcpxStep_skill: "Add a Sahkarmi Skill that tells coworkers how to use it",
+  mcpxStep_save: "Save the server (switched off)",
+  mcpxStep_test: "Test it: connect and list its tools",
+  mcpxSize: "About {min} to {max}",
+  mcpxSizeUnknown: "Size not known",
+  mcpxApproveTitle: "Approve this install?",
+  mcpxSkillTitle: 'Use "{name}" as a Skill',
+  mcpxSkillIntro:
+    "This project is a normal program, not an MCP server. Sahkarmi can install it in its own folder and write a short Skill, so your coworkers run it for you (you approve each run).",
+  mcpxSource: "From",
+  mcpxFolder: "Folder",
+  mcpxDownload: "Download",
+  mcpxApproveNote:
+    "Only these steps run, in this order. Nothing is copied from the README, and nothing outside this folder and Sahkarmi's tools folder changes.",
+  mcpxApprove: "Approve and install",
+  mcpxInstalling: "Installing… this can take a few minutes.",
+  mcpxInstallFailed: "The install stopped: {reason}",
+  mcpxInstallDone: "Installed. Check the test result in the list below, then switch it on.",
+  mcpxSkillDone: 'Done. The Skill "{name}" is in Settings › Skills.',
+  mcpxSkillKeys:
+    "Before the first video it needs a free Pexels key (stock footage) and an AI model to write the script (your own provider key or a free one). The voice is free.",
+  mcpxGetPexels: "Get a free Pexels key",
+  mcpxSkillOutput:
+    "Finished videos are saved in %LOCALAPPDATA%\\MoneyPrinterTurbo\\storage\\tasks.",
+  mcpxInstallLog: "Show details",
+  mcpxDiag_longPath:
+    "A file path got longer than Windows allows (260 characters). Sahkarmi now installs into a shorter folder: press Install again. Or switch on Windows long paths.",
 };
 
 type McpDictionary = Record<keyof typeof mcpEn, string>;
@@ -186,6 +223,42 @@ export const mcpHi: McpDictionary = {
   mcpxAddedOff: "नया सर्वर तब तक बंद रहता है जब तक सर्वर जाँच पास न हो। जोड़ते ही Sahkarmi जाँच चलाता है।",
   mcpxUnknownHint:
     "कोई MCP सेटिंग, पैकेज फ़ाइल या MCP कोड नहीं मिला। अगर इसके README में MCP JSON है, तो उसे ऊपर वाले बॉक्स में चिपकाएँ।",
+  mcpxStep_downloadUv: "uv (Python पैकेज मैनेजर) को Sahkarmi के टूल फ़ोल्डर में डाउनलोड करें",
+  mcpxStep_downloadNode: "Node.js (पोर्टेबल) को Sahkarmi के टूल फ़ोल्डर में डाउनलोड करें",
+  mcpxStep_pythonInstall: "Python की एक निजी कॉपी लें (आपका सिस्टम नहीं बदलेगा)",
+  mcpxStep_venv: "इसके लिए अलग Python एनवायरनमेंट बनाएँ",
+  mcpxStep_pip: "पैकेज इंस्टॉल करें (तय वर्ज़न)",
+  mcpxStep_npm: "Node.js पैकेज को उसके अपने फ़ोल्डर में इंस्टॉल करें",
+  mcpxStep_clone: "तय कमिट पर कोड डाउनलोड करें",
+  mcpxStep_build: "इसे बिल्ड करें",
+  mcpxStep_dockerPull: "Docker इमेज डाउनलोड करें",
+  mcpxStep_verify: "जाँचें कि प्रोग्राम चालू होता है",
+  mcpxStep_skill: "एक Sahkarmi स्किल जोड़ें जो सहकर्मियों को इसका इस्तेमाल बताए",
+  mcpxStep_save: "सर्वर सेव करें (बंद अवस्था में)",
+  mcpxStep_test: "जाँचें: कनेक्ट करें और इसके टूल देखें",
+  mcpxSize: "लगभग {min} से {max}",
+  mcpxSizeUnknown: "आकार पता नहीं",
+  mcpxApproveTitle: "क्या यह इंस्टॉल मंज़ूर है?",
+  mcpxSkillTitle: '"{name}" को स्किल की तरह इस्तेमाल करें',
+  mcpxSkillIntro:
+    "यह प्रोजेक्ट एक सामान्य प्रोग्राम है, MCP सर्वर नहीं। Sahkarmi इसे अपने फ़ोल्डर में इंस्टॉल करके एक छोटी स्किल लिख सकता है, ताकि सहकर्मी इसे आपके लिए चलाएँ (हर बार आप मंज़ूरी देंगे)।",
+  mcpxSource: "स्रोत",
+  mcpxFolder: "फ़ोल्डर",
+  mcpxDownload: "डाउनलोड",
+  mcpxApproveNote:
+    "सिर्फ़ यही कदम, इसी क्रम में चलेंगे। README से कुछ भी नहीं चलाया जाता, और इस फ़ोल्डर व Sahkarmi के टूल फ़ोल्डर के बाहर कुछ नहीं बदलता।",
+  mcpxApprove: "मंज़ूर करें और इंस्टॉल करें",
+  mcpxInstalling: "इंस्टॉल हो रहा है… इसमें कुछ मिनट लग सकते हैं।",
+  mcpxInstallFailed: "इंस्टॉल रुक गया: {reason}",
+  mcpxInstallDone: "इंस्टॉल हो गया। नीचे सूची में टेस्ट का नतीजा देखें, फिर इसे चालू करें।",
+  mcpxSkillDone: 'हो गया। स्किल "{name}" सेटिंग्स › स्किल्स में है।',
+  mcpxSkillKeys:
+    "पहले वीडियो से पहले इसे एक मुफ़्त Pexels की (स्टॉक फ़ुटेज) और स्क्रिप्ट लिखने के लिए एक AI मॉडल (आपकी अपनी या कोई मुफ़्त की) चाहिए। आवाज़ मुफ़्त है।",
+  mcpxGetPexels: "मुफ़्त Pexels की लें",
+  mcpxSkillOutput: "तैयार वीडियो %LOCALAPPDATA%\\MoneyPrinterTurbo\\storage\\tasks में सेव होते हैं।",
+  mcpxInstallLog: "विवरण दिखाएँ",
+  mcpxDiag_longPath:
+    "किसी फ़ाइल का पाथ Windows की सीमा (260 अक्षर) से लंबा हो गया। Sahkarmi अब छोटे फ़ोल्डर में इंस्टॉल करता है: फिर से इंस्टॉल दबाएँ। या Windows में लंबे पाथ चालू करें।",
 };
 
 export const mcpBn: McpDictionary = {
@@ -276,4 +349,40 @@ export const mcpBn: McpDictionary = {
   mcpxAddedOff: "নতুন সার্ভার পরীক্ষা পাস না হওয়া পর্যন্ত বন্ধ থাকে। যোগ করার পরই Sahkarmi পরীক্ষা চালায়।",
   mcpxUnknownHint:
     "কোনো MCP সেটিং, প্যাকেজ ফাইল বা MCP কোড পাওয়া যায়নি। এর README-তে MCP JSON থাকলে উপরের বাক্সে পেস্ট করুন।",
+  mcpxStep_downloadUv: "uv (Python প্যাকেজ ম্যানেজার) Sahkarmi-র টুল ফোল্ডারে ডাউনলোড করুন",
+  mcpxStep_downloadNode: "Node.js (পোর্টেবল) Sahkarmi-র টুল ফোল্ডারে ডাউনলোড করুন",
+  mcpxStep_pythonInstall: "Python-এর একটি নিজস্ব কপি নিন (আপনার সিস্টেম বদলাবে না)",
+  mcpxStep_venv: "এর জন্য আলাদা Python এনভায়রনমেন্ট তৈরি করুন",
+  mcpxStep_pip: "প্যাকেজ ইনস্টল করুন (নির্দিষ্ট ভার্সন)",
+  mcpxStep_npm: "Node.js প্যাকেজটি তার নিজের ফোল্ডারে ইনস্টল করুন",
+  mcpxStep_clone: "নির্দিষ্ট কমিটে কোড ডাউনলোড করুন",
+  mcpxStep_build: "এটি বিল্ড করুন",
+  mcpxStep_dockerPull: "Docker ইমেজ ডাউনলোড করুন",
+  mcpxStep_verify: "প্রোগ্রাম চালু হয় কিনা দেখুন",
+  mcpxStep_skill: "একটি Sahkarmi স্কিল যোগ করুন যা সহকর্মীদের এর ব্যবহার বলে দেয়",
+  mcpxStep_save: "সার্ভার সেভ করুন (বন্ধ অবস্থায়)",
+  mcpxStep_test: "পরীক্ষা করুন: কানেক্ট করে এর টুলগুলো দেখুন",
+  mcpxSize: "প্রায় {min} থেকে {max}",
+  mcpxSizeUnknown: "আকার জানা নেই",
+  mcpxApproveTitle: "এই ইনস্টল কি অনুমোদন করবেন?",
+  mcpxSkillTitle: '"{name}" স্কিল হিসেবে ব্যবহার করুন',
+  mcpxSkillIntro:
+    "এই প্রজেক্টটি একটি সাধারণ প্রোগ্রাম, MCP সার্ভার নয়। Sahkarmi এটি নিজের ফোল্ডারে ইনস্টল করে একটি ছোট স্কিল লিখতে পারে, যাতে সহকর্মীরা আপনার হয়ে এটি চালায় (প্রতিবার আপনি অনুমতি দেবেন)।",
+  mcpxSource: "উৎস",
+  mcpxFolder: "ফোল্ডার",
+  mcpxDownload: "ডাউনলোড",
+  mcpxApproveNote:
+    "শুধু এই ধাপগুলো, এই ক্রমেই চলবে। README থেকে কিছুই চালানো হয় না, আর এই ফোল্ডার ও Sahkarmi-র টুল ফোল্ডারের বাইরে কিছু বদলায় না।",
+  mcpxApprove: "অনুমোদন করে ইনস্টল করুন",
+  mcpxInstalling: "ইনস্টল হচ্ছে… কয়েক মিনিট লাগতে পারে।",
+  mcpxInstallFailed: "ইনস্টল থেমে গেছে: {reason}",
+  mcpxInstallDone: "ইনস্টল হয়েছে। নিচের তালিকায় টেস্টের ফল দেখে এটি চালু করুন।",
+  mcpxSkillDone: 'হয়ে গেছে। স্কিল "{name}" সেটিংস › স্কিলস-এ আছে।',
+  mcpxSkillKeys:
+    "প্রথম ভিডিওর আগে এর একটি ফ্রি Pexels কী (স্টক ফুটেজ) এবং স্ক্রিপ্ট লেখার জন্য একটি AI মডেল (আপনার নিজের বা ফ্রি কী) লাগবে। ভয়েস ফ্রি।",
+  mcpxGetPexels: "ফ্রি Pexels কী নিন",
+  mcpxSkillOutput: "তৈরি ভিডিও %LOCALAPPDATA%\\MoneyPrinterTurbo\\storage\\tasks-এ সেভ হয়।",
+  mcpxInstallLog: "বিস্তারিত দেখুন",
+  mcpxDiag_longPath:
+    "একটি ফাইলের পাথ Windows-এর সীমার (260 অক্ষর) চেয়ে লম্বা হয়ে গেছে। Sahkarmi এখন ছোট ফোল্ডারে ইনস্টল করে: আবার ইনস্টল চাপুন। অথবা Windows-এ লম্বা পাথ চালু করুন।",
 };

@@ -19,6 +19,7 @@ const DIAGNOSIS: Record<McpDiagnosisCode, MessageKey> = {
   "port-in-use": "mcpxDiag_portInUse",
   "first-run-timeout": "mcpxDiag_firstRunTimeout",
   "path-not-found": "mcpxDiag_pathNotFound",
+  "long-path": "mcpxDiag_longPath",
   "build-tools": "mcpxDiag_buildTools",
   "python-version": "mcpxDiag_pythonVersion",
   exited: "mcpxDiag_exited",

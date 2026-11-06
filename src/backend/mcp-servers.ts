@@ -56,7 +56,11 @@ export type McpServerWire = Pick<
 };
 
 /** Feature switches this store follows; all on when nothing is set (tests, first start). */
-export type McpFeatureId = "mcp-fresh-path" | "mcp-test-first" | "mcp-smart-import";
+export type McpFeatureId =
+  | "mcp-fresh-path"
+  | "mcp-test-first"
+  | "mcp-smart-import"
+  | "mcp-guided-install";
 export type McpFeatureCheck = (id: McpFeatureId) => boolean;
 
 /** How long a test may take: a first run can download the whole package (npx -y, uvx). */

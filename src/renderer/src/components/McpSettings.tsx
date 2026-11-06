@@ -2,15 +2,24 @@ import { createSignal, For, onMount, Show } from "solid-js";
 import type {
   BotSummary,
   McpFixAction,
+  McpInstallPlan,
   McpServerInput,
   McpServerSummary,
 } from "../../../shared/ipc";
+import { featureOn } from "../features";
 import { t } from "../i18n";
 import { McpGithubConnect } from "./McpGithubConnect";
+import { McpInstallCard } from "./McpInstallCard";
 import { McpServerRow } from "./McpServerRow";
 
 /** Fix buttons the window can carry out itself. */
-const FIXES: ReadonlySet<McpFixAction> = new Set(["edit", "recheck", "retry-long"]);
+const BASIC_FIXES: McpFixAction[] = ["edit", "recheck", "retry-long"];
+const INSTALL_FIXES: McpFixAction[] = ["install-uv", "install-node", "install-python"];
+const TOOL_OF: Partial<Record<McpFixAction, "uv" | "node" | "python">> = {
+  "install-uv": "uv",
+  "install-node": "node",
+  "install-python": "python",
+};
 
 interface Draft {
   id?: string;
@@ -129,8 +138,17 @@ export function McpSettings() {
     });
   }
 
+  const guided = () => featureOn("mcp-guided-install");
+  const fixes = (): ReadonlySet<McpFixAction> =>
+    new Set(guided() ? [...BASIC_FIXES, ...INSTALL_FIXES] : BASIC_FIXES);
+  const [plan, setPlan] = createSignal<McpInstallPlan | null>(null);
+  const showPlan = (make: () => Promise<McpInstallPlan>) =>
+    void run(async () => setPlan(await make()));
+
   function fix(server: McpServerSummary, action: McpFixAction) {
-    if (action === "edit") setDraft(draftOf(server));
+    const tool = TOOL_OF[action];
+    if (tool) showPlan(() => window.sahkarmi.mcp.planTool(tool));
+    else if (action === "edit") setDraft(draftOf(server));
     else if (action === "recheck")
       void run(async () => setServers(await window.sahkarmi.mcp.recheck()));
     else if (action === "retry-long") test(server);
@@ -215,7 +233,28 @@ export function McpSettings() {
           const added = list.find((server) => server.name === name);
           if (added) test(added);
         }}
+        {...(guided()
+          ? {
+              onInstall: (analysis, candidate, name, env) =>
+                showPlan(() =>
+                  window.sahkarmi.mcp.planInstall(analysis.id, candidate.id, name, env),
+                ),
+              onSkillRoute: (analysis) =>
+                showPlan(() => window.sahkarmi.mcp.planSkill(analysis.id)),
+            }
+          : {})}
       />
+
+      <Show when={plan()} keyed>
+        {(current) => (
+          <McpInstallCard
+            plan={current}
+            onServers={setServers}
+            onDone={() => void window.sahkarmi.mcp.recheck().then(setServers)}
+            onClose={() => setPlan(null)}
+          />
+        )}
+      </Show>
 
       <Show
         when={draft()}
@@ -369,7 +408,7 @@ export function McpSettings() {
                 server={server}
                 bots={bots()}
                 busy={busy()}
-                fixes={FIXES}
+                fixes={fixes()}
                 onToggle={() =>
                   void run(async () =>
                     setServers(await window.sahkarmi.mcp.setEnabled(server.id, !server.enabled)),
