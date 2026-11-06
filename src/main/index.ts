@@ -48,13 +48,9 @@ import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
-<<<<<<< HEAD
 import { onCorruptFileRecovered } from "../backend/json-file";
-import { KnowledgeService } from "../backend/knowledge/knowledge-service";
-=======
 import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
 import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
->>>>>>> audit/w3-knowledge
 import { MailboxStore } from "../backend/mailbox-store";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -1855,12 +1851,9 @@ if (!hasSingleInstanceLock) {
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
-<<<<<<< HEAD
       keepRunningInTray = () => features.isEnabled("background-tray");
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
-      const knowledge = new KnowledgeService(app.getPath("userData"));
-=======
       // Knowledge Bases run in a utility process (indexing never blocks the window); the host
       // falls back to this process if it cannot start.
       const knowledge = new KnowledgeHost(app.getPath("userData"), {
@@ -1869,7 +1862,6 @@ if (!hasSingleInstanceLock) {
             serviceName: "Sahkarmi Knowledge",
           }),
       });
->>>>>>> audit/w3-knowledge
       knowledgeService = knowledge;
       knowledge.on("event", forwardAgentEvent);
       knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
