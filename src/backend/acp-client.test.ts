@@ -400,6 +400,12 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
         ?.listQueue("meera-support")
         .deliveries.every((delivery) => delivery.status === "completed"),
     );
+    // The file card is added as the turn ends, a moment after the delivery is marked done.
+    await waitFor(async () =>
+      (await service?.readConversation("meera-support"))?.messages.some(
+        (message) => message.author === "assistant" && (message.attachments?.length ?? 0) > 0,
+      ),
+    );
     const reply = (await service.readConversation("meera-support")).messages.find(
       (message) => message.author === "assistant" && message.text.includes("Namaste"),
     );
