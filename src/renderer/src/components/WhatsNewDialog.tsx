@@ -10,6 +10,26 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.25.0": [
+    {
+      icon: "🔄",
+      badge: "Fixed",
+      title: "Updates install in one restart",
+      desc: "Restart to update closes Sahkarmi fully, installs, and opens the new version by itself. No admin prompt, no asking again. If antivirus blocks it, Sahkarmi tells you why.",
+    },
+    {
+      icon: "👥",
+      badge: "Faster",
+      title: "Many coworkers at once, even on 8 GB",
+      desc: "Up to 64 coworkers can work together. New ones wait for free memory instead of slowing the PC, and idle browser pages sleep when memory is low.",
+    },
+    {
+      icon: "🛠️",
+      badge: "Fixed",
+      title: "Fewer failed chats",
+      desc: "A Claude chat whose session was lost starts fresh and keeps your message, and one coworker's problem no longer stops the others.",
+    },
+  ],
   "0.24.0": [
     {
       icon: "🔌",

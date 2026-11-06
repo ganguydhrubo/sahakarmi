@@ -425,7 +425,8 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     if (this.#options.launchInstaller && this.#downloadedFile) {
       this.#updater.autoInstallOnAppQuit = false;
       this.#setStatus({
-        message: "Installing. Sahkarmi closes now and opens again by itself in about a minute.",
+        message:
+          "Installing. Sahkarmi closes now and opens again by itself, usually within a minute (a few minutes if antivirus is checking the new files).",
       });
       try {
         // The helper waits for this app to exit, installs, and reopens Sahkarmi either way.

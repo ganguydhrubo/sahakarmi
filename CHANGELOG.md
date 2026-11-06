@@ -5,6 +5,30 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows updates: "Restart to update" no longer loops. Sahkarmi now closes completely before a
+  small helper installs the update as you (never through an administrator prompt), retries
+  silently when antivirus still holds a file, and opens the new version by itself. If it still
+  cannot install, the old version opens and says why. Before, one busy file made the installer
+  stop on an error box that silent updates never showed, so it waited forever unseen and the
+  next start asked for the same restart again. Closing Sahkarmi with an update ready installs it
+  silently the same way.
+- Copies installed with Scoop no longer try to update themselves into a second copy; they say
+  to run `scoop update sahkarmi`.
+- Claude coworkers: a conversation whose saved session was lost (after signing in to another
+  account, for example) starts a fresh session and keeps your message, instead of failing every
+  message. One coworker's failure no longer stops every other Claude coworker.
+- Antigravity and other ACP coworkers remember their conversation after a restart even when the
+  agent had to open a new session.
+- A signed-out AI that no coworker uses is no longer started every few minutes to check it.
+
+### Changed
+
+- Many coworkers at once: up to 64 can work at the same time (Settings > Engine). A new Claude
+  coworker waits for free memory instead of filling an 8 GB PC, and when memory runs low only a
+  few browser pages stay awake; the rest sleep and wake when a coworker needs them.
+
 ## [0.24.0] - 2026-11-06
 
 ### Added
