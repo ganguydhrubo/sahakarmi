@@ -17,6 +17,7 @@ import {
   type PermissionDecision,
   type PermissionRequest,
   redact,
+  redactDetail,
   sanitizeLevels,
 } from "./permission-policy";
 import { isRecord } from "./protocol";
@@ -34,6 +35,9 @@ interface AuditFileState {
 }
 
 const MAX_AUDIT_ENTRIES = 1_000;
+/** Automatic decisions are many and cheap: their own ring, written at most every few seconds. */
+const MAX_AUTO_AUDIT_ENTRIES = 1_000;
+const AUTO_AUDIT_FLUSH_MS = 5_000;
 const MAX_GRANT_HOURS = 24 * 7;
 
 /**
@@ -60,11 +64,15 @@ export interface AuthorizeResult {
 /**
  * The single place every adapter asks "may this coworker do this?". Settings are persisted in
  * permissions.json; every decision that was not plain "allowed automatically" is written to a
- * capped, redacted audit log (permission-audit.json).
+ * capped, redacted audit log (permission-audit.json). Automatic decisions go to a separate ring
+ * (permission-audit-auto.json) so a busy coworker's reads never push out the owner's answers.
  */
 export class PermissionService {
   readonly #policyFile: JsonFile<PolicyFileState>;
   readonly #auditFile: JsonFile<AuditFileState>;
+  readonly #autoAuditFile: JsonFile<AuditFileState>;
+  #autoAudit: PermissionAuditEntry[] = [];
+  #autoFlushTimer: ReturnType<typeof setTimeout> | null = null;
   #policy: PermissionPolicyState = {
     levels: { ...DEFAULT_PERMISSION_LEVELS },
     grants: [],
@@ -77,6 +85,7 @@ export class PermissionService {
   constructor(userDataPath: string, now: () => Date = () => new Date()) {
     this.#policyFile = new JsonFile(join(userDataPath, "permissions.json"));
     this.#auditFile = new JsonFile(join(userDataPath, "permission-audit.json"));
+    this.#autoAuditFile = new JsonFile(join(userDataPath, "permission-audit-auto.json"));
     this.#now = now;
   }
 
@@ -93,6 +102,11 @@ export class PermissionService {
     this.#pruneGrants();
     const audit = await this.#auditFile.read(() => ({ version: 1, entries: [] }), isAuditFileState);
     this.#audit = audit.entries.slice(0, MAX_AUDIT_ENTRIES);
+    // A damaged automatic log is not worth failing start-up for: it starts again empty.
+    const autoAudit = await this.#autoAuditFile
+      .read(() => ({ version: 1, entries: [] }), isAuditFileState)
+      .catch(() => ({ version: 1 as const, entries: [] }));
+    this.#autoAudit = autoAudit.entries.slice(0, MAX_AUTO_AUDIT_ENTRIES);
   }
 
   setAsker(asker: PermissionAsker): void {
@@ -166,13 +180,29 @@ export class PermissionService {
     await this.#persistPolicy();
   }
 
+  /** Newest first: the owner's decisions and the automatic ones, merged by time. */
   audit(): PermissionAuditEntry[] {
-    return this.#audit.map((entry) => ({ ...entry }));
+    return [...this.#audit, ...this.#autoAudit]
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .map((entry) => ({ ...entry }));
   }
 
   async clearAudit(): Promise<void> {
     this.#audit = [];
-    await this.#auditFile.write({ version: 1, entries: [] });
+    this.#autoAudit = [];
+    if (this.#autoFlushTimer) clearTimeout(this.#autoFlushTimer);
+    this.#autoFlushTimer = null;
+    await Promise.all([
+      this.#auditFile.write({ version: 1, entries: [] }),
+      this.#autoAuditFile.write({ version: 1, entries: [] }),
+    ]);
+  }
+
+  /** Writes pending automatic entries now (on quit, and in tests). */
+  async flushAudit(): Promise<void> {
+    if (this.#autoFlushTimer) clearTimeout(this.#autoFlushTimer);
+    this.#autoFlushTimer = null;
+    await this.#autoAuditFile.write({ version: 1, entries: this.#autoAudit });
   }
 
   /** Effective decision without side effects (used by tests and the UI preview). */
@@ -186,7 +216,11 @@ export class PermissionService {
    * `allowed: false` into the provider's "declined" answer so the coworker sees why.
    */
   async authorize(request: PermissionRequest, workspaceRoots: string[]): Promise<AuthorizeResult> {
-    const safeRequest = { ...request, action: redact(request.action) };
+    const safeRequest = {
+      ...request,
+      action: redact(request.action),
+      detail: redactDetail(request.detail ?? request.action),
+    };
     const decision = this.evaluate(safeRequest, workspaceRoots);
     if (decision.effective === "allow") {
       if (decision.grant) {
@@ -194,6 +228,8 @@ export class PermissionService {
         await this.#record(safeRequest, decision, "allowed");
       } else if (decision.level !== "auto") {
         await this.#record(safeRequest, decision, "allowed");
+      } else {
+        this.#recordAuto(safeRequest, decision);
       }
       return { allowed: true, reason: decision.reason };
     }
@@ -239,7 +275,33 @@ export class PermissionService {
     decision: PermissionDecision,
     outcome: PermissionAuditEntry["decision"],
   ): Promise<void> {
-    this.#audit.unshift({
+    this.#audit.unshift(this.#entry(request, decision, outcome));
+    this.#audit = this.#audit.slice(0, MAX_AUDIT_ENTRIES);
+    await this.#auditFile.write({ version: 1, entries: this.#audit });
+  }
+
+  /** Kept in memory at once; written to disk a few seconds later in one go. */
+  #recordAuto(request: PermissionRequest, decision: PermissionDecision): void {
+    this.#autoAudit.unshift(this.#entry(request, decision, "allowed"));
+    if (this.#autoAudit.length > MAX_AUTO_AUDIT_ENTRIES) {
+      this.#autoAudit.length = MAX_AUTO_AUDIT_ENTRIES;
+    }
+    if (this.#autoFlushTimer) return;
+    this.#autoFlushTimer = setTimeout(() => {
+      this.#autoFlushTimer = null;
+      void this.#autoAuditFile
+        .write({ version: 1, entries: this.#autoAudit })
+        .catch(() => undefined);
+    }, AUTO_AUDIT_FLUSH_MS);
+    this.#autoFlushTimer.unref?.();
+  }
+
+  #entry(
+    request: PermissionRequest,
+    decision: PermissionDecision,
+    outcome: PermissionAuditEntry["decision"],
+  ): PermissionAuditEntry {
+    return {
       id: randomUUID(),
       at: this.#now().toISOString(),
       botId: request.botId,
@@ -250,9 +312,7 @@ export class PermissionService {
       effective: decision.effective,
       decision: outcome,
       reason: decision.reason,
-    });
-    this.#audit = this.#audit.slice(0, MAX_AUDIT_ENTRIES);
-    await this.#auditFile.write({ version: 1, entries: this.#audit });
+    };
   }
 
   #pruneGrants(): void {

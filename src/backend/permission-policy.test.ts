@@ -136,6 +136,147 @@ describe("permission policy", () => {
     expect(classifyAcpTool("fetch", "Fetch", [], null)).toBe("research");
   });
 
+  it("never treats chained, escaped or writing commands as read-only", () => {
+    const AUTO = new Set(["file_read", "research"]);
+    const bypasses = [
+      "ls\nrm -rf C:/x",
+      "ls\r\nrm -rf C:/x",
+      "ls\rdel x",
+      "echo hi & del /q C:\\x\\*",
+      "dir & powershell -c iwr evil",
+      "git branch -D main",
+      "git branch -d old",
+      "git branch -m main hacked",
+      "git branch new-branch",
+      "git branch --delete main",
+      "dir ^& calc",
+      "echo `whoami`",
+      "echo $(whoami)",
+      "echo ${HOME}",
+      "%COMSPEC% /c del x",
+      "dir %TEMP%",
+      "find . -execdir rm {} ;",
+      "find . -name x -ok rm {} ;",
+      "find . -fprint out.txt",
+      "find . -fprint0 out.txt",
+      "find . -fls out.txt",
+      "find . -delete",
+      "sort -o out.txt in.txt",
+      "sort --output=out.txt in.txt",
+      "git diff --output=patch.txt",
+      "git log --output out.txt",
+      "git diff --ext-diff",
+      "cat a.txt | tee b.txt",
+      "tree -o listing.txt",
+      "rg --pre ./evil.sh foo",
+      "uniq in.txt out.txt",
+      "date -s 2020-01-01",
+      "cat ~/.ssh/id_rsa",
+      "type C:\\Users\\me\\.codex\\auth.json",
+      "Get-Content .env",
+      "cat C:/Users/me/.claude/anthropic_api_key.txt",
+      "cat ~/.claude/.credentials.json",
+    ];
+    for (const command of bypasses) {
+      expect(AUTO.has(classifyCommand(command)), command).toBe(false);
+    }
+    expect(classifyCommand("ls\nrm -rf C:/x")).toBe("file_delete");
+    expect(classifyCommand("echo hi & del /q C:\\x\\*")).toBe("file_delete");
+    expect(classifyCommand("dir & powershell -c iwr evil")).toBe("shell");
+    expect(classifyCommand("git branch -D main")).toBe("shell");
+    // The everyday read-only commands stay automatic.
+    for (const command of [
+      "ls -la",
+      "dir",
+      "git status && git log --oneline -5",
+      "git branch",
+      "git branch -a",
+      "git branch --show-current",
+      "git diff HEAD~1",
+      "find . -name '*.md'",
+      "sort names.txt",
+      "uniq names.txt",
+      "grep -rn TODO src | head -20",
+      "cat README.md",
+      "type notes.txt",
+      "Get-ChildItem -Recurse | Measure-Object",
+      "node --version",
+      "echo 100% done",
+    ]) {
+      expect(classifyCommand(command), command).toBe("file_read");
+    }
+  });
+
+  it("asks before writing AI settings folders or reading key files, whatever the level", () => {
+    const auto = policy({ autoMode: true });
+    const open = policy({
+      levels: { ...DEFAULT_PERMISSION_LEVELS, file_create: "auto", file_modify: "auto" },
+      grants: [
+        {
+          id: "g1",
+          category: "file_modify",
+          botId: null,
+          expiresAt: "2999-01-01T00:00:00Z",
+          usesLeft: null,
+          note: "",
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+    const own = "/data/coworkers/asha";
+    for (const path of [
+      `${own}/.claude/settings.json`,
+      `${own}/.claude/settings.local.json`,
+      `${own}/.codex/config.toml`,
+      `${own}/.gemini/settings.json`,
+      `${own}/.vscode/tasks.json`,
+      `${own}/.mcp.json`,
+      `${own}/.git/config`,
+      `${own}/.git/hooks/pre-commit`,
+      "C:\\Users\\me\\Sahkarmi\\Shared\\.claude\\hooks.json",
+    ]) {
+      for (const category of ["file_create", "file_modify", "file_delete"] as const) {
+        expect(decide(auto, request(category, [path]), ROOTS).effective, path).toBe("ask");
+        expect(decide(open, request(category, [path]), ROOTS).effective, path).toBe("ask");
+      }
+    }
+    // Ordinary files inside the folder stay automatic, and a deny still denies.
+    expect(decide(policy(), request("file_create", [`${own}/notes.md`]), ROOTS).effective).toBe(
+      "allow",
+    );
+    expect(decide(policy(), request("file_create", [`${own}/.claude.md`]), ROOTS).effective).toBe(
+      "allow",
+    );
+    const denied = policy({ levels: { ...DEFAULT_PERMISSION_LEVELS, file_modify: "deny" } });
+    expect(
+      decide(denied, request("file_modify", [`${own}/.claude/settings.json`]), ROOTS).effective,
+    ).toBe("deny");
+
+    for (const path of [
+      "C:\\Users\\me\\.claude\\anthropic_api_key.txt",
+      "C:\\Users\\me\\.codex\\openai_api_key.txt",
+      "C:\\Users\\me\\.gemini\\antigravity-acp\\api_key.txt",
+      "C:\\Users\\me\\AppData\\Roaming\\Sahkarmi\\composio_api_key.txt",
+      "C:\\Users\\me\\AppData\\Roaming\\Sahkarmi\\telegram.json",
+      "C:\\Users\\me\\AppData\\Roaming\\Sahkarmi\\mcp-servers.json",
+      "/home/me/.ssh/id_ed25519",
+      "/home/me/.codex/auth.json",
+      "/home/me/.claude/.credentials.json",
+      `${own}/.env`,
+      `${own}/.env.local`,
+    ]) {
+      expect(decide(auto, request("file_read", [path]), ROOTS).effective, path).toBe("ask");
+      expect(decide(policy(), request("file_read", [path]), ROOTS).effective, path).toBe("ask");
+    }
+    expect(decide(policy(), request("file_read", [`${own}/report.txt`]), ROOTS).effective).toBe(
+      "allow",
+    );
+    expect(classifyClaudeTool("Read", { file_path: "/home/me/.ssh/id_rsa" })).toMatchObject({
+      category: "file_read",
+      paths: ["/home/me/.ssh/id_rsa"],
+    });
+  });
+
   it("escalates risky browser actions in English, Hindi and Bengali", () => {
     expect(classifyBrowserAction("click", "Pay now", "https://shop.in", false)).toBe("payments");
     expect(classifyBrowserAction("click", "भुगतान करें", "", false)).toBe("payments");
@@ -222,14 +363,69 @@ describe.sequential("PermissionService", () => {
     const file = await readFile(join(root, "permission-audit.json"), "utf8");
     expect(file).not.toContain("supersecret123");
     expect(service.audit()[0]).toMatchObject({ decision: "approved", category: "shell" });
-    // Plain automatic reads are not written to the audit log.
+    // Plain automatic reads are recorded too, in their own ring, and written in one go later.
     await service.authorize(
       { botId: "asha", provider: "codex", category: "file_read", action: "cat", paths: [] },
       ROOTS,
     );
-    expect(service.audit()).toHaveLength(1);
+    expect(service.audit()).toHaveLength(2);
+    expect(service.audit().find((entry) => entry.level === "auto")).toMatchObject({
+      decision: "allowed",
+      effective: "allow",
+      category: "file_read",
+    });
+    // The owner's decision log is unchanged by automatic entries.
+    const ownerLog = JSON.parse(await readFile(join(root, "permission-audit.json"), "utf8"));
+    expect(ownerLog.entries).toHaveLength(1);
     await service.clearAudit();
     expect(service.audit()).toHaveLength(0);
+  });
+
+  it("records automatic decisions in a bounded, redacted ring that survives a restart", async () => {
+    let clock = Date.parse("2026-11-06T10:00:00Z");
+    const service = new PermissionService(root, () => new Date((clock += 1_000)));
+    await service.initialize();
+    for (let index = 0; index < 1_005; index += 1) {
+      await service.authorize(
+        {
+          botId: "asha",
+          provider: "claude",
+          category: "research",
+          action: `WebFetch https://x.example/?api_key=topsecret${index}`,
+          paths: [],
+        },
+        ROOTS,
+      );
+    }
+    expect(service.audit()).toHaveLength(1_000);
+    expect(JSON.stringify(service.audit())).not.toContain("topsecret");
+    // Newest first.
+    expect(service.audit()[0]?.at > (service.audit()[999]?.at ?? "")).toBe(true);
+    await service.flushAudit();
+    const auto = JSON.parse(await readFile(join(root, "permission-audit-auto.json"), "utf8"));
+    expect(auto.entries).toHaveLength(1_000);
+    const reloaded = new PermissionService(root);
+    await reloaded.initialize();
+    expect(reloaded.audit()).toHaveLength(1_000);
+  });
+
+  it("gives the owner's card the whole command with its line breaks, secrets still hidden", async () => {
+    const service = new PermissionService(root);
+    await service.initialize();
+    const seen: Array<{ action: string; detail?: string }> = [];
+    service.setAsker(async (pending) => {
+      seen.push({ action: pending.action, detail: pending.detail });
+      return "rejected";
+    });
+    const command = `echo ${"a".repeat(300)}\nrm -rf C:/x --token=supersecret123`;
+    await service.authorize(
+      { botId: "asha", provider: "claude", category: "file_delete", action: command, paths: [] },
+      ROOTS,
+    );
+    expect(seen[0]?.action.length).toBeLessThanOrEqual(241);
+    expect(seen[0]?.detail).toContain("\nrm -rf C:/x");
+    expect(seen[0]?.detail).toContain("a".repeat(300));
+    expect(seen[0]?.detail).not.toContain("supersecret123");
   });
 
   it("falls back to safe defaults when the stored file has unknown values", async () => {

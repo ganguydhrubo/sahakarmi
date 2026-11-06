@@ -9,7 +9,13 @@ import type {
   DecideApprovalInput,
 } from "../shared/ipc";
 import { ApprovalStore } from "./approval-store";
-import { type TelegramAgent, TelegramBridge, telegramChunks } from "./telegram-bridge";
+import {
+  PAIRING_COOLDOWN_MS,
+  PAIRING_MAX_ATTEMPTS,
+  type TelegramAgent,
+  TelegramBridge,
+  telegramChunks,
+} from "./telegram-bridge";
 
 const TOKEN = "123456789:AAH-abcdefghijklmnopqrstuvwxyz0123456";
 const OWNER = { id: 42, type: "private", first_name: "Dhrubo" };
@@ -317,6 +323,41 @@ describe("TelegramBridge", () => {
     await until(() => telegram.sent.length === before + 1);
     expect(telegram.sent.at(-1)?.chat_id).toBe(42);
     expect(JSON.parse(readFileSync(join(dir, "telegram.json"), "utf8")).chatId).toBe(42);
+  });
+
+  it("burns the pairing code after five wrong guesses and pauses pairing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sahkarmi-telegram-"));
+    const telegram = fakeTelegram();
+    let clock = 1_000_000;
+    const bridge = new TelegramBridge({
+      userDataPath: dir,
+      agent: fakeAgent().agent,
+      fetch: telegram.fetcher,
+      now: () => clock,
+    });
+    bridges.push(bridge);
+    const status = await bridge.setToken(TOKEN);
+    const original = status.pairingCode ?? "";
+    const wrong = original === "111111" ? "222222" : "111111";
+    for (let attempt = 1; attempt <= PAIRING_MAX_ATTEMPTS; attempt += 1) {
+      telegram.say(STRANGER, `/start ${wrong}`);
+      await until(() => telegram.sent.length === attempt);
+    }
+    const renewed = bridge.status().pairingCode;
+    expect(renewed).toMatch(/^\d{6}$/);
+    expect(renewed).not.toBe(original);
+    // During the pause even the right (new) code does not pair.
+    telegram.say(OWNER, `/start ${renewed}`);
+    await until(() => telegram.sent.length === PAIRING_MAX_ATTEMPTS + 1);
+    expect(telegram.sent.at(-1)?.text).toMatch(/Too many wrong codes/);
+    expect(bridge.status().chatName).toBeNull();
+    // The old code is burnt for good.
+    clock += PAIRING_COOLDOWN_MS + 1;
+    telegram.say(OWNER, `/start ${original}`);
+    await until(() => telegram.sent.length === PAIRING_MAX_ATTEMPTS + 2);
+    expect(telegram.sent.at(-1)?.text).toMatch(/not paired/);
+    telegram.say(OWNER, `/start ${renewed}`);
+    await until(() => telegram.sent.some((item) => item.text.startsWith("Paired.")));
   });
 
   it("sends the owner's message to the coworker and only its finished reply back", async () => {

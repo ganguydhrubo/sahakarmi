@@ -79,6 +79,8 @@ export interface TelegramBridgeOptions {
   envOwnerUserId?: number | null;
   /** Turns remote decisions off while leaving notifications on. Defaults to on. */
   approvalsEnabled?: boolean;
+  /** The clock for the pairing cool-down (tests move it). */
+  now?: () => number;
 }
 
 interface TelegramUpdate {
@@ -120,6 +122,18 @@ export function telegramChunks(text: string, limit = TELEGRAM_MESSAGE_LIMIT): st
 function newPairingCode(): string {
   return String(randomInt(100_000, 1_000_000));
 }
+
+/** A long command still fits one Telegram message; the app shows the rest. */
+const TELEGRAM_TECHNICAL_CHARS = 1_500;
+function telegramTechnical(technical: string): string {
+  return technical.length > TELEGRAM_TECHNICAL_CHARS
+    ? `${technical.slice(0, TELEGRAM_TECHNICAL_CHARS)}… (open Sahkarmi to see all of it)`
+    : technical;
+}
+
+/** Wrong pairing codes allowed before the code is replaced and pairing pauses. */
+export const PAIRING_MAX_ATTEMPTS = 5;
+export const PAIRING_COOLDOWN_MS = 10 * 60_000;
 
 const HELP = [
   "Write to your Sahkarmi coworker here, as in the app.",
@@ -218,8 +232,13 @@ export class TelegramBridge {
   /** Commands already acted on, so a retried or double-tapped command cannot decide twice. */
   readonly #handledCommands = new Set<string>();
   #sweepTimer: ReturnType<typeof setInterval> | null = null;
+  /** Wrong pairing codes since the code was last made; guessing 1 in 900,000 must stay hopeless. */
+  #wrongPairingCodes = 0;
+  #pairingPausedUntil = 0;
+  readonly #now: () => number;
 
   constructor(options: TelegramBridgeOptions) {
+    this.#now = options.now ?? (() => Date.now());
     this.#path = join(options.userDataPath, STATE_FILE);
     this.#agent = options.agent;
     this.#fetch = options.fetch ?? fetch;
@@ -476,6 +495,25 @@ export class TelegramBridge {
       // Only a private chat that sends the code shown in Settings can pair.
       if (chat.type !== "private") return;
       const code = text.match(/^\/start(?:@\w+)?\s+(\d{6})$/)?.[1];
+      if (code && this.#now() < this.#pairingPausedUntil) {
+        await this.#send(
+          chat.id,
+          "Too many wrong codes. Pairing is paused for a few minutes; then send the new code shown in Sahkarmi > Settings > Telegram.",
+        );
+        return;
+      }
+      if (code && code !== state.pairingCode) {
+        this.#wrongPairingCodes += 1;
+        if (this.#wrongPairingCodes >= PAIRING_MAX_ATTEMPTS) {
+          // The old code is burnt: a guesser has to start again, after a pause, on a new one.
+          this.#wrongPairingCodes = 0;
+          this.#pairingPausedUntil = this.#now() + PAIRING_COOLDOWN_MS;
+          state.pairingCode = newPairingCode();
+          this.#log("warn", "Telegram pairing paused after too many wrong codes");
+          await this.#save();
+          this.#changed();
+        }
+      }
       if (code !== state.pairingCode) {
         await this.#send(
           chat.id,
@@ -490,6 +528,7 @@ export class TelegramBridge {
         return;
       }
       if (from?.is_bot) return;
+      this.#wrongPairingCodes = 0;
       state.chatId = chat.id;
       state.chatName = chat.first_name ?? chat.username ?? chat.title ?? null;
       state.ownerUserId = typeof from?.id === "number" ? from.id : null;
@@ -773,7 +812,7 @@ export class TelegramBridge {
       approval.amount ? `Amount: ${approval.amount}` : null,
       `Risk: ${RISK_LABEL[approval.riskLevel ?? "medium"] ?? "medium"}`,
       consequence ? `Consequence: ${consequence}` : null,
-      approval.technical ? `\nTechnical: ${approval.technical}` : null,
+      approval.technical ? `\nTechnical: ${telegramTechnical(approval.technical)}` : null,
       "",
       `Asked ${ageOf(approval.createdAt)} · ${expiryOf(approval)}`,
       approval.status === "pending"
