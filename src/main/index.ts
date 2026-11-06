@@ -17,6 +17,7 @@ import {
   powerMonitor,
   protocol,
   type SaveDialogOptions,
+  safeStorage,
   screen,
   session,
   shell,
@@ -47,7 +48,7 @@ import { DesktopHost } from "../backend/desktop/desktop-host";
 import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
-import { ComposioClient } from "../backend/integrations/composio-client";
+import { COMPOSIO_SECRET, ComposioClient } from "../backend/integrations/composio-client";
 import { onCorruptFileRecovered } from "../backend/json-file";
 import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
 import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
@@ -60,6 +61,7 @@ import { createRoutineExecutor } from "../backend/routine-executor";
 import { importDesktopRoutinesOnce } from "../backend/routine-import";
 import { parseRoutineCadence, parseRoutineTrigger, RoutineStore } from "../backend/routine-store";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
+import { SecretCodec, SecretStore } from "../backend/secret-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { TelegramBridge } from "../backend/telegram-bridge";
@@ -326,6 +328,9 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   );
   handleTrusted(IPC_CHANNELS.customSkillsRemove, (input: unknown) =>
     skills.remove(requireString(isObject(input) ? input.id : null, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.customSkillsMarkReviewed, (input: unknown) =>
+    skills.markReviewed(requireString(isObject(input) ? input.id : null, "id")),
   );
   handleTrusted(IPC_CHANNELS.mcpList, () => mcp.list());
   handleTrusted(IPC_CHANNELS.mcpSave, (input: unknown) => {
@@ -1540,6 +1545,9 @@ function cannotSelfUpdate(): Promise<boolean> {
 }
 
 let providerSetup: ProviderSetup | null = null;
+let secretStore: SecretStore | null = null;
+let secretCodec: SecretCodec | null = null;
+const SECRET_STORE_FILE = "secrets.enc.json";
 let voiceService: VoiceService | null = null;
 let desktopHost: DesktopHost | null = null;
 
@@ -1636,46 +1644,48 @@ function registerProviderSetupHandlers(setup: ProviderSetup): void {
   });
 }
 
+/**
+ * API keys live encrypted in secrets.enc.json (Windows DPAPI through safeStorage). Keys an older
+ * Sahkarmi saved as plain .txt files are moved in once, and each file is removed only after its
+ * encrypted copy reads back. Without DPAPI the old files stay and are used as before.
+ */
 async function restoreSavedApiKeys(): Promise<void> {
   const home = homedir();
+  secretCodec = new SecretCodec(safeStorage);
+  const store = new SecretStore({
+    filePath: join(app.getPath("userData"), SECRET_STORE_FILE),
+    codec: secretCodec,
+    legacyFiles: {
+      GEMINI_API_KEY: join(home, ".gemini", "antigravity-acp", "api_key.txt"),
+      OPENAI_API_KEY: join(home, ".codex", "openai_api_key.txt"),
+      ANTHROPIC_API_KEY: join(home, ".claude", "anthropic_api_key.txt"),
+      [COMPOSIO_SECRET]: join(app.getPath("userData"), "composio_api_key.txt"),
+    },
+  });
+  secretStore = store;
   try {
-    if (!process.env.GEMINI_API_KEY && !process.env.ANTIGRAVITY_API_KEY) {
+    await store.load();
+    const { migrated, kept } = await store.migrate();
+    if (migrated.length) appLog.write("info", "API keys moved to encrypted storage", migrated);
+    if (kept.length) appLog.write("warn", "API keys left in their old files", kept);
+  } catch (error) {
+    appLog.write("warn", "encrypted key storage unavailable", String(error));
+  }
+  // Sahkarmi's own environment; each AI tool is then started with only its own key.
+  const entries = await store.entries().catch((): Array<[string, string]> => []);
+  for (const [name, value] of entries) {
+    // Composio reads its key from the store itself.
+    if (name === COMPOSIO_SECRET) continue;
+    if (name === "GEMINI_API_KEY") {
       // A Google AI Studio key saved from the Google Antigravity tile.
-      const key = await readFile(
-        join(home, ".gemini", "antigravity-acp", "api_key.txt"),
-        "utf8",
-      ).catch(() => "");
-      const trimmed = key.trim();
-      if (trimmed) {
-        process.env.ANTIGRAVITY_API_KEY = trimmed;
-        process.env.GEMINI_API_KEY = trimmed;
-        process.env.GOOGLE_API_KEY = trimmed;
+      if (!process.env.GEMINI_API_KEY && !process.env.ANTIGRAVITY_API_KEY) {
+        process.env.ANTIGRAVITY_API_KEY = value;
+        process.env.GEMINI_API_KEY = value;
+        process.env.GOOGLE_API_KEY = value;
       }
+      continue;
     }
-  } catch {
-    // ignore
-  }
-  try {
-    if (!process.env.OPENAI_API_KEY) {
-      const key = await readFile(join(home, ".codex", "openai_api_key.txt"), "utf8").catch(
-        () => "",
-      );
-      const trimmed = key.trim();
-      if (trimmed) process.env.OPENAI_API_KEY = trimmed;
-    }
-  } catch {
-    // ignore
-  }
-  try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      const key = await readFile(join(home, ".claude", "anthropic_api_key.txt"), "utf8").catch(
-        () => "",
-      );
-      const trimmed = key.trim();
-      if (trimmed) process.env.ANTHROPIC_API_KEY = trimmed;
-    }
-  } catch {
-    // ignore
+    if (!process.env[name]) process.env[name] = value;
   }
 }
 
@@ -1831,7 +1841,10 @@ if (!hasSingleInstanceLock) {
       await usage.initialize().catch((error) => {
         appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
       });
-      const composioClient = new ComposioClient({ userDataPath: app.getPath("userData") });
+      const composioClient = new ComposioClient({
+        userDataPath: app.getPath("userData"),
+        secrets: secretStore ?? undefined,
+      });
       service.setUsageService(usage);
       service.setComposioClient(composioClient);
       if (desktopControlSupported()) {
@@ -1842,7 +1855,7 @@ if (!hasSingleInstanceLock) {
         });
         service.setDesktopHost(desktopHost);
       }
-      const mcpServers = new McpServerStore(app.getPath("userData"));
+      const mcpServers = new McpServerStore(app.getPath("userData"), undefined, secretCodec);
       await mcpServers.load().catch((error) => {
         appLog.write("error", "MCP server list unreadable; starting with none", String(error));
       });
@@ -2017,6 +2030,7 @@ if (!hasSingleInstanceLock) {
         runtimeDirectory,
         recheck: (provider) => service.ensureProvider(provider),
         openUrl: (url) => void shell.openExternal(url),
+        secrets: secretStore ?? undefined,
       });
       providerSetup.on("state", (state) => {
         if (state.phase === "failed") {
@@ -2082,6 +2096,7 @@ if (!hasSingleInstanceLock) {
       );
       const telegram = new TelegramBridge({
         userDataPath: app.getPath("userData"),
+        codec: secretCodec ?? undefined,
         agent: {
           listBots: () => service.listBots(),
           sendMessage: (input) => service.sendMessage(input),

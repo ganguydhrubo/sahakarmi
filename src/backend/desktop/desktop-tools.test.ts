@@ -254,4 +254,50 @@ describe("validateLaunchTarget", () => {
       expect(() => validateLaunchTarget(target, undefined), target).toThrow(DesktopArgumentError);
     }
   });
+
+  it("refuses interpreters, terminals and programs that were just downloaded", () => {
+    for (const target of [
+      "node",
+      "node.exe",
+      "python",
+      "python3.12.exe",
+      "py",
+      "pyw",
+      "wt",
+      "wt.exe",
+      "pwsh",
+      "powershell.exe",
+      "cmd",
+      "wscript",
+      "cscript.exe",
+      "mshta",
+      "rundll32.exe",
+      "regsvr32",
+      "C:\\Users\\me\\Downloads\\setup.exe",
+      "C:\\Users\\me\\Sahkarmi\\Downloads\\invoice.exe",
+      "C:\\Users\\me\\AppData\\Local\\Temp\\x.exe",
+      "%TEMP%\\x.exe",
+      "C:\\Users\\me\\Downloads\\run.vbs",
+      "C:\\Users\\me\\Downloads\\a.ps1",
+    ]) {
+      expect(() => validateLaunchTarget(target, undefined), target).toThrow(DesktopArgumentError);
+    }
+    // Handing a downloaded program to another app is refused too.
+    expect(() => validateLaunchTarget("explorer", "C:\\Users\\me\\Downloads\\setup.exe")).toThrow(
+      DesktopArgumentError,
+    );
+    // Opening a downloaded document is fine.
+    expect(() =>
+      validateLaunchTarget("C:\\Users\\me\\Downloads\\invoice.pdf", undefined),
+    ).not.toThrow();
+    expect(() => validateLaunchTarget("C:\\Program Files\\App\\app.exe", undefined)).not.toThrow();
+  });
+
+  it("marks Win+R and Win+X as opening a command line", () => {
+    const step = (keys: string) => parseDesktopCall("key", { keys }, null).shellStep ?? null;
+    expect(step("win+r")).toContain("Run box");
+    expect(step("ctrl+c win+x")).toContain("Win+X");
+    expect(step("win+e")).toBeNull();
+    expect(step("ctrl+r")).toBeNull();
+  });
 });

@@ -4,6 +4,7 @@ import { as, gu, kn, ml, mr, or, pa, ta, te } from "./i18n-indic";
 import { marketplaceBn, marketplaceEn, marketplaceHi } from "./i18n-marketplace";
 import { memoryBn, memoryEn, memoryHi } from "./i18n-memory";
 import { onboardingBn, onboardingEn, onboardingHi } from "./i18n-onboarding";
+import { securityBn, securityEn, securityHi } from "./i18n-security";
 import { workspaceBn, workspaceEn, workspaceHi } from "./i18n-workspace";
 import { type LanguageCode, language } from "./preferences";
 
@@ -296,6 +297,7 @@ const en = {
   ...extensionsEn,
   ...backgroundEn,
   ...memoryEn,
+  ...securityEn,
   ...onboardingEn,
 };
 
@@ -589,6 +591,7 @@ const hi: Dictionary = {
   ...extensionsHi,
   ...backgroundHi,
   ...memoryHi,
+  ...securityHi,
   ...onboardingHi,
 };
 
@@ -878,6 +881,7 @@ const bn: Dictionary = {
   ...extensionsBn,
   ...backgroundBn,
   ...memoryBn,
+  ...securityBn,
   ...onboardingBn,
 };
 

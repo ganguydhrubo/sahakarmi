@@ -454,6 +454,7 @@ export class BrowserHost implements CoworkerBrowser {
   #persistTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #control = new BrowserControlTracker();
   readonly #reservedDownloadPaths = new Set<string>();
+  #downloadAuthorizer: DownloadAuthorizer | null = null;
   #activeTabId: string | null = null;
   /** The owner has taken over: coworkers' new tabs open behind the tab the owner is using. */
   #ownerHolding = false;
@@ -1260,7 +1261,7 @@ export class BrowserHost implements CoworkerBrowser {
       callback(false);
     });
     target.setPermissionCheckHandler(() => false);
-    target.on("will-download", (_event, item) => {
+    target.on("will-download", (_event, item, contents) => {
       const safeName = basename(item.getFilename()).replace(/[^a-zA-Z0-9._ -]/g, "_");
       const downloadPath = uniqueDownloadPath(
         this.#downloadsRoot,
@@ -1270,6 +1271,32 @@ export class BrowserHost implements CoworkerBrowser {
       this.#reservedDownloadPaths.add(downloadPath);
       item.setSavePath(downloadPath);
       item.once("done", () => this.#reservedDownloadPaths.delete(downloadPath));
+      const authorize = this.#downloadAuthorizer;
+      if (!authorize) return;
+      // Held until the permission policy answers: "downloads" set to deny stops it, ask asks.
+      item.pause();
+      const tab = [...this.#tabs.values()].find(
+        (candidate) => candidate.view?.webContents === contents,
+      );
+      void authorize({
+        botId: tab?.ownerBotId ?? null,
+        threadId: tab?.ownerThreadId ?? null,
+        url: item.getURL(),
+        fileName: basename(downloadPath),
+        path: downloadPath,
+      })
+        .catch(() => false)
+        .then((allowed) => {
+          const state = item.getState();
+          if (!allowed) {
+            if (state === "progressing" || state === "interrupted") item.cancel();
+            return;
+          }
+          // A long wait for the owner can drop the connection; pick up where it stopped.
+          if (state === "progressing" || (state === "interrupted" && item.canResume())) {
+            item.resume();
+          }
+        });
     });
   }
 
@@ -1439,6 +1466,11 @@ export class BrowserHost implements CoworkerBrowser {
       // Element refs from before are not trusted after a sign-in step.
       tab.revision += 1;
     });
+  }
+
+  /** Every download waits for this answer; without one, downloads go ahead as before. */
+  setDownloadAuthorizer(authorizer: DownloadAuthorizer | null): void {
+    this.#downloadAuthorizer = authorizer;
   }
 
   /** What a browser action would touch: the element's label and the page address. */
@@ -1659,8 +1691,21 @@ export interface BrowserToolTarget {
 }
 
 /** The coworker browser as the rest of the app sees it, whichever engine runs it. */
+/** A file a page started downloading, and the tab's coworker (null on the owner's own tab). */
+export interface DownloadRequest {
+  botId: string | null;
+  threadId: string | null;
+  url: string;
+  fileName: string;
+  path: string;
+}
+
+export type DownloadAuthorizer = (request: DownloadRequest) => Promise<boolean>;
+
 export interface CoworkerBrowser extends BrowserToolTarget {
   restore(options?: BrowserRestoreOptions): Promise<void>;
+  /** Routes downloads through the permission policy (the built-in browser). */
+  setDownloadAuthorizer?(authorizer: DownloadAuthorizer | null): void;
   /** Which account is signed in for this tab; absent where it cannot be read, so publishing stops. */
   signedInAccount?(tabId: string, platform: SocialPlatform): Promise<string | null>;
   releaseBot?(botId: string): Promise<void>;

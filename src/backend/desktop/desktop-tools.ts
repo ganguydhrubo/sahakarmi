@@ -198,6 +198,11 @@ export interface DesktopCall {
   summary: string;
   /** For click on a named control: look it up first, then click its centre. */
   findElement?: Record<string, unknown>;
+  /**
+   * Set when the step opens a way to run commands (Win+R, Win+X): it is asked under the
+   * Commands permission as well, every time, whatever the desktop approval says.
+   */
+  shellStep?: string;
 }
 
 export class DesktopArgumentError extends Error {}
@@ -433,12 +438,37 @@ export function parseKeys(input: string): ParsedKeys {
   return { chords, passwordSafe, label: labels.join(" ") };
 }
 
+const WIN_KEY = 0x5b;
+/** Win+R opens Run, Win+X the menu with Terminal: both are a command line. */
+const COMMAND_PROMPT_KEYS: Record<number, string> = { 82: "the Run box", 88: "the Win+X menu" };
+
+/** What command line a chord opens, or null. */
+export function opensCommandPrompt(chords: KeyStroke[][]): string | null {
+  for (const chord of chords) {
+    if (!chord.some((stroke) => stroke.vk === WIN_KEY || stroke.vk === 0x5c)) continue;
+    for (const stroke of chord) {
+      const what = COMMAND_PROMPT_KEYS[stroke.vk];
+      if (what) return what;
+    }
+  }
+  return null;
+}
+
 // ----------------------------------------------------------------------------- launching
 
 /** Interpreters that would run arbitrary commands: those go through the coworker's shell tool. */
 const SHELL_PROGRAMS =
-  /^(cmd|powershell|pwsh|wscript|cscript|mshta|rundll32|regsvr32|bash|wsl|sh|msiexec|reg|schtasks|certutil|bitsadmin)(\.exe)?$/i;
+  /^(cmd|powershell|powershell_ise|pwsh|wt|windowsterminal|conhost|wscript|cscript|mshta|rundll32|regsvr32|bash|wsl|sh|msiexec|reg|schtasks|certutil|bitsadmin|node|nodejs|npx|deno|bun|python[\d.]*|pythonw|py|pyw|ruby|perl|php|java|javaw)(\.exe)?$/i;
 const SCRIPT_FILES = /\.(bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|msi|scr|reg|lnk|pif|com)$/i;
+/** Programs and scripts a page could have just put on this PC. */
+const RUNNABLE_FILES = /\.(exe|msi|bat|cmd|ps1|vbs|vbe|js|jse|wsf|hta|scr|com|pif|lnk)\b/i;
+/** Downloads (Sahkarmi's or the owner's) and temporary folders, as written or as %TEMP%. */
+const DROP_FOLDERS = /(^|[\\/"'\s])(downloads|temp|tmp)[\\/]|%(temp|tmp)%|\$env:(temp|tmp)/i;
+
+/** True when the text names a program or script inside a Downloads or temporary folder. */
+export function namesDroppedProgram(text: string): boolean {
+  return DROP_FOLDERS.test(text) && RUNNABLE_FILES.test(text);
+}
 const BLOCKED_SCHEMES = /^(javascript|vbscript|data|file|ms-msdt|search-ms|ms-officecmd):/i;
 
 export function validateLaunchTarget(target: string, args: string | undefined): void {
@@ -457,6 +487,11 @@ export function validateLaunchTarget(target: string, args: string | undefined): 
   if (SCRIPT_FILES.test(base)) {
     fail(
       "Scripts, installers and shortcuts are not opened from the desktop tools. Run them with your own command tool, which asks the owner first.",
+    );
+  }
+  if (namesDroppedProgram(clean) || (args && namesDroppedProgram(args))) {
+    fail(
+      "Programs in a Downloads or temporary folder are not started from the desktop tools: they may have just been downloaded. Ask the owner to run it, or use your own command tool, which asks first.",
     );
   }
 }
@@ -578,10 +613,12 @@ export function parseDesktopCall(
       if (!keys) fail("keys is empty.");
       const parsed = parseKeys(keys);
       const repeat = optionalInt(args, "repeat", 1, 50) ?? 1;
+      const runBox = opensCommandPrompt(parsed.chords);
       return {
         tool,
         request: { op: "key", chords: parsed.chords, passwordSafe: parsed.passwordSafe, repeat },
         summary: `Press ${parsed.label}${repeat > 1 ? ` ×${repeat}` : ""}`,
+        ...(runBox ? { shellStep: `Press ${parsed.label} (${runBox})` } : {}),
       };
     }
     case "close_window": {

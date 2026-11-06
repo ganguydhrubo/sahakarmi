@@ -31,7 +31,7 @@ function setup(options: {
 }) {
   const { host, requests } = fakeHost(options.replies);
   let level: PermissionLevel = options.level ?? "ask";
-  const authorize = vi.fn(async (_input: { action: string; reason: string }) => {
+  const authorize = vi.fn(async (_input: { action: string; reason: string; category?: string }) => {
     const allow = typeof options.allow === "function" ? options.allow() : (options.allow ?? true);
     return { allowed: allow, reason: allow ? "Approved." : "The owner declined this action." };
   });
@@ -82,6 +82,28 @@ describe("DesktopControlService permission gate", () => {
     // Another coworker needs its own approval.
     await service.handleDynamicTool(call("list_windows", {}, "ravi"), "codex");
     expect(authorize).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks under Commands every time a step opens the Run box, even after a desktop approval", async () => {
+    let shellAllowed = false;
+    const { service, authorize, requests } = setup({ level: "ask" });
+    authorize.mockImplementation(async (input: { action: string; category?: string }) => {
+      const allowed = input.category === "shell" ? shellAllowed : true;
+      return { allowed, reason: allowed ? "Approved." : "The owner declined this action." };
+    });
+    await service.handleDynamicTool(call("click", { x: 1, y: 1 }), "claude");
+    const refused = await service.handleDynamicTool(call("key", { keys: "win+r" }), "claude");
+    expect(refused.success).toBe(false);
+    expect(authorize.mock.calls.at(-1)?.[0]).toMatchObject({ category: "shell" });
+    expect(requests.map((request) => request.op)).toEqual(["click"]);
+    shellAllowed = true;
+    const allowed = await service.handleDynamicTool(call("key", { keys: "win+r" }), "claude");
+    expect(allowed.success).toBe(true);
+    expect(requests.map((request) => request.op)).toEqual(["click", "key"]);
+    // Ordinary shortcuts still need nothing more.
+    const before = authorize.mock.calls.length;
+    await service.handleDynamicTool(call("key", { keys: "ctrl+s" }), "claude");
+    expect(authorize.mock.calls.length).toBe(before);
   });
 
   it("does nothing when the owner declines, and asks again next time", async () => {

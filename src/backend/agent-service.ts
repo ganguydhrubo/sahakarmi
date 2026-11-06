@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { renameSync, writeFileSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
@@ -90,6 +90,7 @@ import type { BotStore } from "./bot-store";
 import {
   BROWSER_DYNAMIC_TOOLS,
   type CoworkerBrowser,
+  type DownloadRequest,
   isOwnTab,
   SAHKARMI_BROWSER_NAMESPACE,
 } from "./browser-host";
@@ -131,7 +132,7 @@ import {
   readInstructions,
   saveInstructions,
 } from "./coworker-instructions";
-import { CustomSkills, customSkillLines } from "./custom-skills";
+import { CustomSkills, customSkillLines, UNTRUSTED_SKILL_NOTE } from "./custom-skills";
 import { DesktopControlService } from "./desktop/desktop-control";
 import type { DesktopHostLike } from "./desktop/desktop-host";
 import { desktopDynamicTools, SAHKARMI_DESKTOP_NAMESPACE } from "./desktop/desktop-tools";
@@ -393,6 +394,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   >();
   /** Task approvals: one "yes" covers the same kind of step on the same site for this task. */
   readonly #taskGrants = new Map<string, number>();
+  /** The text a coworker last typed or pasted on each of its tabs: what a "Send" click sends. */
+  readonly #typedOnTab = new Map<string, string>();
   /** A question already on its way to the owner: an identical one waits for the same answer. */
   readonly #askingOwner = new Map<
     string,
@@ -538,6 +541,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#permissions = permissions;
     this.#permissionTimeoutMs = permissionTimeoutMs;
     permissions?.setAsker((request) => this.#askOwner(request));
+    if (permissions) browser.setDownloadAuthorizer?.((request) => this.#authorizeDownload(request));
     this.#computerUsePrerequisites = computerUsePrerequisites;
     this.#requestTimeoutMs = requestTimeoutMs;
     this.#preferredProvider = preferredProvider;
@@ -699,9 +703,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#desktop = new DesktopControlService({
       host,
       level: () => this.#permissions?.get().levels.desktop_control ?? "ask",
-      authorize: ({ provider, threadId, action, reason }) =>
+      authorize: ({ provider, threadId, action, reason, category }) =>
         this.#authorize(provider, threadId, {
-          category: "desktop_control",
+          category: category ?? "desktop_control",
           paths: [],
           action,
           reason,
@@ -3193,6 +3197,25 @@ ${carryOver}`
     );
   }
 
+  /**
+   * A page in a coworker's tab started a download. It follows the "downloads" permission; the
+   * Sahkarmi Downloads folder counts as the coworker's own. The owner's own tabs are theirs.
+   */
+  async #authorizeDownload(request: DownloadRequest): Promise<boolean> {
+    if (!this.#permissions || !request.botId) return true;
+    const verdict = await this.#permissions.authorize(
+      {
+        botId: request.botId,
+        provider: "browser",
+        category: "downloads",
+        action: `Download ${request.fileName} from ${request.url.slice(0, 300)}`,
+        paths: [request.path],
+      },
+      [...this.#workspaceRoots(request.botId), this.#store.downloadsRoot],
+    );
+    return verdict.allowed;
+  }
+
   /** The owner's latest real instruction in this chat, skipping "ok" and the app's own notes. */
   #ownerAsked(botId: string): string | null {
     const messages = this.#snapshots.get(botId)?.messages ?? [];
@@ -3577,11 +3600,22 @@ ${carryOver}`
       ]
         .filter(Boolean)
         .join(" ");
+      const typed = getString(browserAction, "text");
+      const typedKey = `${params.botId ?? ""}\n${tabId}`;
+      if ((type === "type" || type === "paste") && typed) {
+        this.#typedOnTab.delete(typedKey);
+        this.#typedOnTab.set(typedKey, typed.slice(0, 20_000));
+        if (this.#typedOnTab.size > 200) {
+          const oldest = this.#typedOnTab.keys().next().value;
+          if (oldest !== undefined) this.#typedOnTab.delete(oldest);
+        }
+      }
       browser = {
         type,
         label: target.label,
         url: target.url,
-        text: getString(browserAction, "text") ?? undefined,
+        // A click sends what was typed before it, so one approval cannot cover a new message.
+        text: typed ?? (type === "click" ? this.#typedOnTab.get(typedKey) : undefined),
       };
     }
     const verdict = await this.#authorize(provider, params.threadId, {
@@ -3688,6 +3722,7 @@ ${carryOver}`
                 type: "custom",
                 name: skill.name,
                 whenToUse: skill.description,
+                ...(skill.reviewNeeded ? { untrusted: UNTRUSTED_SKILL_NOTE } : {}),
                 path: join(this.#store.sharedRoot, skill.sharedPath),
               })),
               learned: learned.map((skill) => ({
@@ -6803,7 +6838,24 @@ export function taskGrantKey(
   const url = request.browser?.url;
   const site = url ? siteOfUrl(url) : null;
   if (!site) return null;
-  return [request.botId, request.category, site, ownerInstruction ?? ""].join("\n");
+  const key = [request.botId, request.category, site, ownerInstruction ?? ""];
+  // A message is approved for what it says: the same message retried after a page redraw goes
+  // through, a different message to anyone asks again.
+  if (request.category === "external_messages") {
+    key.push(
+      createHash("sha256")
+        .update(
+          [
+            request.browser?.type ?? "",
+            browserButtonName(request.browser?.label ?? ""),
+            request.browser?.text ?? "",
+            pageWithoutQuery(url ?? ""),
+          ].join("\n"),
+        )
+        .digest("hex"),
+    );
+  }
+  return key.join("\n");
 }
 
 /** An approval given after the coworker stopped waiting stays usable this long. */
@@ -6825,7 +6877,8 @@ export function permissionKey(request: PermissionRequest): string {
       pageWithoutQuery(browser.url),
     ].join("\n");
   }
-  return [request.botId ?? "", request.category, request.action].join("\n");
+  // The whole command: two commands that only differ after the 240th character are different.
+  return [request.botId ?? "", request.category, request.detail ?? request.action].join("\n");
 }
 
 /** "Post button div" → "post": the visible name, without the role and tag a snapshot adds. */

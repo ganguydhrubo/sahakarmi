@@ -234,7 +234,9 @@ export function describePermissionRequest(
   return {
     title: `${botName} wants to ${phrase}`,
     details: lines.filter(Boolean).join("\n"),
-    technical: request.action || request.category,
+    // The whole command, line breaks kept: a second command hidden after a newline or a long
+    // first line must be visible to the owner before they say yes.
+    technical: request.detail || request.action || request.category,
   };
 }
 

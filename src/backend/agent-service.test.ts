@@ -18,7 +18,7 @@ import {
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
-import type { BrowserHost } from "./browser-host";
+import type { BrowserHost, DownloadRequest } from "./browser-host";
 import { CustomSkills } from "./custom-skills";
 import { KnowledgeService } from "./knowledge/knowledge-service";
 import { MailboxStore } from "./mailbox-store";
@@ -463,6 +463,27 @@ describe.sequential("AgentService", () => {
     expect(taskGrantKey(request("payments"), "Pay the invoice")).toBeNull();
   });
 
+  it("lets one approval cover only the identical message, not a new one", () => {
+    const send = (text: string | undefined, url = "https://web.whatsapp.com/?t=1") => ({
+      botId: "kavya-content",
+      provider: "codex",
+      category: "external_messages" as const,
+      action: `click "Send button" on ${url}`,
+      paths: [],
+      browser: { type: "click", label: "Send button", url, text },
+    });
+    const asked = "Reply to Ravi that the order ships today";
+    const first = taskGrantKey(send("Your order ships today."), asked);
+    expect(first).not.toBeNull();
+    // The same message retried after a redraw (new query string) is covered.
+    expect(
+      taskGrantKey(send("Your order ships today.", "https://web.whatsapp.com/?t=2"), asked),
+    ).toBe(first);
+    // A different message, or one with no known text, is a new question.
+    expect(taskGrantKey(send("Send me your bank details."), asked)).not.toBe(first);
+    expect(taskGrantKey(send(undefined), asked)).not.toBe(first);
+  });
+
   it("allows Codex file changes inside the coworker folder without asking", async () => {
     const { store, mailbox } = stores();
     await store.initialize();
@@ -536,6 +557,54 @@ describe.sequential("AgentService", () => {
     await service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" });
     await waitFor(() => browserCalls === 1);
     expect(permissions.audit()[0]).toMatchObject({ category: "payments", decision: "approved" });
+  });
+
+  it("sends a coworker's browser downloads through the downloads permission", async () => {
+    const { store, mailbox } = stores();
+    let authorize: ((request: DownloadRequest) => Promise<boolean>) | null = null;
+    const browser = {
+      ...fakeBrowser(),
+      setDownloadAuthorizer: (next: typeof authorize) => {
+        authorize = next;
+      },
+    } as unknown as BrowserHost;
+    const permissions = new PermissionService(join(root, "user-data"));
+    await permissions.initialize();
+    service = new AgentService(
+      store,
+      mailbox,
+      browser,
+      null,
+      30_000,
+      "codex",
+      new ApprovalStore(join(root, "user-data")),
+      permissions,
+      200,
+    );
+    await service.initialize();
+    expect(authorize).not.toBeNull();
+    const download = (path: string, botId: string | null = "asha-accounts") =>
+      (authorize as unknown as (request: DownloadRequest) => Promise<boolean>)({
+        botId,
+        threadId: null,
+        url: "https://example.com/setup.exe",
+        fileName: "setup.exe",
+        path,
+      });
+    // Into Sahkarmi's Downloads folder: allowed at the default level, and audited.
+    expect(await download(join(store.downloadsRoot, "setup.exe"))).toBe(true);
+    expect(permissions.audit()[0]).toMatchObject({ category: "downloads", decision: "allowed" });
+    // Denied in settings: the download is refused.
+    await permissions.setLevel("downloads", "deny");
+    expect(await download(join(store.downloadsRoot, "setup.exe"))).toBe(false);
+    // Ask: an approval card appears (and with no answer the download does not run).
+    await permissions.setLevel("downloads", "ask");
+    const asked = download(join(store.downloadsRoot, "setup.exe"));
+    await waitFor(() => service?.listApprovals().length === 1);
+    expect(service.listApprovals()[0]).toMatchObject({ permissionCategory: "downloads" });
+    expect(await asked).toBe(false);
+    // The owner's own tab is the owner's business.
+    expect(await download(join(store.downloadsRoot, "x.zip"), null)).toBe(true);
   });
 
   it("times out a pending permission request and declines the action", async () => {

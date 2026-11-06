@@ -1,11 +1,16 @@
 // @vitest-environment node
 
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ClaudeAgentClient, planUsageWindows, rateLimitWindows } from "./claude-client";
+import {
+  CLAUDE_SETTING_SOURCES,
+  ClaudeAgentClient,
+  planUsageWindows,
+  rateLimitWindows,
+} from "./claude-client";
 
 let root: string | null = null;
 
@@ -40,6 +45,97 @@ describe("ClaudeAgentClient", () => {
     });
     await client.stop();
   });
+
+  it("loads only the owner's Claude settings and hands Claude only its own key", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-sources-"));
+    const saved = { ...process.env };
+    process.env.ANTHROPIC_API_KEY = "sk-ant-own";
+    process.env.OPENAI_API_KEY = "sk-openai-other";
+    process.env.GEMINI_API_KEY = "gemini-other";
+    process.env.COMPOSIO_API_KEY = "ak_other";
+    try {
+      const output = new TestQueue<SDKMessage>();
+      const generator = output[Symbol.asyncIterator]() as Query;
+      Object.assign(generator, {
+        [Symbol.asyncIterator]: () => generator,
+        interrupt: async () => undefined,
+        setModel: async () => undefined,
+        setMaxThinkingTokens: async () => undefined,
+        close: () => output.close(),
+      });
+      const calls: Array<{ options?: Record<string, unknown> }> = [];
+      const client = new ClaudeAgentClient({ executable: "unused", version: "test" }, (params) => {
+        calls.push(params as { options?: Record<string, unknown> });
+        return generator;
+      });
+      client.start();
+      const thread = await client.request<{ thread: { id: string } }>("thread/start", {
+        cwd: root,
+        model: "claude-sonnet-5",
+        developerInstructions: "Your standing rules: reply in Hindi.",
+        runtimeWorkspaceRoots: [root],
+        customMcpServers: [
+          { name: "notes", transport: "stdio", command: "node", args: ["s.js"], env: {} },
+        ],
+      });
+      await startTurn(client, thread.thread.id, "8bf58506-96a8-4d96-837c-3ab807b79d1f");
+      const options = calls.find((call) => call.options?.canUseTool)?.options ?? {};
+      // A workspace .claude/settings.json (allow rules, hooks) is never read.
+      expect(options.settingSources).toEqual(["user"]);
+      // The coworker's rules still reach Claude.
+      expect(JSON.stringify(options.systemPrompt)).toContain("reply in Hindi");
+      const env = options.env as Record<string, string>;
+      expect(env.ANTHROPIC_API_KEY).toBe("sk-ant-own");
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+      expect(env.GEMINI_API_KEY).toBeUndefined();
+      expect(env.COMPOSIO_API_KEY).toBeUndefined();
+      const servers = options.mcpServers as Record<string, { env?: Record<string, string> }>;
+      expect(servers.notes?.env?.ANTHROPIC_API_KEY).toBe("");
+      output.close();
+      await client.stop();
+    } finally {
+      process.env = saved;
+    }
+  });
+
+  it("passes the setting sources to the real Claude command line as --setting-sources", async () => {
+    // Offline check of how the SDK turns the option into the CLI flag: a stand-in CLI records
+    // its arguments. With "project" in the list the CLI reads <cwd>/.claude/settings.json.
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-argv-"));
+    const argvFile = join(root, "argv.json");
+    const fake = join(root, "fake-claude.mjs");
+    await writeFile(
+      fake,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(argvFile)}, JSON.stringify(process.argv.slice(2)));\nprocess.exit(1);\n`,
+    );
+    const { query } = await import("@anthropic-ai/claude-agent-sdk");
+    const argvFor = async (sources: Array<"user" | "project" | "local">) => {
+      const session = query({
+        prompt: "hello",
+        options: {
+          cwd: root ?? undefined,
+          pathToClaudeCodeExecutable: fake,
+          settingSources: sources,
+          persistSession: false,
+          env: { PATH: process.env.PATH ?? "" },
+        },
+      });
+      try {
+        for await (const _message of session) {
+          // The stand-in exits at once.
+        }
+      } catch {
+        // Expected: it is not a real Claude.
+      }
+      return JSON.parse(await readFile(argvFile, "utf8")) as string[];
+    };
+    expect(await argvFor(["user", "project", "local"])).toContain(
+      "--setting-sources=user,project,local",
+    );
+    const fixed = await argvFor(CLAUDE_SETTING_SOURCES);
+    expect(fixed).toContain("--setting-sources=user");
+    expect(fixed.join(" ")).not.toMatch(/project|local/);
+  }, 30_000);
 
   it("reads the plan limits without sending a prompt when no chat is open", async () => {
     const close = vi.fn();

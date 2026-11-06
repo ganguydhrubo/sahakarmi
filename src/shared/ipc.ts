@@ -167,6 +167,7 @@ export const IPC_CHANNELS = {
   customSkillsPreviewGithub: "custom-skills:preview-github",
   customSkillsInstallGithub: "custom-skills:install-github",
   customSkillsRemove: "custom-skills:remove",
+  customSkillsMarkReviewed: "custom-skills:mark-reviewed",
   mcpList: "mcp:list",
   mcpSave: "mcp:save",
   mcpImportJson: "mcp:import-json",
@@ -1994,6 +1995,10 @@ export interface CustomSkill {
   installedAt: string;
   /** Path inside the Shared folder, e.g. "Skills/Custom/frontend-design/SKILL.md". */
   sharedPath: string;
+  /** The import looked risky (pipes a download into a shell, says not to ask): not trusted yet. */
+  reviewNeeded?: boolean;
+  /** What was flagged, in plain English. */
+  risks?: string[];
 }
 
 /** One skill folder (with a SKILL.md) found in a GitHub repo. */
@@ -2022,6 +2027,8 @@ export interface CustomSkillsDesktopApi {
   previewGithub: (url: string) => Promise<GithubSkillPreview>;
   installGithub: (url: string, paths: string[]) => Promise<CustomSkill[]>;
   remove: (id: string) => Promise<CustomSkill[]>;
+  /** The owner has read a flagged skill and trusts it. */
+  markReviewed: (id: string) => Promise<CustomSkill[]>;
 }
 
 /** An MCP server as Settings shows it: secret values (env, headers) are never sent here. */

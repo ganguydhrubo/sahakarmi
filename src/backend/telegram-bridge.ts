@@ -9,6 +9,7 @@ import type {
   PermissionPolicyState,
   TelegramStatus,
 } from "../shared/ipc";
+import type { SecretCodec } from "./secret-store";
 
 const STATE_FILE = "telegram.json";
 const API = "https://api.telegram.org";
@@ -79,6 +80,10 @@ export interface TelegramBridgeOptions {
   envOwnerUserId?: number | null;
   /** Turns remote decisions off while leaving notifications on. Defaults to on. */
   approvalsEnabled?: boolean;
+  /** The clock for the pairing cool-down (tests move it). */
+  now?: () => number;
+  /** Encrypts the bot token in telegram.json (DPAPI). Without one it is stored as before. */
+  codec?: SecretCodec;
 }
 
 interface TelegramUpdate {
@@ -120,6 +125,18 @@ export function telegramChunks(text: string, limit = TELEGRAM_MESSAGE_LIMIT): st
 function newPairingCode(): string {
   return String(randomInt(100_000, 1_000_000));
 }
+
+/** A long command still fits one Telegram message; the app shows the rest. */
+const TELEGRAM_TECHNICAL_CHARS = 1_500;
+function telegramTechnical(technical: string): string {
+  return technical.length > TELEGRAM_TECHNICAL_CHARS
+    ? `${technical.slice(0, TELEGRAM_TECHNICAL_CHARS)}… (open Sahkarmi to see all of it)`
+    : technical;
+}
+
+/** Wrong pairing codes allowed before the code is replaced and pairing pauses. */
+export const PAIRING_MAX_ATTEMPTS = 5;
+export const PAIRING_COOLDOWN_MS = 10 * 60_000;
 
 const HELP = [
   "Write to your Sahkarmi coworker here, as in the app.",
@@ -218,8 +235,17 @@ export class TelegramBridge {
   /** Commands already acted on, so a retried or double-tapped command cannot decide twice. */
   readonly #handledCommands = new Set<string>();
   #sweepTimer: ReturnType<typeof setInterval> | null = null;
+  /** Wrong pairing codes since the code was last made; guessing 1 in 900,000 must stay hopeless. */
+  #wrongPairingCodes = 0;
+  #pairingPausedUntil = 0;
+  readonly #now: () => number;
+  readonly #codec: SecretCodec | null;
+  /** The file still holds the token in plain text: sealed on the next save. */
+  #plainTokenOnDisk = false;
 
   constructor(options: TelegramBridgeOptions) {
+    this.#now = options.now ?? (() => Date.now());
+    this.#codec = options.codec ?? null;
     this.#path = join(options.userDataPath, STATE_FILE);
     this.#agent = options.agent;
     this.#fetch = options.fetch ?? fetch;
@@ -235,9 +261,11 @@ export class TelegramBridge {
   async initialize(): Promise<void> {
     try {
       const raw = JSON.parse(await readFile(this.#path, "utf8")) as Partial<StoredTelegram>;
-      if (typeof raw.token === "string" && raw.token) {
+      const token = typeof raw.token === "string" && raw.token ? this.#openToken(raw.token) : null;
+      if (token) {
+        this.#plainTokenOnDisk = !this.#codec?.isSealed(raw.token ?? "");
         this.#state = {
-          token: raw.token,
+          token,
           botUsername: typeof raw.botUsername === "string" ? raw.botUsername : null,
           pairingCode: typeof raw.pairingCode === "string" ? raw.pairingCode : newPairingCode(),
           chatId: typeof raw.chatId === "number" ? raw.chatId : null,
@@ -258,7 +286,21 @@ export class TelegramBridge {
         this.#log("warn", "TELEGRAM_BOT_TOKEN was not accepted", error);
       }
     }
-    if (this.#state) this.#start();
+    if (this.#state) {
+      // An older install kept the token in plain text: encrypt it now.
+      if (this.#plainTokenOnDisk && this.#codec?.available) {
+        await this.#save().catch((error) => this.#log("warn", "telegram.json not resaved", error));
+      }
+      this.#start();
+    }
+  }
+
+  /** A sealed token from another Windows account cannot be read: set up again. */
+  #openToken(stored: string): string | null {
+    if (!this.#codec) return stored;
+    const token = this.#codec.open(stored);
+    if (token === null) this.#log("warn", "The saved Telegram token could not be decrypted");
+    return token;
   }
 
   status(): TelegramStatus {
@@ -476,6 +518,25 @@ export class TelegramBridge {
       // Only a private chat that sends the code shown in Settings can pair.
       if (chat.type !== "private") return;
       const code = text.match(/^\/start(?:@\w+)?\s+(\d{6})$/)?.[1];
+      if (code && this.#now() < this.#pairingPausedUntil) {
+        await this.#send(
+          chat.id,
+          "Too many wrong codes. Pairing is paused for a few minutes; then send the new code shown in Sahkarmi > Settings > Telegram.",
+        );
+        return;
+      }
+      if (code && code !== state.pairingCode) {
+        this.#wrongPairingCodes += 1;
+        if (this.#wrongPairingCodes >= PAIRING_MAX_ATTEMPTS) {
+          // The old code is burnt: a guesser has to start again, after a pause, on a new one.
+          this.#wrongPairingCodes = 0;
+          this.#pairingPausedUntil = this.#now() + PAIRING_COOLDOWN_MS;
+          state.pairingCode = newPairingCode();
+          this.#log("warn", "Telegram pairing paused after too many wrong codes");
+          await this.#save();
+          this.#changed();
+        }
+      }
       if (code !== state.pairingCode) {
         await this.#send(
           chat.id,
@@ -490,6 +551,7 @@ export class TelegramBridge {
         return;
       }
       if (from?.is_bot) return;
+      this.#wrongPairingCodes = 0;
       state.chatId = chat.id;
       state.chatName = chat.first_name ?? chat.username ?? chat.title ?? null;
       state.ownerUserId = typeof from?.id === "number" ? from.id : null;
@@ -773,7 +835,7 @@ export class TelegramBridge {
       approval.amount ? `Amount: ${approval.amount}` : null,
       `Risk: ${RISK_LABEL[approval.riskLevel ?? "medium"] ?? "medium"}`,
       consequence ? `Consequence: ${consequence}` : null,
-      approval.technical ? `\nTechnical: ${approval.technical}` : null,
+      approval.technical ? `\nTechnical: ${telegramTechnical(approval.technical)}` : null,
       "",
       `Asked ${ageOf(approval.createdAt)} · ${expiryOf(approval)}`,
       approval.status === "pending"
@@ -1074,11 +1136,28 @@ export class TelegramBridge {
   }
 
   async #save(): Promise<void> {
-    // The token gives full control of the bot, so the file is readable by the owner only.
-    await writeFile(this.#path, JSON.stringify(this.#state ?? {}), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+    // The token gives full control of the bot, so the file is readable by the owner only, and
+    // the token itself is encrypted when Windows can do it.
+    const state = this.#state;
+    const sealed = state && this.#codec?.available ? this.#codec.seal(state.token) : null;
+    const write = (token: string | undefined) =>
+      writeFile(this.#path, JSON.stringify(state ? { ...state, token } : {}), {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    if (!state || !sealed || sealed === state.token) {
+      await write(state?.token);
+      return;
+    }
+    await write(sealed);
+    // Plain text goes only once the sealed copy reads back as the same token.
+    const back = await readFile(this.#path, "utf8")
+      .then((text) => JSON.parse(text) as { token?: unknown })
+      .catch(() => null);
+    const readable =
+      typeof back?.token === "string" && this.#codec?.open(back.token) === state.token;
+    if (readable) this.#plainTokenOnDisk = false;
+    else await write(state.token);
   }
 
   #changed(): TelegramStatus {

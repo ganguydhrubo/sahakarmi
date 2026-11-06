@@ -10,6 +10,7 @@ import {
   type RpcError,
   type RpcMessage,
 } from "./protocol";
+import { envForProvider } from "./secret-store";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -62,7 +63,8 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     this.#decoder = new JsonLineDecoder();
     const child = spawn(this.#executable, ["app-server", "--listen", "stdio://"], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
+      // Codex gets its own key only, not the other providers' keys.
+      env: envForProvider("codex", process.env),
       shell: process.platform === "win32",
       windowsHide: true,
     });
