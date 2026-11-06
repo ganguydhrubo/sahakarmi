@@ -2301,6 +2301,7 @@ if (!hasSingleInstanceLock) {
                   scriptDir: dirname(installer),
                 });
                 appLog.write("info", "updater", `install helper started (${mode}) for ${version}`);
+                await appLog.flush();
                 if (mode === "restart") {
                   // The helper waits for this process to end before it installs.
                   const backstop = setTimeout(() => app.exit(0), QUIT_BACKSTOP_MS);

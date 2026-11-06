@@ -13,8 +13,8 @@ import { dirname, join } from "node:path";
  * installer also stops with exit code 2 and no message in silent mode whenever a file of the
  * old version is still in use, and nothing reopened Sahkarmi or recorded why.
  *
- * Here a small cmd script (cmd.exe is on every Windows PC, unlike a usable PowerShell) waits
- * until this Sahkarmi has fully exited, runs the installer as the signed-in user, retries
+ * Here a small cmd script (cmd.exe is on every Windows PC; PowerShell is used only to wait,
+ * with a fixed pause where it is missing or blocked) waits until this Sahkarmi has fully exited, runs the installer as the signed-in user, retries
  * silently when a file was still busy, writes the installer's exit code to a result file, and
  * opens the old Sahkarmi again if the install failed, which then says exactly what happened.
  * Paths reach the script through environment variables, so names with spaces, "&" or
@@ -34,19 +34,20 @@ export interface InstallResult {
 export const INSTALL_SCRIPT = [
   "@echo off",
   "rem Sahkarmi update helper: waits for Sahkarmi to close, installs, records the result.",
-  "rem Windows' own tools by full path: Git or Cygwin on PATH bring another find.exe.",
+  "rem Windows' own tools by full path: Git or Cygwin on PATH bring their own versions.",
   'set "SYS=%SystemRoot%\\System32"',
-  "set /a waited=0",
-  ":wait",
-  '"%SYS%\\tasklist.exe" /FI "PID eq %SK_PID%" /NH 2>nul | "%SYS%\\find.exe" " %SK_PID% " >nul',
-  "if errorlevel 1 goto install",
-  "set /a waited+=1",
-  "if %waited% geq 60 goto install",
-  '"%SYS%\\ping.exe" -n 2 127.0.0.1 >nul',
-  "goto wait",
+  'set "PS=%SYS%\\WindowsPowerShell\\v1.0\\powershell.exe"',
+  "rem Started with no console (as Sahkarmi starts it, so it outlives the app), tasklist prints",
+  "rem nothing: a tasklist | find check hung forever, a file-based one never waited. PowerShell's",
+  "rem Wait-Process works without a console; without PowerShell, a fixed pause instead.",
+  'if not exist "%PS%" goto pause',
+  '"%PS%" -NoProfile -NonInteractive -Command "Wait-Process -Id %SK_PID% -Timeout 120 -ErrorAction SilentlyContinue" >nul 2>nul <nul',
+  "if not errorlevel 1 goto install",
+  ":pause",
+  '"%SYS%\\ping.exe" -n 16 127.0.0.1 >nul',
   ":install",
   "set /a attempt=1",
-  '"%SK_INSTALLER%" %SK_ARGS%',
+  '"%SK_INSTALLER%" %SK_ARGS% <nul',
   "set code=%errorlevel%",
   ":check",
   'if "%code%"=="0" goto done',
@@ -54,7 +55,7 @@ export const INSTALL_SCRIPT = [
   "rem A file still in use (antivirus checking new files, a helper closing) clears in seconds.",
   '"%SYS%\\ping.exe" -n 4 127.0.0.1 >nul',
   "set /a attempt+=1",
-  '"%SK_INSTALLER%" %SK_RETRY_ARGS%',
+  '"%SK_INSTALLER%" %SK_RETRY_ARGS% <nul',
   "set code=%errorlevel%",
   "goto check",
   ":done",
@@ -80,6 +81,8 @@ export interface LaunchInstallerOptions {
   resultDir: string;
   /** Folder for the script (next to the downloaded installer). */
   scriptDir: string;
+  /** Environment the helper starts from (tests); this process's by default. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /** Starts the helper and resolves once it runs; the caller then quits the app. */
@@ -105,7 +108,7 @@ export function launchWindowsInstaller(options: LaunchInstallerOptions): Promise
       stdio: "ignore",
       windowsHide: true,
       env: {
-        ...process.env,
+        ...(options.env ?? process.env),
         SK_PID: String(options.pid),
         SK_INSTALLER: options.installer,
         SK_VERSION: options.version,
