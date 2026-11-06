@@ -22,6 +22,8 @@ export interface OrchestratorEngineOptions {
   port: TeamRunAgentPort;
   /** How long a failed task message is watched for a re-send (tests shorten it). */
   retryGraceMs?: number;
+  /** Where checkpoints live; read when the engine first loads. Default: SQLite. */
+  checkpoints?: () => "sqlite" | "json";
 }
 
 export interface OrchestratorDependencies {
@@ -77,6 +79,7 @@ export class AdaptiveOrchestrator {
             checkpointDir: this.#store.checkpointDir,
             emit: (event) => this.#emit(event),
             retryGraceMs: options.retryGraceMs,
+            checkpoints: options.checkpoints?.() ?? "sqlite",
           }),
       );
       this.#engine.catch(() => {

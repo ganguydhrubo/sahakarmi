@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -26,7 +27,7 @@ interface StoredCheckpoint {
 /** [taskId, channel, value, taskPath] */
 type StoredWrite = [string, string, string, string];
 
-interface ThreadFile {
+export interface ThreadFile {
   version: 1;
   /** namespace -> checkpoint id -> step */
   checkpoints: Record<string, Record<string, StoredCheckpoint>>;
@@ -43,7 +44,7 @@ function emptyThread(): ThreadFile {
   return { version: 1, checkpoints: {}, writes: {} };
 }
 
-function isThreadFile(value: unknown): value is ThreadFile {
+export function isCheckpointThreadFile(value: unknown): value is ThreadFile {
   return (
     isRecord(value) && value.version === 1 && isRecord(value.checkpoints) && isRecord(value.writes)
   );
@@ -84,7 +85,7 @@ export class TeamRunCheckpointSaver extends BaseCheckpointSaver {
     const cached = this.#threads.get(threadId);
     if (cached) return cached;
     const file = new JsonFile<ThreadFile>(TeamRunCheckpointSaver.pathFor(this.#dir, threadId));
-    const data = await file.read(emptyThread, isThreadFile);
+    const data = await file.read(emptyThread, isCheckpointThreadFile);
     const entry = { file, data };
     this.#threads.set(threadId, entry);
     return entry;
@@ -245,5 +246,17 @@ export class TeamRunCheckpointSaver extends BaseCheckpointSaver {
     assertSafeId("run id", threadId);
     this.#threads.delete(threadId);
     await rm(TeamRunCheckpointSaver.pathFor(this.#dir, threadId), { force: true });
+  }
+
+  /** Runs with a checkpoint file in the folder. */
+  threadIds(): string[] {
+    try {
+      return readdirSync(this.#dir)
+        .filter((name) => name.endsWith(".checkpoints.json"))
+        .map((name) => name.slice(0, -".checkpoints.json".length))
+        .filter((id) => SAFE_ID.test(id));
+    } catch {
+      return [];
+    }
   }
 }

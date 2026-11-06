@@ -307,7 +307,7 @@ describe("team runs on the durable engine", () => {
     expect(paused.waitingOn?.botId).toBe("dev-code");
     expect(agent.approvals[0]?.status).toBe("pending");
     // Paused means paused: no polling, no open promise, just a checkpoint on disk.
-    await access(TeamRunCheckpointSaver.pathFor(join(root, "orchestrator"), run.id));
+    await access(join(root, "orchestrator", "team-runs.sqlite"));
 
     await agent.decide("apr-1", "approved", "Go ahead");
     const done = await runStatus(orchestrator, run.id, "completed");

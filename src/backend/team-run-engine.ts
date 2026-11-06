@@ -24,6 +24,7 @@ import { type DeliveryOutcome, waitForDelivery } from "./delivery-wait";
 import type { OrchestratorStore } from "./orchestrator-store";
 import type { RoutineAgentPort } from "./routine-executor";
 import { TeamRunCheckpointSaver } from "./team-run-checkpoints";
+import { pruneOrphanCheckpoints, SqliteCheckpointSaver } from "./team-run-checkpoints-sqlite";
 import type { VerificationRepairEngine } from "./verification-repair-engine";
 
 // interrupt() finds the running graph through this store. LangGraph sets it up on Node; this is
@@ -50,7 +51,14 @@ export interface TeamRunEngineOptions {
   stepTimeoutMs?: number;
   /** How long a failed task message is watched for a re-send on another model. */
   retryGraceMs?: number;
+  /** "sqlite" (default): one SQLite file for all runs; "json": the older file per run. */
+  checkpoints?: "sqlite" | "json";
 }
+
+type RunCheckpointSaver = (TeamRunCheckpointSaver | SqliteCheckpointSaver) & {
+  deleteThread(threadId: string): Promise<void>;
+  threadIds(): string[];
+};
 
 /** Owner decision handed back into the paused graph. */
 interface ApprovalDecision {
@@ -166,7 +174,9 @@ export class TeamRunEngine {
   readonly #emit: (event: AgentEvent) => void;
   readonly #stepTimeoutMs: number;
   readonly #retryGraceMs: number | undefined;
-  readonly #saver: TeamRunCheckpointSaver;
+  readonly #saver: RunCheckpointSaver;
+  /** Older JSON checkpoints imported and orphans removed; every graph call waits for it. */
+  readonly #ready: Promise<void>;
   readonly #graph: ReturnType<typeof buildGraph>;
   readonly #active = new Map<string, AbortController>();
   /** Runs paused on an approval: approval id -> run id. Rebuilt from the store after a restart. */
@@ -185,7 +195,16 @@ export class TeamRunEngine {
     this.#emit = options.emit;
     this.#stepTimeoutMs = options.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
     this.#retryGraceMs = options.retryGraceMs;
-    this.#saver = new TeamRunCheckpointSaver(options.checkpointDir);
+    const sqlite =
+      options.checkpoints === "json" ? null : new SqliteCheckpointSaver(options.checkpointDir);
+    this.#saver = sqlite ?? new TeamRunCheckpointSaver(options.checkpointDir);
+    this.#ready = (async () => {
+      await sqlite?.migrateJsonFiles().catch(() => 0);
+      await this.pruneOrphans().catch(() => undefined);
+    })();
+    this.#store.onRunsDropped((runIds) => {
+      for (const runId of runIds) void this.#saver.deleteThread(runId).catch(() => undefined);
+    });
     this.#graph = buildGraph(this.#saver, {
       run: (runId) => this.#store.getRun(runId),
       work: (input, config) => this.#work(input, config),
@@ -198,6 +217,16 @@ export class TeamRunEngine {
     this.#port.off("event", this.#onEvent);
     for (const controller of this.#active.values()) controller.abort();
     this.#active.clear();
+    this.#store.onRunsDropped(null);
+    void this.#ready.then(() => {
+      if (this.#saver instanceof SqliteCheckpointSaver) this.#saver.close();
+    });
+  }
+
+  /** Checkpoints whose run the store no longer has are removed (never a stored run's). */
+  async pruneOrphans(): Promise<string[]> {
+    const keep = new Set((await this.#store.getRuns()).map((run) => run.id));
+    return pruneOrphanCheckpoints(this.#saver, keep);
   }
 
   isActive(runId: string): boolean {
@@ -226,6 +255,7 @@ export class TeamRunEngine {
   /** Continues a paused run from its last checkpoint. Without a checkpoint it starts afresh. */
   async resume(run: OrchestratorRun, workspacePath: string): Promise<void> {
     if (this.#active.has(run.id)) return;
+    await this.#ready;
     const state = await this.#graph.getState(this.#config(run.id)).catch(() => null);
     if (!state || Object.keys(state.values ?? {}).length === 0) {
       this.start(run, workspacePath);
@@ -327,6 +357,7 @@ export class TeamRunEngine {
   }
 
   async #drive(runId: string, input: RunStateType | Command | null): Promise<void> {
+    await this.#ready;
     const graphInput = input as GraphInput;
     if (this.#active.has(runId)) {
       if (input instanceof Command) this.#pendingResume.set(runId, input);
@@ -775,7 +806,7 @@ function decisionFrom(approval: ApprovalRequest): ApprovalDecision {
  * route decides what runs next; a work node is one coworker turn.
  */
 function buildGraph(
-  saver: TeamRunCheckpointSaver,
+  saver: RunCheckpointSaver,
   hooks: {
     run: (runId: string) => Promise<OrchestratorRun | null>;
     work: (input: WorkInput, config: LangGraphRunnableConfig) => Promise<TaskProgress>;

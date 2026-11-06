@@ -79,6 +79,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
   ),
   feature("schedules", "Schedules", "Run a task daily, weekly or once at a set time.", "core"),
   feature(
+    "team-run-sqlite-checkpoints",
+    "Team runs: one checkpoint database",
+    "Team-run progress is saved in one small SQLite file instead of a file per run; older files are imported. Off: one JSON file per run, as before.",
+    "labs",
+    [],
+    true,
+    true,
+  ),
+  feature(
     "browser",
     "Built-in browser",
     "Coworkers browse in their own tabs; you can take over for logins and OTPs.",
