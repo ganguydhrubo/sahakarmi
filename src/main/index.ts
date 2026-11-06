@@ -571,6 +571,14 @@ function registerIpcHandlers(
     const parsed = parseCancelQueuedMessage(input);
     return service.cancelQueuedMessage(parsed.botId, parsed.deliveryId);
   });
+  handleTrusted(IPC_CHANNELS.agentRerunInterrupted, (input: unknown) => {
+    const parsed = parseCancelQueuedMessage(input);
+    return service.rerunInterrupted(parsed.botId, parsed.deliveryId);
+  });
+  handleTrusted(IPC_CHANNELS.agentDismissInterrupted, (input: unknown) => {
+    const parsed = parseCancelQueuedMessage(input);
+    return service.dismissInterrupted(parsed.botId, parsed.deliveryId);
+  });
   handleTrusted(IPC_CHANNELS.agentSendQueuedNow, (input: unknown) => {
     const parsed = parseCancelQueuedMessage(input);
     return service.sendQueuedNow(parsed.botId, parsed.deliveryId);
@@ -1831,6 +1839,8 @@ if (!hasSingleInstanceLock) {
             listApprovals: () => service.listApprovals(),
             withdrawDelivery: (botId, deliveryId) => service.withdrawDelivery(botId, deliveryId),
           },
+          checkpoints: () =>
+            features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
         },
         {
           // The owner's check command runs only where the permission rules allow it.

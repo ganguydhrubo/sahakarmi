@@ -4812,8 +4812,53 @@ ${carryOver}`
         terminal,
         terminal === "completed" ? null : reason,
       );
+      // The owner's own task (or a schedule's) is offered to run again. Team runs and
+      // routines decide themselves: their engines resume or report the step.
+      if (
+        terminal === "interrupted" &&
+        delivery.sender.kind === "user" &&
+        delivery.origin !== "team-run" &&
+        delivery.origin !== "routine" &&
+        !isContinuationText(delivery.text)
+      ) {
+        await this.#mailbox.setOfferRerun(delivery.id, true).catch(() => undefined);
+      }
       this.#emitQueue(delivery.recipientBotId);
     }
+  }
+
+  /** "Run again" on a task interrupted when Sahkarmi closed: the same message, sent anew. */
+  async rerunInterrupted(botId: string, deliveryId: string): Promise<void> {
+    const context = this.#mailbox.getDelivery(deliveryId);
+    if (!context || context.delivery.recipientBotId !== botId || !context.delivery.offerRerun) {
+      return;
+    }
+    await this.#mailbox.setOfferRerun(deliveryId, false);
+    await this.#store.getOrCreate(botId);
+    await this.#mailbox.enqueue({
+      sender: { kind: "user" },
+      origin: context.delivery.origin ?? "owner",
+      recipientBotIds: [botId],
+      text: context.delivery.text,
+      sourcePaths: context.managedAttachments.map((attachment) => attachment.path),
+      replyToMessageId: context.delivery.replyToMessageId,
+    });
+    if (this.#mailbox.listQueue(botId).paused) await this.#mailbox.setPaused(botId, false);
+    const snapshot = this.#ensureSnapshot(
+      botId,
+      this.#store.list().find((bot) => bot.id === botId)?.threadId ?? null,
+    );
+    this.#syncMailboxMessages(snapshot);
+    this.#emitConversation(snapshot);
+    this.#emitQueue(botId);
+    this.#scheduleDrain(botId);
+  }
+
+  async dismissInterrupted(botId: string, deliveryId: string): Promise<void> {
+    const context = this.#mailbox.getDelivery(deliveryId);
+    if (!context || context.delivery.recipientBotId !== botId) return;
+    await this.#mailbox.setOfferRerun(deliveryId, false);
+    this.#emitQueue(botId);
   }
 
   #syncDeliveryMessage(snapshot: ConversationSnapshot, deliveryId: string): void {

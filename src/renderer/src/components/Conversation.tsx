@@ -63,6 +63,7 @@ import { AvatarAura, statusAura } from "./AvatarAura";
 import { BrowserPageList, type BrowserStartAction, BrowserStartMenu } from "./BrowserPages";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
+import { InterruptedTaskCard } from "./InterruptedTaskCard";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
 import { PlanCard } from "./PlanCard";
 import { ProviderModelPicker } from "./ProviderModelPicker";
@@ -2734,6 +2735,11 @@ export function Conversation(props: ConversationProps) {
           onCancel={props.onCancelQueuedMessage}
           onStop={props.onStop}
           onSteer={(deliveryId) => props.onSendQueuedNow?.(deliveryId)}
+        />
+        <InterruptedTaskCard
+          botId={props.bot?.id ?? ""}
+          botName={props.bot?.name ?? ""}
+          queue={props.queue}
         />
       </Show>
 

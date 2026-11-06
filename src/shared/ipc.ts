@@ -1292,6 +1292,8 @@ export interface QueueDelivery {
   hops?: number;
   /** This copy failed and the same message was sent again as this delivery. */
   retriedAs?: string;
+  /** Interrupted when Sahkarmi closed: the chat offers to run it again. */
+  offerRerun?: boolean;
   text: string;
   attachments: AttachmentSummary[];
   replyToMessageId: string | null;
@@ -1747,6 +1749,10 @@ export interface AgentDesktopApi {
   setMessageReaction: (input: SetMessageReactionInput) => Promise<void>;
   listQueue: (botId: string) => Promise<QueueSnapshot>;
   cancelQueuedMessage: (input: CancelQueuedMessageInput) => Promise<void>;
+  /** Sends a task that was interrupted when Sahkarmi closed again, as a new message. */
+  rerunInterrupted: (input: CancelQueuedMessageInput) => Promise<void>;
+  /** Hides the "run again" offer for an interrupted task. */
+  dismissInterrupted: (input: CancelQueuedMessageInput) => Promise<void>;
   sendQueuedNow: (input: CancelQueuedMessageInput) => Promise<void>;
   setQueuePaused: (input: SetQueuePausedInput) => Promise<void>;
   interrupt: (input: InterruptTurnInput) => Promise<void>;

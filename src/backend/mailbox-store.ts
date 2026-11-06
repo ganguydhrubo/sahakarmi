@@ -58,6 +58,8 @@ interface StoredDelivery {
   retried?: boolean;
   /** The delivery that carries the message again after this one failed. */
   retriedAs?: string;
+  /** Interrupted when the app closed: offered to the owner to run again. */
+  offerRerun?: boolean;
   /** Knowledge Base excerpts this owner message was grounded on (for the [S1] pills). */
   citations?: KnowledgeCitation[];
 }
@@ -667,6 +669,14 @@ export class MailboxStore {
     if (!delivery) return;
     delivery.retried = true;
     if (nextDeliveryId) delivery.retriedAs = nextDeliveryId;
+    await this.#persist();
+  }
+
+  async setOfferRerun(deliveryId: string, offer: boolean): Promise<void> {
+    const delivery = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
+    if (!delivery || Boolean(delivery.offerRerun) === offer) return;
+    if (offer) delivery.offerRerun = true;
+    else delete delivery.offerRerun;
     await this.#persist();
   }
 

@@ -14306,3 +14306,38 @@ fieldset.memory-filters {
   background: var(--indigo-accent);
   color: var(--surface-1);
 }
+
+/* A task interrupted when Sahkarmi closed, offered to run again. */
+.interrupted-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 8px 16px 0;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  padding: 10px 14px;
+}
+
+.interrupted-card-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.interrupted-card-quote {
+  overflow: hidden;
+  color: var(--sahkarmi-muted);
+  font-size: 0.9em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interrupted-card-actions {
+  display: flex;
+  gap: 8px;
+}

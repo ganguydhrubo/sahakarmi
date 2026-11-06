@@ -105,6 +105,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     cancelQueuedMessage: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.agentCancelQueuedMessage, input),
     sendQueuedNow: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSendQueuedNow, input),
+    rerunInterrupted: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentRerunInterrupted, input),
+    dismissInterrupted: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentDismissInterrupted, input),
     setQueuePaused: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSetQueuePaused, input),
     interrupt: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentInterrupt, input),
     respondToPrompt: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentRespondToPrompt, input),
