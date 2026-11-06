@@ -29,6 +29,7 @@ import {
   MAX_SOURCE_BYTES,
 } from "./document-extractors";
 import { EmbeddingModelStore, type FetchLike, POTION_BASE_8M } from "./embedding-model-store";
+import type { KnowledgeApi } from "./knowledge-api";
 import { type ChunkRow, KnowledgeDb, type VectorInput } from "./knowledge-db";
 import {
   buildMatchQuery,
@@ -124,7 +125,7 @@ export interface SectionRead {
   chunks: ChunkRow[];
 }
 
-export class KnowledgeService extends EventEmitter {
+export class KnowledgeService extends EventEmitter implements KnowledgeApi {
   readonly #root: string;
   readonly #registry: JsonFile<Registry>;
   readonly #dbs = new Map<string, KnowledgeDb>();

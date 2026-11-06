@@ -20,6 +20,7 @@ import {
   session,
   shell,
   systemPreferences,
+  utilityProcess,
 } from "electron";
 import electronUpdater from "electron-updater";
 import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
@@ -46,7 +47,8 @@ import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
-import { KnowledgeService } from "../backend/knowledge/knowledge-service";
+import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
+import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
 import { MailboxStore } from "../backend/mailbox-store";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
@@ -173,7 +175,7 @@ let mailboxStore: MailboxStore | null = null;
 let updateService: UpdateService | null = null;
 let aiRuntimeService: AiRuntimeService | null = null;
 let scheduleStore: ScheduleStore | null = null;
-let knowledgeService: KnowledgeService | null = null;
+let knowledgeService: KnowledgeApi | null = null;
 let routineStore: RoutineStore | null = null;
 let telegramBridge: TelegramBridge | null = null;
 let usageService: UsageService | null = null;
@@ -257,7 +259,7 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   );
 }
 
-function registerKnowledgeIpc(knowledge: KnowledgeService): void {
+function registerKnowledgeIpc(knowledge: KnowledgeApi): void {
   const kbId = (value: unknown) => requireString(value, "knowledgeBaseId");
   handleTrusted(IPC_CHANNELS.knowledgeList, () => knowledge.list());
   handleTrusted(IPC_CHANNELS.knowledgeCreate, (input: unknown) => {
@@ -354,7 +356,7 @@ function registerKnowledgeIpc(knowledge: KnowledgeService): void {
   });
   handleTrusted(IPC_CHANNELS.knowledgeOpenSource, async (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid request.");
-    const path = knowledge.sourcePath(
+    const path = await knowledge.sourcePath(
       kbId(input.kbId),
       requireString(input.documentId, "documentId"),
     );
@@ -1645,13 +1647,20 @@ if (!hasSingleInstanceLock) {
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
-      const knowledge = new KnowledgeService(app.getPath("userData"));
+      // Knowledge Bases run in a utility process (indexing never blocks the window); the host
+      // falls back to this process if it cannot start.
+      const knowledge = new KnowledgeHost(app.getPath("userData"), {
+        fork: () =>
+          utilityProcess.fork(join(__dirname, "knowledge-worker.js"), [], {
+            serviceName: "Sahkarmi Knowledge",
+          }),
+      });
       knowledgeService = knowledge;
+      knowledge.on("event", forwardAgentEvent);
+      knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
       await knowledge.initialize().catch((error) => {
         appLog.write("error", "knowledge bases unreadable; starting empty", String(error));
       });
-      knowledge.on("event", forwardAgentEvent);
-      knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
       service.configureMemory(() => features.isEnabled("memory-auto-context"));
       service.attachKnowledge(
         knowledge,

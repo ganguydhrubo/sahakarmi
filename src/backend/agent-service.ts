@@ -140,8 +140,8 @@ import { GeminiRotation, IdleWatch, pickPrewarmBots } from "./gemini-runtime";
 import type { ComposioClient } from "./integrations/composio-client";
 import { isActionSensitive } from "./integrations/composio-policy";
 import { ComposioSecurityGuard } from "./integrations/composio-security";
+import type { KnowledgeApi } from "./knowledge/knowledge-api";
 import { citationLabel } from "./knowledge/knowledge-search";
-import type { KnowledgeService } from "./knowledge/knowledge-service";
 import {
   LIST_KNOWLEDGE_BASES_DESCRIPTION,
   LIST_MEMORIES_DESCRIPTION,
@@ -500,7 +500,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #signInNoticeAt = new Map<string, number>();
   readonly #modelRefresh = new ModelRefreshLoop(() => this.#refreshModelsAndCli());
   readonly #memoryStore: AgentMemoryStore;
-  #knowledge: KnowledgeService | null = null;
+  #knowledge: KnowledgeApi | null = null;
   #knowledgeAutoContext: () => boolean = () => true;
   #knowledgeEnabled: () => boolean = () => true;
   #memoryAutoContext: () => boolean = () => true;
@@ -3852,7 +3852,7 @@ ${carryOver}`
       if (!knowledge.basesForBot(bot).some((base) => base.id === kbId)) {
         throw new Error("You may not read that knowledge base.");
       }
-      const section = knowledge.readSection(kbId, documentId, {
+      const section = await knowledge.readSection(kbId, documentId, {
         page: typeof args.page === "number" ? args.page : null,
         chunkIndex: typeof args.chunkIndex === "number" ? args.chunkIndex : null,
       });
@@ -5293,7 +5293,7 @@ ${carryOver}`
    * Knowledge Bases feature switched off) the tools refuse and the bases are not mentioned.
    */
   attachKnowledge(
-    knowledge: KnowledgeService,
+    knowledge: KnowledgeApi,
     autoContext: () => boolean,
     enabled: () => boolean = () => true,
   ): void {
@@ -5305,7 +5305,7 @@ ${carryOver}`
     });
   }
 
-  get knowledge(): KnowledgeService | null {
+  get knowledge(): KnowledgeApi | null {
     return this.#knowledge;
   }
 

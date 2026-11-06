@@ -5,6 +5,8 @@ asar: true
 # asar archive to be executable.
 asarUnpack:
   - node_modules/@anthropic-ai/claude-agent-sdk-*/**
+  # sqlite-vec is loaded by SQLite with the OS loader, which cannot read inside the asar.
+  - node_modules/sqlite-vec-windows-x64/**
 artifactName: ${productName}-${version}-${arch}.${ext}
 electronUpdaterCompatibility: ">=2.16"
 electronFuses:
