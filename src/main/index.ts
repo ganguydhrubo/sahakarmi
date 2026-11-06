@@ -42,6 +42,7 @@ import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
 import { desktopControlSupported } from "../backend/desktop/desktop-tools";
+import { EngineSettingsStore } from "../backend/engine-settings";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { ComposioClient } from "../backend/integrations/composio-client";
@@ -55,6 +56,7 @@ import { ProviderSetup } from "../backend/provider-setup";
 import { createRoutineExecutor } from "../backend/routine-executor";
 import { importDesktopRoutinesOnce } from "../backend/routine-import";
 import { parseRoutineCadence, RoutineStore } from "../backend/routine-store";
+import { RunEventStore } from "../backend/run-events";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
@@ -1649,6 +1651,18 @@ if (!hasSingleInstanceLock) {
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+      const engineSettings = new EngineSettingsStore(app.getPath("userData"));
+      await engineSettings.initialize();
+      service.configureEngineSettings(() => engineSettings.get());
+      let runEvents: RunEventStore | null = null;
+      try {
+        runEvents = new RunEventStore(join(app.getPath("userData"), "run-events.sqlite"));
+        const recorder = runEvents;
+        service.configureRunEvents((event) => recorder.record(event));
+      } catch (error) {
+        appLog.write("error", "Performance record unavailable", String(error));
+      }
+      registerEngineIpc(service, engineSettings, runEvents);
       const knowledge = new KnowledgeService(app.getPath("userData"));
       knowledgeService = knowledge;
       await knowledge.initialize().catch((error) => {
@@ -1929,6 +1943,10 @@ if (!hasSingleInstanceLock) {
             });
           });
           routines.start(createRoutineExecutor(service));
+          // A team run paused on an approval before the restart listens for the decision again.
+          void orchestrator
+            .restoreWaitingRuns()
+            .catch((error) => appLog.write("error", "Team runs did not resume", error));
           void telegram
             .initialize()
             .catch((error) => appLog.write("error", "Telegram bridge did not start", error));
@@ -2077,6 +2095,32 @@ function parseSaveTarget(value: unknown): SaveBusinessTargetInput {
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required.`);
   return value;
+}
+
+/** Settings > Features engine limits and the local Performance view. */
+function registerEngineIpc(
+  service: AgentService,
+  engineSettings: EngineSettingsStore,
+  runEvents: RunEventStore | null,
+): void {
+  handleTrusted(IPC_CHANNELS.orchestratorGetEngineSettings, () => engineSettings.get());
+  handleTrusted(IPC_CHANNELS.orchestratorSetEngineSettings, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid engine settings.");
+    const saved = await engineSettings.update(input);
+    service.configureEngineSettings(() => engineSettings.get());
+    return saved;
+  });
+  handleTrusted(
+    IPC_CHANNELS.orchestratorPerformance,
+    () =>
+      runEvents?.summary() ?? {
+        since: null,
+        totalTurns: 0,
+        byCoworker: [],
+        byModel: [],
+        recent: [],
+      },
+  );
 }
 
 function parseSendMessage(value: unknown): SendMessageInput {

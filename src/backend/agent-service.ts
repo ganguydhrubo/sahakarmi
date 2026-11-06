@@ -188,6 +188,7 @@ import {
   socialPlatformForTool,
   socialPlatformForUrl,
 } from "./publishing-accounts";
+import type { NewRunEvent } from "./run-events";
 import { installedSkillNames, LearnedSkills, learnedSkillNames } from "./skill-library";
 import {
   decideRefusal,
@@ -421,6 +422,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #heldDrains = new Set<string>();
   /** Coworkers with a queued message waiting for a free turn slot (the concurrent-turn cap). */
   readonly #waitingForSlot = new Set<string>();
+  #runEvents: ((event: NewRunEvent) => void) | null = null;
+  /** Tokens the runtime reported for each coworker's current turn, when it does. */
+  readonly #turnTokens = new Map<string, { input: number | null; output: number | null }>();
   /** Last sign of life from each coworker's running turn (the no-progress watchdog). */
   readonly #progressAt = new Map<string, number>();
   #watchdogTimer: NodeJS.Timeout | null = null;
@@ -2314,7 +2318,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   #noteProgress(botId: string): void {
     this.#progressAt.set(botId, Date.now());
     if (this.#watchdogTimer || this.#stopping) return;
-    this.#watchdogTimer = setInterval(() => void this.#checkWatchdog(), WATCHDOG_TICK_MS);
+    const limitMs = this.#engineSettings().watchdogMinutes * 60_000;
+    const tickMs = Math.min(WATCHDOG_TICK_MS, Math.max(25, Math.round(limitMs / 2)));
+    this.#watchdogTimer = setInterval(() => void this.#checkWatchdog(), tickMs);
     this.#watchdogTimer.unref?.();
   }
 
@@ -5195,6 +5201,10 @@ ${carryOver}`
       case "thread/tokenUsage/updated": {
         if (!threadId || !botId) return;
         this.#updateContextBudget(threadId, params);
+        const last = getRecord(getRecord(params, "tokenUsage"), "last");
+        const input = finiteNumberOrNull(last?.inputTokens);
+        const output = finiteNumberOrNull(last?.outputTokens);
+        if (input !== null || output !== null) this.#turnTokens.set(botId, { input, output });
         const total = getRecord(getRecord(params, "tokenUsage"), "total");
         const totalTokens = finiteNumberOrNull(total?.totalTokens);
         if (totalTokens !== null) {
@@ -5270,6 +5280,7 @@ ${carryOver}`
       if (oldest !== undefined) this.#finishedTurnIds.delete(oldest);
     }
     await this.#turnAssociations.get(turnId)?.catch(() => undefined);
+    const turnStartedAt = this.#turnStartedAt.get(botId) ?? null;
     const shouldCompact = this.#reserveContextCompaction(botId, threadId);
     this.#browser.endControl(threadId, turnId);
     const snapshot = this.#ensureSnapshot(botId, threadId);
@@ -5341,7 +5352,10 @@ ${carryOver}`
           botId,
         );
       }
-    } else if (status === "failed" && delivery) {
+    }
+    // Checked whether or not some text streamed before the failure: a 529 after a few words is
+    // still a 529.
+    if (status === "failed" && delivery) {
       const reason = this.#lastTurnError.get(botId) ?? "";
       if (reason.includes(NEXT_FREE_MODEL_HINT)) {
         await this.#resendOnNextFreeModel(botId, delivery);
@@ -5356,6 +5370,14 @@ ${carryOver}`
       }
     }
     this.#lastTurnError.delete(botId);
+    this.#recordRunEvent(
+      botId,
+      turnId,
+      status,
+      turnStartedAt,
+      delivery?.delivery ?? null,
+      snapshot,
+    );
     if (delivery && (status === "failed" || status === "interrupted")) {
       await this.#tellCeoOfFailure(botId, turnId, delivery, status);
     }
@@ -5466,6 +5488,47 @@ ${carryOver}`
   /** Lets the app switch automatic continuation off (Settings > Features). */
   configureContinuation(enabled: () => boolean): void {
     this.#continuationEnabled = enabled;
+  }
+
+  /** Finished turns go to the local Performance record (never off this PC). */
+  configureRunEvents(recorder: ((event: NewRunEvent) => void) | null): void {
+    this.#runEvents = recorder;
+  }
+
+  #recordRunEvent(
+    botId: string,
+    turnId: string,
+    status: string,
+    startedAt: number | null,
+    delivery: QueueDelivery | null,
+    snapshot: ConversationSnapshot,
+  ): void {
+    const tokens = this.#turnTokens.get(botId) ?? null;
+    this.#turnTokens.delete(botId);
+    if (!this.#runEvents) return;
+    const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    const begun = startedAt ?? Date.now();
+    try {
+      this.#runEvents({
+        botId,
+        botName: bot?.name ?? null,
+        provider: bot ? providerForBot(bot) : null,
+        model: bot?.model ?? null,
+        origin: delivery?.sender.kind === "bot" ? "system" : (delivery?.origin ?? "owner"),
+        outcome:
+          status === "failed" ? "failed" : status === "interrupted" ? "interrupted" : "completed",
+        startedAt: new Date(begun).toISOString(),
+        durationMs: Date.now() - begun,
+        toolCount: snapshot.messages.filter(
+          (message) =>
+            message.turnId === turnId && (message.itemType === "toolCall" || Boolean(message.tool)),
+        ).length,
+        inputTokens: tokens?.input ?? null,
+        outputTokens: tokens?.output ?? null,
+      });
+    } catch (error) {
+      this.emit("log", `run event not recorded: ${String(error)}`);
+    }
   }
 
   /** The owner's concurrent-turn cap and no-progress watchdog (read live, so changes act at once). */

@@ -14,6 +14,7 @@ import {
   quotaNotice,
   SHORT_TOOL_WAIT_MS,
   searchExcerpt,
+  steerOutcome,
   taskGrantKey,
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
@@ -73,6 +74,8 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_RETRY;
   delete process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY;
   delete process.env.SAHKARMI_FAKE_EXIT_ON_TURN;
+  delete process.env.SAHKARMI_FAKE_FAIL_TURNS;
+  delete process.env.SAHKARMI_FAKE_FAIL_MESSAGE;
   // Windows may briefly retain handles after the child process and atomic writes close.
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
@@ -1345,6 +1348,166 @@ describe.sequential("AgentService", () => {
       '"description": "Researches topics and turns findings into clear writing."',
     );
     expect(instructions).toContain("standing remit");
+  });
+
+  it("retries an overloaded turn on the same model after a short wait, once linked", async () => {
+    process.env.SAHKARMI_FAKE_FAIL_TURNS = "1";
+    process.env.SAHKARMI_FAKE_FAIL_MESSAGE = "API Error: 529 overloaded_error";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "Summarise the ledger" });
+    const before = service.listBots().find((bot) => bot.id === "chief")?.model;
+    await waitFor(() =>
+      events.some((event) => event.type === "error" && event.code === "transient_retry"),
+    );
+    const failed = service.listQueue("chief").deliveries.find((item) => item.status === "failed");
+    expect(failed?.retriedAs).toBeTruthy();
+    await waitFor(
+      async () =>
+        (await protocolMessages()).filter((message) => message.method === "turn/start").length ===
+        2,
+    );
+    // Same model, no fallback, and the failed copy is hidden from the chat.
+    expect(service.listBots().find((bot) => bot.id === "chief")?.model).toBe(before);
+    expect(events.some((event) => event.type === "error" && event.code === "fallback_model")).toBe(
+      false,
+    );
+  });
+
+  it("does not take billing.ts in an error for a used-up plan", async () => {
+    process.env.SAHKARMI_FAKE_FAIL_TURNS = "1";
+    process.env.SAHKARMI_FAKE_FAIL_MESSAGE = "Failed to edit src/billing.ts: old_string not found";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "Fix the invoice total" });
+    const before = service.listBots().find((bot) => bot.id === "chief")?.model;
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "failed");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(
+      (await protocolMessages()).filter((message) => message.method === "turn/start"),
+    ).toHaveLength(1);
+    expect(service.listBots().find((bot) => bot.id === "chief")?.model).toBe(before);
+    expect(service.listQueue("chief").deliveries[0]?.retriedAs).toBeUndefined();
+  });
+
+  it("caps how many coworkers work at once; the next starts when one finishes", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.configureEngineSettings(() => ({ maxConcurrentTurns: 1, watchdogMinutes: 45 }));
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "First" });
+    await waitFor(() => events.some((event) => event.type === "turn-started"));
+    await service.sendMessage({ botId: "asha-accounts", text: "Second" });
+    await waitFor(() =>
+      events.some((event) => event.type === "notice" && event.code === "waiting_for_turn_slot"),
+    );
+    expect(service.listQueue("asha-accounts").deliveries[0]?.status).toBe("queued");
+
+    const started = events.find((event) => event.type === "turn-started");
+    if (started?.type !== "turn-started") throw new Error("no turn");
+    await service.interrupt("chief", started.turnId);
+    await waitFor(() => service?.listQueue("asha-accounts").deliveries[0]?.status === "running");
+  });
+
+  it("stops a turn that shows no progress for the watchdog time", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    // A tiny limit for the test; the settings screen keeps it between 5 and 240 minutes.
+    service.configureEngineSettings(() => ({ maxConcurrentTurns: 3, watchdogMinutes: 0.005 }));
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+
+    await service.sendMessage({ botId: "chief", text: "Hang forever" });
+    await waitFor(() =>
+      events.some((event) => event.type === "notice" && event.code === "turn_watchdog"),
+    );
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "interrupted");
+    // Unlike the owner's Stop, the queue is not paused.
+    expect(service.listQueue("chief").paused).toBe(false);
+  });
+
+  it("stops a chain of coworker messages after six hops and tells the owner", async () => {
+    process.env.SAHKARMI_FAKE_AGENT_TOOL = "1";
+    const { store, mailbox } = stores();
+    await store.initialize();
+    await mailbox.initialize();
+    await store.getOrCreate("asha-accounts");
+    await store.getOrCreate("chief");
+    await store.getOrCreate("sales-outbound");
+    await store.getOrCreate("inbox-manager");
+    await mailbox.enqueue({
+      sender: { kind: "bot", botId: "asha-accounts" },
+      hops: 6,
+      recipientBotIds: ["chief"],
+      text: "Pass this on again",
+    });
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+
+    await waitFor(() =>
+      events.some((event) => event.type === "notice" && event.code === "agent_hop_limit"),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-1");
+    expect(JSON.stringify(reply)).toContain("reached 6 hops");
+    expect(service.listQueue("sales-outbound").deliveries).toHaveLength(0);
+  });
+
+  it("does not auto-continue a team-run task, so the engine reads the real reply", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Step one is done. Shall I continue?";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "chief", text: "Team run task", origin: "team-run" });
+    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "completed");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(service.listQueue("chief").deliveries).toHaveLength(1);
+  });
+
+  it("offers the owner's interrupted task to run again, and runs it once", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Ran again";
+    const { store, mailbox } = stores();
+    await store.initialize();
+    await mailbox.initialize();
+    await store.getOrCreate("chief");
+    const receipt = await mailbox.enqueue({
+      sender: { kind: "user" },
+      recipientBotIds: ["chief"],
+      text: "Send the weekly summary",
+    });
+    const deliveryId = receipt.deliveries[0]?.id ?? "";
+    // Sahkarmi closed while this was running: the turn never finished.
+    await mailbox.markStarting(deliveryId);
+    await mailbox.markRunning(deliveryId, "turn-lost");
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+
+    await waitFor(
+      () =>
+        service?.listQueue("chief").deliveries.find((item) => item.id === deliveryId)
+          ?.offerRerun === true,
+    );
+    await service.rerunInterrupted("chief", deliveryId);
+    await service.rerunInterrupted("chief", deliveryId);
+    await waitFor(() =>
+      service?.listQueue("chief").deliveries.some((item) => item.status === "completed"),
+    );
+    const deliveries = service.listQueue("chief").deliveries;
+    expect(deliveries.find((item) => item.id === deliveryId)?.offerRerun).toBeFalsy();
+    expect(deliveries.filter((item) => item.text === "Send the weekly summary")).toHaveLength(2);
   });
 
   it("adds an owner message to the running turn, like Claude Code", async () => {
@@ -2639,6 +2802,14 @@ process.stdin.on("data", (chunk) => {
             write({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: turnId, status: "completed" } } });
           }, completeDelay);
         }
+        if ((process.env.SAHKARMI_FAKE_FAIL_TURNS || "").split(",").includes(String(turnCounter))) {
+          setTimeout(() => {
+            write({ method: "error", params: { threadId: message.params.threadId, turnId, willRetry: false, message: process.env.SAHKARMI_FAKE_FAIL_MESSAGE || "failed" } });
+            const turn = turns.get(turnId);
+            if (turn) turn.status = "failed";
+            write({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: turnId, status: "failed" } } });
+          }, 20);
+        }
         if (process.env.SAHKARMI_FAKE_EXIT_ON_TURN === String(turnCounter)) {
           setTimeout(() => {
             process.exit(1);
@@ -2930,4 +3101,23 @@ describe("0.19 parity: continuation, queued runtime change, delete, sign-in hold
       events.filter((event) => event.type === "error" && event.code === "delivery_start_failed"),
     ).toHaveLength(0);
   }, 20_000);
+});
+
+describe("steerOutcome", () => {
+  const never = new Promise<never>(() => undefined);
+  it("counts an answered steer as landed and a refused one as refused", async () => {
+    expect(await steerOutcome(Promise.resolve({}), async () => false, 10, 10)).toBe("landed");
+    expect(await steerOutcome(Promise.reject(new Error("no")), async () => false, 10, 10)).toBe(
+      "refused",
+    );
+  });
+  it("never reports a silent steer as refused, so the message is not sent twice", async () => {
+    expect(await steerOutcome(never, async () => true, 10, 10)).toBe("landed");
+    expect(await steerOutcome(never, async () => false, 10, 10)).toBe("unconfirmed");
+    expect(await steerOutcome(never, async () => null, 10, 10)).toBe("unconfirmed");
+  });
+  it("takes a late answer", async () => {
+    const late = new Promise((resolve) => setTimeout(() => resolve({}), 15));
+    expect(await steerOutcome(late, async () => false, 10, 50)).toBe("landed");
+  });
 });

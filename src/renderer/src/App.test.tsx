@@ -2188,6 +2188,7 @@ describe("Sahkarmi connected desktop shell", () => {
         botId: "chief",
         text: "Run this Monday",
         attachmentDraftIds: [],
+        steer: true,
       }),
     );
     await waitFor(() => expect(composer).toHaveTextContent(""));
@@ -2276,6 +2277,7 @@ describe("Sahkarmi connected desktop shell", () => {
         text: "Yes, today please",
         attachmentDraftIds: [],
         replyToMessageId: "assistant-1",
+        steer: true,
       }),
     );
     await waitFor(() => expect(screen.queryByText("Replying to Agent")).not.toBeInTheDocument());
@@ -2720,6 +2722,7 @@ describe("Sahkarmi connected desktop shell", () => {
         botId: "chief",
         text: "",
         attachmentDraftIds: ["draft-1"],
+        steer: true,
       }),
     );
   });
