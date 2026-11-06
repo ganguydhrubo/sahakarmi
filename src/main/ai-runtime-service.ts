@@ -114,14 +114,40 @@ function versionParts(version: string): number[] {
     .map((part) => (Number.isFinite(part) ? part : 0));
 }
 
-const SUPPORTED_DIGESTS = new Set(["sha512", "sha384", "sha256", "sha1"]);
+/** Strongest first. sha1 is not accepted: a forged file with a matching sha1 is practical. */
+const SUPPORTED_DIGESTS = ["sha512", "sha384", "sha256"];
 
-/** The sha512 digest npm publishes for a tarball, as "sha512-<base64>". */
+/**
+ * The digest npm publishes for a tarball, as "sha512-<base64>". An SRI string may list several
+ * ("sha512-… sha1-…"); the strongest accepted one is used, and sha1 alone is refused.
+ */
 export function parseIntegrity(integrity: string): { algorithm: string; digest: Buffer } | null {
-  const match = /^([a-z0-9]+)-(.+)$/i.exec(integrity.trim());
-  if (!match?.[1] || !match[2]) return null;
-  if (!SUPPORTED_DIGESTS.has(match[1].toLowerCase())) return null;
-  return { algorithm: match[1].toLowerCase(), digest: Buffer.from(match[2], "base64") };
+  const candidates = integrity
+    .trim()
+    .split(/\s+/)
+    .map((part) => /^([a-z0-9]+)-([A-Za-z0-9+/=]+)$/i.exec(part))
+    .filter((match): match is RegExpExecArray => Boolean(match?.[1] && match[2]))
+    .map((match) => ({ algorithm: (match[1] ?? "").toLowerCase(), value: match[2] ?? "" }))
+    .filter((candidate) => SUPPORTED_DIGESTS.includes(candidate.algorithm))
+    .sort(
+      (a, b) => SUPPORTED_DIGESTS.indexOf(a.algorithm) - SUPPORTED_DIGESTS.indexOf(b.algorithm),
+    );
+  const best = candidates[0];
+  if (!best) return null;
+  return { algorithm: best.algorithm, digest: Buffer.from(best.value, "base64") };
+}
+
+/**
+ * Refuses a download npm gave no usable checksum for: missing, sha1 only, or malformed. Nothing
+ * is downloaded or run without one.
+ */
+export function requireStrongIntegrity(integrity: string | null, label: string): string {
+  if (!integrity || !parseIntegrity(integrity)) {
+    throw new Error(
+      `npm did not publish a sha512 or sha256 checksum for ${label}, so Sahkarmi did not download it. Try again later.`,
+    );
+  }
+  return integrity;
 }
 
 export function verifyFileIntegrity(filePath: string, integrity: string): boolean {
@@ -377,7 +403,8 @@ export class AiRuntimeService {
       await downloadFile(release.tarball, tarball, (percent) =>
         this.#setStatus({ phase: "updating", progress: percent }),
       );
-      if (release.integrity && !verifyFileIntegrity(tarball, release.integrity)) {
+      const integrity = requireStrongIntegrity(release.integrity, `OpenCode ${release.version}`);
+      if (!verifyFileIntegrity(tarball, integrity)) {
         throw new Error("The downloaded file did not match the checksum npm published.");
       }
       const extracted = join(work, "extracted");
@@ -450,9 +477,10 @@ export class AiRuntimeService {
     }
     const platformPackage = toolPlatformPackage(toolId, version, platform, arch);
     const release = await latestNpmRelease(platformPackage.name, platformPackage.version);
-    if (!release.tarball || !release.integrity) {
+    if (!release.tarball) {
       throw new Error(`npm did not publish ${tool.label} ${version} for ${platform}-${arch}.`);
     }
+    const integrity = requireStrongIntegrity(release.integrity, `${tool.label} ${version}`);
     this.#setStatus({
       phase: "updating",
       progress: 0,
@@ -465,7 +493,7 @@ export class AiRuntimeService {
       await downloadFile(release.tarball, tarball, (percent) =>
         this.#setStatus({ phase: "updating", progress: percent }),
       );
-      if (!verifyFileIntegrity(tarball, release.integrity)) {
+      if (!verifyFileIntegrity(tarball, integrity)) {
         throw new Error("The downloaded file did not match the checksum npm published.");
       }
       const extracted = join(work, "extracted");
