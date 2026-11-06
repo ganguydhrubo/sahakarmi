@@ -18,10 +18,13 @@ export const IPC_CHANNELS = {
   aiRuntimeEvent: "ai-runtime:event",
   maintenanceExportData: "maintenance:export-data",
   maintenanceExportDiagnostics: "maintenance:export-diagnostics",
+  maintenanceStorageUsage: "maintenance:storage-usage",
+  maintenanceStorageClean: "maintenance:storage-clean",
   agentGetStatus: "agent:get-status",
   agentGetUsage: "agent:get-usage",
   agentListModels: "agent:list-models",
   agentRefreshModels: "agent:refresh-models",
+  agentProbeProviders: "agent:probe-providers",
   agentListBots: "agent:list-bots",
   agentCreateBot: "agent:create-bot",
   agentUpdateBot: "agent:update-bot",
@@ -1358,6 +1361,13 @@ export interface ConversationSnapshot {
   revision: number;
   messages: ConversationMessage[];
   plan?: TurnPlan | null;
+  /** Older messages left out of this snapshot (the window shows the newest ones). */
+  earlierCount?: number;
+}
+
+export interface ReadConversationOptions {
+  /** Newest messages to include; the rest load with "Load earlier". */
+  limit?: number;
 }
 
 export interface SearchMessagesInput {
@@ -1573,6 +1583,21 @@ export type AgentEvent =
   | { type: "usage-changed"; usage: AccountUsage }
   | { type: "bots-changed"; bots: BotSummary[] }
   | { type: "conversation"; snapshot: ConversationSnapshot }
+  /**
+   * One message (or the plan) changed during a turn. Cheaper than a full snapshot on every tool
+   * step; the full snapshot still follows at the turn's end. `afterId` is the message just before
+   * it in the chat (null: first). A window that missed a change reads the chat again.
+   */
+  | {
+      type: "message-upsert";
+      botId: string;
+      threadId: string | null;
+      activeTurnId: string | null;
+      revision: number;
+      message?: ConversationMessage;
+      afterId?: string | null;
+      plan?: TurnPlan | null;
+    }
   | {
       type: "conversation-delta";
       botId: string;
@@ -1690,7 +1715,13 @@ export interface AgentDesktopApi {
   createBot: (workspaceId?: string) => Promise<BotSummary>;
   updateBot: (input: UpdateBotInput) => Promise<BotSummary>;
   deleteBot: (botId: string) => Promise<void>;
-  readConversation: (botId: string) => Promise<ConversationSnapshot>;
+  /** `limit`: only the newest messages (the snapshot's earlierCount says how many were left out). */
+  readConversation: (
+    botId: string,
+    options?: ReadConversationOptions,
+  ) => Promise<ConversationSnapshot>;
+  /** Checks every AI provider not checked yet (Settings > AI and models, setup). */
+  probeProviders: () => Promise<void>;
   searchMessages: (input: SearchMessagesInput) => Promise<MessageSearchHit[]>;
   chooseAttachments: () => Promise<DraftAttachment[]>;
   /** Imports in-memory files (voice notes) as draft attachments. */
@@ -1861,6 +1892,50 @@ export interface AiRuntimeDesktopApi {
 export interface MaintenanceDesktopApi {
   exportData: () => Promise<ExportResult>;
   exportDiagnostics: () => Promise<ExportResult>;
+  /** Settings > Storage: how much space each kind of data takes. */
+  storageUsage: () => Promise<StorageUsage>;
+  /** Removes only data that is safe to remove for that category (see StorageCleanInput). */
+  cleanStorage: (input: StorageCleanInput) => Promise<StorageCleanResult>;
+}
+
+export const STORAGE_CATEGORY_IDS = [
+  "browser",
+  "runtimes",
+  "accounts",
+  "attachments",
+  "knowledge",
+  "logs",
+  "mailboxArchive",
+] as const;
+export type StorageCategoryId = (typeof STORAGE_CATEGORY_IDS)[number];
+
+export interface StorageCategory {
+  id: StorageCategoryId;
+  bytes: number;
+  /** Too many files to count them all: the real size is at least `bytes`. */
+  partial: boolean;
+}
+
+export interface StorageUsage {
+  categories: StorageCategory[];
+  measuredAt: string;
+}
+
+/**
+ * browser: data of deleted coworkers; runtimes: AI tool versions no longer used; accounts:
+ * folders of removed Google accounts; attachments: files sent with messages older than
+ * `olderThanDays`; logs: older log files.
+ */
+export type StorageCleanInput =
+  | { category: "browser" | "runtimes" | "accounts" | "logs" }
+  | { category: "attachments"; olderThanDays: number };
+
+export interface StorageCleanResult {
+  removedItems: number;
+  /** Space freed (may be an estimate). */
+  bytes: number;
+  /** Items still in use; tried again at the next start. */
+  skipped: number;
 }
 
 export interface OrchestratorDesktopApi {

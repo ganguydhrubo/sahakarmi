@@ -1,5 +1,29 @@
-import { findAgentTemplate } from "../../shared/agent-catalog";
+import { createSignal } from "solid-js";
+import type { AgentTemplate } from "../../shared/agent-catalog/types";
 import type { BotProfile } from "./data";
+
+/**
+ * The Marketplace catalog (hundreds of coworkers) is loaded only when a coworker made from it
+ * is shown, not with the first screen. Until it arrives the role's prompts are shown.
+ */
+const [findTemplate, setFindTemplate] = createSignal<
+  ((id: string) => AgentTemplate | undefined) | null
+>(null);
+let catalogLoading = false;
+
+function templateFor(id: string): AgentTemplate | undefined {
+  const find = findTemplate();
+  if (find) return find(id);
+  if (!catalogLoading) {
+    catalogLoading = true;
+    void import("../../shared/agent-catalog")
+      .then((catalog) => setFindTemplate(() => catalog.findAgentTemplate))
+      .catch(() => {
+        catalogLoading = false;
+      });
+  }
+  return undefined;
+}
 
 /** First tasks for the built-in team, keyed by role. Plain business tasks, never jargon. */
 const BY_ROLE: Record<string, string[]> = {
@@ -57,7 +81,7 @@ const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 /** Three things the owner can ask this coworker straight away. */
 export function starterPrompts(bot: BotProfile | undefined): string[] {
   if (!bot) return GENERAL;
-  const template = bot.template ? findAgentTemplate(bot.template.id) : undefined;
+  const template = bot.template ? templateFor(bot.template.id) : undefined;
   if (template?.outputs.length) {
     return template.outputs
       .slice(0, 3)

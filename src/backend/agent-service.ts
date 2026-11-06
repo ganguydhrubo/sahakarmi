@@ -29,6 +29,7 @@ import type {
   PublishingAccount,
   QueuedMessageReceipt,
   QueueSnapshot,
+  ReadConversationOptions,
   RespondToPromptInput,
   RoutineCadence,
   RoutinesState,
@@ -118,11 +119,14 @@ import {
   messagesThrough,
 } from "./conversation-branch";
 import {
+  conversationFingerprint,
   mergeConversationSnapshots,
   newAssistantMessage,
   normalizeCompletionStatus,
+  sameMailboxMessage,
   snapshotFromThread,
   sortConversationMessages,
+  windowedSnapshot,
 } from "./conversation-snapshots";
 import {
   type CoworkerInstructions,
@@ -209,6 +213,8 @@ interface AgentServiceEvents {
   event: [event: AgentEvent];
   /** Timings and housekeeping for the app log; never shown to the owner. */
   log: [message: string];
+  /** A provider's program started and answered (its older downloaded copies can go). */
+  "runtime-started": [provider: AgentProvider, executable: string];
 }
 
 interface StartedClient {
@@ -259,6 +265,8 @@ const CONTEXT_COMPACTION_THRESHOLD = 0.8;
 const CONTEXT_COMPACTION_TIMEOUT_MS = 120_000;
 /** Recently finished turn ids, kept to ignore out-of-order start events and responses. */
 const MAX_REMEMBERED_FINISHED_TURNS = 500;
+/** One-shot fallback marks kept per session; older ones belong to long-finished deliveries. */
+const MAX_REMEMBERED_FALLBACKS = 500;
 /** AI programs checked at the same time while Sahkarmi starts. */
 const PARALLEL_PROVIDER_STARTS = 3;
 /** Opening a chat waits this long for its AI to connect, then shows the saved chat. */
@@ -429,7 +437,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #drainingBots = new Set<string>();
   readonly #scheduledDrains = new Set<string>();
   readonly #drainTasks = new Map<string, Promise<void>>();
+  /** A short fingerprint of each chat as last sent, so an unchanged chat is not sent again. */
   readonly #lastConversationSignatures = new Map<string, string>();
+  /** The thread each cached chat was last read from; a chat still listed here is served from memory. */
+  readonly #freshReads = new Map<string, string>();
+  /** How many of the newest messages the window shows per coworker ("Load earlier" grows it). */
+  readonly #chatWindows = new Map<string, number>();
+  /** Settings > Features: send one changed message per tool step instead of the whole chat. */
+  #deltaUpdates: () => boolean = () => true;
   readonly #finishedTurnIds = new Set<string>();
   /** When each coworker's current turn began: files changed after this are its deliverables. */
   readonly #turnStartedAt = new Map<string, number>();
@@ -486,6 +501,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   static UNUSED_PROVIDER_IDLE_MS = 60_000;
   readonly #quietWatches = new Map<AgentProvider, IdleWatch>();
   #preferredProvider: AgentProvider;
+  /** Providers the owner asked to check (Settings > AI and models, setup), besides the used ones. */
+  readonly #probedProviders = new Set<AgentProvider>();
+  /** Settings > Features: start only the AIs coworkers use (on by default). */
+  #lazyProviderStart: () => boolean = () => true;
+  #claudeIdleClose: () => boolean = () => true;
   #initialized = false;
   #stopping = false;
   #restartAttempts = 0;
@@ -580,7 +600,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   wakeIdleProviders(): void {
     if (!this.#initialized || this.#stopping) return;
     // Gemini only: its start takes up to a minute. The others start in seconds, when used.
-    if (this.#dormantClients.has("antigravity")) {
+    // Only when a coworker uses it: waking it cost six processes and ~700 MB for nobody.
+    if (
+      this.#dormantClients.has("antigravity") &&
+      (!this.#lazyProviderStart() || this.#providerInUse("antigravity"))
+    ) {
       void this.ensureProvider("antigravity").catch(() => undefined);
     }
   }
@@ -783,7 +807,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         ACP_AGENT_PROVIDERS.map((provider) => [provider, () => resolveAcpAgentCli(provider)]),
       ) as Record<AcpAgentProviderId, () => Promise<AcpCliInfo>>),
     };
-    for (const provider of AGENT_PROVIDERS) {
+    for (const provider of this.#lazyProviderStart() ? this.#wantedProviders() : AGENT_PROVIDERS) {
       if (this.#stopping) return;
       // Busy only matters for a running provider (a restart would cut its turns). One that is
       // not connected, e.g. signed out, has no turns: it was skipped whenever any coworker was
@@ -1830,6 +1854,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#snapshots.delete(botId);
     this.#deliverables.delete(botId);
     this.#saveDeliverablesSoon();
+    this.#freshReads.delete(botId);
+    this.#chatWindows.delete(botId);
     this.#lastConversationSignatures.delete(botId);
     this.#drainingBots.delete(botId);
     this.#scheduledDrains.delete(botId);
@@ -1873,8 +1899,85 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (this.#approvals) {
       this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
     }
-    await this.#connect("starting", AGENT_PROVIDERS);
+    const lazy = this.#lazyProviderStart();
+    const wanted = lazy ? this.#wantedProviders() : AGENT_PROVIDERS;
+    await this.#connect("starting", wanted);
+    if (lazy && this.#clients.size === 0 && !this.#stopping) {
+      // None of the AIs the team uses is installed or signed in: look for any AI that is, so a
+      // fresh install still lands on the first one available (the bundled free model).
+      for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
+      const rest = AGENT_PROVIDERS.filter((provider) => !wanted.includes(provider));
+      if (rest.length) await this.#connect("starting", rest);
+    }
     this.#modelRefresh.start();
+  }
+
+  /** Lets the app switch lazy AI start off (Settings > Features). */
+  configureLazyProviderStart(enabled: () => boolean): void {
+    this.#lazyProviderStart = enabled;
+  }
+
+  /** Lets the app switch closing idle Claude processes off (Settings > Features). */
+  configureClaudeIdleClose(enabled: () => boolean): void {
+    this.#claudeIdleClose = enabled;
+  }
+
+  /**
+   * A Claude conversation's process stays open while its coworker has work queued, an approval
+   * waiting, or a delivery starting (a question it asked is tracked by the client itself);
+   * otherwise it may close after 10 idle minutes.
+   */
+  #keepClaudeRuntime(threadId: string): boolean {
+    const botId = this.#threadToBot.get(threadId);
+    if (!botId) return false;
+    if (this.#mailbox.nextQueued(botId)) return true;
+    if (this.#mailbox.startingDeliveryForBot(botId)) return true;
+    return (this.#approvals?.list() ?? []).some(
+      (approval) => approval.botId === botId && approval.status === "pending",
+    );
+  }
+
+  /** A coworker is set to use this provider. */
+  #providerInUse(provider: AgentProvider): boolean {
+    return this.#store.list().some((bot) => providerForBot(bot) === provider);
+  }
+
+  /**
+   * The providers worth starting: those a coworker uses, the default one, any the owner asked
+   * to check, and any already running. Starting all of them (about 18) at every launch and
+   * stopping the unused ones a minute later was most of the start-up CPU and process churn.
+   */
+  #wantedProviders(): AgentProvider[] {
+    const used = new Set(this.#store.list().map(providerForBot));
+    return AGENT_PROVIDERS.filter(
+      (provider) =>
+        provider === this.#preferredProvider ||
+        used.has(provider) ||
+        this.#probedProviders.has(provider) ||
+        this.#clients.has(provider) ||
+        this.#dormantClients.has(provider),
+    );
+  }
+
+  /**
+   * Settings > AI and models (or setup) opened: check every provider not checked yet, so the
+   * list shows what is installed and signed in. Unused ones stop again after a minute.
+   */
+  async probeProviders(): Promise<void> {
+    if (!this.#initialized || this.#stopping) return;
+    const unchecked = AGENT_PROVIDERS.filter(
+      (provider) =>
+        !this.#probedProviders.has(provider) &&
+        !this.#clients.has(provider) &&
+        !this.#providerStarts.has(provider) &&
+        !this.#dormantClients.has(provider),
+    );
+    for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
+    const fresh = unchecked.filter((provider) =>
+      [null, "not-started"].includes(this.#providerState(provider)),
+    );
+    if (!fresh.length) return;
+    await this.#connect("starting", fresh);
   }
 
   async setPreferredProvider(provider: AgentProvider): Promise<void> {
@@ -1935,10 +2038,28 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#setStatus({ phase: "stopped", message: null });
   }
 
-  async readConversation(botId: string): Promise<ConversationSnapshot> {
+  /**
+   * The chat as the window shows it. With `limit`, only the newest messages are sent (the rest
+   * come with "Load earlier"), and later updates for this coworker keep that window.
+   */
+  async readConversation(
+    botId: string,
+    options?: ReadConversationOptions,
+  ): Promise<ConversationSnapshot> {
+    if (options?.limit) this.#chatWindows.set(botId, options.limit);
+    return windowedSnapshot(await this.#readConversationLive(botId), options?.limit);
+  }
+
+  /** Lets the app switch per-message chat updates off (Settings > Features). */
+  configureDeltaUpdates(enabled: () => boolean): void {
+    this.#deltaUpdates = enabled;
+  }
+
+  /** The live snapshot (not a copy): callers copy what they send. */
+  async #readConversationLive(botId: string): Promise<ConversationSnapshot> {
     const bot = await this.#store.getOrCreate(botId);
     const cached = this.#snapshots.get(botId);
-    if (cached?.activeTurnId) return structuredClone(cached);
+    if (cached?.activeTurnId) return cached;
     const revisionAtStart = cached?.revision ?? 0;
 
     const provider = providerForBot(bot);
@@ -1971,7 +2092,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     if (!bot.threadId || !client || this.#status.phase !== "ready") {
       const snapshot = this.#ensureSnapshot(botId, bot.threadId);
       this.#syncMailboxMessages(snapshot);
-      return structuredClone(snapshot);
+      return snapshot;
+    }
+    // Read from the AI's own history once; after that every change reaches this snapshot as an
+    // event, so opening the chat again needs no re-read (Claude parsed the whole file each time).
+    if (
+      cached &&
+      this.#deltaUpdates() &&
+      this.#freshReads.get(botId) === bot.threadId &&
+      cached.threadId === bot.threadId
+    ) {
+      this.#syncMailboxMessages(cached);
+      return cached;
     }
 
     try {
@@ -1996,12 +2128,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#syncMailboxMessages(snapshot);
       this.#snapshots.set(botId, snapshot);
       this.#threadToBot.set(bot.threadId, botId);
-      return structuredClone(snapshot);
+      if (!snapshot.activeTurnId) this.#freshReads.set(botId, bot.threadId);
+      return snapshot;
     } catch (error) {
       this.#emitError("thread_read_failed", error, botId);
       const snapshot = this.#ensureSnapshot(botId, bot.threadId);
       this.#syncMailboxMessages(snapshot);
-      return structuredClone(snapshot);
+      return snapshot;
     }
   }
 
@@ -2620,6 +2753,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#cli.set(provider, cli);
       this.#clients.set(provider, client);
       this.#dormantClients.delete(provider);
+      this.emit("runtime-started", provider, cli.executable);
+      // A reconnected AI may have a different history than the cached chats show.
+      for (const bot of this.#store.list()) {
+        if (providerForBot(bot) === provider) this.#freshReads.delete(bot.id);
+      }
       this.#accounts.set(provider, account.account);
       this.#touchProvider(provider);
       if (provider === "antigravity") {
@@ -2652,7 +2790,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       client = new CodexAppServerClient(cli.executable, this.#requestTimeoutMs);
     } else if (provider === "claude") {
       cli = await resolveClaudeCli();
-      client = new ClaudeAgentClient(cli);
+      client = new ClaudeAgentClient(cli, undefined, {
+        catalogCachePath: join(this.#store.userDataPath, "claude-models.json"),
+        keepRuntime: (threadId) => this.#keepClaudeRuntime(threadId),
+        idleClose: () => this.#claudeIdleClose(),
+      });
     } else if (provider === "antigravity") {
       const antigravity = await resolveAntigravityCli();
       cli = antigravity;
@@ -4581,28 +4723,39 @@ ${carryOver}`
     };
   }
 
-  #syncMailboxMessages(snapshot: ConversationSnapshot): void {
+  /** Brings the coworker's mailbox messages into its chat; true when anything changed. */
+  #syncMailboxMessages(snapshot: ConversationSnapshot): boolean {
+    let changed = false;
     const indexes = new Map(snapshot.messages.map((message, index) => [message.id, index]));
     for (const mailboxMessage of this.#mailbox.conversationMessages(snapshot.botId)) {
       const index = indexes.get(mailboxMessage.id);
-      if (index !== undefined) snapshot.messages[index] = mailboxMessage;
-      else {
+      if (index !== undefined) {
+        // Mailbox messages are short notes, so comparing them is cheap (unlike the whole chat).
+        if (!changed && !sameMailboxMessage(snapshot.messages[index], mailboxMessage)) {
+          changed = true;
+        }
+        snapshot.messages[index] = mailboxMessage;
+      } else {
         indexes.set(mailboxMessage.id, snapshot.messages.length);
         snapshot.messages.push(mailboxMessage);
+        changed = true;
       }
     }
     const reactions = this.#mailbox.reactionsFor(snapshot.botId);
     for (const message of snapshot.messages) {
-      message.reaction = reactions.get(message.id) ?? null;
+      const reaction = reactions.get(message.id) ?? null;
+      if ((message.reaction ?? null) !== reaction) changed = true;
+      message.reaction = reaction;
     }
     sortConversationMessages(snapshot.messages);
-    this.#applyDeliverables(snapshot);
+    if (this.#applyDeliverables(snapshot)) changed = true;
+    return changed;
   }
 
   /** Puts each turn's saved files on that turn's reply (a thread re-read drops in-memory fields). */
-  #applyDeliverables(snapshot: ConversationSnapshot): void {
+  #applyDeliverables(snapshot: ConversationSnapshot): boolean {
     const byTurn = this.#deliverables.get(snapshot.botId);
-    if (!byTurn) return;
+    if (!byTurn) return false;
     let changed = false;
     for (const [turnId, items] of Object.entries(byTurn)) {
       if (!items.length) continue;
@@ -4632,6 +4785,7 @@ ${carryOver}`
       }
     }
     if (changed) sortConversationMessages(snapshot.messages);
+    return changed;
   }
 
   #deliverablesPath(): string {
@@ -4687,8 +4841,7 @@ ${carryOver}`
     for (const affectedBotId of affectedBots) {
       const snapshot = this.#snapshots.get(affectedBotId);
       if (!snapshot) continue;
-      this.#syncMailboxMessages(snapshot);
-      this.#emitConversation(snapshot);
+      if (this.#syncMailboxMessages(snapshot)) this.#emitConversation(snapshot);
     }
   }
 
@@ -4837,7 +4990,7 @@ ${carryOver}`
             return text ? [{ text, status: planStepStatus(getString(entry, "status")) }] : [];
           }),
         };
-        this.#emitConversation(snapshot);
+        this.#emitUpsert(snapshot, null);
         return;
       }
       case "item/agentMessage/delta": {
@@ -4985,6 +5138,7 @@ ${carryOver}`
       if (this.#itemTurns.get(message.id) !== turnId || message.status !== "streaming") continue;
       message.status = normalizeCompletionStatus(status);
     }
+    this.#forgetTurn(botId, turnId);
     const delivery =
       this.#mailbox.findDeliveryByTurn(turnId) ?? this.#mailbox.startingDeliveryForBot(botId);
     const latestAssistant = [...snapshot.messages]
@@ -5019,7 +5173,7 @@ ${carryOver}`
         await this.#relayAgentResult(botId, turnId, delivery, replyText);
       }
     }
-    this.#attachDeliverables(botId, snapshot, turnId, latestAssistant);
+    await this.#attachDeliverables(botId, snapshot, turnId, latestAssistant);
     if (latestAssistant) {
       if (status === "completed") this.#geminiRotation?.forget(botId);
       await this.#store.updatePreview(botId, previewText(latestAssistant.text));
@@ -5404,7 +5558,7 @@ ${carryOver}`
       message.tool = tool;
       message.status = tool.status === "running" ? "streaming" : "completed";
       this.#itemTurns.set(item.id, turnId);
-      this.#emitConversation(snapshot);
+      this.#emitUpsert(snapshot, message);
       return;
     }
     if (item.type !== "agentMessage" || typeof item.id !== "string") return;
@@ -5418,7 +5572,7 @@ ${carryOver}`
     if (typeof item.phase === "string") message.itemType = item.phase;
     message.status = completed ? "completed" : "streaming";
     this.#itemTurns.set(item.id, turnId);
-    this.#emitConversation(snapshot);
+    this.#emitUpsert(snapshot, message);
   }
 
   #surfacePrompt(client: AgentClient, request: AppServerRequest): void {
@@ -5567,12 +5721,7 @@ ${carryOver}`
 
   #emitConversation(snapshot: ConversationSnapshot): void {
     sortConversationMessages(snapshot.messages);
-    const signature = JSON.stringify({
-      threadId: snapshot.threadId,
-      activeTurnId: snapshot.activeTurnId,
-      messages: snapshot.messages,
-      plan: snapshot.plan,
-    });
+    const signature = conversationFingerprint(snapshot);
     if (this.#lastConversationSignatures.get(snapshot.botId) === signature) return;
     this.#lastConversationSignatures.set(snapshot.botId, signature);
     // This snapshot already holds every streamed token so far. Sending the batched deltas after
@@ -5581,7 +5730,62 @@ ${carryOver}`
       if (pending.botId === snapshot.botId) this.#pendingDeltas.delete(key);
     }
     snapshot.revision += 1;
-    this.#emit({ type: "conversation", snapshot: structuredClone(snapshot) });
+    this.#emit({
+      type: "conversation",
+      snapshot: windowedSnapshot(snapshot, this.#chatWindows.get(snapshot.botId)),
+    });
+  }
+
+  /**
+   * One message (or, with `message` null, the plan) changed mid-turn: send only that instead of
+   * sorting, copying and sending the whole chat on every tool step. The full snapshot still goes
+   * out when the turn ends, so the window can never drift for long.
+   */
+  #emitUpsert(snapshot: ConversationSnapshot, message: ConversationMessage | null): void {
+    if (!this.#deltaUpdates()) {
+      this.#emitConversation(snapshot);
+      return;
+    }
+    let afterId: string | null = null;
+    if (message) {
+      sortConversationMessages(snapshot.messages);
+      const index = snapshot.messages.indexOf(message);
+      afterId = index > 0 ? snapshot.messages[index - 1].id : null;
+    }
+    // Tokens still batched for this message are in its text already; those of other messages
+    // go first, so the window applies them before this newer revision.
+    for (const [key, pending] of this.#pendingDeltas) {
+      if (pending.botId !== snapshot.botId) continue;
+      if (message && pending.messageId === message.id) this.#pendingDeltas.delete(key);
+      else this.#flushDeltas(key);
+    }
+    snapshot.revision += 1;
+    // The next full snapshot must go out even if it matches the one sent before this change.
+    this.#lastConversationSignatures.delete(snapshot.botId);
+    this.#emit({
+      type: "message-upsert",
+      botId: snapshot.botId,
+      threadId: snapshot.threadId,
+      activeTurnId: snapshot.activeTurnId,
+      revision: snapshot.revision,
+      ...(message
+        ? { message: structuredClone(message), afterId }
+        : { plan: structuredClone(snapshot.plan ?? null) }),
+    });
+  }
+
+  /** A finished turn's bookkeeping: item ids, and old one-shot fallback marks. */
+  #forgetTurn(botId: string, turnId: string): void {
+    for (const [itemId, owner] of this.#itemTurns) {
+      if (owner === turnId) this.#itemTurns.delete(itemId);
+    }
+    // The chat changed outside what events report (deliverables, compaction): read it again next time.
+    this.#freshReads.delete(botId);
+    while (this.#fallbackRetried.size > MAX_REMEMBERED_FALLBACKS) {
+      const oldest = this.#fallbackRetried.values().next().value;
+      if (oldest === undefined) break;
+      this.#fallbackRetried.delete(oldest);
+    }
   }
 
   /**
@@ -5589,12 +5793,12 @@ ${carryOver}`
    * folder) are shown under its reply: an image a coworker made belongs in the chat, not only in
    * a folder view.
    */
-  #attachDeliverables(
+  async #attachDeliverables(
     botId: string,
     snapshot: ConversationSnapshot,
     turnId: string,
     latestAssistant: ConversationMessage | undefined,
-  ): void {
+  ): Promise<void> {
     const since = this.#turnStartedAt.get(botId);
     this.#turnStartedAt.delete(botId);
     if (since === undefined) return;
@@ -5602,7 +5806,7 @@ ${carryOver}`
     if (!bot) return;
     let files: string[] = [];
     try {
-      files = deliverableFiles({
+      files = await deliverableFiles({
         roots: [bot.workspacePath, this.#store.sharedRoot],
         excludeRoots: [join(this.#store.sharedRoot, "Transfers")],
         since,
@@ -5611,7 +5815,7 @@ ${carryOver}`
       return;
     }
     if (files.length === 0) return;
-    const attachments = files.map(localAttachmentSummary);
+    const attachments = await Promise.all(files.map((path) => localAttachmentSummary(path)));
     const seen = new Set(
       snapshot.messages.flatMap((message) => (message.attachments ?? []).map((item) => item.id)),
     );

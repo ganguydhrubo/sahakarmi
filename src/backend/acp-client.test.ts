@@ -305,6 +305,8 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
       const events: Array<{ type: string; code?: string; message?: string }> = [];
       service.on("event", (event) => events.push(event as { type: string; code?: string }));
       await service.initialize();
+      // No coworker uses Gemini, so it is checked only once the owner opens Settings > AI.
+      await service.probeProviders();
       await waitFor(
         () =>
           service?.getStatus().providers?.find((provider) => provider.id === "antigravity")
@@ -567,6 +569,10 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     process.env.SAHKARMI_FAKE_SLOW_INIT_MS = "1500";
     const store = new BotStore(join(root, "user-data"), join(root, "home"));
     const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    // A coworker uses Gemini, so Google's server starts with the app.
+    await store.initialize();
+    await store.getOrCreate("meera-support");
+    await store.updateBot({ botId: "meera-support", model: "antigravity-default" });
     service = newService(store, mailbox);
     // OpenCode's state at the moment Gemini first showed as connected.
     let openCodeWhenGeminiReady: string | null | undefined;
@@ -705,6 +711,32 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     );
     await service.sendMessage({ botId: "meera-support", text: "Hello again" });
     await waitFor(async () => (await answers("meera-support")) === 2);
+  });
+
+  it("wakes a sleeping Gemini on window focus only while a coworker uses it", async () => {
+    process.env.SAHKARMI_GEMINI_IDLE_MS = "300";
+    const store = new BotStore(join(root, "user-data"), join(root, "home"));
+    const mailbox = new MailboxStore(join(root, "user-data"), store.sharedRoot);
+    service = newService(store, mailbox);
+    await service.initialize();
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    await service.sendMessage({ botId: "meera-support", text: "Hello" });
+    await waitFor(async () => (await answers("meera-support")) === 1);
+    // Nobody uses Gemini any more; once it is asleep, focusing the window must not start it.
+    await service.updateBot({ botId: "meera-support", model: "opencode-free" });
+    await waitFor(
+      async () =>
+        (await antigravityEntries("stdin-closed")) >= 1 &&
+        (await antigravityEntries("stdin-closed")) === (await antigravityEntries("started")),
+    );
+    const asleep = await antigravityEntries("started");
+    service.wakeIdleProviders();
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(await antigravityEntries("started")).toBe(asleep);
+    // A coworker on Gemini again: focus wakes it, so its next message needs no minute-long start.
+    await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
+    service.wakeIdleProviders();
+    await waitFor(async () => (await antigravityEntries("started")) === asleep + 1);
   });
 });
 
