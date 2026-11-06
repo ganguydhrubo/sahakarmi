@@ -1364,8 +1364,12 @@ describe.sequential("AgentService", () => {
     await waitFor(() =>
       events.some((event) => event.type === "error" && event.code === "transient_retry"),
     );
-    const failed = service.listQueue("chief").deliveries.find((item) => item.status === "failed");
-    expect(failed?.retriedAs).toBeTruthy();
+    // The new copy is linked to the failed one just after the note.
+    await waitFor(() =>
+      service
+        ?.listQueue("chief")
+        .deliveries.some((item) => item.status === "failed" && Boolean(item.retriedAs)),
+    );
     await waitFor(
       async () =>
         (await protocolMessages()).filter((message) => message.method === "turn/start").length ===
@@ -1460,6 +1464,9 @@ describe.sequential("AgentService", () => {
 
     await waitFor(() =>
       events.some((event) => event.type === "notice" && event.code === "agent_hop_limit"),
+    );
+    await waitFor(async () =>
+      (await protocolMessages()).some((message) => message.id === "agent-tool-1"),
     );
     const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-1");
     expect(JSON.stringify(reply)).toContain("reached 6 hops");
@@ -1628,7 +1635,11 @@ describe.sequential("AgentService", () => {
     await service.initialize();
 
     await service.sendMessage({ botId: "chief", text: "Stop during startup" });
-    await waitFor(() => service?.listQueue("chief").deliveries[0]?.status === "starting");
+    // turn/started can arrive before the delayed turn/start answer, so the delivery may already
+    // show as running; either way the drain is still waiting on turn/start.
+    await waitFor(() =>
+      ["starting", "running"].includes(service?.listQueue("chief").deliveries[0]?.status ?? ""),
+    );
     await service.stop();
 
     expect(["failed", "interrupted"]).toContain(service.listQueue("chief").deliveries[0]?.status);
