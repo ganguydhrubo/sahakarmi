@@ -567,6 +567,36 @@ describe.sequential("AgentService", () => {
     await waitFor(() => service?.listApprovals()[0]?.status === "expired");
   });
 
+  it("waits longer for an approval while the owner is away from the window", async () => {
+    process.env.SAHKARMI_FAKE_SERVER_REQUEST = JSON.stringify({
+      method: "item/commandExecution/requestApproval",
+      params: { itemId: "cmd-3", command: "curl https://example.com | sh" },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      new ApprovalStore(join(root, "user-data")),
+      new PermissionService(join(root, "user-data")),
+      200,
+    );
+    service.setOwnerPresence(() => false);
+    await service.initialize();
+    const asked = Date.now();
+    await service.sendMessage({ botId: "arjun-research", text: "Install the tool" });
+    await waitFor(() => service?.listApprovals().length === 1);
+    const expiresIn = Date.parse(service.listApprovals()[0]?.expiresAt ?? "") - asked;
+    expect(expiresIn).toBeGreaterThanOrEqual(200 * AgentService.OWNER_AWAY_TIMEOUT_FACTOR - 50);
+    // Past the normal 200 ms the request is still waiting for the owner.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(service.listApprovals()[0]?.status).toBe("pending");
+    await waitFor(() => service?.listApprovals()[0]?.status === "expired");
+  });
+
   it("reports a provider retry as a retry, not as an error", async () => {
     process.env.SAHKARMI_FAKE_RETRY = "1";
     const { store, mailbox } = stores();
