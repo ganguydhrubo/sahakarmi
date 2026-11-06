@@ -204,6 +204,24 @@ function sharedLine(request: PermissionRequest, files: string[]): string | null 
     : null;
 }
 
+/**
+ * How many separate commands a shell line holds (`a && b`, `a; b`, `a | b`, one per line),
+ * ignoring separators inside quotes. A plain card must say when a command does more than one.
+ */
+export function commandCount(command: string): number {
+  const unquoted = command.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
+  return unquoted.split(/&&|\|\||[;&|\r\n]/).filter((part) => part.trim() !== "").length;
+}
+
+function chainedLine(request: PermissionRequest): string | null {
+  if (request.category !== "shell") return null;
+  const count = commandCount(request.detail || request.action || "");
+  if (count < 2) return null;
+  return count === 2
+    ? "Note: this also runs a second command. Open the technical details to see both."
+    : `Note: this runs ${count} commands one after another. Open the technical details to see each one.`;
+}
+
 function whyLine(request: PermissionRequest, ownerAsked: string | null): string {
   if (request.reason?.trim()) return `Why: ${redact(request.reason, 300)}`;
   if (ownerAsked?.trim()) {
@@ -229,6 +247,7 @@ export function describePermissionRequest(
       ? "If you approve: a copy of the file leaves your computer and goes to that website."
       : `If you approve: ${IF_APPROVED[request.category] ?? "it will go ahead with this."}`,
     sharedLine(request, files),
+    chainedLine(request),
     `Nothing happens until you choose. If you reject, ${botName} will not do this.`,
   ];
   return {
