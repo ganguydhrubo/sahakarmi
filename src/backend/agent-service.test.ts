@@ -1013,6 +1013,127 @@ describe.sequential("AgentService", () => {
     expect(payload.results[0]?.excerpt).toContain("GSTR-1 for March");
   });
 
+  it("recalls a chat from the index without reading a sleeping coworker's transcript", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "search_past_chats",
+      arguments: { query: "supplier Ravi" },
+    });
+    const { store, mailbox } = stores();
+    // A chat indexed in an earlier session: its coworker is not loaded now.
+    const seed = new AgentService(store, mailbox, fakeBrowser());
+    await seed.memoryStore.recordMessages([
+      {
+        messageId: "asha-accounts:old-1",
+        botId: "asha-accounts",
+        author: "agent",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        text: "Paid the supplier Ravi 12,000 rupees on Monday.",
+      },
+    ]);
+    seed.memoryStore.close();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "What did we pay?" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    const payload = JSON.parse(
+      (reply?.result as { contentItems?: Array<{ text: string }> } | undefined)?.contentItems?.[0]
+        ?.text ?? "{}",
+    ) as { count: number; results: Array<{ excerpt: string; author: string }> };
+    expect(payload.count).toBe(1);
+    expect(payload.results[0]?.excerpt).toContain("supplier Ravi");
+  });
+
+  it("saves team memory in the coworker's own workspace and adds related notes to the owner's message", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "save_memory",
+      arguments: { key: "Supplier", content: "Ravi Traders supplies the tea", category: "fact" },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    const asha = store.list().find((bot) => bot.id === "asha-accounts");
+    const workspaceId = asha?.workspaceId ?? "";
+    await service.memoryStore.save({
+      workspaceId: "someone-elses-shop",
+      key: "Supplier",
+      content: "Mina Exports supplies the tea",
+    });
+    await service.memoryStore.save({
+      workspaceId,
+      key: "Tea supplier payment terms",
+      content: "The tea supplier is paid in 30 days",
+    });
+    await service.sendMessage({ botId: "asha-accounts", text: "Who is our tea supplier?" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const turnStart = (await protocolMessages()).find((message) => message.method === "turn/start");
+    const prompt = JSON.stringify(turnStart);
+    expect(prompt).toContain("<team_memory>");
+    expect(prompt).toContain("The tea supplier is paid in 30 days");
+    expect(prompt).not.toContain("Mina Exports");
+
+    const mine = await service.memoryStore.list(workspaceId);
+    expect(mine.memories.map((memory) => memory.key).sort()).toEqual([
+      "Supplier",
+      "Tea supplier payment terms",
+    ]);
+    expect((await service.memoryStore.list("someone-elses-shop")).total).toBe(1);
+  });
+
+  it("leaves team memory out of the message when memory-auto-context is off", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "ok";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.configureMemory(() => false);
+    await service.initialize();
+    const workspaceId = store.list().find((bot) => bot.id === "asha-accounts")?.workspaceId ?? "";
+    await service.memoryStore.save({ workspaceId, key: "Tea supplier", content: "Ravi Traders" });
+    await service.sendMessage({ botId: "asha-accounts", text: "Who is the tea supplier?" });
+    await waitFor(async () =>
+      (await protocolMessages()).some((message) => message.method === "turn/start"),
+    );
+    const turnStart = (await protocolMessages()).find((message) => message.method === "turn/start");
+    expect(JSON.stringify(turnStart)).not.toContain("<team_memory>");
+  });
+
+  it("refuses knowledge tools while the Knowledge Bases feature is off", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+      namespace: "sahkarmi",
+      tool: "search_knowledge_base",
+      arguments: { query: "notice period" },
+    });
+    const { store, mailbox } = stores();
+    const knowledge = new KnowledgeService(join(root, "user-data"));
+    await knowledge.initialize();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.attachKnowledge(
+      knowledge,
+      () => false,
+      () => false,
+    );
+    await service.initialize();
+    await service.sendMessage({ botId: "asha-accounts", text: "Check the HR rules" });
+    await waitFor(async () =>
+      (await protocolMessages()).some(
+        (message) => message.id === "agent-tool-custom" && message.result,
+      ),
+    );
+    const reply = (await protocolMessages()).find((message) => message.id === "agent-tool-custom");
+    expect(reply?.result).toMatchObject({ success: false });
+    expect(JSON.stringify(reply?.result)).toContain("switched Knowledge Bases off");
+    knowledge.close();
+  });
+
   it("lets a coworker search the owner's knowledge base and get cited excerpts", async () => {
     process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
       namespace: "sahkarmi",

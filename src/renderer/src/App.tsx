@@ -1387,7 +1387,7 @@ export function App() {
                   <OrchestratorView bots={workspaceBots()} onOpenCoworker={selectBot} />
                 </Match>
                 <Match when={view() === "memory"}>
-                  <MemoryView />
+                  <MemoryView workspaceId={workspaces().activeWorkspaceId} bots={botList()} />
                 </Match>
                 <Match when={view() === "knowledge"}>
                   <KnowledgeView workspaceId={workspaces().activeWorkspaceId} bots={botList()} />

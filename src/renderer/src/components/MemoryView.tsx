@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import type { AgentMemory } from "../../../shared/ipc";
 import { t } from "../i18n";
 import { speechLocale } from "../preferences";
@@ -47,9 +47,18 @@ function formatUpdated(value: string): string {
   }).format(date);
 }
 
-export function MemoryView() {
+/** Memories shown at first and added by each "Show more". */
+const PAGE = 100;
+
+export function MemoryView(props: {
+  workspaceId: string;
+  bots?: Array<{ id: string; name: string }>;
+}) {
   const [memories, setMemories] = createSignal<AgentMemory[]>([]);
+  const [total, setTotal] = createSignal(0);
+  const [shown, setShown] = createSignal(PAGE);
   const [searchQuery, setSearchQuery] = createSignal("");
+  const [editingId, setEditingId] = createSignal<string | null>(null);
   const [selectedKind, setSelectedKind] = createSignal<"all" | MemoryKind>("all");
   const [showAddModal, setShowAddModal] = createSignal(false);
   const [error, setError] = createSignal("");
@@ -68,15 +77,45 @@ export function MemoryView() {
     });
   const countFor = (kind: "all" | MemoryKind) =>
     kind === "all" ? memories().length : memories().filter((m) => m.category === kind).length;
+  const authorName = (botId: string | undefined) =>
+    botId ? props.bots?.find((bot) => bot.id === botId)?.name : undefined;
   let opener: HTMLButtonElement | undefined;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let loadId = 0;
 
+  /** This workspace's memories: the newest page, or the best matches for the search box. */
   const loadMemories = async () => {
+    const id = ++loadId;
     try {
-      if (!window.sahkarmi?.memory) return;
-      setMemories(await window.sahkarmi.memory.list());
+      if (!window.sahkarmi?.memory || !props.workspaceId) return;
+      const result = await window.sahkarmi.memory.list({
+        workspaceId: props.workspaceId,
+        query: searchQuery().trim() || undefined,
+        limit: shown(),
+      });
+      if (id !== loadId) return;
+      setMemories(result.memories);
+      setTotal(result.total);
     } catch (err) {
       console.error("Failed to load memories:", err);
     }
+  };
+
+  createEffect(
+    on(
+      () => props.workspaceId,
+      () => {
+        setShown(PAGE);
+        void loadMemories();
+      },
+      { defer: true },
+    ),
+  );
+
+  const onSearch = (value: string) => {
+    setSearchQuery(value);
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void loadMemories(), 200);
   };
 
   onMount(() => {
@@ -88,24 +127,39 @@ export function MemoryView() {
       }
     };
     window.addEventListener("keydown", onKey);
-    onCleanup(() => window.removeEventListener("keydown", onKey));
+    onCleanup(() => {
+      window.removeEventListener("keydown", onKey);
+      if (searchTimer) clearTimeout(searchTimer);
+    });
   });
 
-  const filteredMemories = () => {
-    const q = searchQuery().toLowerCase().trim();
-    return memories().filter((m) => {
-      const matchesKind = selectedKind() === "all" || m.category === selectedKind();
-      const matchesQuery =
-        !q ||
-        m.key.toLowerCase().includes(q) ||
-        m.content.toLowerCase().includes(q) ||
-        m.tags.some((tag) => tag.toLowerCase().includes(q));
-      return matchesKind && matchesQuery;
-    });
+  // The search runs in the memory database (word forms match); the kind filter is local.
+  const filteredMemories = () =>
+    memories().filter((m) => selectedKind() === "all" || m.category === selectedKind());
+
+  const openNew = () => {
+    setEditingId(null);
+    setNewKey("");
+    setNewContent("");
+    setNewKind("fact");
+    setNewTags("");
+    setShowAddModal(true);
+  };
+
+  const openEdit = (memory: AgentMemory) => {
+    setEditingId(memory.id);
+    setNewKey(readableText(memory.key));
+    setNewContent(readableText(memory.content));
+    setNewKind(
+      (KINDS as string[]).includes(memory.category) ? (memory.category as MemoryKind) : "fact",
+    );
+    setNewTags(memory.tags.join(", "));
+    setShowAddModal(true);
   };
 
   const closeDialog = () => {
     setShowAddModal(false);
+    setEditingId(null);
     setError("");
     opener?.focus();
   };
@@ -117,15 +171,22 @@ export function MemoryView() {
       return;
     }
     if (!window.sahkarmi?.memory) return;
-    await window.sahkarmi.memory.save({
-      key: newKey().trim(),
-      content: newContent().trim(),
-      category: newKind(),
-      tags: newTags()
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-    });
+    try {
+      await window.sahkarmi.memory.save({
+        workspaceId: props.workspaceId,
+        id: editingId() ?? undefined,
+        key: newKey().trim(),
+        content: newContent().trim(),
+        category: newKind(),
+        tags: newTags()
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      });
+    } catch (err) {
+      setError(t("memorySaveFailed", { error: err instanceof Error ? err.message : String(err) }));
+      return;
+    }
     setNewKey("");
     setNewContent("");
     setNewTags("");
@@ -136,7 +197,13 @@ export function MemoryView() {
   const handleDelete = async (memory: AgentMemory) => {
     if (!window.sahkarmi?.memory) return;
     if (!window.confirm(t("memoryDeleteConfirm", { name: readableText(memory.key) }))) return;
-    await window.sahkarmi.memory.delete(memory.id);
+    try {
+      await window.sahkarmi.memory.delete(memory.id, props.workspaceId);
+    } catch (err) {
+      window.alert(
+        t("memoryDeleteFailed", { error: err instanceof Error ? err.message : String(err) }),
+      );
+    }
     await loadMemories();
   };
 
@@ -144,7 +211,7 @@ export function MemoryView() {
     <section class="center-view memory-view" aria-labelledby="memory-heading">
       <header class="center-view-header window-drag">
         <h1 id="memory-heading">{t("memoryTitle")}</h1>
-        <span class="center-view-badge">{memories().length}</span>
+        <span class="center-view-badge">{searchQuery().trim() ? memories().length : total()}</span>
         <div class="memory-header-actions no-drag">
           <input
             type="search"
@@ -152,14 +219,9 @@ export function MemoryView() {
             placeholder={t("memorySearch")}
             aria-label={t("memorySearch")}
             value={searchQuery()}
-            onInput={(event) => setSearchQuery(event.currentTarget.value)}
+            onInput={(event) => onSearch(event.currentTarget.value)}
           />
-          <button
-            ref={opener}
-            type="button"
-            class="button-primary"
-            onClick={() => setShowAddModal(true)}
-          >
+          <button ref={opener} type="button" class="button-primary" onClick={openNew}>
             {t("memoryAdd")}
           </button>
         </div>
@@ -167,6 +229,7 @@ export function MemoryView() {
 
       <div class="center-view-body">
         <p class="center-view-intro">{t("memorySubtitle")}</p>
+        <p class="center-view-intro">{t("memoryScopeNote")}</p>
         <fieldset class="memory-filters">
           <legend class="sr-only">{t("memoryKind")}</legend>
           <For each={["all", ...KINDS] as const}>
@@ -186,7 +249,11 @@ export function MemoryView() {
 
         <Show
           when={filteredMemories().length > 0}
-          fallback={<p class="center-view-empty">{t("memoryEmpty")}</p>}
+          fallback={
+            <p class="center-view-empty">
+              {searchQuery().trim() ? t("memoryNoMatch") : t("memoryEmpty")}
+            </p>
+          }
         >
           <ul class="memory-grid">
             <For each={filteredMemories()}>
@@ -228,6 +295,16 @@ export function MemoryView() {
                       <time class="memory-updated" dateTime={memory.updatedAt}>
                         {formatUpdated(memory.updatedAt)}
                       </time>
+                      <Show when={authorName(memory.authorBotId)}>
+                        {(name) => (
+                          <span class="memory-updated">
+                            {t("memoryByCoworker", { name: name() })}
+                          </span>
+                        )}
+                      </Show>
+                      <button type="button" class="memory-more" onClick={() => openEdit(memory)}>
+                        {t("memoryEdit")}
+                      </button>
                       <button
                         type="button"
                         class="button-danger-quiet memory-delete"
@@ -241,6 +318,21 @@ export function MemoryView() {
               }}
             </For>
           </ul>
+          <Show when={!searchQuery().trim() && total() > memories().length}>
+            <p class="center-view-intro">
+              {t("memoryShowing", { shown: String(memories().length), total: String(total()) })}{" "}
+              <button
+                type="button"
+                class="memory-more"
+                onClick={() => {
+                  setShown((count) => count + PAGE);
+                  void loadMemories();
+                }}
+              >
+                {t("memoryLoadMore")}
+              </button>
+            </p>
+          </Show>
         </Show>
       </div>
 
@@ -263,7 +355,9 @@ export function MemoryView() {
               }
             }}
           >
-            <h2 id="memory-dialog-title">{t("memoryNewTitle")}</h2>
+            <h2 id="memory-dialog-title">
+              {editingId() ? t("memoryEditTitle") : t("memoryNewTitle")}
+            </h2>
             <label class="memory-field">
               <span>{t("memoryName")}</span>
               <input

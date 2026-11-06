@@ -34,16 +34,18 @@ describe("MemoryView", () => {
       configurable: true,
       value: {
         memory: {
-          list: vi
-            .fn()
-            .mockResolvedValue([
+          list: vi.fn().mockResolvedValue({
+            memories: [
               memory({}),
               memory({ id: "m2", category: "decision", key: "Social schedule", content: LONG }),
-            ]),
+            ],
+            total: 2,
+            offset: 0,
+          }),
         },
       },
     });
-    render(() => <MemoryView />);
+    render(() => <MemoryView workspaceId="shop" />);
 
     expect(
       await screen.findByRole("heading", { name: "Dhrubo LinkedIn Day 19 Completion & Status" }),
@@ -63,5 +65,47 @@ describe("MemoryView", () => {
 
     expect(screen.getByRole("button", { name: /^All/ })).toHaveTextContent("2");
     expect(screen.getByRole("button", { name: /^Decision/ })).toHaveTextContent("1");
+  });
+
+  it("lists, searches, edits and deletes only the active workspace's memories", async () => {
+    const list = vi.fn().mockResolvedValue({
+      memories: [memory({ id: "m1", key: "Supplier", content: "Ravi", authorBotId: "asha" })],
+      total: 1,
+      offset: 0,
+    });
+    const save = vi.fn().mockResolvedValue(memory({}));
+    const remove = vi.fn().mockResolvedValue(true);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    Object.defineProperty(window, "sahkarmi", {
+      configurable: true,
+      value: { memory: { list, save, delete: remove } },
+    });
+    render(() => (
+      <MemoryView workspaceId="shop-a" bots={[{ id: "asha", name: "Asha" } as never]} />
+    ));
+    expect(await screen.findByRole("heading", { name: "Supplier" })).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "shop-a" }));
+    expect(screen.getByText("Saved by Asha")).toBeInTheDocument();
+
+    await fireEvent.input(screen.getByRole("searchbox"), { target: { value: "ravi" } });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ workspaceId: "shop-a", query: "ravi" }),
+    );
+
+    await fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("heading", { name: "Edit memory" })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "m1",
+        workspaceId: "shop-a",
+        key: "Supplier",
+        content: "Ravi",
+      }),
+    );
+
+    await fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(remove).toHaveBeenCalledWith("m1", "shop-a");
   });
 });
