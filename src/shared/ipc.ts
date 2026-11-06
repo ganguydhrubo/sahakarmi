@@ -172,6 +172,9 @@ export const IPC_CHANNELS = {
   mcpGithubJson: "mcp:github-json",
   mcpSetEnabled: "mcp:set-enabled",
   mcpRemove: "mcp:remove",
+  mcpRecheck: "mcp:recheck",
+  mcpTest: "mcp:test",
+  mcpSetCoworkers: "mcp:set-coworkers",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -2004,6 +2007,84 @@ export interface CustomSkillsDesktopApi {
   remove: (id: string) => Promise<CustomSkill[]>;
 }
 
+/** What the owner can press to fix an MCP server problem. */
+export type McpFixAction =
+  | "edit"
+  | "recheck"
+  | "install-uv"
+  | "install-node"
+  | "install-python"
+  | "retry-long"
+  | "reinstall"
+  | "use-skill-route"
+  | "shared-mode";
+
+/** A problem Settings can see before any coworker starts the server (MCP-1, -5, -6, -9, -13). */
+export interface McpProblem {
+  kind:
+    | "placeholder"
+    | "missing-command"
+    | "store-stub"
+    | "missing-folder"
+    | "missing-file"
+    | "missing-env";
+  /** The command, folder, file, env name or template text the problem is about. */
+  subject: string;
+  detail?: string;
+  /** Where to download a missing program. */
+  link?: string;
+  fix?: McpFixAction;
+}
+
+/** Plain-English causes of a failed test (audit §11.7); the window words each one. */
+export type McpDiagnosisCode =
+  | "command-not-found"
+  | "store-stub"
+  | "module-missing"
+  | "not-mcp"
+  | "no-reply"
+  | "stdout-noise"
+  | "auth"
+  | "port-in-use"
+  | "first-run-timeout"
+  | "path-not-found"
+  | "build-tools"
+  | "python-version"
+  | "exited"
+  | "unknown";
+
+export interface McpDiagnosis {
+  code: McpDiagnosisCode;
+  fix?: McpFixAction;
+}
+
+export interface McpToolInfo {
+  name: string;
+  description: string;
+}
+
+/** The last "Test server" result (MCP-18). */
+export interface McpServerStatus {
+  lastCheckedAt: string;
+  ok: boolean;
+  toolCount: number;
+  /** Up to 20 names. */
+  toolNames: string[];
+  tools?: McpToolInfo[];
+  error: string | null;
+  stderrTail: string;
+  diagnosis?: McpDiagnosis | null;
+  durationMs?: number;
+}
+
+/** An env value (or header) a server says it needs, from its server.json (MCP-13). */
+export interface McpEnvRequirement {
+  name: string;
+  description: string;
+  isRequired: boolean;
+  isSecret: boolean;
+}
+
 /** An MCP server as Settings shows it: secret values (env, headers) are never sent here. */
 export interface McpServerSummary {
   id: string;
@@ -2018,6 +2099,20 @@ export interface McpServerSummary {
   source: string;
   /** A local server whose command is not on this PC (not installed, or a wrong path). */
   missingCommand?: boolean;
+  /** Folder the server starts in. */
+  cwd?: string;
+  /** Everything wrong that can be seen without starting it. */
+  problems: McpProblem[];
+  status?: McpServerStatus | null;
+  /** Added after the "test first" rule: it can be turned on only after a passing test. */
+  needsTest?: boolean;
+  /** Coworkers that get it; null or missing means every coworker. */
+  coworkerIds?: string[] | null;
+  /** Started once for all coworkers instead of once per chat (MCP-7). */
+  shared?: boolean;
+  /** Big install or imports heavy libraries: better shared. */
+  heavy?: boolean;
+  requiredEnv?: McpEnvRequirement[];
 }
 
 export interface McpServerInput {
@@ -2031,22 +2126,33 @@ export interface McpServerInput {
   url?: string;
   headers?: Record<string, string>;
   enabled?: boolean;
+  /** Folder to start in (stdio only). */
+  cwd?: string;
+  requiredEnv?: McpEnvRequirement[];
 }
 
 export interface McpImportResult {
   servers: McpServerSummary[];
   added: string[];
   skipped: string[];
+  /** Names that already exist; import again with them in `replace` to overwrite (MCP-14). */
+  conflicts: string[];
 }
 
 export interface McpDesktopApi {
   list: () => Promise<McpServerSummary[]>;
   save: (input: McpServerInput) => Promise<McpServerSummary[]>;
-  importJson: (text: string) => Promise<McpImportResult>;
+  importJson: (text: string, replace?: string[]) => Promise<McpImportResult>;
   /** The .mcp.json files of a GitHub repo, merged, for the owner to review before importing. */
   githubJson: (url: string) => Promise<string>;
   setEnabled: (id: string, enabled: boolean) => Promise<McpServerSummary[]>;
   remove: (id: string) => Promise<McpServerSummary[]>;
+  /** Re-reads Windows' PATH (after installing something) and checks every server again. */
+  recheck: () => Promise<McpServerSummary[]>;
+  /** Starts the server once, lists its tools, stops it, and stores the result. */
+  test: (id: string) => Promise<McpServerSummary[]>;
+  /** null = every coworker. */
+  setCoworkers: (id: string, coworkerIds: string[] | null) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */

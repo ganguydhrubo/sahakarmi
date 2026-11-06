@@ -1,6 +1,15 @@
 import { createSignal, For, onMount, Show } from "solid-js";
-import type { McpServerInput, McpServerSummary } from "../../../shared/ipc";
+import type {
+  BotSummary,
+  McpFixAction,
+  McpServerInput,
+  McpServerSummary,
+} from "../../../shared/ipc";
 import { t } from "../i18n";
+import { McpServerRow } from "./McpServerRow";
+
+/** Fix buttons the window can carry out itself. */
+const FIXES: ReadonlySet<McpFixAction> = new Set(["edit", "recheck", "retry-long"]);
 
 interface Draft {
   id?: string;
@@ -11,6 +20,7 @@ interface Draft {
   env: string;
   url: string;
   headers: string;
+  cwd: string;
 }
 
 const EMPTY: Draft = {
@@ -21,6 +31,7 @@ const EMPTY: Draft = {
   env: "",
   url: "",
   headers: "",
+  cwd: "",
 };
 
 /** "KEY=value" (env) or "Name: value" (headers) lines → a map. */
@@ -45,6 +56,7 @@ function draftOf(server: McpServerSummary): Draft {
     env: server.envKeys.map((key) => `${key}=`).join("\n"),
     url: server.url,
     headers: server.headerKeys.map((key) => `${key}: `).join("\n"),
+    cwd: server.cwd ?? "",
   };
 }
 
@@ -56,6 +68,10 @@ export function McpSettings() {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [notice, setNotice] = createSignal<string | null>(null);
+  const [bots, setBots] = createSignal<BotSummary[]>([]);
+  const [testing, setTesting] = createSignal<string | null>(null);
+  /** Pasted JSON whose servers clash with saved ones, waiting for the owner's answer (MCP-14). */
+  const [conflict, setConflict] = createSignal<{ text: string; names: string[] } | null>(null);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -76,7 +92,49 @@ export function McpSettings() {
     }
   }
 
-  onMount(() => void run(async () => setServers(await window.sahkarmi.mcp.list())));
+  // Opening Settings re-reads Windows' PATH, so a just-installed program is found (MCP-3).
+  onMount(() => {
+    void run(async () => setServers(await window.sahkarmi.mcp.recheck()));
+    void window.sahkarmi.agent
+      .listBots()
+      .then(setBots)
+      .catch(() => setBots([]));
+  });
+
+  function importText(text: string, replace: string[] = []) {
+    void run(async () => {
+      const result = await window.sahkarmi.mcp.importJson(text, replace);
+      setServers(result.servers);
+      setJson("");
+      setConflict(result.conflicts.length > 0 ? { text, names: result.conflicts } : null);
+      setNotice(
+        [
+          result.added.length ? t("mcpAdded", { names: result.added.join(", ") }) : "",
+          result.skipped.length ? t("mcpSkipped", { names: result.skipped.join("; ") }) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ") || null,
+      );
+    });
+  }
+
+  function test(server: McpServerSummary) {
+    setTesting(server.id);
+    void run(async () => {
+      try {
+        setServers(await window.sahkarmi.mcp.test(server.id));
+      } finally {
+        setTesting(null);
+      }
+    });
+  }
+
+  function fix(server: McpServerSummary, action: McpFixAction) {
+    if (action === "edit") setDraft(draftOf(server));
+    else if (action === "recheck")
+      void run(async () => setServers(await window.sahkarmi.mcp.recheck()));
+    else if (action === "retry-long") test(server);
+  }
 
   const edit = (patch: Partial<Draft>) =>
     setDraft((current) => (current ? { ...current, ...patch } : current));
@@ -94,6 +152,7 @@ export function McpSettings() {
       env: parsePairs(current.env, "="),
       url: current.url,
       headers: parsePairs(current.headers, ":"),
+      cwd: current.cwd.trim(),
     };
     void run(async () => {
       setServers(await window.sahkarmi.mcp.save(input));
@@ -121,27 +180,30 @@ export function McpSettings() {
         <button
           type="button"
           disabled={busy() || !json().trim()}
-          onClick={() =>
-            void run(async () => {
-              const result = await window.sahkarmi.mcp.importJson(json());
-              setServers(result.servers);
-              setJson("");
-              setNotice(
-                [
-                  result.added.length ? t("mcpAdded", { names: result.added.join(", ") }) : "",
-                  result.skipped.length
-                    ? t("mcpSkipped", { names: result.skipped.join("; ") })
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-              );
-            })
-          }
+          onClick={() => importText(json())}
         >
           {t("mcpImport")}
         </button>
       </div>
+      <Show when={conflict()}>
+        {(current) => (
+          <div class="mcp-card" role="alertdialog">
+            <p>{t("mcpxConflict", { names: current().names.join(", ") })}</p>
+            <div class="settings-buttons">
+              <button
+                type="button"
+                disabled={busy()}
+                onClick={() => importText(current().text, current().names)}
+              >
+                {t("mcpxReplace")}
+              </button>
+              <button type="button" disabled={busy()} onClick={() => setConflict(null)}>
+                {t("mcpxKeep")}
+              </button>
+            </div>
+          </div>
+        )}
+      </Show>
 
       <label class="extension-field">
         <span>{t("mcpGithubLabel")}</span>
@@ -251,6 +313,14 @@ export function McpSettings() {
                 />
               </label>
               <label class="extension-field">
+                <span>{t("mcpxCwd")}</span>
+                <input
+                  value={current().cwd}
+                  placeholder="C:\\Users\\you\\my-server"
+                  onInput={(event) => edit({ cwd: event.currentTarget.value })}
+                />
+              </label>
+              <label class="extension-field">
                 <span>{t("mcpEnv")}</span>
                 <textarea
                   rows={2}
@@ -288,52 +358,47 @@ export function McpSettings() {
       </Show>
 
       <h3>{t("mcpServers")}</h3>
+      <div class="settings-buttons">
+        <button
+          type="button"
+          disabled={busy()}
+          onClick={() => void run(async () => setServers(await window.sahkarmi.mcp.recheck()))}
+        >
+          {t("mcpxRecheck")}
+        </button>
+      </div>
+      <p class="settings-meta">{t("mcpxRecheckHint")}</p>
+      <Show when={testing()}>
+        <p class="settings-meta" role="status">
+          {t("mcpxTesting")}
+        </p>
+      </Show>
       <Show when={servers().length > 0} fallback={<p class="settings-meta">{t("mcpNone")}</p>}>
         <ul class="extension-list">
           <For each={servers()}>
             {(server) => (
-              <li class="extension-item">
-                <button
-                  type="button"
-                  role="switch"
-                  class="feature-switch"
-                  aria-checked={server.enabled}
-                  aria-label={`${t("mcpOn")}: ${server.name}`}
-                  disabled={busy()}
-                  onClick={() =>
-                    void run(async () =>
-                      setServers(await window.sahkarmi.mcp.setEnabled(server.id, !server.enabled)),
-                    )
-                  }
-                >
-                  <span />
-                </button>
-                <span class="extension-item-text">
-                  <strong>{server.name}</strong>
-                  <small class="extension-source">
-                    {server.transport === "http"
-                      ? server.url
-                      : [server.command, ...server.args].join(" ")}
-                  </small>
-                  <Show when={server.missingCommand}>
-                    <small class="extension-warning" role="note">
-                      {t("mcpCommandMissing", { command: server.command })}
-                    </small>
-                  </Show>
-                </span>
-                <button type="button" disabled={busy()} onClick={() => setDraft(draftOf(server))}>
-                  {t("mcpEdit")}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy()}
-                  onClick={() =>
-                    void run(async () => setServers(await window.sahkarmi.mcp.remove(server.id)))
-                  }
-                >
-                  {t("mcpRemove")}
-                </button>
-              </li>
+              <McpServerRow
+                server={server}
+                bots={bots()}
+                busy={busy()}
+                fixes={FIXES}
+                onToggle={() =>
+                  void run(async () =>
+                    setServers(await window.sahkarmi.mcp.setEnabled(server.id, !server.enabled)),
+                  )
+                }
+                onEdit={() => setDraft(draftOf(server))}
+                onRemove={() =>
+                  void run(async () => setServers(await window.sahkarmi.mcp.remove(server.id)))
+                }
+                onTest={() => test(server)}
+                onFix={(action) => fix(server, action)}
+                onCoworkers={(ids) =>
+                  void run(async () =>
+                    setServers(await window.sahkarmi.mcp.setCoworkers(server.id, ids)),
+                  )
+                }
+              />
             )}
           </For>
         </ul>

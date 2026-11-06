@@ -675,8 +675,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /** `customMcpServers` for Claude and ACP runtimes, plus a `config` override for Codex. */
-  #mcpParams(client: AgentClient): Record<string, unknown> {
-    const servers = this.#mcpServers?.enabled() ?? [];
+  #mcpParams(client: AgentClient, botId: string): Record<string, unknown> {
+    // Only the servers this coworker may use (all of them unless the owner limited a server).
+    const servers = this.#mcpServers?.enabled(botId) ?? [];
     if (servers.length === 0) return {};
     const config = client.provider === "codex" ? codexMcpConfig(servers) : undefined;
     return { customMcpServers: servers, ...(config ? { config } : {}) };
@@ -2977,7 +2978,7 @@ ${carryOver}`
       ephemeral: false,
       serviceName: "sahkarmi",
       dynamicTools: await this.#buildDynamicTools(bot.id),
-      ...this.#mcpParams(client),
+      ...this.#mcpParams(client, bot.id),
     });
     const threadId = response.thread.id;
     if (client.provider === "codex") {
@@ -3011,7 +3012,7 @@ ${carryOver}`
       sandbox: "danger-full-access",
       developerInstructions: await this.#instructionsFor(bot, client.provider),
       dynamicTools: await this.#buildDynamicTools(bot.id),
-      ...this.#mcpParams(client),
+      ...this.#mcpParams(client, bot.id),
     };
 
     try {

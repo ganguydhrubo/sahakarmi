@@ -336,11 +336,16 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   mcp: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
     save: (input) => ipcRenderer.invoke(IPC_CHANNELS.mcpSave, input),
-    importJson: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpImportJson, { text }),
+    importJson: (text: string, replace?: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpImportJson, { text, replace: replace ?? [] }),
     githubJson: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpGithubJson, { url }),
     setEnabled: (id: string, enabled: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, { id, enabled }),
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRemove, { id }),
+    recheck: () => ipcRenderer.invoke(IPC_CHANNELS.mcpRecheck),
+    test: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpTest, { id }),
+    setCoworkers: (id: string, coworkerIds: string[] | null) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpSetCoworkers, { id, coworkerIds }),
   },
   workflow: {
     export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),

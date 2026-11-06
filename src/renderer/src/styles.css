@@ -14306,3 +14306,70 @@ fieldset.memory-filters {
   background: var(--indigo-accent);
   color: var(--surface-1);
 }
+
+/* Settings › MCP servers: checks, tests, guided connect */
+.mcp-server-item {
+  align-items: flex-start;
+}
+
+.mcp-stderr {
+  max-height: 160px;
+  overflow: auto;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11.5px;
+}
+
+.mcp-coworkers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.mcp-tool-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.mcp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 10px 12px;
+}
+
+.mcp-card h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.mcp-card pre,
+.mcp-card code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.mcp-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12.5px;
+}
+
+.mcp-steps li[data-state="done"] {
+  color: var(--text-muted);
+}
+
+.mcp-steps li[data-state="failed"] {
+  color: var(--warning);
+}

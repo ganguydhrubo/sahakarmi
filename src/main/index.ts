@@ -236,13 +236,21 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   handleTrusted(IPC_CHANNELS.customSkillsRemove, (input: unknown) =>
     skills.remove(requireString(isObject(input) ? input.id : null, "id")),
   );
+  // Windows' current PATH, read once now and again whenever Settings opens or Re-check is pressed.
+  void mcp.recheck().catch(() => {});
   handleTrusted(IPC_CHANNELS.mcpList, () => mcp.list());
   handleTrusted(IPC_CHANNELS.mcpSave, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid MCP server.");
     return mcp.save(input as unknown as McpServerInput);
   });
   handleTrusted(IPC_CHANNELS.mcpImportJson, (input: unknown) =>
-    mcp.importJson(text(input, "text")),
+    mcp.importJson(
+      text(input, "text"),
+      undefined,
+      isObject(input) && Array.isArray(input.replace)
+        ? input.replace.filter((name): name is string => typeof name === "string")
+        : [],
+    ),
   );
   handleTrusted(IPC_CHANNELS.mcpGithubJson, (input: unknown) => mcp.githubJson(text(input, "url")));
   handleTrusted(IPC_CHANNELS.mcpSetEnabled, (input: unknown) =>
@@ -253,6 +261,18 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   );
   handleTrusted(IPC_CHANNELS.mcpRemove, (input: unknown) =>
     mcp.remove(requireString(isObject(input) ? input.id : null, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpRecheck, () => mcp.recheck());
+  handleTrusted(IPC_CHANNELS.mcpTest, (input: unknown) =>
+    mcp.test(requireString(isObject(input) ? input.id : null, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.mcpSetCoworkers, (input: unknown) =>
+    mcp.setCoworkers(
+      requireString(isObject(input) ? input.id : null, "id"),
+      isObject(input) && Array.isArray(input.coworkerIds)
+        ? input.coworkerIds.filter((id): id is string => typeof id === "string")
+        : null,
+    ),
   );
 }
 
@@ -1634,6 +1654,7 @@ if (!hasSingleInstanceLock) {
       registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
+      mcpServers.setFeatureCheck((id) => features.isEnabled(id));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
       const knowledge = new KnowledgeService(app.getPath("userData"));
       knowledgeService = knowledge;
