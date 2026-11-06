@@ -39,6 +39,7 @@ import {
   resolveClaudeCli,
   resolveCodexCli,
   resolveOpenCodeCli,
+  setCliVersionCache,
   setRuntimeDirectory,
   setToolsDirectory,
 } from "../backend/cli";
@@ -112,6 +113,7 @@ import {
   PERMISSION_LEVELS,
   type PermissionCategory,
   type PermissionLevel,
+  type ReadConversationOptions,
   type RespondToPromptInput,
   type SaveBusinessTargetInput,
   type SendMessageInput,
@@ -119,6 +121,7 @@ import {
   SOCIAL_PLATFORMS,
   type SocialPlatform,
   type StartOrchestratorRunInput,
+  type StorageCleanInput,
   type TargetPeriod,
   type UpdateBotInput,
   type WorkflowDoc,
@@ -134,9 +137,15 @@ import { AppLog } from "./app-log";
 import { BackgroundTray, shouldHideToTray } from "./background-tray";
 import { useOwnClaudeAccount } from "./claude-account";
 import { pruneCrashDumps, redactErrorForLog } from "./crash-dumps";
-import { exportDiagnostics, exportSahkarmiData } from "./maintenance-service";
-import { cleanUpRuntimes } from "./runtime-cleanup";
+import {
+  cleanStorage,
+  exportDiagnostics,
+  exportSahkarmiData,
+  readStorageUsage,
+} from "./maintenance-service";
+import { cleanUpRuntimes, markRuntimeStarted } from "./runtime-cleanup";
 import { readSetupState, writeSetupState } from "./setup-store";
+import { removeOrphanGeminiHomes, removeOrphanPartitions } from "./storage-cleanup";
 import { handleTrusted } from "./trusted-ipc";
 import { isTrustedRendererUrl } from "./trusted-renderer";
 import {
@@ -352,7 +361,23 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   );
 }
 
-function registerKnowledgeIpc(knowledge: KnowledgeApi): void {
+/**
+ * handleTrusted for a service initialised after the window shows: each call first waits for
+ * `ready`, so an early request from the page still gets a loaded answer.
+ */
+function trustedAfter(ready: Promise<unknown>) {
+  return <Arguments extends unknown[], Result>(
+    channel: string,
+    handler: (...arguments_: Arguments) => Result,
+  ): void =>
+    handleTrusted(channel, async (...arguments_: Arguments) => {
+      await ready;
+      return handler(...arguments_);
+    });
+}
+
+function registerKnowledgeIpc(knowledge: KnowledgeApi, ready: Promise<unknown>): void {
+  const handleTrusted = trustedAfter(ready);
   const kbId = (value: unknown) => requireString(value, "knowledgeBaseId");
   handleTrusted(IPC_CHANNELS.knowledgeList, () => knowledge.list());
   handleTrusted(IPC_CHANNELS.knowledgeCreate, (input: unknown) => {
@@ -551,10 +576,21 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.maintenanceExportDiagnostics, () =>
     exportDiagnostics({ service, browser, updater, parentWindow: mainWindow }),
   );
+  const storageContext = {
+    userData: app.getPath("userData"),
+    transfersRoot: join(store.sharedRoot, "Transfers"),
+    botIds: () => store.list().map((bot) => bot.id),
+    mailbox,
+  };
+  handleTrusted(IPC_CHANNELS.maintenanceStorageUsage, () => readStorageUsage(storageContext));
+  handleTrusted(IPC_CHANNELS.maintenanceStorageClean, (input: unknown) =>
+    cleanStorage(storageContext, parseStorageClean(input)),
+  );
 
   handleTrusted(IPC_CHANNELS.agentGetStatus, () => service.getStatus());
   handleTrusted(IPC_CHANNELS.agentGetUsage, () => service.getUsage());
   handleTrusted(IPC_CHANNELS.agentListModels, () => service.listModels());
+  handleTrusted(IPC_CHANNELS.agentProbeProviders, () => service.probeProviders());
   handleTrusted(IPC_CHANNELS.agentRefreshModels, async () => {
     await service.refreshModels(true);
     return service.listModels();
@@ -583,8 +619,8 @@ function registerIpcHandlers(
     await service.deleteBot(id);
     await removeBotRecords(id);
   });
-  handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown) =>
-    service.readConversation(requireString(botId, "botId")),
+  handleTrusted(IPC_CHANNELS.agentReadConversation, (botId: unknown, options: unknown) =>
+    service.readConversation(requireString(botId, "botId"), readConversationOptions(options)),
   );
   handleTrusted(IPC_CHANNELS.agentSearchMessages, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid search request.");
@@ -1554,7 +1590,8 @@ let desktopHost: DesktopHost | null = null;
 /** Two minutes of 16 kHz audio is the longest clip one dictation request may carry. */
 const MAX_DICTATION_SAMPLES = 16_000 * 120;
 
-function registerVoiceHandlers(voice: VoiceService): void {
+function registerVoiceHandlers(voice: VoiceService, ready: Promise<unknown>): void {
+  const handleTrusted = trustedAfter(ready);
   const modelId = (value: unknown) => {
     if (typeof value !== "string" || !/^[a-z0-9-]{2,40}$/.test(value)) {
       throw new Error("Unknown voice model.");
@@ -1719,9 +1756,10 @@ function scheduleAiRuntimeChecks(): void {
 /** Passed when the app is opened again after waiting for an installer, so it never waits twice. */
 const AFTER_INSTALL_WAIT = "--after-install-wait";
 
-async function waitForRunningInstaller(): Promise<boolean> {
-  if (process.platform !== "win32" || !app.isPackaged) return false;
-  if (process.argv.includes(AFTER_INSTALL_WAIT)) return false;
+/** The update installer still running, if any (tasklist runs alongside the rest of start-up). */
+async function findRunningInstaller(): Promise<string | null> {
+  if (process.platform !== "win32" || !app.isPackaged) return null;
+  if (process.argv.includes(AFTER_INSTALL_WAIT)) return null;
   const tasks = await new Promise<string>((resolve) => {
     execFile(
       "tasklist",
@@ -1730,7 +1768,10 @@ async function waitForRunningInstaller(): Promise<boolean> {
       (error, stdout) => resolve(error ? "" : stdout),
     );
   });
-  const installer = runningInstallerName(tasks, app.getVersion());
+  return runningInstallerName(tasks, app.getVersion());
+}
+
+async function waitForRunningInstaller(installer: string | null): Promise<boolean> {
   if (!installer) return false;
   const quote = (text: string) => `'${text.replace(/'/g, "''")}'`;
   const script = [
@@ -1780,9 +1821,17 @@ if (!hasSingleInstanceLock) {
   void app
     .whenReady()
     .then(async () => {
-      if (await waitForRunningInstaller()) return;
+      // tasklist takes a few hundred ms: it runs while everything else starts. The window only
+      // shows once the page is loaded, which waits for this answer.
+      const runningInstaller = findRunningInstaller().catch(() => null);
       configureContentSecurityPolicy();
       mainWindow = createWindow();
+      // Work that the first screen does not need starts once the window is on screen.
+      const shownWindow = mainWindow;
+      const windowShown = new Promise<void>((resolve) => {
+        shownWindow.once("ready-to-show", () => resolve());
+        setTimeout(resolve, 15_000).unref?.();
+      });
       await restoreSavedApiKeys();
       // Never blocks startup: only copies nobody uses are removed, so it can run alongside.
       void cleanUpRuntimes(app.getPath("userData"))
@@ -1795,6 +1844,19 @@ if (!hasSingleInstanceLock) {
       );
       const store = new BotStore(app.getPath("userData"), homedir());
       await store.initialize();
+      // Browser data of deleted coworkers (their sessions are never opened again).
+      void windowShown
+        .then(() =>
+          removeOrphanPartitions(
+            app.getPath("userData"),
+            store.list().map((bot) => bot.id),
+          ),
+        )
+        .then(({ removed }) => {
+          if (removed.length)
+            appLog.write("info", "removed deleted coworkers' browser data", removed);
+        })
+        .catch(() => undefined);
       mailboxStore = new MailboxStore(app.getPath("userData"), store.sharedRoot);
       await mailboxStore.initialize();
       configureApplicationProtocol();
@@ -1809,9 +1871,8 @@ if (!hasSingleInstanceLock) {
         botOfThread: (threadId) =>
           store.list().find((bot) => bot.threadId === threadId)?.id ?? null,
         botIds: store.list().map((bot) => bot.id),
-        usedPages: await browserPagesFromAudit(
-          join(app.getPath("userData"), "permission-audit.json"),
-        ),
+        loadUsedPages: () =>
+          browserPagesFromAudit(join(app.getPath("userData"), "permission-audit.json")),
       });
       const setupFile = join(app.getPath("userData"), SETUP_FILE);
       const setupState = await readSetupState(setupFile);
@@ -1836,7 +1897,26 @@ if (!hasSingleInstanceLock) {
         );
       });
       service.setGeminiAccounts(geminiAccounts);
+      // Sign-in folders of Google accounts removed while Google's server still held them.
+      void windowShown
+        .then(() => removeOrphanGeminiHomes(app.getPath("userData")))
+        .then(({ removed }) => {
+          if (removed.length)
+            appLog.write("info", "removed unused Google account folders", removed);
+        })
+        .catch(() => undefined);
       service.on("log", (message) => appLog.write("info", message));
+      // A newly downloaded AI tool worked once: the copy it replaced can go now.
+      service.on("runtime-started", (_provider, executable) => {
+        const userData = app.getPath("userData");
+        void markRuntimeStarted(userData, executable)
+          .then((marked) => (marked ? cleanUpRuntimes(userData) : null))
+          .then((result) => {
+            if (result?.removed.length)
+              appLog.write("info", "removed replaced AI tool copies", result.removed);
+          })
+          .catch(() => undefined);
+      });
       const usage = new UsageService(app.getPath("userData"));
       await usage.initialize().catch((error) => {
         appLog.write("error", "usage ledger unreadable; starting a new one", String(error));
@@ -1867,8 +1947,11 @@ if (!hasSingleInstanceLock) {
       keepRunningInTray = () => features.isEnabled("background-tray");
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
+      service.configureLazyProviderStart(() => features.isEnabled("lean-runtime"));
+      service.configureClaudeIdleClose(() => features.isEnabled("lean-runtime"));
+      service.configureDeltaUpdates(() => features.isEnabled("chat-delta-updates"));
       // Knowledge Bases run in a utility process (indexing never blocks the window); the host
-      // falls back to this process if it cannot start.
+      // falls back to this process if it cannot start. It starts after the window shows.
       const knowledge = new KnowledgeHost(app.getPath("userData"), {
         fork: () =>
           utilityProcess.fork(join(__dirname, "knowledge-worker.js"), [], {
@@ -1878,16 +1961,18 @@ if (!hasSingleInstanceLock) {
       knowledgeService = knowledge;
       knowledge.on("event", forwardAgentEvent);
       knowledge.on("log", (line: string) => appLog.write("warn", "knowledge", line));
-      await knowledge.initialize().catch((error) => {
-        appLog.write("error", "knowledge bases unreadable; starting empty", String(error));
-      });
+      const knowledgeReady = windowShown.then(() =>
+        knowledge.initialize().catch((error) => {
+          appLog.write("error", "knowledge bases unreadable; starting empty", String(error));
+        }),
+      );
       service.configureMemory(() => features.isEnabled("memory-auto-context"));
       service.attachKnowledge(
         knowledge,
         () => features.isEnabled("knowledge-base") && features.isEnabled("knowledge-auto-context"),
         () => features.isEnabled("knowledge-base"),
       );
-      registerKnowledgeIpc(knowledge);
+      registerKnowledgeIpc(knowledge, knowledgeReady);
       await features.initialize().catch((error) => {
         appLog.write("error", "feature settings unreadable; using defaults", String(error));
       });
@@ -1901,14 +1986,18 @@ if (!hasSingleInstanceLock) {
       );
       const routines = new RoutineStore(app.getPath("userData"));
       await routines.initialize();
-      // Bring the owner's routines from their previous desktop agent over once (paused), so a switch loses nothing.
-      await importDesktopRoutinesOnce({
-        userDataPath: app.getPath("userData"),
-        sourceDatabase: join(app.getPath("appData"), "OpenBot", "openbot.db"),
-        routineCount: routines.state().routines.length,
-        coworkers: store.list(),
-        save: (input) => routines.save(input),
-      })
+      // Bring the owner's routines from their previous desktop agent over once (paused), so a
+      // switch loses nothing. Not needed for the first screen: it runs once the window shows.
+      void windowShown
+        .then(() =>
+          importDesktopRoutinesOnce({
+            userDataPath: app.getPath("userData"),
+            sourceDatabase: join(app.getPath("appData"), "OpenBot", "openbot.db"),
+            routineCount: routines.state().routines.length,
+            coworkers: store.list(),
+            save: (input) => routines.save(input),
+          }),
+        )
         .then((report) => {
           if (report)
             appLog.write("info", "Imported routines from the previous desktop agent", report);
@@ -1971,6 +2060,16 @@ if (!hasSingleInstanceLock) {
         if (Date.now() - lastWakeWork >= FOCUS_REFRESH_MS) refreshOnWake();
       };
       mainWindow.on("focus", refreshOnFocus);
+      // Minimised or hidden: coworker pages nobody is using slow down and go quiet.
+      const browserForWindow = browserHost;
+      const quietPages = (hidden: boolean) => () => {
+        if (features.isEnabled("lean-runtime")) browserForWindow.setWindowHidden?.(hidden);
+        else if (!hidden) browserForWindow.setWindowHidden?.(false);
+      };
+      mainWindow.on("minimize", quietPages(true));
+      mainWindow.on("hide", quietPages(true));
+      mainWindow.on("restore", quietPages(false));
+      mainWindow.on("show", quietPages(false));
       powerMonitor.on("resume", refreshOnWake);
       mainWindow.once("closed", () => powerMonitor.removeListener("resume", refreshOnWake));
       service.on("event", (event) => {
@@ -1989,6 +2088,7 @@ if (!hasSingleInstanceLock) {
       updateService.start();
       const toolsDirectory = join(app.getPath("userData"), "tools");
       setToolsDirectory(toolsDirectory);
+      setCliVersionCache(join(app.getPath("userData"), "cli-versions.json"));
       const runtimeDirectory = join(app.getPath("userData"), "runtime");
       setRuntimeDirectory(runtimeDirectory);
       aiRuntimeService = new AiRuntimeService({
@@ -2043,15 +2143,18 @@ if (!hasSingleInstanceLock) {
       registerProviderSetupHandlers(providerSetup);
       registerGeminiAccountHandlers(geminiAccounts, providerSetup, service);
       voiceService = new VoiceService({ userDataPath: app.getPath("userData") });
-      await voiceService.initialize().catch((error) => {
-        appLog.write("error", "voice settings unreadable; using defaults", String(error));
-      });
+      const voice = voiceService;
+      const voiceReady = windowShown.then(() =>
+        voice.initialize().catch((error) => {
+          appLog.write("error", "voice settings unreadable; using defaults", String(error));
+        }),
+      );
       voiceService.on("state", (state) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.voiceEvent, state);
         }
       });
-      registerVoiceHandlers(voiceService);
+      registerVoiceHandlers(voiceService, voiceReady);
       const orchestratorStore = new OrchestratorStore(app.getPath("userData"));
       await orchestratorStore.initialize();
       const orchestrator = new AdaptiveOrchestrator(
@@ -2132,6 +2235,7 @@ if (!hasSingleInstanceLock) {
       telegramBridge = telegram;
       registerTelegramIpc(telegram);
       configureApplicationMenu(service, updateService);
+      if (await waitForRunningInstaller(await runningInstaller)) return;
       await loadRenderer(mainWindow);
       mainProcessStarted = true;
       showCorruptFileNotices();
@@ -2294,6 +2398,28 @@ function parseSaveTarget(value: unknown): SaveBusinessTargetInput {
     botId: typeof value.botId === "string" && value.botId ? value.botId : null,
     notes: text(value.notes),
   };
+}
+
+function parseStorageClean(value: unknown): StorageCleanInput {
+  if (!isObject(value) || typeof value.category !== "string") {
+    throw new Error("Invalid storage clean request.");
+  }
+  if (value.category === "attachments") {
+    const days = typeof value.olderThanDays === "number" ? value.olderThanDays : Number.NaN;
+    if (!Number.isFinite(days) || days < 1) throw new Error("Choose at least 1 day.");
+    return { category: "attachments", olderThanDays: Math.floor(days) };
+  }
+  if (["browser", "runtimes", "accounts", "logs"].includes(value.category)) {
+    return { category: value.category as "browser" | "runtimes" | "accounts" | "logs" };
+  }
+  throw new Error("This kind of data cannot be cleaned here.");
+}
+
+function readConversationOptions(value: unknown): ReadConversationOptions | undefined {
+  if (!isObject(value) || typeof value.limit !== "number" || !Number.isFinite(value.limit)) {
+    return undefined;
+  }
+  return { limit: Math.max(1, Math.min(100_000, Math.floor(value.limit))) };
 }
 
 function requireString(value: unknown, field: string): string {

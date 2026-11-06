@@ -79,11 +79,13 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     getUsage: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetUsage),
     listModels: () => ipcRenderer.invoke(IPC_CHANNELS.agentListModels),
     refreshModels: () => ipcRenderer.invoke(IPC_CHANNELS.agentRefreshModels),
+    probeProviders: () => ipcRenderer.invoke(IPC_CHANNELS.agentProbeProviders),
     listBots: () => ipcRenderer.invoke(IPC_CHANNELS.agentListBots),
     createBot: (workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.agentCreateBot, workspaceId),
     updateBot: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentUpdateBot, input),
     deleteBot: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentDeleteBot, botId),
-    readConversation: (botId) => ipcRenderer.invoke(IPC_CHANNELS.agentReadConversation, botId),
+    readConversation: (botId, options) =>
+      ipcRenderer.invoke(IPC_CHANNELS.agentReadConversation, botId, options),
     searchMessages: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSearchMessages, input),
     chooseAttachments: () => ipcRenderer.invoke(IPC_CHANNELS.agentChooseAttachments),
     importData: (data) =>
@@ -270,6 +272,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   maintenance: {
     exportData: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportData),
     exportDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceExportDiagnostics),
+    storageUsage: () => ipcRenderer.invoke(IPC_CHANNELS.maintenanceStorageUsage),
+    cleanStorage: (input) => ipcRenderer.invoke(IPC_CHANNELS.maintenanceStorageClean, input),
   },
   orchestrator: {
     getRuns: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetRuns),

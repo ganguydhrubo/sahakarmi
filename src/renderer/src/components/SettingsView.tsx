@@ -30,6 +30,7 @@ import { ModelSuggestions } from "./ModelSuggestions";
 import { PermissionsSettings } from "./PermissionsSettings";
 import { ProviderConnect } from "./ProviderConnect";
 import { SkillsSettings } from "./SkillsSettings";
+import { StorageView } from "./StorageView";
 import { TelegramSettings } from "./TelegramSettings";
 import { ThemeSelector } from "./ThemeSelector";
 import { UpdateControl } from "./UpdateControl";
@@ -46,6 +47,7 @@ type SettingsSection =
   | "features"
   | "updates"
   | "data"
+  | "storage"
   | "about";
 
 const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
@@ -59,6 +61,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
   { id: "features", label: "setFeatures" },
   { id: "updates", label: "updates" },
   { id: "data", label: "dataPrivacy" },
+  { id: "storage", label: "setStorage" },
   { id: "about", label: "about" },
 ];
 const SECTION_KEY = SETTINGS_SECTION_KEY;
@@ -348,6 +351,10 @@ export function SettingsView(props: SettingsViewProps) {
                 </button>
               </div>
             </section>
+          ))}
+
+          {panel("storage", () => (
+            <StorageView />
           ))}
 
           {panel("about", () => (

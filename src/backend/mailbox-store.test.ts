@@ -365,3 +365,209 @@ describe("MailboxStore", () => {
     );
   });
 });
+
+describe("MailboxStore storage cleanup", () => {
+  it("removes files of old delivered messages, never of one still waiting", async () => {
+    const send = async (name: string) => {
+      const source = join(root, name);
+      await writeFile(source, "x".repeat(50));
+      const [draft] = await store.prepareAttachments([source]);
+      return store.enqueue({
+        sender: { kind: "user" },
+        recipientBotIds: ["chief"],
+        text: name,
+        draftIds: [draft.id],
+      });
+    };
+    const done = await send("done.csv");
+    const id = done.deliveries[0].id;
+    await store.markStarting(id);
+    await store.markRunning(id, "turn-1");
+    await store.markTerminal(id, "completed");
+    const waiting = await send("waiting.csv");
+
+    const later = new MailboxStore(join(root, "user-data"), join(root, "Shared"), {
+      now: () => Date.now() + 40 * 24 * 60 * 60_000,
+      archiveAfterDays: Number.POSITIVE_INFINITY,
+    });
+    await later.initialize();
+    expect(await later.removeAttachmentsOlderThan(30)).toEqual({ removed: 1, bytes: 50 });
+    const transfers = join(root, "Shared", "Transfers");
+    await expect(access(join(transfers, done.messageId))).rejects.toThrow();
+    await expect(access(join(transfers, waiting.messageId))).resolves.toBeUndefined();
+    // Newer than the limit: kept.
+    expect(await later.removeAttachmentsOlderThan(60)).toEqual({ removed: 0, bytes: 0 });
+  });
+});
+
+describe("MailboxStore archive", () => {
+  const later = () => Date.now() + 40 * 24 * 60 * 60_000;
+  const reopen = async (options = { now: later }) => {
+    const next = new MailboxStore(join(root, "user-data"), join(root, "Shared"), options);
+    await next.initialize();
+    return next;
+  };
+  const finish = async (id: string) => {
+    await store.markStarting(id);
+    await store.markRunning(id, `turn-${id}`);
+    await store.markTerminal(id, "completed");
+  };
+
+  it("archives finished messages older than 30 days and keeps them readable", async () => {
+    const file = join(root, "brief.txt");
+    await writeFile(file, "old brief");
+    const question = await store.enqueue({
+      sender: { kind: "bot", botId: "researcher" },
+      recipientBotIds: ["weather"],
+      text: "Old question",
+      sourcePaths: [file],
+      idempotencyKey: "thread-r:turn-old:call-1",
+    });
+    const reply = await store.enqueue({
+      sender: { kind: "bot", botId: "weather" },
+      recipientBotIds: ["researcher"],
+      text: "Old answer",
+      replyToMessageId: question.messageId,
+    });
+    const pending = await store.enqueue({
+      sender: { kind: "user" },
+      recipientBotIds: ["weather"],
+      text: "Still queued",
+    });
+    await finish(question.deliveries[0].id);
+    await finish(reply.deliveries[0].id);
+    const before = store.conversationMessages("weather").map((item) => item.text);
+
+    const archived = await reopen();
+    const saved = JSON.parse(await readFile(join(root, "user-data", "mailbox.json"), "utf8"));
+    expect(saved.messages.map((item: { text: string }) => item.text)).toEqual(["Still queued"]);
+    expect(saved.idempotency).toEqual({});
+    const month = new Date().toISOString().slice(0, 7);
+    const lines = (
+      await readFile(join(root, "user-data", "mailbox-archive", `${month}.jsonl`), "utf8")
+    )
+      .trim()
+      .split("\n");
+    expect(lines).toHaveLength(2);
+
+    expect(archived.conversationMessages("weather").map((item) => item.text)).toEqual(before);
+    expect(archived.chainOriginBotId(reply.messageId)).toBe("researcher");
+    expect(archived.hasReplyFrom("weather", question.messageId)).toBe(true);
+    expect(archived.hasBotMessageFromTurnTo("researcher", "turn-old", "weather")).toBe(true);
+    const attachmentId = archived.conversationMessages("weather")[0]?.attachments?.[0]?.id ?? "";
+    await expect(archived.resolveAttachment(attachmentId)).resolves.toMatchObject({
+      mimeType: "text/plain",
+    });
+    expect(await archived.listExportAttachments()).toHaveLength(1);
+    expect(archived.nextQueued("weather")?.delivery.id).toBe(pending.deliveries[0].id);
+  });
+
+  it("ignores a duplicate archive line left by a crash between the two writes", async () => {
+    const sent = await store.enqueue({
+      sender: { kind: "user" },
+      recipientBotIds: ["chief"],
+      text: "Once",
+    });
+    await finish(sent.deliveries[0].id);
+    const statePath = join(root, "user-data", "mailbox.json");
+    const original = await readFile(statePath, "utf8");
+    await reopen();
+    // Simulate the crash: archive written, but mailbox.json still the old one.
+    await writeFile(statePath, original);
+    const again = await reopen();
+    expect(again.conversationMessages("chief").map((item) => item.text)).toEqual(["Once"]);
+  });
+
+  it("removes a deleted coworker's archived messages and files", async () => {
+    const file = join(root, "note.txt");
+    await writeFile(file, "x");
+    const sent = await store.enqueue({
+      sender: { kind: "user" },
+      recipientBotIds: ["chief"],
+      text: "Bye",
+      sourcePaths: [file],
+    });
+    await finish(sent.deliveries[0].id);
+    const archived = await reopen();
+    await archived.deleteBotData("chief");
+    expect(archived.conversationMessages("chief")).toEqual([]);
+    await expect(access(join(root, "Shared", "Transfers", sent.messageId))).rejects.toThrow();
+    const month = new Date().toISOString().slice(0, 7);
+    await expect(
+      access(join(root, "user-data", "mailbox-archive", `${month}.jsonl`)),
+    ).rejects.toThrow();
+  });
+
+  it("loads once when initialize is called twice", async () => {
+    const fresh = new MailboxStore(join(root, "user-data"), join(root, "Shared"));
+    const first = fresh.initialize();
+    expect(fresh.initialize()).toBe(first);
+    await first;
+    const drafts = await fresh.prepareImportedAttachments(
+      [],
+      [{ name: "a.png", mimeType: "image/png", bytes: new Uint8Array([1]) }],
+    );
+    await fresh.initialize();
+    await expect(fresh.resolveAttachment(drafts[0].id)).resolves.not.toBeNull();
+  });
+
+  it("keeps a large old mailbox small and fast to write after archiving", async () => {
+    const userData = join(root, "big");
+    await mkdir(userData, { recursive: true });
+    const old = new Date(Date.now() - 90 * 24 * 60 * 60_000).toISOString();
+    const count = 20_000;
+    const filler = "x".repeat(400);
+    const state = {
+      version: 1,
+      messages: Array.from({ length: count }, (_, index) => ({
+        id: `m-${index}`,
+        sender: { kind: "user" },
+        text: `message ${index} ${filler}`,
+        attachments: [],
+        replyToMessageId: null,
+        createdAt: old,
+      })),
+      deliveries: Array.from({ length: count }, (_, index) => ({
+        id: `d-${index}`,
+        messageId: `m-${index}`,
+        recipientBotId: `bot-${index % 17}`,
+        status: "completed",
+        turnId: `t-${index}`,
+        error: null,
+        createdAt: old,
+      })),
+      drafts: [],
+      pausedBotIds: [],
+      idempotency: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [`th:turn-${index}:c`, `m-${index}`]),
+      ),
+      reactions: [],
+    };
+    await writeFile(join(userData, "mailbox.json"), JSON.stringify(state));
+    const measure = async (archiveAfterDays: number) => {
+      const big = new MailboxStore(userData, join(root, "Shared"), { archiveAfterDays });
+      let started = performance.now();
+      await big.initialize();
+      const loadMs = performance.now() - started;
+      started = performance.now();
+      for (let index = 0; index < 20; index += 1) {
+        await big.enqueue({ sender: { kind: "user" }, recipientBotIds: ["bot-1"], text: "hi" });
+      }
+      const writeMs = (performance.now() - started) / 20;
+      const size = (await readFile(join(userData, "mailbox.json"), "utf8")).length;
+      return { big, loadMs, writeMs, size };
+    };
+    const before = await measure(Number.POSITIVE_INFINITY);
+    const after = await measure(30);
+    const reloaded = await measure(30);
+    console.info(
+      `[mailbox bench] ${count} msgs, ${(before.size / 1e6).toFixed(1)} MB: ` +
+        `no archive load ${before.loadMs.toFixed(0)} ms, write ${before.writeMs.toFixed(1)} ms/msg; ` +
+        `first archive pass ${after.loadMs.toFixed(0)} ms, then write ${after.writeMs.toFixed(1)} ms/msg, ` +
+        `${(after.size / 1e3).toFixed(1)} kB; next load ${reloaded.loadMs.toFixed(0)} ms`,
+    );
+    expect(after.size).toBeLessThan(before.size / 100);
+    expect(reloaded.writeMs).toBeLessThan(before.writeMs);
+    expect(reloaded.big.conversationMessages("bot-3").length).toBeGreaterThan(1_000);
+  }, 60_000);
+});

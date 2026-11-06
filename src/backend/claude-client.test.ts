@@ -38,7 +38,16 @@ describe("ClaudeAgentClient", () => {
     expect(result).toMatchObject({
       data: [{ model: "claude-future", displayName: "Future Claude" }],
     });
+    // Within a day the list is served from memory: no second throwaway Claude process.
     expect(await client.request("model/list", {})).toEqual(result);
+    expect(query).toHaveBeenCalledTimes(1);
+    const maxAge = ClaudeAgentClient.CATALOG_MAX_AGE_MS;
+    ClaudeAgentClient.CATALOG_MAX_AGE_MS = 0;
+    try {
+      expect(await client.request("model/list", {})).toEqual(result);
+    } finally {
+      ClaudeAgentClient.CATALOG_MAX_AGE_MS = maxAge;
+    }
     expect(close).toHaveBeenCalledTimes(2);
     expect(query.mock.calls[0]?.[0]).toMatchObject({
       options: { tools: [], mcpServers: {}, persistSession: false },
@@ -136,6 +145,44 @@ describe("ClaudeAgentClient", () => {
     expect(fixed).toContain("--setting-sources=user");
     expect(fixed.join(" ")).not.toMatch(/project|local/);
   }, 30_000);
+
+  it("keeps the model list on disk for a day, per Claude version", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-catalog-"));
+    const catalogCachePath = join(root, "claude-models.json");
+    const supportedModels = vi
+      .fn()
+      .mockResolvedValue([
+        { value: "opus", resolvedModel: "claude-cached", displayName: "Cached" },
+      ]);
+    const query = vi.fn(() => ({ supportedModels, close: vi.fn() }) as unknown as Query);
+    try {
+      const first = new ClaudeAgentClient({ executable: "unused", version: "1.0.0" }, query, {
+        catalogCachePath,
+      });
+      first.start();
+      await first.request("model/list", {});
+      await first.stop();
+      const second = new ClaudeAgentClient({ executable: "unused", version: "1.0.0" }, query, {
+        catalogCachePath,
+      });
+      second.start();
+      expect(await second.request("model/list", {})).toMatchObject({
+        data: [{ model: "claude-cached" }],
+      });
+      expect(query).toHaveBeenCalledTimes(1);
+      await second.stop();
+      // A Claude update can bring new models: another version reads the list again.
+      const upgraded = new ClaudeAgentClient({ executable: "unused", version: "1.1.0" }, query, {
+        catalogCachePath,
+      });
+      upgraded.start();
+      await upgraded.request("model/list", {});
+      expect(query).toHaveBeenCalledTimes(2);
+      await upgraded.stop();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
   it("reads the plan limits without sending a prompt when no chat is open", async () => {
     const close = vi.fn();
@@ -675,6 +722,156 @@ fi
 
     expect(notificationDeltas(notifications)).toEqual(["Hello"]);
     expect(completedText(notifications)).toBe("Hello");
+    await client.stop();
+  });
+});
+
+describe("Claude runtime lifecycle (idle close, LRU, resume)", () => {
+  /**
+   * A fake SDK that keeps each session's history like Claude Code does on disk: a query opened
+   * with `resume` continues it, so a reply that lists earlier prompts proves the context survived.
+   */
+  function fakeSdk() {
+    const sessions = new Map<string, string[]>();
+    const open = new Set<string>();
+    const calls: Array<{ resume?: string; sessionId?: string; cwd?: string; model?: string }> = [];
+    const factory = (args: { prompt: unknown; options?: Record<string, unknown> }) => {
+      const options = (args.options ?? {}) as {
+        resume?: string;
+        sessionId?: string;
+        cwd?: string;
+        model?: string;
+      };
+      calls.push(options);
+      const id = options.resume ?? options.sessionId ?? "";
+      if (!options.resume) sessions.set(id, []);
+      open.add(id);
+      const output = new TestQueue<SDKMessage>();
+      const generator = output[Symbol.asyncIterator]() as Query;
+      Object.assign(generator, {
+        [Symbol.asyncIterator]: () => generator,
+        interrupt: async () => undefined,
+        setModel: async () => undefined,
+        setMaxThinkingTokens: async () => undefined,
+        close: () => {
+          open.delete(id);
+          output.close();
+        },
+      });
+      void (async () => {
+        for await (const message of args.prompt as AsyncIterable<SDKUserMessage>) {
+          const history = sessions.get(id) ?? [];
+          history.push(String(message.message.content));
+          sessions.set(id, history);
+          const reply = `I remember: ${history.join(", ")}`;
+          output.push(assistantMessage(id, `${message.uuid}-reply`, reply));
+          output.push(resultMessage(id, message.uuid ?? "", reply));
+        }
+      })();
+      return generator;
+    };
+    return { factory, calls, open, sessions };
+  }
+
+  async function turn(
+    client: ClaudeAgentClient,
+    notifications: Array<{ method: string; params: unknown }>,
+    threadId: string,
+    text: string,
+  ): Promise<string> {
+    const before = notifications.length;
+    await client.request("turn/start", { threadId, input: [{ type: "text", text }] });
+    await waitFor(() =>
+      notifications.slice(before).some((event) => event.method === "turn/completed"),
+    );
+    const completed = notifications
+      .slice(before)
+      .filter((event) => event.method === "item/completed")
+      .at(-1);
+    return (completed?.params as { item?: { text?: string } } | undefined)?.item?.text ?? "";
+  }
+
+  it("closes an idle Claude process after 10 minutes and resumes it with its context", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-idle-"));
+    const sdk = fakeSdk();
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      sdk.factory as never,
+    );
+    const notifications: Array<{ method: string; params: unknown }> = [];
+    client.on("notification", (event) => notifications.push(event));
+    client.start();
+    const { thread } = await client.request<{ thread: { id: string } }>("thread/start", {
+      cwd: root,
+      model: "claude-sonnet-5",
+      developerInstructions: "",
+      runtimeWorkspaceRoots: [root],
+    });
+    expect(await turn(client, notifications, thread.id, "my name is Asha")).toBe(
+      "I remember: my name is Asha",
+    );
+
+    expect(client.closeIdleRuntimes(Date.now() + 9 * 60_000)).toEqual([]);
+    expect(client.closeIdleRuntimes(Date.now() + 11 * 60_000)).toEqual([thread.id]);
+    expect(client.liveRuntimes).toBe(0);
+    expect(sdk.open.size).toBe(0);
+
+    expect(await turn(client, notifications, thread.id, "what is my name?")).toBe(
+      "I remember: my name is Asha, what is my name?",
+    );
+    expect(sdk.calls.at(-1)).toMatchObject({ resume: thread.id, cwd: root });
+    expect(client.liveRuntimes).toBe(1);
+    await client.stop();
+  });
+
+  it("never closes a process that is working, waiting for the owner or has queued work", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-busy-"));
+    const sdk = fakeSdk();
+    let queued = true;
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      sdk.factory as never,
+      { keepRuntime: () => queued },
+    );
+    client.start();
+    const { thread } = await client.request<{ thread: { id: string } }>("thread/start", {
+      cwd: root,
+      developerInstructions: "",
+      runtimeWorkspaceRoots: [root],
+    });
+    expect(client.closeIdleRuntimes(Date.now() + 60 * 60_000)).toEqual([]);
+    queued = false;
+    expect(client.closeIdleRuntimes(Date.now() + 60 * 60_000)).toEqual([thread.id]);
+    await client.stop();
+  });
+
+  it("keeps at most three Claude processes, closing the least recently used idle one", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-lru-"));
+    const sdk = fakeSdk();
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      sdk.factory as never,
+    );
+    const notifications: Array<{ method: string; params: unknown }> = [];
+    client.on("notification", (event) => notifications.push(event));
+    client.start();
+    const ids: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const { thread } = await client.request<{ thread: { id: string } }>("thread/start", {
+        cwd: root,
+        developerInstructions: "",
+        runtimeWorkspaceRoots: [root],
+      });
+      ids.push(thread.id);
+      await turn(client, notifications, thread.id, `hello ${index}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(client.liveRuntimes).toBe(3);
+    expect([...sdk.open].sort()).toEqual(ids.slice(2).sort());
+    // The oldest coworker writes again: it resumes with its context, another one closes.
+    expect(await turn(client, notifications, ids[0], "again")).toBe("I remember: hello 0, again");
+    expect(client.liveRuntimes).toBe(3);
+    expect(sdk.open.has(ids[0])).toBe(true);
     await client.stop();
   });
 });

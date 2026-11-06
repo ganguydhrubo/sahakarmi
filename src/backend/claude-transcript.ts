@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -57,4 +57,22 @@ export async function readTranscriptLines(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The session's transcript file and a stamp (size and time) that changes whenever Claude writes
+ * to it, or null when there is none. Lets a reader skip parsing an unchanged transcript again.
+ */
+export async function transcriptStamp(
+  sessionId: string,
+  configDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"),
+): Promise<string | null> {
+  const projects = join(configDir, "projects");
+  const folders = await readdir(projects).catch(() => [] as string[]);
+  for (const folder of folders) {
+    const path = join(projects, folder, `${sessionId}.jsonl`);
+    const info = await stat(path).catch(() => null);
+    if (info?.isFile()) return `${path}|${info.size}|${info.mtimeMs}`;
+  }
+  return null;
 }

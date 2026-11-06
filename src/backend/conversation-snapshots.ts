@@ -3,6 +3,67 @@ import type { DeliveryContext } from "./mailbox-store";
 import type { ThreadResponse } from "./protocol";
 import { toolCallFromItem } from "./tool-calls";
 
+/**
+ * A copy of the snapshot with only its newest `limit` messages (the window's "Load earlier"
+ * shows the rest). Without a limit the whole chat is copied.
+ */
+export function windowedSnapshot(
+  snapshot: ConversationSnapshot,
+  limit: number | undefined,
+): ConversationSnapshot {
+  if (!limit || snapshot.messages.length <= limit) {
+    const copy = structuredClone(snapshot);
+    delete copy.earlierCount;
+    return copy;
+  }
+  const { messages, ...rest } = snapshot;
+  return structuredClone({
+    ...rest,
+    messages: messages.slice(-limit),
+    earlierCount: messages.length - limit,
+  });
+}
+
+/**
+ * A short fingerprint of what the window shows: per message its id, status, text length and
+ * ending, tool state, files, delivery and reaction. Replaces a JSON copy of the whole chat
+ * (megabytes in a long one) that was built on every emit just to skip unchanged ones.
+ */
+export function conversationFingerprint(snapshot: ConversationSnapshot): string {
+  const parts = [snapshot.threadId ?? "", snapshot.activeTurnId ?? ""];
+  for (const message of snapshot.messages) {
+    parts.push(
+      [
+        message.id,
+        message.status,
+        message.text.length,
+        message.text.slice(-24),
+        message.itemType ?? "",
+        message.tool ? `${message.tool.status}:${JSON.stringify(message.tool).length}` : "",
+        message.attachments?.length ?? 0,
+        message.delivery ? `${message.delivery.status}:${message.delivery.position ?? ""}` : "",
+        message.reaction ?? "",
+        message.citations?.length ?? 0,
+      ].join("|"),
+    );
+  }
+  if (snapshot.plan) {
+    parts.push(
+      `plan:${snapshot.plan.turnId}:${snapshot.plan.steps.map((step) => step.status[0]).join("")}`,
+    );
+    parts.push(snapshot.plan.steps.map((step) => step.text.length).join(","));
+  }
+  return parts.join("\n");
+}
+
+/** Same mailbox message, ignoring the reaction (synced separately). */
+export function sameMailboxMessage(left: ConversationMessage, right: ConversationMessage): boolean {
+  if (left === right) return true;
+  return (
+    JSON.stringify({ ...left, reaction: null }) === JSON.stringify({ ...right, reaction: null })
+  );
+}
+
 export function snapshotFromThread(
   botId: string,
   thread: ThreadResponse["thread"],

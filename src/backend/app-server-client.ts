@@ -1,5 +1,7 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
+import { dirname, extname, join } from "node:path";
 import type { AgentProvider } from "./agent-client";
 import { JsonLineDecoder } from "./jsonl";
 import {
@@ -60,13 +62,21 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     if (this.running) return;
 
     this.#stopping = false;
-    this.#decoder = new JsonLineDecoder();
-    const child = spawn(this.#executable, ["app-server", "--listen", "stdio://"], {
+    this.#decoder = new JsonLineDecoder((line) =>
+      this.emit("diagnostic", redactDiagnostic(`Skipped a non-JSON line from Codex: ${line}`)),
+    );
+    // Codex gets its own key only, not the other providers' keys.
+    const launch = codexLaunch(
+      this.#executable,
+      ["app-server", "--listen", "stdio://"],
+      process.platform,
+      envForProvider("codex", process.env),
+    );
+    const child = spawn(launch.command, launch.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      // Codex gets its own key only, not the other providers' keys.
-      env: envForProvider("codex", process.env),
-      shell: process.platform === "win32",
+      env: launch.env,
       windowsHide: true,
+      windowsVerbatimArguments: launch.verbatim,
     });
     this.#process = child;
 
@@ -108,13 +118,13 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
 
     await new Promise<void>((resolve) => {
       const forceKill = setTimeout(() => {
-        if (child.exitCode === null) child.kill("SIGKILL");
+        if (child.exitCode === null) killTree(child, "SIGKILL");
       }, 2_000);
       child.once("exit", () => {
         clearTimeout(forceKill);
         resolve();
       });
-      child.kill("SIGTERM");
+      killTree(child, "SIGTERM");
     });
   }
 
@@ -202,9 +212,95 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     }
     this.#pending.clear();
 
-    if (child.exitCode === null) child.kill("SIGTERM");
+    if (child.exitCode === null) killTree(child, "SIGTERM");
     if (!this.#stopping) this.emit("exit", error);
   }
+}
+
+interface CodexLaunch {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  verbatim: boolean;
+}
+
+/**
+ * How to start Codex without a shell. `shell: true` broke on paths with spaces and left
+ * cmd.exe + node.exe wrappers whose codex.exe child outlived a stop. The npm shim (codex.cmd)
+ * only runs node, which starts the native codex.exe from the platform package, so that exe is
+ * started directly with the same env the shim sets. If it can't be found, cmd.exe runs the
+ * script with a quoted path (still no `shell: true`) and the tree kill ends the whole chain.
+ */
+export function codexLaunch(
+  executable: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  environment: NodeJS.ProcessEnv = process.env,
+): CodexLaunch {
+  const isScript =
+    platform === "win32" && [".cmd", ".bat"].includes(extname(executable).toLowerCase());
+  if (!isScript) return { command: executable, args, env: environment, verbatim: false };
+  const native = npmNativeCodex(executable);
+  if (native) {
+    return {
+      command: native.executable,
+      args,
+      env: {
+        ...environment,
+        CODEX_MANAGED_PACKAGE_ROOT: native.packageRoot,
+        CODEX_MANAGED_BY_NPM: "1",
+      },
+      verbatim: false,
+    };
+  }
+  const quoted = [executable, ...args].map((part) => `"${part.replaceAll("%", "%%")}"`).join(" ");
+  return {
+    command: environment.ComSpec?.trim() || "cmd.exe",
+    args: ["/d", "/s", "/c", `"${quoted}"`],
+    env: environment,
+    verbatim: true,
+  };
+}
+
+const WINDOWS_TRIPLES: Record<string, string> = {
+  x64: "x86_64-pc-windows-msvc",
+  arm64: "aarch64-pc-windows-msvc",
+};
+
+/** The codex.exe an npm/pnpm/bun shim at `<dir>/codex.cmd` would start. */
+export function npmNativeCodex(
+  shim: string,
+  arch: string = process.arch,
+): { executable: string; packageRoot: string } | null {
+  const triple = WINDOWS_TRIPLES[arch];
+  if (!triple) return null;
+  const packageRoot = join(dirname(shim), "node_modules", "@openai", "codex");
+  const platformPackage = `codex-win32-${arch}`;
+  const vendors = [
+    join(packageRoot, "node_modules", "@openai", platformPackage, "vendor"),
+    join(dirname(shim), "node_modules", "@openai", platformPackage, "vendor"),
+    join(packageRoot, "vendor"),
+  ];
+  for (const vendor of vendors) {
+    for (const executable of [
+      join(vendor, triple, "bin", "codex.exe"),
+      join(vendor, triple, "codex", "codex.exe"),
+    ]) {
+      if (existsSync(executable)) return { executable, packageRoot };
+    }
+  }
+  return null;
+}
+
+/** Ends Codex and everything it started (shell tools, MCP servers), like the ACP client does. */
+function killTree(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+  if (process.platform === "win32" && child.pid) {
+    execFile("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {
+      if (child.exitCode === null) child.kill(signal);
+    });
+    return;
+  }
+  child.kill(signal);
 }
 
 export function redactDiagnostic(message: string): string {

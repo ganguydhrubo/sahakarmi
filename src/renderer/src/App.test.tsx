@@ -868,8 +868,9 @@ describe("Sahkarmi connected desktop shell", () => {
     ).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "বাংলা" }));
+    // Language packs load on demand, so the Bengali text arrives a moment after the click.
     expect(
-      screen.getByText("আপনার AI টিম. ভারতে তৈরি.", { selector: ".rail-tagline" }),
+      await screen.findByText("আপনার AI টিম. ভারতে তৈরি.", { selector: ".rail-tagline" }),
     ).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "English" }));
     await fireEvent.click(screen.getByRole("button", { name: "System" }));

@@ -3064,6 +3064,12 @@ textarea {
   padding: 8px 12px 0;
 }
 
+.load-earlier {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 8px;
+}
+
 .time-marker {
   display: flex;
   align-items: center;
@@ -7920,6 +7926,45 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.storage-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.storage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--sahkarmi-line-strong);
+}
+
+.storage-row > div:first-child {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.storage-size {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-attachments {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.storage-attachments input {
+  width: 72px;
 }
 
 .segmented {

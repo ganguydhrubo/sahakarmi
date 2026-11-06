@@ -1,4 +1,4 @@
-import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
@@ -8,6 +8,7 @@ import {
   deliverableFiles,
   docxText,
   extractAttachmentText,
+  inlineImage,
   isUnderRoots,
   localAttachmentId,
   localAttachmentPath,
@@ -114,15 +115,16 @@ describe("attachment text", () => {
     await writeFile(join(tmp, "notes.exe"), "x").catch(() => undefined);
     await rm(join(tmp, "out"), { recursive: true, force: true });
     await writeFile(join(tmp, "a.png"), "img");
-    expect(deliverableFiles({ roots: [tmp], since }).map((p) => p.split(/[\\/]/).at(-1))).toEqual(
+    const listed = await deliverableFiles({ roots: [tmp], since });
+    expect(listed.map((p) => p.split(/[\\/]/).at(-1))).toEqual(
       expect.arrayContaining(["report.pdf", "a.png"]),
     );
-    expect(deliverableFiles({ roots: [tmp], since })).not.toContain(old);
-    expect(deliverableFiles({ roots: [tmp], since })).not.toContain(nested);
+    expect(listed).not.toContain(old);
+    expect(listed).not.toContain(nested);
 
     const id = localAttachmentId(fresh);
     expect(localAttachmentPath(id)).toBe(fresh);
-    expect(localAttachmentSummary(fresh)).toMatchObject({
+    expect(await localAttachmentSummary(fresh)).toMatchObject({
       id,
       name: "report.pdf",
       kind: "file",
@@ -131,6 +133,36 @@ describe("attachment text", () => {
     });
     expect(isUnderRoots(fresh, [tmp])).toBe(true);
     expect(isUnderRoots(join(tmp, "..", "elsewhere.png"), [tmp])).toBe(false);
+  });
+
+  it("stops scanning a huge workspace after the entry cap and skips node_modules", async () => {
+    const since = Date.now() - 1_000;
+    await mkdir(join(tmp, "node_modules"), { recursive: true });
+    await writeFile(join(tmp, "node_modules", "dep.md"), "dep");
+    await mkdir(join(tmp, "many"), { recursive: true });
+    await Promise.all(
+      Array.from({ length: 50 }, (_, index) => writeFile(join(tmp, "many", `n${index}.txt`), "x")),
+    );
+    await writeFile(join(tmp, "top.md"), "top");
+    const capped = await deliverableFiles({ roots: [tmp], since, maxEntries: 10, limit: 100 });
+    expect(capped.length).toBeLessThanOrEqual(10);
+    expect(capped.map((p) => p.split(/[\\/]/).at(-1))).toContain("top.md");
+    const all = await deliverableFiles({ roots: [tmp], since, limit: 100 });
+    expect(all).toHaveLength(51);
+    expect(all.some((p) => p.includes("node_modules"))).toBe(false);
+    expect(await localAttachmentSummary(join(tmp, "missing.pdf"))).toMatchObject({ size: 0 });
+  });
+
+  it("inlines a small picture as base64 and refuses other files", async () => {
+    const png = join(tmp, "shot.png");
+    await writeFile(png, Buffer.from([1, 2, 3]));
+    expect(await inlineImage(png)).toEqual({
+      type: "image",
+      mimeType: "image/png",
+      data: Buffer.from([1, 2, 3]).toString("base64"),
+    });
+    expect(await inlineImage(join(tmp, "note.txt"))).toBeNull();
+    expect(await inlineImage(join(tmp, "gone.png"))).toBeNull();
   });
 });
 

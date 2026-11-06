@@ -1426,6 +1426,8 @@ describe.sequential("AgentService", () => {
       accessibility: true,
     }));
     await service.initialize();
+    // Only the default provider starts with the app; Settings > AI checks the rest.
+    await service.probeProviders();
 
     expect(service.getStatus()).toMatchObject({
       phase: "ready",
@@ -1493,6 +1495,8 @@ describe.sequential("AgentService", () => {
     service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "claude");
 
     await service.initialize();
+    // Only the default provider starts with the app; Settings > AI checks the rest.
+    await service.probeProviders();
 
     expect(service.getStatus()).toMatchObject({
       phase: "ready",
@@ -1546,6 +1550,8 @@ describe.sequential("AgentService", () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
+    // Only the default provider starts with the app; Settings > AI checks the rest.
+    await service.probeProviders();
     await store.getOrCreate("chief");
     await store.updateBot({ botId: "chief", model: "claude-sonnet-5" });
     expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
@@ -2153,6 +2159,8 @@ describe.sequential("AgentService", () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     await service.initialize();
+    // Only the default provider starts with the app; Settings > AI checks the rest.
+    await service.probeProviders();
     expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
       "sign-in-required",
     );
@@ -3011,6 +3019,91 @@ describe("search excerpts", () => {
   });
 });
 
+describe("lean runtime: lazy providers, one-message updates, cached chat reads", () => {
+  it("starts only the AIs coworkers use plus the default, and checks the rest on request", async () => {
+    process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root);
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    const state = (id: string) => service?.getStatus().providers?.find((p) => p.id === id)?.state;
+    expect(state("codex")).toBe("available");
+    // Claude is installed and signed in, but no coworker uses it: not started with the app.
+    expect(state("claude") ?? "not-started").toBe("not-started");
+
+    await service.probeProviders();
+    expect(state("claude")).toBe("available");
+  });
+
+  it("sends each tool step as one message and the whole chat when the turn ends", async () => {
+    process.env.SAHKARMI_FAKE_TOOL_ITEM = JSON.stringify({
+      type: "commandExecution",
+      id: "cmd-1",
+      command: "dir",
+      aggregatedOutput: "invoices.xlsx",
+    });
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "120";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    await service.readConversation("arjun-research");
+    await service.sendMessage({ botId: "arjun-research", text: "What's in Shared?" });
+    await waitFor(() => service?.listQueue("arjun-research").deliveries[0]?.status === "completed");
+
+    const upserts = events.filter(
+      (event) => event.type === "message-upsert" && event.message?.id === "cmd-1",
+    );
+    expect(
+      upserts.map((event) => event.type === "message-upsert" && event.message?.tool?.status),
+    ).toEqual(["running", "completed"]);
+    // No full chat was sent for the tool steps themselves...
+    const fullWithTool = events.filter(
+      (event) =>
+        event.type === "conversation" &&
+        event.snapshot.botId === "arjun-research" &&
+        event.snapshot.messages.some((message) => message.id === "cmd-1"),
+    );
+    // ...only once the turn ended (with the final answer).
+    expect(fullWithTool.length).toBeGreaterThan(0);
+    const last = fullWithTool.at(-1);
+    expect(last?.type === "conversation" && last.snapshot.activeTurnId).toBeNull();
+    const revisions = events
+      .filter((event) => event.type === "conversation" || event.type === "message-upsert")
+      .map((event) => (event.type === "conversation" ? event.snapshot.revision : event.revision))
+      .filter((revision): revision is number => typeof revision === "number");
+    for (let index = 1; index < revisions.length; index += 1) {
+      expect(revisions[index]).toBeGreaterThan(revisions[index - 1]);
+    }
+  });
+
+  it("opens a chat again from memory and sends only the newest messages", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    await service.initialize();
+    for (const text of ["one", "two"]) {
+      await service.sendMessage({ botId: "chief", text });
+      await waitFor(() =>
+        (service?.listQueue("chief").deliveries ?? []).every((item) => item.status === "completed"),
+      );
+    }
+    const reads = async () =>
+      (await protocolMessages()).filter((message) => message.method === "thread/read").length;
+    const full = await service.readConversation("chief");
+    const afterFirst = await reads();
+    const again = await service.readConversation("chief");
+    expect(await reads()).toBe(afterFirst);
+    expect(again.messages).toEqual(full.messages);
+
+    const window = await service.readConversation("chief", { limit: 1 });
+    expect(window.messages).toEqual(full.messages.slice(-1));
+    expect(window.earlierCount).toBe(full.messages.length - 1);
+    expect(await reads()).toBe(afterFirst);
+  });
+});
+
 describe("0.19 parity: continuation, queued runtime change, delete, sign-in hold", () => {
   it("tells a coworker that stopped before its next step to carry on, twice at most", async () => {
     process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Step one is done. Shall I continue?";
@@ -3099,6 +3192,8 @@ describe("0.19 parity: continuation, queued runtime change, delete, sign-in hold
     const events: AgentEvent[] = [];
     service.on("event", (event) => events.push(event));
     await service.initialize();
+    // Only the default provider starts with the app; Settings > AI checks the rest.
+    await service.probeProviders();
     expect(service.getStatus().providers?.find((p) => p.id === "claude")?.state).toBe(
       "sign-in-required",
     );

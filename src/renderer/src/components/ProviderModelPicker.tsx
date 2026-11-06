@@ -98,6 +98,11 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
     if (props.disabled && open()) setOpen(false);
   });
 
+  // The picker lists every AI: opening it checks the ones not started with the app.
+  createEffect(() => {
+    if (open()) void window.sahkarmi?.agent?.probeProviders?.().catch(() => undefined);
+  });
+
   onMount(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (

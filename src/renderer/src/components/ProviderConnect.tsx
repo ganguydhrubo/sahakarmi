@@ -47,6 +47,8 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
     setSetup((current) => ({ ...current, [state.provider]: state }));
 
   onMount(() => {
+    // Only the AIs coworkers use start with the app; this list checks the others now.
+    void window.sahkarmi.agent?.probeProviders?.().catch(() => undefined);
     const api = window.sahkarmi.providerSetup;
     if (!api) return;
     void api

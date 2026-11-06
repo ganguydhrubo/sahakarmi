@@ -102,6 +102,8 @@ export function InitialSetup(props: InitialSetupProps) {
   }
 
   onMount(() => {
+    // Setup lists every AI, so check the ones not started with the app.
+    void window.sahkarmi.agent?.probeProviders?.().catch(() => undefined);
     void refreshPermissions();
     const handleFocus = () => void refreshPermissions();
     window.addEventListener("focus", handleFocus);
