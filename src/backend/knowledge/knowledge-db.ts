@@ -1,13 +1,22 @@
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import type { KnowledgeSourceKind, KnowledgeSourceStatus } from "../../shared/ipc";
+import { openDatabase } from "./sqlite-capabilities";
 
 /**
  * One SQLite file per Knowledge Base, through Node's built-in `node:sqlite` (no native addon).
  * Documents and their chunks live here; an FTS5 table over the chunks gives BM25-ranked search
  * that understands English, Hindi and Bengali words (unicode61 tokenizer, diacritics folded,
  * English words stemmed so "registrations" finds "registration"). When the optional embedding
- * model is installed, each chunk also gets a small int8 vector for meaning-based search.
+ * model is installed, each chunk also gets a small int8 vector for meaning-based search: the
+ * sqlite-vec extension ranks them inside SQLite, or (if it cannot load) a brute-force scan over
+ * an in-memory copy does.
+ *
+ * Search only sees documents that are enabled and whose file is there: a file that went missing
+ * or failed to index again is never cited (its stale passages are not quoted as if current).
  */
+
+/** Documents whose passages may be searched and cited. */
+const SEARCHABLE = "d.enabled = 1 AND d.status NOT IN ('missing', 'failed')";
 
 /** v2: porter stemming on the FTS index and the `vectors` table. */
 const SCHEMA_VERSION = 2;
@@ -76,18 +85,36 @@ interface VectorCache {
   model: string;
   dim: number;
   seqs: number[];
-  scales: Float32Array;
+  scales: number[];
+  /** Rows of `dim` int8 values, grown in place as vectors are added. */
   data: Int8Array;
+  /** Rows whose chunk was deleted since the cache was built (filtered out when read). */
+  stale: number;
+}
+
+export interface KnowledgeDbOptions {
+  /** false: never load sqlite-vec (tests of the fallback). */
+  vector?: boolean;
+}
+
+export interface DocumentCounts {
+  total: number;
+  ready: number;
+  chunks: number;
 }
 
 export class KnowledgeDb {
   readonly #db: DatabaseSync;
   readonly path: string;
   #vectorCache: VectorCache | null = null;
+  /** sqlite-vec is loaded into this connection. */
+  readonly vectorExtension: boolean;
 
-  constructor(path: string) {
+  constructor(path: string, options: KnowledgeDbOptions = {}) {
     this.path = path;
-    this.#db = new DatabaseSync(path);
+    const opened = openDatabase(path, { vector: options.vector });
+    this.#db = opened.db;
+    this.vectorExtension = opened.vector;
     this.#db.exec("PRAGMA journal_mode = WAL");
     this.#db.exec("PRAGMA synchronous = NORMAL");
     this.#db.exec("PRAGMA foreign_keys = ON");
@@ -215,6 +242,17 @@ export class KnowledgeDb {
 
   // ---- documents ----
 
+  /** Counts for a summary or progress, without reading every row. */
+  documentCounts(): DocumentCounts {
+    const row = this.#db
+      .prepare(
+        `SELECT count(*) AS total, coalesce(sum(status = 'ready'), 0) AS ready,
+                coalesce(sum(chunk_count), 0) AS chunks FROM documents`,
+      )
+      .get() as { total: number; ready: number; chunks: number };
+    return { total: Number(row.total), ready: Number(row.ready), chunks: Number(row.chunks) };
+  }
+
   listDocuments(): DocumentRow[] {
     const rows = this.#db
       .prepare("SELECT * FROM documents ORDER BY name COLLATE NOCASE")
@@ -312,20 +350,46 @@ export class KnowledgeDb {
     if (assignments.length === 0) return;
     values.push(id);
     this.#db.prepare(`UPDATE documents SET ${assignments.join(", ")} WHERE id = ?`).run(...values);
-    if ("enabled" in patch) this.#vectorCache = null;
   }
 
   deleteDocument(id: string): void {
     this.#db.exec("BEGIN IMMEDIATE");
+    let removed = 0;
     try {
-      this.#db.prepare("DELETE FROM chunks WHERE document_id = ?").run(id);
+      removed = Number(
+        this.#db.prepare("DELETE FROM chunks WHERE document_id = ?").run(id).changes,
+      );
       this.#db.prepare("DELETE FROM documents WHERE id = ?").run(id);
       this.#db.exec("COMMIT");
     } catch (error) {
       this.#db.exec("ROLLBACK");
       throw error;
     }
-    this.#vectorCache = null;
+    this.#markStale(removed);
+  }
+
+  /**
+   * A document that could not be indexed again loses its old passages, so nothing stale from it
+   * is cited; it shows as failed with the reason.
+   */
+  failDocument(id: string, error: string): void {
+    this.#db.exec("BEGIN IMMEDIATE");
+    let removed = 0;
+    try {
+      removed = Number(
+        this.#db.prepare("DELETE FROM chunks WHERE document_id = ?").run(id).changes,
+      );
+      this.#db
+        .prepare(
+          "UPDATE documents SET status = 'failed', error = ?, chunk_count = 0, sha256 = '' WHERE id = ?",
+        )
+        .run(error, id);
+      this.#db.exec("COMMIT");
+    } catch (failure) {
+      this.#db.exec("ROLLBACK");
+      throw failure;
+    }
+    this.#markStale(removed);
   }
 
   deleteDocumentsInFolder(folderId: string): number {
@@ -346,8 +410,11 @@ export class KnowledgeDb {
     meta: { sha256: string; size: number; mtimeMs: number; pages: number | null },
   ): void {
     this.#db.exec("BEGIN IMMEDIATE");
+    let removed = 0;
     try {
-      this.#db.prepare("DELETE FROM chunks WHERE document_id = ?").run(documentId);
+      removed = Number(
+        this.#db.prepare("DELETE FROM chunks WHERE document_id = ?").run(documentId).changes,
+      );
       const insert = this.#db.prepare(
         `INSERT INTO chunks (document_id, chunk_index, name, page, slide, sheet, heading, char_start, char_end, text)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -385,7 +452,7 @@ export class KnowledgeDb {
       this.#db.exec("ROLLBACK");
       throw error;
     }
-    this.#vectorCache = null;
+    this.#markStale(removed);
   }
 
   chunkCount(): number {
@@ -427,7 +494,7 @@ export class KnowledgeDb {
   // ---- search ----
 
   /**
-   * BM25 over the chunks of enabled documents. `match` is an FTS5 expression built by
+   * BM25 over the chunks of enabled documents whose file is still there. `match` is an FTS5 expression built by
    * knowledge-search.ts (never raw owner text). File name counts four times a body word and a
    * heading twice, so a query naming the file or its section floats that file up.
    */
@@ -438,7 +505,7 @@ export class KnowledgeDb {
                 snippet(chunks_fts, 2, '', '', '…', 28) AS snippet
          FROM chunks_fts JOIN chunks c ON c.seq = chunks_fts.rowid
          JOIN documents d ON d.id = c.document_id
-         WHERE chunks_fts MATCH ? AND d.enabled = 1
+         WHERE chunks_fts MATCH ? AND ${SEARCHABLE}
          ORDER BY rank LIMIT ?`,
       )
       .all(match, Math.max(1, Math.min(limit, 200))) as unknown as Array<
@@ -490,7 +557,7 @@ export class KnowledgeDb {
       this.#db.exec("ROLLBACK");
       throw error;
     }
-    this.#vectorCache = null;
+    this.#appendToCache(model, vectors);
   }
 
   vectorCount(model: string): number {
@@ -506,11 +573,60 @@ export class KnowledgeDb {
   }
 
   /**
-   * Brute-force cosine search over the vectors of enabled documents. The vectors stay cached in
-   * memory as int8 (256 bytes a chunk) until the base changes, so a search over tens of
-   * thousands of chunks is a few milliseconds.
+   * Cosine search over the vectors of searchable documents. With sqlite-vec loaded the ranking
+   * runs inside SQLite (exact, brute force, a few milliseconds for tens of thousands of chunks)
+   * and the filter on enabled and present files is part of the query. Without it, the vectors
+   * are cached in memory as int8 (256 bytes a chunk) and scanned in JavaScript.
    */
   semanticSearch(query: Float32Array, model: string, limit: number, minScore: number): VectorHit[] {
+    const top = Math.max(1, Math.min(limit, 200));
+    if (this.vectorExtension) {
+      try {
+        return this.#semanticSearchSql(query, model, top, minScore);
+      } catch {
+        // A damaged row or an odd vector: the scan below still answers.
+      }
+    }
+    return this.#semanticSearchScan(query, model, top, minScore);
+  }
+
+  #semanticSearchSql(
+    query: Float32Array,
+    model: string,
+    limit: number,
+    minScore: number,
+  ): VectorHit[] {
+    const quantized = quantizeQuery(query);
+    if (!quantized) return [];
+    const rows = this.#db
+      .prepare(
+        `SELECT c.*, d.path AS path,
+                1.0 - vec_distance_cosine(vec_int8(v.data), vec_int8(?)) AS score
+         FROM vectors v JOIN chunks c ON c.seq = v.seq JOIN documents d ON d.id = c.document_id
+         WHERE v.model = ? AND length(v.data) = ? AND ${SEARCHABLE}
+         ORDER BY score DESC LIMIT ?`,
+      )
+      .all(
+        new Uint8Array(quantized.buffer, quantized.byteOffset, quantized.byteLength),
+        model,
+        quantized.length,
+        limit,
+      ) as unknown as Array<RawChunk & { score: number }>;
+    const hits: VectorHit[] = [];
+    for (const row of rows) {
+      const score = Number(row.score);
+      if (!(score >= minScore)) break;
+      hits.push({ ...chunkFromRaw(row), score });
+    }
+    return hits;
+  }
+
+  #semanticSearchScan(
+    query: Float32Array,
+    model: string,
+    limit: number,
+    minScore: number,
+  ): VectorHit[] {
     const cache = this.#vectors(model);
     if (!cache || cache.seqs.length === 0 || cache.dim !== query.length) return [];
     const scored: Array<{ index: number; score: number }> = [];
@@ -524,54 +640,100 @@ export class KnowledgeDb {
       if (score >= minScore) scored.push({ index: row, score });
     }
     scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, Math.max(1, Math.min(limit, 200)));
-    if (top.length === 0) return [];
-    const seqs = top.map((entry) => cache.seqs[entry.index] ?? -1);
-    const rows = this.#db
-      .prepare(
-        `SELECT c.*, d.path AS path FROM chunks c JOIN documents d ON d.id = c.document_id
-         WHERE c.seq IN (${seqs.map(() => "?").join(", ")})`,
-      )
-      .all(...seqs) as unknown as RawChunk[];
-    const bySeq = new Map(rows.map((row) => [Number(row.seq), chunkFromRaw(row)]));
+    // Deleted or switched-off chunks may still be cached: read a few more than asked for and
+    // keep only rows the database still calls searchable.
     const hits: VectorHit[] = [];
-    for (const [position, entry] of top.entries()) {
-      const chunk = bySeq.get(seqs[position] ?? -1);
-      if (chunk) hits.push({ ...chunk, score: entry.score });
+    for (let from = 0; from < scored.length && hits.length < limit; from += limit * 2) {
+      const window = scored.slice(from, from + limit * 2);
+      const seqs = window.map((entry) => cache.seqs[entry.index] ?? -1);
+      const rows = this.#db
+        .prepare(
+          `SELECT c.*, d.path AS path FROM chunks c JOIN documents d ON d.id = c.document_id
+           WHERE c.seq IN (${seqs.map(() => "?").join(", ")}) AND ${SEARCHABLE}`,
+        )
+        .all(...seqs) as unknown as RawChunk[];
+      const bySeq = new Map(rows.map((row) => [Number(row.seq), chunkFromRaw(row)]));
+      for (const [position, entry] of window.entries()) {
+        const chunk = bySeq.get(seqs[position] ?? -1);
+        if (chunk) hits.push({ ...chunk, score: entry.score });
+        if (hits.length >= limit) break;
+      }
     }
     return hits;
+  }
+
+  /** New vectors join the in-memory copy instead of throwing it away (indexing writes often). */
+  #appendToCache(model: string, vectors: VectorInput[]): void {
+    const cache = this.#vectorCache;
+    if (!cache) return;
+    if (cache.model !== model) {
+      this.#vectorCache = null;
+      return;
+    }
+    if (cache.dim === 0) cache.dim = vectors[0]?.data.length ?? 0;
+    const known = new Set(cache.seqs);
+    const fresh = vectors.filter(
+      (vector) => vector.data.length === cache.dim && !known.has(vector.seq),
+    );
+    if (fresh.length < vectors.length) {
+      // A vector was replaced (or has another size): rebuild on the next search.
+      this.#vectorCache = null;
+      return;
+    }
+    const needed = (cache.seqs.length + fresh.length) * cache.dim;
+    if (cache.data.length < needed) {
+      const grown = new Int8Array(Math.max(needed, cache.data.length * 2));
+      grown.set(cache.data.subarray(0, cache.seqs.length * cache.dim));
+      cache.data = grown;
+    }
+    for (const vector of fresh) {
+      cache.data.set(vector.data, cache.seqs.length * cache.dim);
+      cache.seqs.push(vector.seq);
+      cache.scales.push(vector.scale);
+    }
+  }
+
+  /** Deleted chunks stay in the cache until a quarter of it is stale, then it is rebuilt. */
+  #markStale(count: number): void {
+    const cache = this.#vectorCache;
+    if (!cache || count === 0) return;
+    cache.stale += count;
+    if (cache.stale * 4 > cache.seqs.length) this.#vectorCache = null;
+  }
+
+  /** For tests: whether the in-memory vector copy is loaded. */
+  get vectorCacheLoaded(): boolean {
+    return this.#vectorCache !== null;
   }
 
   #vectors(model: string): VectorCache | null {
     if (this.#vectorCache && this.#vectorCache.model === model) return this.#vectorCache;
     const rows = this.#db
-      .prepare(
-        `SELECT v.seq, v.scale, v.data FROM vectors v
-         JOIN chunks c ON c.seq = v.seq JOIN documents d ON d.id = c.document_id
-         WHERE d.enabled = 1 AND v.model = ? ORDER BY v.seq`,
-      )
+      .prepare("SELECT seq, scale, data FROM vectors WHERE model = ? ORDER BY seq")
       .all(model) as unknown as Array<{ seq: number; scale: number; data: Uint8Array }>;
     const dim = rows[0]?.data.byteLength ?? 0;
     const seqs: number[] = [];
-    const scales = new Float32Array(rows.length);
+    const scales: number[] = [];
     const data = new Int8Array(rows.length * dim);
-    let kept = 0;
     for (const row of rows) {
       if (row.data.byteLength !== dim) continue;
+      data.set(new Int8Array(row.data.buffer, row.data.byteOffset, dim), seqs.length * dim);
       seqs.push(Number(row.seq));
-      scales[kept] = Number(row.scale);
-      data.set(new Int8Array(row.data.buffer, row.data.byteOffset, dim), kept * dim);
-      kept += 1;
+      scales.push(Number(row.scale));
     }
-    this.#vectorCache = {
-      model,
-      dim,
-      seqs,
-      scales: scales.subarray(0, kept),
-      data: data.subarray(0, kept * dim),
-    };
+    this.#vectorCache = { model, dim, seqs, scales, data, stale: 0 };
     return this.#vectorCache;
   }
+}
+
+/** The query as int8 for sqlite-vec (cosine ignores the scale), or null for a zero vector. */
+function quantizeQuery(query: Float32Array): Int8Array | null {
+  let max = 0;
+  for (const value of query) max = Math.max(max, Math.abs(value));
+  if (!(max > 0)) return null;
+  const out = new Int8Array(query.length);
+  for (let i = 0; i < query.length; i += 1) out[i] = Math.round(((query[i] ?? 0) / max) * 127);
+  return out;
 }
 
 interface RawDocument {

@@ -13,6 +13,7 @@ import {
   localAttachmentPath,
   localAttachmentSummary,
   pptxText,
+  readZip,
   xlsxText,
 } from "./attachment-text";
 
@@ -130,5 +131,16 @@ describe("attachment text", () => {
     });
     expect(isUnderRoots(fresh, [tmp])).toBe(true);
     expect(isUnderRoots(join(tmp, "..", "elsewhere.png"), [tmp])).toBe(false);
+  });
+});
+
+describe("readZip", () => {
+  it("refuses an entry that unpacks past the size limit (zip bomb) and reads normal ones", () => {
+    const bomb = zip({ "word/document.xml": "a".repeat(200_000) });
+    expect(() => readZip(bomb, { entry: 50_000, total: 1_000_000 })).toThrow(/far more data/);
+    const many = zip({ "a.xml": "b".repeat(30_000), "c.xml": "d".repeat(30_000) });
+    expect(() => readZip(many, { entry: 50_000, total: 40_000 })).toThrow(/far more data/);
+    const fine = readZip(zip({ "a.xml": "hello" }));
+    expect(fine.get("a.xml")?.toString("utf8")).toBe("hello");
   });
 });

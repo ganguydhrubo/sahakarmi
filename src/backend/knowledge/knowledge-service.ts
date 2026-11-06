@@ -22,14 +22,22 @@ import type {
 import { JsonFile } from "../json-file";
 import { isRecord } from "../protocol";
 import { chunkDocument } from "./chunker";
-import { extractDocument, isKnowledgeFile, knowledgeKindFor } from "./document-extractors";
+import {
+  extractDocument,
+  isKnowledgeFile,
+  knowledgeKindFor,
+  MAX_SOURCE_BYTES,
+} from "./document-extractors";
 import { EmbeddingModelStore, type FetchLike, POTION_BASE_8M } from "./embedding-model-store";
 import { type ChunkRow, KnowledgeDb, type VectorInput } from "./knowledge-db";
 import {
   buildMatchQuery,
+  contentTerms,
   fuseHits,
   knowledgeContextLines,
+  matchFromTerms,
   numberHits,
+  passesGroundingFloor,
   rowsToHits,
   vectorText,
   wantsSemantic,
@@ -69,6 +77,8 @@ const VECTOR_BATCH = 256;
 export const INDEXER_VERSION = "2";
 const EMBEDDER_IDLE_MS = 10 * 60_000;
 const SEMANTIC_EMIT_INTERVAL_MS = 250;
+/** While files are indexed, the window hears about it at most this often. */
+const CHANGE_EMIT_INTERVAL_MS = 1_000;
 
 export interface KnowledgeServiceOptions {
   /** Replaces the network for the model download (tests). */
@@ -132,6 +142,13 @@ export class KnowledgeService extends EventEmitter {
   #backfilled = false;
   readonly #vectorizing = new Set<string>();
   #lastSemanticEmit = 0;
+  /** Each base's file list, read again only after that base changed. */
+  readonly #summaryCache = new Map<
+    string,
+    Pick<KnowledgeBaseSummary, "sources" | "folders" | "chunkCount">
+  >();
+  #lastChangeEmit = 0;
+  #changeTimer: NodeJS.Timeout | null = null;
 
   constructor(userDataPath: string, options: KnowledgeServiceOptions = {}) {
     super();
@@ -157,6 +174,8 @@ export class KnowledgeService extends EventEmitter {
   close(): void {
     this.#closed = true;
     this.#queue = [];
+    if (this.#changeTimer) clearTimeout(this.#changeTimer);
+    this.#changeTimer = null;
     this.#unloadEmbedder();
     for (const db of this.#dbs.values()) {
       try {
@@ -221,6 +240,7 @@ export class KnowledgeService extends EventEmitter {
       this.#dbs.delete(id);
     }
     this.#bases = this.#bases.filter((candidate) => candidate.id !== base.id);
+    this.#summaryCache.delete(id);
     await this.#persist();
     for (const suffix of ["", "-wal", "-shm"]) {
       await removeWithRetry(`${this.#dbPath(id)}${suffix}`);
@@ -259,7 +279,7 @@ export class KnowledgeService extends EventEmitter {
     }
     base.updatedAt = new Date().toISOString();
     await this.#persist();
-    return this.#changed();
+    return this.#changed(base.id);
   }
 
   async addFolder(kbId: string, rawPath: string): Promise<KnowledgeBaseSummary[]> {
@@ -281,14 +301,14 @@ export class KnowledgeService extends EventEmitter {
     this.#db(base.id).deleteDocumentsInFolder(folderId);
     base.updatedAt = new Date().toISOString();
     await this.#persist();
-    return this.#changed();
+    return this.#changed(base.id);
   }
 
   async removeSource(kbId: string, documentId: string): Promise<KnowledgeBaseSummary[]> {
     const base = this.#require(kbId);
     this.#queue = this.#queue.filter((job) => job.documentId !== documentId);
     this.#db(base.id).deleteDocument(documentId);
-    return this.#changed();
+    return this.#changed(base.id);
   }
 
   async setSourceEnabled(
@@ -298,7 +318,7 @@ export class KnowledgeService extends EventEmitter {
   ): Promise<KnowledgeBaseSummary[]> {
     const base = this.#require(kbId);
     this.#db(base.id).updateDocument(documentId, { enabled });
-    return this.#changed();
+    return this.#changed(base.id);
   }
 
   /** Looks at every linked folder and file again; new and changed files are indexed. */
@@ -361,7 +381,7 @@ export class KnowledgeService extends EventEmitter {
         if (document.status !== "missing") db.updateDocument(document.id, { status: "missing" });
       }
     }
-    return this.#changed();
+    return this.#changed(base.id);
   }
 
   // ---- search ----
@@ -413,7 +433,7 @@ export class KnowledgeService extends EventEmitter {
     await this.initialize();
     const bases = this.#basesForBot(bot);
     if (bases.length === 0) return null;
-    const hits = await this.#searchBases(bases, query, GROUNDING_HITS, SEMANTIC_MIN_SCORE);
+    const hits = await this.#searchBases(bases, query, GROUNDING_HITS, SEMANTIC_MIN_SCORE, true);
     if (hits.length === 0) return null;
     const citations = hits.map((hit) => hit.citation);
     const names = [...new Set(citations.map((citation) => citation.kbName))];
@@ -524,14 +544,21 @@ export class KnowledgeService extends EventEmitter {
 
   // ---- internals ----
 
+  /**
+   * `grounding`: excerpts for a message nobody asked to search with. Small talk is ignored and
+   * every lexical hit must clear the floor in knowledge-search.ts, so "hi, can you help me
+   * today?" adds nothing while "late fee in the rent agreement" still finds its page.
+   */
   async #searchBases(
     bases: StoredBase[],
     query: string,
     limit: number,
     minScore: number,
+    grounding = false,
   ): Promise<KnowledgeHit[]> {
     if (bases.length === 0) return [];
-    const match = buildMatchQuery(query);
+    const terms = grounding ? contentTerms(query) : null;
+    const match = terms ? matchFromTerms(terms) : buildMatchQuery(query);
     const embedder = wantsSemantic(query) ? await this.#embedderReady() : null;
     const vector = embedder ? embedder.embed(query) : null;
     if (!match && !vector) return [];
@@ -539,7 +566,18 @@ export class KnowledgeService extends EventEmitter {
     for (const base of bases) {
       try {
         const db = this.#db(base.id);
-        const lexical = match ? rowsToHits(db.search(match, limit * 3), base, limit) : [];
+        let lexical = match ? rowsToHits(db.search(match, limit * 3), base, limit) : [];
+        if (terms) {
+          const best = lexical[0]?.score ?? 0;
+          lexical = lexical.filter((hit) =>
+            passesGroundingFloor(
+              terms,
+              `${hit.citation.fileName} ${hit.citation.heading ?? ""} ${hit.citation.excerpt}`,
+              hit.score,
+              best,
+            ),
+          );
+        }
         if (!vector) {
           groups.push(lexical);
           continue;
@@ -695,27 +733,41 @@ export class KnowledgeService extends EventEmitter {
   }
 
   #summary(base: StoredBase): KnowledgeBaseSummary {
-    const db = this.#db(base.id);
-    const documents = db.listDocuments();
-    const sources: KnowledgeSourceSummary[] = documents.map((document) => ({
-      id: document.id,
-      path: document.path,
-      name: document.name,
-      kind: document.kind,
-      size: document.size,
-      pages: document.pages,
-      chunkCount: document.chunkCount,
-      status: document.status,
-      error: document.error,
-      enabled: document.enabled,
-      folderId: document.folderId,
-      indexedAt: document.indexedAt,
-    }));
-    const folders: KnowledgeFolderSummary[] = base.folders.map((folder) => ({
-      id: folder.id,
-      path: folder.path,
-      fileCount: documents.filter((document) => document.folderId === folder.id).length,
-    }));
+    let files = this.#summaryCache.get(base.id);
+    if (!files) {
+      const documents = this.#db(base.id).listDocuments();
+      const sources: KnowledgeSourceSummary[] = documents.map((document) => ({
+        id: document.id,
+        path: document.path,
+        name: document.name,
+        kind: document.kind,
+        size: document.size,
+        pages: document.pages,
+        chunkCount: document.chunkCount,
+        status: document.status,
+        error: document.error,
+        enabled: document.enabled,
+        folderId: document.folderId,
+        indexedAt: document.indexedAt,
+      }));
+      const perFolder = new Map<string, number>();
+      for (const document of documents) {
+        if (document.folderId) {
+          perFolder.set(document.folderId, (perFolder.get(document.folderId) ?? 0) + 1);
+        }
+      }
+      const folders: KnowledgeFolderSummary[] = base.folders.map((folder) => ({
+        id: folder.id,
+        path: folder.path,
+        fileCount: perFolder.get(folder.id) ?? 0,
+      }));
+      files = {
+        sources,
+        folders,
+        chunkCount: documents.reduce((sum, document) => sum + document.chunkCount, 0),
+      };
+      this.#summaryCache.set(base.id, files);
+    }
     return {
       id: base.id,
       name: base.name,
@@ -724,9 +776,9 @@ export class KnowledgeService extends EventEmitter {
       privacy: base.privacy,
       createdAt: base.createdAt,
       updatedAt: base.updatedAt,
-      sources,
-      folders,
-      chunkCount: documents.reduce((sum, document) => sum + document.chunkCount, 0),
+      sources: files.sources,
+      folders: files.folders,
+      chunkCount: files.chunkCount,
       indexing: this.#queue.some((job) => job.kbId === base.id),
     };
   }
@@ -735,12 +787,34 @@ export class KnowledgeService extends EventEmitter {
     await this.#registry.write({ version: REGISTRY_VERSION, bases: this.#bases });
   }
 
-  #changed(): KnowledgeBaseSummary[] {
+  /** The owner changed something: everyone hears about it now. */
+  #changed(kbId?: string): KnowledgeBaseSummary[] {
+    if (kbId) this.#summaryCache.delete(kbId);
+    else this.#summaryCache.clear();
+    if (this.#changeTimer) clearTimeout(this.#changeTimer);
+    this.#changeTimer = null;
     const bases = this.list();
+    this.#lastChangeEmit = Date.now();
     this.#emit({ type: "knowledge-changed", bases });
     return bases;
   }
 
+  /**
+   * Indexing changed a base: the window hears about it at most once a second (the last change
+   * always arrives), so a folder of 2,000 files is not 2,000 full lists over IPC.
+   */
+  #changedSoon(kbId: string): void {
+    this.#summaryCache.delete(kbId);
+    if (this.#changeTimer || this.#closed) return;
+    const wait = Math.max(0, this.#lastChangeEmit + CHANGE_EMIT_INTERVAL_MS - Date.now());
+    this.#changeTimer = setTimeout(() => {
+      this.#changeTimer = null;
+      if (this.#closed) return;
+      this.#lastChangeEmit = Date.now();
+      this.#emit({ type: "knowledge-changed", bases: this.list() });
+    }, wait);
+    this.#changeTimer.unref?.();
+  }
   #emit(event: AgentEvent): void {
     this.emit("event", event);
   }
@@ -786,7 +860,7 @@ export class KnowledgeService extends EventEmitter {
         }
         this.#queue = this.#queue.filter((entry) => entry !== job);
         if (this.#closed) break;
-        this.#changed();
+        this.#changedSoon(job.kbId);
         // Let the app breathe between files: UI events and coworker turns go first.
         await new Promise((resolveWait) => setImmediate(resolveWait));
       }
@@ -801,7 +875,8 @@ export class KnowledgeService extends EventEmitter {
     const db = this.#db(base.id);
     const document = db.getDocument(job.documentId);
     if (!document) return;
-    const done = db.listDocuments().filter((entry) => entry.status === "ready").length;
+    const done = db.documentCounts().ready;
+    this.#summaryCache.delete(base.id);
     const progress = (status: KnowledgeSourceStatus) =>
       this.#emit({
         type: "knowledge-progress",
@@ -814,11 +889,27 @@ export class KnowledgeService extends EventEmitter {
           total: done + totalInBase,
         },
       });
+    const fail = (error: unknown) => {
+      db.failDocument(document.id, error instanceof Error ? error.message : String(error));
+      progress("failed");
+    };
     let buffer: Buffer;
     let info: { size: number; mtimeMs: number };
     try {
       const stats = await stat(document.path);
       info = { size: stats.size, mtimeMs: stats.mtimeMs };
+    } catch {
+      db.updateDocument(document.id, { status: "missing" });
+      progress("missing");
+      return;
+    }
+    // A huge file is refused before it is read into memory.
+    if (info.size > MAX_SOURCE_BYTES) {
+      db.updateDocument(document.id, { size: info.size, mtimeMs: info.mtimeMs });
+      fail(new Error(`The file is larger than ${Math.round(MAX_SOURCE_BYTES / 1024 / 1024)} MB.`));
+      return;
+    }
+    try {
       buffer = await readFile(document.path);
     } catch {
       db.updateDocument(document.id, { status: "missing" });
@@ -847,15 +938,11 @@ export class KnowledgeService extends EventEmitter {
       progress("ready");
       await this.#vectorizeBase(base.id);
     } catch (error) {
-      db.updateDocument(document.id, {
-        status: "failed",
-        error: error instanceof Error ? error.message : String(error),
-      });
-      progress("failed");
+      // The old passages described a version of the file that is gone: they go too.
+      fail(error);
     }
   }
 }
-
 function requiredName(value: string): string {
   const name = String(value ?? "")
     .trim()
