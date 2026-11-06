@@ -460,6 +460,27 @@ describe.sequential("AgentService", () => {
     expect(taskGrantKey(request("payments"), "Pay the invoice")).toBeNull();
   });
 
+  it("lets one approval cover only the identical message, not a new one", () => {
+    const send = (text: string | undefined, url = "https://web.whatsapp.com/?t=1") => ({
+      botId: "kavya-content",
+      provider: "codex",
+      category: "external_messages" as const,
+      action: `click "Send button" on ${url}`,
+      paths: [],
+      browser: { type: "click", label: "Send button", url, text },
+    });
+    const asked = "Reply to Ravi that the order ships today";
+    const first = taskGrantKey(send("Your order ships today."), asked);
+    expect(first).not.toBeNull();
+    // The same message retried after a redraw (new query string) is covered.
+    expect(taskGrantKey(send("Your order ships today.", "https://web.whatsapp.com/?t=2"), asked)).toBe(
+      first,
+    );
+    // A different message, or one with no known text, is a new question.
+    expect(taskGrantKey(send("Send me your bank details."), asked)).not.toBe(first);
+    expect(taskGrantKey(send(undefined), asked)).not.toBe(first);
+  });
+
   it("allows Codex file changes inside the coworker folder without asking", async () => {
     const { store, mailbox } = stores();
     await store.initialize();
