@@ -1,7 +1,6 @@
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
 import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -9,6 +8,7 @@ import { basename, dirname, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
+import { inlineImage } from "./attachment-text";
 import { acpMcpServers, readCustomMcpServers } from "./mcp-servers";
 import {
   type AccountReadResult,
@@ -650,6 +650,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const clientId = getString(params, "clientUserMessageId");
     const turnId = clientId && isUuid(clientId) ? clientId : randomUUID();
     const { text, links } = readInput(params);
+    // Read before the turn starts, without blocking the app on a large picture.
+    const images = this.#acceptsImages
+      ? await Promise.all(links.map((path) => inlineImage(path)))
+      : [];
     const turn: ActiveTurn = {
       id: turnId,
       itemId: `${turnId}:assistant`,
@@ -668,11 +672,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         : "";
     session.instructionsSent = true;
     prompt.push({ type: "text", text: `${instructions}${text}` });
-    for (const path of links) {
+    for (const [index, path] of links.entries()) {
       prompt.push({ type: "resource_link", uri: pathToFileURL(path).href, name: basename(path) });
       // An attached picture goes in as image input where the agent accepts it (ACP prompt
       // capability "image"), so a vision model sees it rather than a file name.
-      const image = this.#acceptsImages ? inlineImage(path) : null;
+      const image = images[index];
       if (image) prompt.push(image);
     }
 
@@ -1498,27 +1502,6 @@ function requiredString(value: unknown, key: string): string {
   const result = getString(value, key);
   if (!result) throw new Error(`${key} is required.`);
   return result;
-}
-
-const INLINE_IMAGE_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-};
-const MAX_INLINE_IMAGE_BYTES = 8 * 1024 * 1024;
-
-function inlineImage(path: string): Record<string, unknown> | null {
-  const mimeType = INLINE_IMAGE_TYPES[extname(path).toLowerCase()];
-  if (!mimeType) return null;
-  try {
-    const data = readFileSync(path);
-    if (data.length > MAX_INLINE_IMAGE_BYTES) return null;
-    return { type: "image", mimeType, data: data.toString("base64") };
-  } catch {
-    return null;
-  }
 }
 
 function errorMessage(error: unknown): string {
