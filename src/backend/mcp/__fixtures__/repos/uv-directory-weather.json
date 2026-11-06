@@ -1,0 +1,45 @@
+{
+  "source": "https://github.com/modelcontextprotocol/quickstart-resources/tree/main/weather-server-python (pyproject.toml, README.md, weather.py head), pypi.org (the PyPI 'weather' is another project)",
+  "location": {
+    "owner": "modelcontextprotocol",
+    "repo": "quickstart-resources",
+    "ref": "fixturecommit0003",
+    "subPath": "weather-server-python"
+  },
+  "files": [
+    {
+      "path": "weather-server-python/.python-version",
+      "size": 5
+    },
+    {
+      "path": "weather-server-python/README.md",
+      "size": 2333
+    },
+    {
+      "path": "weather-server-python/pyproject.toml",
+      "size": 1386
+    },
+    {
+      "path": "weather-server-python/uv.lock",
+      "size": 209263
+    },
+    {
+      "path": "weather-server-python/weather.py",
+      "size": 5533
+    }
+  ],
+  "texts": {
+    "weather-server-python/pyproject.toml": "[project]\nname = \"weather\"\nversion = \"0.1.0\"\ndescription = \"A simple MCP weather server\"\nreadme = \"README.md\"\nrequires-python = \">=3.10\"\n# httpx2, not httpx: `mcp` already depends on httpx2, so adding httpx would\n# install a second HTTP stack alongside it.\ndependencies = [\n    \"httpx2>=2.14.0\",\n    \"mcp[cli]>=2.3.0\",\n    # weather.py imports BaseModel, Field, and RootModel directly. RootModel is v2-only.\n    \"pydantic>=2.14.2\",\n]\n\n[build-system]\nrequires = [ \"hatchling\",]\nbuild-backend = \"hatchling.build\"\n\n[dependency-groups]\ndev = [\n    \"ruff>=0.17.3\",\n]\n\n[project.scripts]\nweather = \"weather:main\"\n\n[tool.ruff]\nline-length = 120\ntarget-version = \"py310\"\nextend-exclude = [\"README.md\"]\n\n[tool.ruff.lint]\nselect = [\n    \"C4\",   # flake8-comprehensions\n    \"C90\",  # mccabe\n    \"E\",    # pycodestyle\n    \"F\",    # pyflakes\n    \"I\",    # isort\n    \"PERF\", # Perflint\n    \"PL\",   # Pylint\n    \"UP\",   # pyupgrade\n]\nignore = [\"PERF203\", \"PLC0415\", \"PLR0402\"]\nmccabe.max-complexity = 24 # Default is 10\n\n[tool.ruff.lint.pylint]\nallow-magic-value-types = [\"bytes\", \"float\", \"int\", \"str\"]\nmax-args = 23                                              # Default is 5\nmax-branches = 23                                          # Default is 12\nmax-returns = 13                                           # Default is 6\nmax-statements = 102                                       # Default is 50\n",
+    "weather-server-python/README.md": "# A Simple MCP Weather Server written in Python\n\nA minimal MCP server that exposes US weather data from the [National Weather Service API](https://www.weather.gov/documentation/services-web-api) as two tools:\n\n- `get_forecast` – get the forecast for a location (takes `latitude` and `longitude`)\n- `get_alerts` – get active weather alerts for a US state (takes a two-letter state code)\n\nThis example accompanies the [Build an MCP server](https://modelcontextprotocol.io/docs/develop/build-server) tutorial.\n\n## Prerequisites\n\n- Python 3.10+\n- [uv](https://docs.astral.sh/uv/)\n\n## Run the server\n\n```bash\nuv run weather.py\n```\n\n`uv run` creates the virtual environment and installs dependencies on first use.\n\nThe server communicates over stdio, so running it directly just waits for a client on stdin. To see it in action, launch it from one of the client examples in this repository, for example:\n\n```bash\ncd ../mcp-client-python\nuv run client.py ../weather-server-python/weather.py\n```\n\n## Tool annotations\n\nBoth tools declare the same [annotations](https://modelcontextprotocol.io/specification/2026-07-28/schema#toolannotations): `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true` and `openWorldHint: true`. They tell a host that the tools only read data, and that they read it from an outside service (the NWS API), so a host can, for example, run them without asking the user to confirm each call. Annotations are hints, not guarantees: a host should rely on them only for servers it trusts.\n\n## Structured content\n\nBoth tools declare an output schema and return `structured_content`. `get_forecast` returns an object; `get_alerts` returns a top-level JSON array, which protocol revision `2026-07-28` is the first to allow — see [Structured Content](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#structured-content) in the spec.\n\n`Alerts` is a `RootModel[list[Alert]]` rather than a plain `list[Alert]` because the SDK wraps non-object return types as `{\"result\": ...}`; a `RootModel` is taken as the schema exactly as written. See [Structured Output](https://py.sdk.modelcontextprotocol.io/v2/servers/structured-output/) in the SDK docs.\n\nNote that an array-rooted schema requires a `2026-07-28` client. This SDK does not project it down for older ones — it raises instead.\n",
+    "weather-server-python/weather.py": "from typing import Any\n\nimport httpx2\nfrom mcp.server import MCPServer\nfrom mcp.server.mcpserver.exceptions import ToolError\nfrom mcp.types import ToolAnnotations\nfrom pydantic import BaseModel, Field, RootModel\n\n# Initialize the MCP server\nmcp = MCPServer(\"weather\")\n\n# Constants"
+  },
+  "registry": [],
+  "packages": {
+    "pypi": {
+      "weather": {
+        "version": "0.9.1",
+        "urls": ["http://github.com/cmcginty/PyWeather"]
+      }
+    }
+  }
+}

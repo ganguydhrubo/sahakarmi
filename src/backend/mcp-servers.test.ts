@@ -11,8 +11,10 @@ import {
   commandExists,
   launchCommand,
   McpServerStore,
+  type McpServerWire,
   parseMcpJson,
   readCustomMcpServers,
+  withoutCwd,
 } from "./mcp-servers";
 
 let root: string | null = null;
@@ -22,9 +24,11 @@ afterEach(async () => {
   root = null;
 });
 
-async function store(): Promise<McpServerStore> {
+/** The older behaviour (both MCP switches off) unless `features` is true. */
+async function store(features = false): Promise<McpServerStore> {
   root = await mkdtemp(join(tmpdir(), "sahkarmi-mcp-"));
   const result = new McpServerStore(root);
+  if (!features) result.setFeatureCheck(() => false);
   await result.load();
   return result;
 }
@@ -50,8 +54,10 @@ describe("parseMcpJson", () => {
         env: { TOKEN: "x" },
       },
       { name: "notion", transport: "http", url: "https://mcp.notion.com/mcp", headers: { A: "b" } },
+      // MCP-17: old SSE servers come in as HTTP; "Test server" also tries the /mcp address.
+      { name: "old", transport: "http", url: "https://x.test/sse", headers: {} },
     ]);
-    expect(skipped).toHaveLength(2);
+    expect(skipped).toHaveLength(1);
   });
 
   it("accepts VS Code's servers key and refuses bad JSON clearly", () => {
@@ -83,6 +89,7 @@ describe("McpServerStore", () => {
     expect(mcp.enabled()[0]?.env).toEqual({ TOKEN: "secret-1" });
 
     const reloaded = new McpServerStore(root as string);
+    reloaded.setFeatureCheck(() => false);
     await reloaded.load();
     expect(reloaded.enabled()[0]?.env).toEqual({ TOKEN: "secret-1" });
     expect(await readFile(join(root as string, "mcp-servers.json"), "utf8")).toContain("secret-1");
@@ -109,7 +116,9 @@ describe("McpServerStore", () => {
     const mcp = await store();
     const first = await mcp.importJson('{"mcpServers":{"fs":{"command":"npx","args":["one"]}}}');
     expect(first.added).toEqual(["fs"]);
-    await mcp.importJson('{"mcpServers":{"fs":{"command":"npx","args":["two"]}}}');
+    await mcp.importJson('{"mcpServers":{"fs":{"command":"npx","args":["two"]}}}', "pasted", [
+      "fs",
+    ]);
     expect(mcp.list()).toHaveLength(1);
     expect(mcp.enabled()[0]?.args).toEqual(["two"]);
     await mcp.setEnabled(mcp.list()[0]?.id ?? "", false);
@@ -143,6 +152,78 @@ describe("McpServerStore", () => {
     expect(JSON.parse(text)).toEqual({
       mcpServers: { a: { command: "x" }, b: { url: "https://b.test" } },
     });
+  });
+});
+
+describe("McpServerStore with test-first and per-coworker servers", () => {
+  it("asks before an import replaces a same-name server (MCP-14)", async () => {
+    const mcp = await store(true);
+    await mcp.importJson('{"mcpServers":{"fs":{"command":"npx","args":["one"]}}}');
+    const second = await mcp.importJson(
+      '{"mcpServers":{"fs":{"command":"npx","args":["two"]},"web":{"url":"https://w.test/mcp"}}}',
+    );
+    expect(second).toMatchObject({ added: ["web"], conflicts: ["fs"] });
+    expect(mcp.list().find((server) => server.name === "fs")?.args).toEqual(["one"]);
+    const confirmed = await mcp.importJson(
+      '{"mcpServers":{"fs":{"command":"npx","args":["two"]}}}',
+      "pasted JSON",
+      ["fs"],
+    );
+    expect(confirmed).toMatchObject({ added: ["fs"], conflicts: [] });
+    expect(mcp.list().find((server) => server.name === "fs")?.args).toEqual(["two"]);
+  });
+
+  it("saves imports switched off until tested (MCP-11) and keeps templates off (MCP-1)", async () => {
+    const mcp = await store(true);
+    const result = await mcp.importJson(
+      JSON.stringify({
+        mcpServers: {
+          "money-printer-turbo": {
+            command: "uv",
+            args: [
+              "--directory",
+              "/ABSOLUTE/PATH/TO/money-printer-turbo",
+              "run",
+              "python",
+              "main.py",
+            ],
+          },
+        },
+      }),
+    );
+    const [server] = result.servers;
+    expect(server).toMatchObject({ enabled: false, needsTest: true });
+    expect(server?.problems[0]).toMatchObject({ kind: "placeholder" });
+    await expect(mcp.setEnabled(server?.id ?? "", true)).rejects.toThrow(/template/);
+    await expect(mcp.test(server?.id ?? "")).rejects.toThrow(/template/);
+    expect(mcp.enabled()).toEqual([]);
+  });
+
+  it("gives a limited server only to the chosen coworkers (MCP-12)", async () => {
+    const mcp = await store();
+    const [server] = await mcp.save({ name: "fs", transport: "stdio", command: "npx" });
+    expect(mcp.enabled("bot-a")).toHaveLength(1);
+    await mcp.setCoworkers(server?.id ?? "", ["bot-b"]);
+    expect(mcp.enabled("bot-a")).toEqual([]);
+    expect(mcp.enabled("bot-b").map((entry) => entry.name)).toEqual(["fs"]);
+    await mcp.setCoworkers(server?.id ?? "", null);
+    expect(mcp.enabled("bot-a")).toHaveLength(1);
+  });
+
+  it("stores a folder and refuses a relative one (MCP-4)", async () => {
+    const mcp = await store();
+    await expect(
+      mcp.save({ name: "py", transport: "stdio", command: "python", cwd: "relative" }),
+    ).rejects.toThrow(/full path/);
+    const [saved] = await mcp.save({
+      name: "py",
+      transport: "stdio",
+      command: "python",
+      args: ["server.py"],
+      cwd: "C:\\srv",
+    });
+    expect(saved?.cwd).toBe("C:\\srv");
+    expect(mcp.enabled()[0]?.cwd).toBe("C:\\srv");
   });
 });
 
@@ -206,7 +287,53 @@ describe("runtime formats", () => {
 
     expect(codexMcpConfig([])).toBeUndefined();
     expect(codexMcpConfig(servers)).toMatchObject({
+      mcp_servers: { gh: { startup_timeout_sec: 20 } },
+    });
+    expect(codexMcpConfig([{ ...(servers[0] as McpServerWire), firstRun: true }])).toMatchObject({
+      mcp_servers: { gh: { startup_timeout_sec: 60 } },
+    });
+    expect(codexMcpConfig(servers)).toMatchObject({
       mcp_servers: { web: { url: "https://w.test/mcp", http_headers: { A: "b" } } },
     });
+  });
+});
+
+describe("cwd per runtime (MCP-4)", () => {
+  const python = {
+    name: "py",
+    transport: "stdio" as const,
+    command: "python",
+    args: ["server.py"],
+    env: {},
+    url: "",
+    headers: {},
+    cwd: "C:\\srv",
+  };
+
+  it("passes cwd to Codex and makes paths absolute for Claude and ACP", () => {
+    expect(codexMcpConfig([python])).toMatchObject({ mcp_servers: { py: { cwd: "C:\\srv" } } });
+    expect(claudeMcpServers([python]).py).toMatchObject({
+      args: [join("C:\\srv", "server.py")],
+    });
+    expect(claudeMcpServers([python]).py).not.toHaveProperty("cwd");
+    expect(acpMcpServers([python], false)).toEqual([
+      expect.objectContaining({ args: [join("C:\\srv", "server.py")] }),
+    ]);
+  });
+
+  it("gives uv a --directory and python -m a PYTHONPATH", () => {
+    expect(withoutCwd({ ...python, command: "uv", args: ["run", "weather"] }).args).toEqual([
+      "--directory",
+      "C:\\srv",
+      "run",
+      "weather",
+    ]);
+    expect(withoutCwd({ ...python, args: ["-m", "my_server"] }).env.PYTHONPATH).toBe("C:\\srv");
+  });
+
+  it("carries cwd and first-run through thread params", () => {
+    expect(
+      readCustomMcpServers({ customMcpServers: [{ ...python, firstRun: true }] })[0],
+    ).toMatchObject({ cwd: "C:\\srv", firstRun: true });
   });
 });

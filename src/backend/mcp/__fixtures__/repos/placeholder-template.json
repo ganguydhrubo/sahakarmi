@@ -1,0 +1,25 @@
+{
+  "source": "Claude Desktop config from the MCP 'Build an MCP server' tutorial (modelcontextprotocol.io/docs/develop/build-server), as repos copy it into their README",
+  "location": {
+    "owner": "example",
+    "repo": "weather-mcp",
+    "ref": "fixturecommit0006",
+    "subPath": ""
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "size": 600
+    },
+    {
+      "path": "weather.py",
+      "size": 4000
+    }
+  ],
+  "texts": {
+    "README.md": "# Weather MCP\n\nAdd this to `claude_desktop_config.json`:\n\n```json\n{\n  \"mcpServers\": {\n    \"weather\": {\n      \"command\": \"uv\",\n      \"args\": [\n        \"--directory\",\n        \"/ABSOLUTE/PATH/TO/PARENT/FOLDER/weather\",\n        \"run\",\n        \"weather.py\"\n      ]\n    }\n  }\n}\n```",
+    "weather.py": "from mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"weather\")\n"
+  },
+  "registry": [],
+  "packages": {}
+}

@@ -123,3 +123,22 @@ export async function fetchRepoText(
   if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error(`${path} is too large.`);
   return text;
 }
+
+/**
+ * The commit a branch, tag or the default branch (null) points at, so an import can be pinned
+ * and cached per repo@commit. One API call.
+ */
+export async function fetchCommitSha(
+  location: RepoLocation,
+  fetchImpl: FetchLike,
+): Promise<string> {
+  const base = `https://api.github.com/repos/${location.owner}/${location.repo}`;
+  const commit = (await getJson(
+    fetchImpl,
+    `${base}/commits/${encodeURIComponent(location.ref ?? "HEAD")}`,
+  )) as { sha?: unknown };
+  if (typeof commit.sha !== "string" || !/^[0-9a-f]{40}$/.test(commit.sha)) {
+    throw new Error("GitHub did not say which commit that is. Try again later.");
+  }
+  return commit.sha;
+}

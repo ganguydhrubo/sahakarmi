@@ -3,6 +3,7 @@ import { backgroundEn } from "./i18n-background";
 import { engineEn } from "./i18n-engine";
 import { extensionsEn } from "./i18n-extensions";
 import { marketplaceEn } from "./i18n-marketplace";
+import { mcpEn } from "./i18n-mcp";
 import { memoryEn } from "./i18n-memory";
 import { onboardingEn } from "./i18n-onboarding";
 import { securityEn } from "./i18n-security";
@@ -302,6 +303,7 @@ const en = {
   ...memoryEn,
   ...securityEn,
   ...engineEn,
+  ...mcpEn,
   ...onboardingEn,
 };
 

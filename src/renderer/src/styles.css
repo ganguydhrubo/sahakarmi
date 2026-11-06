@@ -14273,7 +14273,7 @@ fieldset.memory-filters {
 .knowledge-source-error {
   display: block;
   margin-top: 2px;
-  color: var(--danger, #c0392b);
+  color: var(--danger);
   font-size: 12px;
 }
 
@@ -14482,4 +14482,101 @@ fieldset.memory-filters {
 
 .performance-recent li[data-outcome="failed"] {
   color: var(--danger);
+}
+/* Settings › MCP servers: checks, tests, guided connect */
+.mcp-server-item {
+  align-items: flex-start;
+}
+
+.mcp-stderr {
+  max-height: 160px;
+  overflow: auto;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11.5px;
+}
+
+.mcp-coworkers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.mcp-tool-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.mcp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 10px 12px;
+}
+
+.mcp-card h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.mcp-card pre,
+.mcp-card code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.mcp-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12.5px;
+}
+
+.mcp-steps li[data-state="done"] {
+  color: var(--text-muted);
+}
+
+.mcp-steps li[data-state="failed"] {
+  color: var(--warning);
+}
+
+.mcp-plan-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.mcp-plan-facts dt {
+  color: var(--text-muted);
+}
+
+.mcp-plan-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mcp-steps li code {
+  overflow-wrap: anywhere;
+  font-size: 0.85em;
+}
+
+.mcp-steps li[data-state="failed"] {
+  color: var(--danger);
+}
+
+.mcp-shared {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

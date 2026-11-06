@@ -1,0 +1,407 @@
+/** Settings > MCP servers: checks, tests, smart GitHub import and guided installs. */
+export const mcpEn = {
+  mcpxRecheck: "Re-check",
+  mcpxRecheckHint:
+    "Installed something just now? Press Re-check: Sahkarmi reads Windows' PATH again, no restart needed.",
+  mcpxProblemPlaceholder:
+    'This is a template: replace "{token}" with the real value (for example the folder the server is in), then turn it on.',
+  mcpxProblemPlaceholderKey:
+    'This is a template: {key} still says "{token}". Edit the server and put in the real value.',
+  mcpxProblemMissingCommand:
+    "Windows can't find \"{command}\" on this PC, so coworkers won't get this server's tools. Install it, or edit the server and use its full path, then press Re-check.",
+  mcpxProblemStoreStub:
+    '"{command}" is only the Microsoft Store shortcut, not a real Python. Install Python 3.11, then press Re-check.',
+  mcpxProblemMissingFolder:
+    'The folder "{path}" does not exist. Edit the server and use the folder where the server really is.',
+  mcpxProblemMissingFile:
+    'The file "{path}" does not exist. Check the folder, or download the server first.',
+  mcpxProblemMissingEnv: "This server needs {name}. Edit the server and add it.",
+  mcpxGetIt: "Download page",
+  mcpxTest: "Test server",
+  mcpxTesting: "Testing… the first run can take up to a minute while it downloads.",
+  mcpxTestOk: "Works: {count} tools ({names}).",
+  mcpxTestOkNone: "It starts, but it offers no tools.",
+  mcpxTestFailed: "Test failed: {reason}",
+  mcpxLastChecked: "Checked {time}",
+  mcpxNeedsTest: "New server: press Test server. You can turn it on once the test passes.",
+  mcpxShowDetails: "What the server printed",
+  mcpxTools: "Tools",
+  mcpxDiag_commandNotFound:
+    "The program could not be started: it is not installed or not on PATH. Install it, then press Re-check.",
+  mcpxDiag_storeStub:
+    "Windows opened the Microsoft Store instead of Python: no real Python is installed.",
+  mcpxDiag_moduleMissing:
+    "The server started but its parts are missing (not installed, or started in the wrong folder).",
+  mcpxDiag_notMcp:
+    "This program is a web app or API, not an MCP server: it opened a web address instead of answering. Use it as a Skill instead.",
+  mcpxDiag_noReply:
+    "The program started but never answered like an MCP server. It may not be one, or it waits for something.",
+  mcpxDiag_stdoutNoise:
+    "The server prints normal text where MCP messages should go. Look for a --quiet or stdio option, or tell its author.",
+  mcpxDiag_auth:
+    "The server says the key or token is missing or wrong. Edit the server and check it.",
+  mcpxDiag_portInUse:
+    "The server tries to open a network port that is already taken, often because another copy runs. Turn on Shared so only one copy runs.",
+  mcpxDiag_firstRunTimeout:
+    "It was probably still downloading on its first run. Try again and wait a little longer.",
+  mcpxDiag_pathNotFound: "A folder or file in the settings does not exist. Edit the server.",
+  mcpxDiag_buildTools:
+    "It needs build tools (C++ or Rust compilers) that Sahkarmi will not install. Choose a ready-made package or another server.",
+  mcpxDiag_pythonVersion: "It needs a different Python version (3.11 is safest).",
+  mcpxDiag_exited: "The server stopped right after starting. What it printed is below.",
+  mcpxDiag_unknown: "Something went wrong. What the server printed is below.",
+  mcpxFix_edit: "Edit server",
+  mcpxFix_recheck: "Re-check",
+  mcpxFix_retryLong: "Try again (wait longer)",
+  mcpxFix_installUv: "Install uv for me",
+  mcpxFix_installNode: "Install Node.js for me",
+  mcpxFix_installPython: "Install Python 3.11 for me",
+  mcpxFix_reinstall: "Install again",
+  mcpxFix_skillRoute: "Use it another way",
+  mcpxFix_shared: "Run one copy for everyone",
+  mcpxCoworkers: "Coworkers",
+  mcpxAllCoworkers: "All coworkers",
+  mcpxSomeCoworkers: "{count} coworkers",
+  mcpxChooseCoworkers: "Which coworkers get this server",
+  mcpxCwd: "Folder to start in (optional)",
+  mcpxConflict: "{names} already exists. Replace it with the pasted one?",
+  mcpxReplace: "Replace",
+  mcpxKeep: "Keep mine",
+  mcpxKindStdio: "It is an MCP server: coworkers can use its tools.",
+  mcpxKindHttp: "It is a hosted MCP server (a web address).",
+  mcpxKindBuild: "It is an MCP server, but it must be installed from its source first.",
+  mcpxKindNotMcp: "This is not an MCP server.",
+  mcpxKindUnknown: "Sahkarmi could not tell what this is.",
+  mcpxNotMcpCli: "It is a program you run with typed commands (a command-line tool).",
+  mcpxNotMcpApi: "It runs its own small web server (an API) on your PC.",
+  mcpxNotMcpWebapp: "It is an app that opens in your web browser.",
+  mcpxNotMcpWhy:
+    "Coworkers can't plug it in as MCP tools, and adding it as an MCP server would only fail. Sahkarmi can install it for you and write a Skill that tells coworkers how to run it. You approve every run.",
+  mcpxUseAsSkill: "Use as a Skill (CLI)",
+  mcpxHeavy:
+    "This one is big (video, speech or AI libraries). Run one copy at a time: it can slow down an 8 GB laptop.",
+  mcpxEvidence: "How Sahkarmi knows",
+  mcpxPinned: "Checked at commit {commit}.",
+  mcpxChooseWay: "Choose how to run it",
+  mcpxCandidateTemplate: "Still a template ({tokens}): fill these in.",
+  mcpxNeeds: "Needs on this PC: {tools}",
+  mcpxRequired: "required",
+  mcpxOptional: "optional",
+  mcpxInstallForMe: "Install for me…",
+  mcpxAddCandidate: "Add it",
+  mcpxAddedOff:
+    "A new server stays off until Test server passes. Sahkarmi runs the test right after adding.",
+  mcpxUnknownHint:
+    "No MCP settings, package file or MCP code was found. If its README shows MCP JSON, paste it in the box above.",
+  mcpxStep_downloadUv: "Download uv (Python package manager) into Sahkarmi's tools folder",
+  mcpxStep_downloadNode: "Download Node.js (portable) into Sahkarmi's tools folder",
+  mcpxStep_pythonInstall: "Get a private copy of Python (does not change your system)",
+  mcpxStep_venv: "Make a separate Python environment for it",
+  mcpxStep_pip: "Install the package (pinned version)",
+  mcpxStep_npm: "Install the Node.js package into its own folder",
+  mcpxStep_clone: "Download the code at the pinned commit",
+  mcpxStep_build: "Build it",
+  mcpxStep_dockerPull: "Download the Docker image",
+  mcpxStep_verify: "Check that the program starts",
+  mcpxStep_skill: "Add a Sahkarmi Skill that tells coworkers how to use it",
+  mcpxStep_save: "Save the server (switched off)",
+  mcpxStep_test: "Test it: connect and list its tools",
+  mcpxSize: "About {min} to {max}",
+  mcpxSizeUnknown: "Size not known",
+  mcpxApproveTitle: "Approve this install?",
+  mcpxSkillTitle: 'Use "{name}" as a Skill',
+  mcpxSkillIntro:
+    "This project is a normal program, not an MCP server. Sahkarmi can install it in its own folder and write a short Skill, so your coworkers run it for you (you approve each run).",
+  mcpxSource: "From",
+  mcpxFolder: "Folder",
+  mcpxDownload: "Download",
+  mcpxApproveNote:
+    "Only these steps run, in this order. Nothing is copied from the README, and nothing outside this folder and Sahkarmi's tools folder changes.",
+  mcpxApprove: "Approve and install",
+  mcpxInstalling: "Installing… this can take a few minutes.",
+  mcpxInstallFailed: "The install stopped: {reason}",
+  mcpxInstallDone: "Installed. Check the test result in the list below, then switch it on.",
+  mcpxSkillDone: 'Done. The Skill "{name}" is in Settings › Skills.',
+  mcpxSkillKeys:
+    "Before the first video it needs a free Pexels key (stock footage) and an AI model to write the script (your own provider key or a free one). The voice is free.",
+  mcpxGetPexels: "Get a free Pexels key",
+  mcpxSkillOutput:
+    "Finished videos are saved in %LOCALAPPDATA%\\MoneyPrinterTurbo\\storage\\tasks.",
+  mcpxInstallLog: "Show details",
+  mcpxDiag_longPath:
+    "A file path got longer than Windows allows (260 characters). Sahkarmi now installs into a shorter folder: press Install again. Or switch on Windows long paths.",
+  mcpxShared: "Shared: start once for all coworkers (saves memory; stops when idle)",
+  mcpxHeavyServer:
+    "This server loads big libraries. Turn on Shared so it does not start once per chat.",
+  mcpxAdapter: "Advanced: connect its local web API",
+  mcpxAdapterNote:
+    "Sahkarmi writes a small MCP adapter that calls this project's web API on this PC only (127.0.0.1). You start the project's own server yourself first; then press Test server.",
+  mcpxAdapterAdd: "Add the adapter (switched off)",
+};
+
+type McpDictionary = Record<keyof typeof mcpEn, string>;
+
+export const mcpHi: McpDictionary = {
+  mcpxRecheck: "फिर से जाँचें",
+  mcpxRecheckHint:
+    "अभी कुछ इंस्टॉल किया? फिर से जाँचें दबाएँ: Sahkarmi Windows का PATH दोबारा पढ़ता है, रीस्टार्ट की ज़रूरत नहीं।",
+  mcpxProblemPlaceholder:
+    'यह एक टेम्पलेट है: "{token}" की जगह असली मान डालें (जैसे वह फ़ोल्डर जिसमें सर्वर है), फिर इसे चालू करें।',
+  mcpxProblemPlaceholderKey:
+    'यह एक टेम्पलेट है: {key} में अभी भी "{token}" लिखा है। सर्वर बदलें और असली मान डालें।',
+  mcpxProblemMissingCommand:
+    'Windows को इस PC पर "{command}" नहीं मिल रहा, इसलिए सहकर्मियों को इस सर्वर के टूल नहीं मिलेंगे। इसे इंस्टॉल करें, या सर्वर बदलकर पूरा पाथ डालें, फिर फिर से जाँचें दबाएँ।',
+  mcpxProblemStoreStub:
+    '"{command}" सिर्फ़ Microsoft Store का शॉर्टकट है, असली Python नहीं। Python 3.11 इंस्टॉल करें, फिर फिर से जाँचें दबाएँ।',
+  mcpxProblemMissingFolder: 'फ़ोल्डर "{path}" मौजूद नहीं है। सर्वर बदलें और वह फ़ोल्डर डालें जहाँ सर्वर सच में है।',
+  mcpxProblemMissingFile: 'फ़ाइल "{path}" मौजूद नहीं है। फ़ोल्डर जाँचें, या पहले सर्वर डाउनलोड करें।',
+  mcpxProblemMissingEnv: "इस सर्वर को {name} चाहिए। सर्वर बदलें और इसे जोड़ें।",
+  mcpxGetIt: "डाउनलोड पेज",
+  mcpxTest: "सर्वर जाँचें",
+  mcpxTesting: "जाँच हो रही है… पहली बार डाउनलोड के कारण एक मिनट तक लग सकता है।",
+  mcpxTestOk: "चल रहा है: {count} टूल ({names})।",
+  mcpxTestOkNone: "यह शुरू होता है, पर कोई टूल नहीं देता।",
+  mcpxTestFailed: "जाँच विफल: {reason}",
+  mcpxLastChecked: "{time} को जाँचा",
+  mcpxNeedsTest: "नया सर्वर: सर्वर जाँचें दबाएँ। जाँच पास होने के बाद इसे चालू कर सकते हैं।",
+  mcpxShowDetails: "सर्वर ने क्या लिखा",
+  mcpxTools: "टूल",
+  mcpxDiag_commandNotFound:
+    "प्रोग्राम शुरू नहीं हो सका: यह इंस्टॉल नहीं है या PATH पर नहीं है। इसे इंस्टॉल करें, फिर फिर से जाँचें दबाएँ।",
+  mcpxDiag_storeStub:
+    "Windows ने Python की जगह Microsoft Store खोल दिया: कोई असली Python इंस्टॉल नहीं है।",
+  mcpxDiag_moduleMissing: "सर्वर शुरू हुआ पर उसके हिस्से नहीं मिले (इंस्टॉल नहीं हैं, या गलत फ़ोल्डर में शुरू हुआ)।",
+  mcpxDiag_notMcp:
+    "यह प्रोग्राम एक वेब ऐप या API है, MCP सर्वर नहीं: इसने जवाब देने की जगह एक वेब पता खोला। इसे स्किल की तरह इस्तेमाल करें।",
+  mcpxDiag_noReply:
+    "प्रोग्राम शुरू हुआ पर उसने कभी MCP सर्वर की तरह जवाब नहीं दिया। शायद यह MCP सर्वर नहीं है, या किसी चीज़ का इंतज़ार कर रहा है।",
+  mcpxDiag_stdoutNoise:
+    "सर्वर MCP संदेशों की जगह सामान्य टेक्स्ट लिखता है। --quiet या stdio विकल्प देखें, या इसके लेखक को बताएँ।",
+  mcpxDiag_auth: "सर्वर कहता है कि की या टोकन नहीं है या गलत है। सर्वर बदलें और इसे जाँचें।",
+  mcpxDiag_portInUse:
+    "सर्वर ऐसा नेटवर्क पोर्ट खोलना चाहता है जो पहले से इस्तेमाल में है, अक्सर क्योंकि दूसरी कॉपी चल रही है। साझा चालू करें ताकि एक ही कॉपी चले।",
+  mcpxDiag_firstRunTimeout:
+    "पहली बार यह शायद अभी डाउनलोड हो रहा था। फिर से कोशिश करें और थोड़ा ज़्यादा इंतज़ार करें।",
+  mcpxDiag_pathNotFound: "सेटिंग में दिया कोई फ़ोल्डर या फ़ाइल मौजूद नहीं है। सर्वर बदलें।",
+  mcpxDiag_buildTools:
+    "इसे बिल्ड टूल (C++ या Rust कंपाइलर) चाहिए जो Sahkarmi इंस्टॉल नहीं करेगा। तैयार पैकेज या दूसरा सर्वर चुनें।",
+  mcpxDiag_pythonVersion: "इसे Python का दूसरा वर्ज़न चाहिए (3.11 सबसे सुरक्षित है)।",
+  mcpxDiag_exited: "सर्वर शुरू होते ही बंद हो गया। उसने जो लिखा वह नीचे है।",
+  mcpxDiag_unknown: "कुछ गड़बड़ हुई। सर्वर ने जो लिखा वह नीचे है।",
+  mcpxFix_edit: "सर्वर बदलें",
+  mcpxFix_recheck: "फिर से जाँचें",
+  mcpxFix_retryLong: "फिर कोशिश करें (ज़्यादा इंतज़ार)",
+  mcpxFix_installUv: "मेरे लिए uv इंस्टॉल करें",
+  mcpxFix_installNode: "मेरे लिए Node.js इंस्टॉल करें",
+  mcpxFix_installPython: "मेरे लिए Python 3.11 इंस्टॉल करें",
+  mcpxFix_reinstall: "फिर से इंस्टॉल करें",
+  mcpxFix_skillRoute: "इसे दूसरे तरीके से इस्तेमाल करें",
+  mcpxFix_shared: "सबके लिए एक कॉपी चलाएँ",
+  mcpxCoworkers: "सहकर्मी",
+  mcpxAllCoworkers: "सभी सहकर्मी",
+  mcpxSomeCoworkers: "{count} सहकर्मी",
+  mcpxChooseCoworkers: "किन सहकर्मियों को यह सर्वर मिले",
+  mcpxCwd: "शुरू करने का फ़ोल्डर (वैकल्पिक)",
+  mcpxConflict: "{names} पहले से मौजूद है। क्या इसे चिपकाए गए सर्वर से बदल दें?",
+  mcpxReplace: "बदलें",
+  mcpxKeep: "मेरा वाला रखें",
+  mcpxKindStdio: "यह एक MCP सर्वर है: सहकर्मी इसके टूल इस्तेमाल कर सकते हैं।",
+  mcpxKindHttp: "यह इंटरनेट पर चलने वाला MCP सर्वर है (एक वेब पता)।",
+  mcpxKindBuild: "यह एक MCP सर्वर है, पर पहले इसे इसके सोर्स से इंस्टॉल करना होगा।",
+  mcpxKindNotMcp: "यह MCP सर्वर नहीं है।",
+  mcpxKindUnknown: "Sahkarmi पता नहीं लगा सका कि यह क्या है।",
+  mcpxNotMcpCli: "यह एक प्रोग्राम है जिसे टाइप किए गए कमांड से चलाते हैं (कमांड-लाइन टूल)।",
+  mcpxNotMcpApi: "यह आपके PC पर अपना छोटा वेब सर्वर (API) चलाता है।",
+  mcpxNotMcpWebapp: "यह एक ऐप है जो आपके वेब ब्राउज़र में खुलता है।",
+  mcpxNotMcpWhy:
+    "सहकर्मी इसे MCP टूल की तरह नहीं जोड़ सकते, और इसे MCP सर्वर की तरह जोड़ना सिर्फ़ विफल होगा। Sahkarmi इसे आपके लिए इंस्टॉल कर सकता है और एक स्किल लिख सकता है जो सहकर्मियों को इसे चलाना बताए। हर बार चलाने से पहले आपकी मंज़ूरी ली जाएगी।",
+  mcpxUseAsSkill: "स्किल की तरह इस्तेमाल करें (CLI)",
+  mcpxHeavy:
+    "यह भारी है (वीडियो, आवाज़ या AI लाइब्रेरी)। एक बार में एक ही कॉपी चलाएँ: यह 8 GB लैपटॉप को धीमा कर सकता है।",
+  mcpxEvidence: "Sahkarmi को कैसे पता चला",
+  mcpxPinned: "कमिट {commit} पर जाँचा गया।",
+  mcpxChooseWay: "चुनें कि इसे कैसे चलाना है",
+  mcpxCandidateTemplate: "अभी भी टेम्पलेट है ({tokens}): इन्हें भरें।",
+  mcpxNeeds: "इस PC पर चाहिए: {tools}",
+  mcpxRequired: "ज़रूरी",
+  mcpxOptional: "वैकल्पिक",
+  mcpxInstallForMe: "मेरे लिए इंस्टॉल करें…",
+  mcpxAddCandidate: "जोड़ें",
+  mcpxAddedOff: "नया सर्वर तब तक बंद रहता है जब तक सर्वर जाँच पास न हो। जोड़ते ही Sahkarmi जाँच चलाता है।",
+  mcpxUnknownHint:
+    "कोई MCP सेटिंग, पैकेज फ़ाइल या MCP कोड नहीं मिला। अगर इसके README में MCP JSON है, तो उसे ऊपर वाले बॉक्स में चिपकाएँ।",
+  mcpxStep_downloadUv: "uv (Python पैकेज मैनेजर) को Sahkarmi के टूल फ़ोल्डर में डाउनलोड करें",
+  mcpxStep_downloadNode: "Node.js (पोर्टेबल) को Sahkarmi के टूल फ़ोल्डर में डाउनलोड करें",
+  mcpxStep_pythonInstall: "Python की एक निजी कॉपी लें (आपका सिस्टम नहीं बदलेगा)",
+  mcpxStep_venv: "इसके लिए अलग Python एनवायरनमेंट बनाएँ",
+  mcpxStep_pip: "पैकेज इंस्टॉल करें (तय वर्ज़न)",
+  mcpxStep_npm: "Node.js पैकेज को उसके अपने फ़ोल्डर में इंस्टॉल करें",
+  mcpxStep_clone: "तय कमिट पर कोड डाउनलोड करें",
+  mcpxStep_build: "इसे बिल्ड करें",
+  mcpxStep_dockerPull: "Docker इमेज डाउनलोड करें",
+  mcpxStep_verify: "जाँचें कि प्रोग्राम चालू होता है",
+  mcpxStep_skill: "एक Sahkarmi स्किल जोड़ें जो सहकर्मियों को इसका इस्तेमाल बताए",
+  mcpxStep_save: "सर्वर सेव करें (बंद अवस्था में)",
+  mcpxStep_test: "जाँचें: कनेक्ट करें और इसके टूल देखें",
+  mcpxSize: "लगभग {min} से {max}",
+  mcpxSizeUnknown: "आकार पता नहीं",
+  mcpxApproveTitle: "क्या यह इंस्टॉल मंज़ूर है?",
+  mcpxSkillTitle: '"{name}" को स्किल की तरह इस्तेमाल करें',
+  mcpxSkillIntro:
+    "यह प्रोजेक्ट एक सामान्य प्रोग्राम है, MCP सर्वर नहीं। Sahkarmi इसे अपने फ़ोल्डर में इंस्टॉल करके एक छोटी स्किल लिख सकता है, ताकि सहकर्मी इसे आपके लिए चलाएँ (हर बार आप मंज़ूरी देंगे)।",
+  mcpxSource: "स्रोत",
+  mcpxFolder: "फ़ोल्डर",
+  mcpxDownload: "डाउनलोड",
+  mcpxApproveNote:
+    "सिर्फ़ यही कदम, इसी क्रम में चलेंगे। README से कुछ भी नहीं चलाया जाता, और इस फ़ोल्डर व Sahkarmi के टूल फ़ोल्डर के बाहर कुछ नहीं बदलता।",
+  mcpxApprove: "मंज़ूर करें और इंस्टॉल करें",
+  mcpxInstalling: "इंस्टॉल हो रहा है… इसमें कुछ मिनट लग सकते हैं।",
+  mcpxInstallFailed: "इंस्टॉल रुक गया: {reason}",
+  mcpxInstallDone: "इंस्टॉल हो गया। नीचे सूची में टेस्ट का नतीजा देखें, फिर इसे चालू करें।",
+  mcpxSkillDone: 'हो गया। स्किल "{name}" सेटिंग्स › स्किल्स में है।',
+  mcpxSkillKeys:
+    "पहले वीडियो से पहले इसे एक मुफ़्त Pexels की (स्टॉक फ़ुटेज) और स्क्रिप्ट लिखने के लिए एक AI मॉडल (आपकी अपनी या कोई मुफ़्त की) चाहिए। आवाज़ मुफ़्त है।",
+  mcpxGetPexels: "मुफ़्त Pexels की लें",
+  mcpxSkillOutput: "तैयार वीडियो %LOCALAPPDATA%\\MoneyPrinterTurbo\\storage\\tasks में सेव होते हैं।",
+  mcpxInstallLog: "विवरण दिखाएँ",
+  mcpxDiag_longPath:
+    "किसी फ़ाइल का पाथ Windows की सीमा (260 अक्षर) से लंबा हो गया। Sahkarmi अब छोटे फ़ोल्डर में इंस्टॉल करता है: फिर से इंस्टॉल दबाएँ। या Windows में लंबे पाथ चालू करें।",
+  mcpxShared: "साझा: सभी सहकर्मियों के लिए एक बार चालू करें (मेमोरी बचती है; खाली रहने पर बंद)",
+  mcpxHeavyServer: "यह सर्वर बड़ी लाइब्रेरी लोड करता है। साझा चालू करें ताकि यह हर चैट में अलग से चालू न हो।",
+  mcpxAdapter: "एडवांस्ड: इसका लोकल वेब API जोड़ें",
+  mcpxAdapterNote:
+    "Sahkarmi एक छोटा MCP एडैप्टर लिखता है जो इस प्रोजेक्ट के वेब API को सिर्फ़ इसी PC पर (127.0.0.1) कॉल करता है। पहले प्रोजेक्ट का अपना सर्वर खुद चालू करें; फिर टेस्ट सर्वर दबाएँ।",
+  mcpxAdapterAdd: "एडैप्टर जोड़ें (बंद अवस्था में)",
+};
+
+export const mcpBn: McpDictionary = {
+  mcpxRecheck: "আবার দেখুন",
+  mcpxRecheckHint:
+    "এইমাত্র কিছু ইনস্টল করেছেন? আবার দেখুন চাপুন: Sahkarmi Windows-এর PATH আবার পড়ে, রিস্টার্ট লাগে না।",
+  mcpxProblemPlaceholder:
+    'এটি একটি টেমপ্লেট: "{token}"-এর জায়গায় আসল মান দিন (যেমন যে ফোল্ডারে সার্ভারটি আছে), তারপর চালু করুন।',
+  mcpxProblemPlaceholderKey:
+    'এটি একটি টেমপ্লেট: {key}-এ এখনও "{token}" লেখা। সার্ভারটি বদলে আসল মান দিন।',
+  mcpxProblemMissingCommand:
+    'Windows এই পিসিতে "{command}" খুঁজে পাচ্ছে না, তাই সহকর্মীরা এই সার্ভারের টুল পাবে না। এটি ইনস্টল করুন, বা সার্ভার বদলে পুরো পাথ দিন, তারপর আবার দেখুন চাপুন।',
+  mcpxProblemStoreStub:
+    '"{command}" শুধু Microsoft Store-এর শর্টকাট, আসল Python নয়। Python 3.11 ইনস্টল করুন, তারপর আবার দেখুন চাপুন।',
+  mcpxProblemMissingFolder: 'ফোল্ডার "{path}" নেই। সার্ভার বদলে সেই ফোল্ডার দিন যেখানে সার্ভারটি সত্যিই আছে।',
+  mcpxProblemMissingFile: 'ফাইল "{path}" নেই। ফোল্ডারটি দেখুন, বা আগে সার্ভারটি ডাউনলোড করুন।',
+  mcpxProblemMissingEnv: "এই সার্ভারের {name} দরকার। সার্ভার বদলে এটি যোগ করুন।",
+  mcpxGetIt: "ডাউনলোড পেজ",
+  mcpxTest: "সার্ভার পরীক্ষা",
+  mcpxTesting: "পরীক্ষা চলছে… প্রথমবার ডাউনলোডের জন্য এক মিনিট পর্যন্ত লাগতে পারে।",
+  mcpxTestOk: "চলছে: {count}টি টুল ({names})।",
+  mcpxTestOkNone: "এটি চালু হয়, কিন্তু কোনো টুল দেয় না।",
+  mcpxTestFailed: "পরীক্ষা ব্যর্থ: {reason}",
+  mcpxLastChecked: "{time}-এ দেখা হয়েছে",
+  mcpxNeedsTest: "নতুন সার্ভার: সার্ভার পরীক্ষা চাপুন। পরীক্ষা পাস হলে চালু করতে পারবেন।",
+  mcpxShowDetails: "সার্ভার যা লিখেছে",
+  mcpxTools: "টুল",
+  mcpxDiag_commandNotFound:
+    "প্রোগ্রামটি চালু করা গেল না: এটি ইনস্টল নেই বা PATH-এ নেই। ইনস্টল করে আবার দেখুন চাপুন।",
+  mcpxDiag_storeStub: "Windows Python-এর বদলে Microsoft Store খুলেছে: কোনো আসল Python ইনস্টল নেই।",
+  mcpxDiag_moduleMissing: "সার্ভার চালু হয়েছে কিন্তু তার অংশগুলো নেই (ইনস্টল হয়নি, বা ভুল ফোল্ডারে চালু হয়েছে)।",
+  mcpxDiag_notMcp:
+    "এই প্রোগ্রামটি একটি ওয়েব অ্যাপ বা API, MCP সার্ভার নয়: উত্তর দেওয়ার বদলে এটি একটি ওয়েব ঠিকানা খুলেছে। এটিকে স্কিল হিসেবে ব্যবহার করুন।",
+  mcpxDiag_noReply:
+    "প্রোগ্রাম চালু হয়েছে কিন্তু কখনও MCP সার্ভারের মতো উত্তর দেয়নি। হয়তো এটি MCP সার্ভার নয়, বা কিছুর অপেক্ষায় আছে।",
+  mcpxDiag_stdoutNoise:
+    "সার্ভার MCP বার্তার জায়গায় সাধারণ লেখা লেখে। --quiet বা stdio বিকল্প খুঁজুন, বা এর লেখককে জানান।",
+  mcpxDiag_auth: "সার্ভার বলছে কী বা টোকেন নেই বা ভুল। সার্ভার বদলে এটি দেখুন।",
+  mcpxDiag_portInUse:
+    "সার্ভার এমন নেটওয়ার্ক পোর্ট খুলতে চায় যা আগে থেকেই ব্যবহৃত, সাধারণত কারণ আরেকটি কপি চলছে। শেয়ার্ড চালু করুন যাতে একটিই কপি চলে।",
+  mcpxDiag_firstRunTimeout:
+    "প্রথমবার এটি সম্ভবত তখনও ডাউনলোড হচ্ছিল। আবার চেষ্টা করুন এবং একটু বেশি অপেক্ষা করুন।",
+  mcpxDiag_pathNotFound: "সেটিংসে থাকা কোনো ফোল্ডার বা ফাইল নেই। সার্ভারটি বদলান।",
+  mcpxDiag_buildTools:
+    "এর জন্য বিল্ড টুল (C++ বা Rust কম্পাইলার) লাগে যা Sahkarmi ইনস্টল করবে না। তৈরি প্যাকেজ বা অন্য সার্ভার বেছে নিন।",
+  mcpxDiag_pythonVersion: "এর জন্য অন্য Python সংস্করণ লাগে (3.11 সবচেয়ে নিরাপদ)।",
+  mcpxDiag_exited: "সার্ভার চালু হয়েই বন্ধ হয়ে গেছে। এটি যা লিখেছে তা নিচে আছে।",
+  mcpxDiag_unknown: "কিছু ভুল হয়েছে। সার্ভার যা লিখেছে তা নিচে আছে।",
+  mcpxFix_edit: "সার্ভার বদলান",
+  mcpxFix_recheck: "আবার দেখুন",
+  mcpxFix_retryLong: "আবার চেষ্টা (বেশি অপেক্ষা)",
+  mcpxFix_installUv: "আমার জন্য uv ইনস্টল করুন",
+  mcpxFix_installNode: "আমার জন্য Node.js ইনস্টল করুন",
+  mcpxFix_installPython: "আমার জন্য Python 3.11 ইনস্টল করুন",
+  mcpxFix_reinstall: "আবার ইনস্টল করুন",
+  mcpxFix_skillRoute: "অন্যভাবে ব্যবহার করুন",
+  mcpxFix_shared: "সবার জন্য একটি কপি চালান",
+  mcpxCoworkers: "সহকর্মী",
+  mcpxAllCoworkers: "সব সহকর্মী",
+  mcpxSomeCoworkers: "{count} জন সহকর্মী",
+  mcpxChooseCoworkers: "কোন সহকর্মীরা এই সার্ভার পাবে",
+  mcpxCwd: "যে ফোল্ডারে চালু হবে (ঐচ্ছিক)",
+  mcpxConflict: "{names} আগে থেকেই আছে। পেস্ট করা সার্ভার দিয়ে বদলে দেবেন?",
+  mcpxReplace: "বদলান",
+  mcpxKeep: "আমারটা রাখুন",
+  mcpxKindStdio: "এটি একটি MCP সার্ভার: সহকর্মীরা এর টুল ব্যবহার করতে পারে।",
+  mcpxKindHttp: "এটি ইন্টারনেটে চলা একটি MCP সার্ভার (একটি ওয়েব ঠিকানা)।",
+  mcpxKindBuild: "এটি একটি MCP সার্ভার, তবে আগে এর সোর্স থেকে ইনস্টল করতে হবে।",
+  mcpxKindNotMcp: "এটি MCP সার্ভার নয়।",
+  mcpxKindUnknown: "Sahkarmi বুঝতে পারেনি এটি কী।",
+  mcpxNotMcpCli: "এটি একটি প্রোগ্রাম যা টাইপ করা কমান্ড দিয়ে চালানো হয় (কমান্ড-লাইন টুল)।",
+  mcpxNotMcpApi: "এটি আপনার পিসিতে নিজের ছোট ওয়েব সার্ভার (API) চালায়।",
+  mcpxNotMcpWebapp: "এটি একটি অ্যাপ যা আপনার ওয়েব ব্রাউজারে খোলে।",
+  mcpxNotMcpWhy:
+    "সহকর্মীরা এটিকে MCP টুল হিসেবে যোগ করতে পারবে না, আর MCP সার্ভার হিসেবে যোগ করলে শুধু ব্যর্থ হবে। Sahkarmi এটি আপনার জন্য ইনস্টল করে একটি স্কিল লিখে দিতে পারে, যা সহকর্মীদের এটি চালাতে শেখাবে। প্রতিবার চালানোর আগে আপনার অনুমতি লাগবে।",
+  mcpxUseAsSkill: "স্কিল হিসেবে ব্যবহার করুন (CLI)",
+  mcpxHeavy:
+    "এটি ভারী (ভিডিও, ভয়েস বা AI লাইব্রেরি)। একবারে একটিই কপি চালান: এটি 8 GB ল্যাপটপকে ধীর করে দিতে পারে।",
+  mcpxEvidence: "Sahkarmi কীভাবে জানল",
+  mcpxPinned: "কমিট {commit}-এ দেখা হয়েছে।",
+  mcpxChooseWay: "কীভাবে চালাবেন বেছে নিন",
+  mcpxCandidateTemplate: "এখনও টেমপ্লেট ({tokens}): এগুলো পূরণ করুন।",
+  mcpxNeeds: "এই পিসিতে লাগবে: {tools}",
+  mcpxRequired: "আবশ্যক",
+  mcpxOptional: "ঐচ্ছিক",
+  mcpxInstallForMe: "আমার জন্য ইনস্টল করুন…",
+  mcpxAddCandidate: "যোগ করুন",
+  mcpxAddedOff: "নতুন সার্ভার পরীক্ষা পাস না হওয়া পর্যন্ত বন্ধ থাকে। যোগ করার পরই Sahkarmi পরীক্ষা চালায়।",
+  mcpxUnknownHint:
+    "কোনো MCP সেটিং, প্যাকেজ ফাইল বা MCP কোড পাওয়া যায়নি। এর README-তে MCP JSON থাকলে উপরের বাক্সে পেস্ট করুন।",
+  mcpxStep_downloadUv: "uv (Python প্যাকেজ ম্যানেজার) Sahkarmi-র টুল ফোল্ডারে ডাউনলোড করুন",
+  mcpxStep_downloadNode: "Node.js (পোর্টেবল) Sahkarmi-র টুল ফোল্ডারে ডাউনলোড করুন",
+  mcpxStep_pythonInstall: "Python-এর একটি নিজস্ব কপি নিন (আপনার সিস্টেম বদলাবে না)",
+  mcpxStep_venv: "এর জন্য আলাদা Python এনভায়রনমেন্ট তৈরি করুন",
+  mcpxStep_pip: "প্যাকেজ ইনস্টল করুন (নির্দিষ্ট ভার্সন)",
+  mcpxStep_npm: "Node.js প্যাকেজটি তার নিজের ফোল্ডারে ইনস্টল করুন",
+  mcpxStep_clone: "নির্দিষ্ট কমিটে কোড ডাউনলোড করুন",
+  mcpxStep_build: "এটি বিল্ড করুন",
+  mcpxStep_dockerPull: "Docker ইমেজ ডাউনলোড করুন",
+  mcpxStep_verify: "প্রোগ্রাম চালু হয় কিনা দেখুন",
+  mcpxStep_skill: "একটি Sahkarmi স্কিল যোগ করুন যা সহকর্মীদের এর ব্যবহার বলে দেয়",
+  mcpxStep_save: "সার্ভার সেভ করুন (বন্ধ অবস্থায়)",
+  mcpxStep_test: "পরীক্ষা করুন: কানেক্ট করে এর টুলগুলো দেখুন",
+  mcpxSize: "প্রায় {min} থেকে {max}",
+  mcpxSizeUnknown: "আকার জানা নেই",
+  mcpxApproveTitle: "এই ইনস্টল কি অনুমোদন করবেন?",
+  mcpxSkillTitle: '"{name}" স্কিল হিসেবে ব্যবহার করুন',
+  mcpxSkillIntro:
+    "এই প্রজেক্টটি একটি সাধারণ প্রোগ্রাম, MCP সার্ভার নয়। Sahkarmi এটি নিজের ফোল্ডারে ইনস্টল করে একটি ছোট স্কিল লিখতে পারে, যাতে সহকর্মীরা আপনার হয়ে এটি চালায় (প্রতিবার আপনি অনুমতি দেবেন)।",
+  mcpxSource: "উৎস",
+  mcpxFolder: "ফোল্ডার",
+  mcpxDownload: "ডাউনলোড",
+  mcpxApproveNote:
+    "শুধু এই ধাপগুলো, এই ক্রমেই চলবে। README থেকে কিছুই চালানো হয় না, আর এই ফোল্ডার ও Sahkarmi-র টুল ফোল্ডারের বাইরে কিছু বদলায় না।",
+  mcpxApprove: "অনুমোদন করে ইনস্টল করুন",
+  mcpxInstalling: "ইনস্টল হচ্ছে… কয়েক মিনিট লাগতে পারে।",
+  mcpxInstallFailed: "ইনস্টল থেমে গেছে: {reason}",
+  mcpxInstallDone: "ইনস্টল হয়েছে। নিচের তালিকায় টেস্টের ফল দেখে এটি চালু করুন।",
+  mcpxSkillDone: 'হয়ে গেছে। স্কিল "{name}" সেটিংস › স্কিলস-এ আছে।',
+  mcpxSkillKeys:
+    "প্রথম ভিডিওর আগে এর একটি ফ্রি Pexels কী (স্টক ফুটেজ) এবং স্ক্রিপ্ট লেখার জন্য একটি AI মডেল (আপনার নিজের বা ফ্রি কী) লাগবে। ভয়েস ফ্রি।",
+  mcpxGetPexels: "ফ্রি Pexels কী নিন",
+  mcpxSkillOutput: "তৈরি ভিডিও %LOCALAPPDATA%\\MoneyPrinterTurbo\\storage\\tasks-এ সেভ হয়।",
+  mcpxInstallLog: "বিস্তারিত দেখুন",
+  mcpxDiag_longPath:
+    "একটি ফাইলের পাথ Windows-এর সীমার (260 অক্ষর) চেয়ে লম্বা হয়ে গেছে। Sahkarmi এখন ছোট ফোল্ডারে ইনস্টল করে: আবার ইনস্টল চাপুন। অথবা Windows-এ লম্বা পাথ চালু করুন।",
+  mcpxShared: "শেয়ার্ড: সব সহকর্মীর জন্য একবার চালু করুন (মেমরি বাঁচে; অলস থাকলে বন্ধ)",
+  mcpxHeavyServer: "এই সার্ভার বড় লাইব্রেরি লোড করে। শেয়ার্ড চালু করুন, যাতে প্রতিটি চ্যাটে আলাদা করে চালু না হয়।",
+  mcpxAdapter: "অ্যাডভান্সড: এর লোকাল ওয়েব API যুক্ত করুন",
+  mcpxAdapterNote:
+    "Sahkarmi একটি ছোট MCP অ্যাডাপ্টার লেখে, যা এই প্রজেক্টের ওয়েব API শুধু এই PC-তেই (127.0.0.1) কল করে। আগে প্রজেক্টের নিজের সার্ভার নিজে চালু করুন; তারপর টেস্ট সার্ভার চাপুন।",
+  mcpxAdapterAdd: "অ্যাডাপ্টার যোগ করুন (বন্ধ অবস্থায়)",
+};

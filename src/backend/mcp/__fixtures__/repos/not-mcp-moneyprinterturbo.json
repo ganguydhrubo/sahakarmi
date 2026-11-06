@@ -1,0 +1,510 @@
+{
+  "source": "https://github.com/harry0703/MoneyPrinterTurbo (main.py, pyproject.toml, requirements.txt, README-en.md lines 326-372, Dockerfile CMD), pypi.org/project/mpt",
+  "location": {
+    "owner": "harry0703",
+    "repo": "MoneyPrinterTurbo",
+    "ref": "fixturecommit0005",
+    "subPath": ""
+  },
+  "files": [
+    {
+      "path": ".dockerignore",
+      "size": 318
+    },
+    {
+      "path": ".gitattributes",
+      "size": 259
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "size": 3179
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "size": 27
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "size": 957
+    },
+    {
+      "path": ".github/SECURITY.md",
+      "size": 1134
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "size": 3869
+    },
+    {
+      "path": ".github/workflows/docker-ghcr.yml",
+      "size": 1811
+    },
+    {
+      "path": ".github/workflows/security.yml",
+      "size": 1727
+    },
+    {
+      "path": ".gitignore",
+      "size": 777
+    },
+    {
+      "path": ".python-version",
+      "size": 5
+    },
+    {
+      "path": "Dockerfile",
+      "size": 5565
+    },
+    {
+      "path": "Dockerfile.claude",
+      "size": 1127
+    },
+    {
+      "path": "Dockerfile.gpu",
+      "size": 2509
+    },
+    {
+      "path": "LICENSE",
+      "size": 1061
+    },
+    {
+      "path": "README-en.md",
+      "size": 42900
+    },
+    {
+      "path": "README-ja.md",
+      "size": 41037
+    },
+    {
+      "path": "README.md",
+      "size": 39463
+    },
+    {
+      "path": "app/__init__.py",
+      "size": 69
+    },
+    {
+      "path": "app/__main__.py",
+      "size": 88
+    },
+    {
+      "path": "app/asgi.py",
+      "size": 13203
+    },
+    {
+      "path": "app/config/__init__.py",
+      "size": 1250
+    },
+    {
+      "path": "app/config/config.py",
+      "size": 28038
+    },
+    {
+      "path": "app/controllers/base.py",
+      "size": 3499
+    },
+    {
+      "path": "app/controllers/manager/base_manager.py",
+      "size": 6102
+    },
+    {
+      "path": "app/controllers/manager/memory_manager.py",
+      "size": 479
+    },
+    {
+      "path": "app/controllers/manager/redis_manager.py",
+      "size": 19068
+    },
+    {
+      "path": "app/controllers/ping.py",
+      "size": 245
+    },
+    {
+      "path": "app/controllers/v1/base.py",
+      "size": 275
+    },
+    {
+      "path": "app/controllers/v1/llm.py",
+      "size": 2613
+    },
+    {
+      "path": "app/controllers/v1/video.py",
+      "size": 24092
+    },
+    {
+      "path": "app/launcher.py",
+      "size": 3008
+    },
+    {
+      "path": "app/models/__init__.py",
+      "size": 0
+    },
+    {
+      "path": "app/models/const.py",
+      "size": 1011
+    },
+    {
+      "path": "app/models/exception.py",
+      "size": 1069
+    },
+    {
+      "path": "app/models/llm_provider.py",
+      "size": 24790
+    },
+    {
+      "path": "app/models/schema.py",
+      "size": 17812
+    },
+    {
+      "path": "app/paths.py",
+      "size": 2859
+    },
+    {
+      "path": "app/router.py",
+      "size": 448
+    },
+    {
+      "path": "app/services/__init__.py",
+      "size": 0
+    },
+    {
+      "path": "app/services/bgm.py",
+      "size": 18240
+    },
+    {
+      "path": "app/services/cache_manager.py",
+      "size": 8921
+    },
+    {
+      "path": "app/services/chatgpt_auth.py",
+      "size": 27168
+    },
+    {
+      "path": "app/services/chatgpt_models.py",
+      "size": 1884
+    },
+    {
+      "path": "app/services/chatgpt_oauth.py",
+      "size": 9571
+    },
+    {
+      "path": "app/services/codex_image.py",
+      "size": 10106
+    },
+    {
+      "path": "app/services/codex_models.py",
+      "size": 5984
+    },
+    {
+      "path": "app/services/codex_oauth.py",
+      "size": 25847
+    },
+    {
+      "path": "app/services/data/azure_voices.json",
+      "size": 21733
+    },
+    {
+      "path": "app/services/elevenlabs_music.py",
+      "size": 15859
+    },
+    {
+      "path": "app/services/generation_progress.py",
+      "size": 4136
+    },
+    {
+      "path": "app/services/infistar_video.py",
+      "size": 12476
+    },
+    {
+      "path": "app/services/jalapeno_video.py",
+      "size": 4112
+    },
+    {
+      "path": "app/services/kimi_code_oauth.py",
+      "size": 12799
+    },
+    {
+      "path": "app/services/llm.py",
+      "size": 61339
+    },
+    {
+      "path": "app/services/loomloom.py",
+      "size": 40699
+    },
+    {
+      "path": "app/services/material.py",
+      "size": 141447
+    },
+    {
+      "path": "app/services/material_cache.py",
+      "size": 17325
+    },
+    {
+      "path": "app/services/material_upload.py",
+      "size": 12712
+    },
+    {
+      "path": "app/services/metaso_minimax.py",
+      "size": 18021
+    },
+    {
+      "path": "app/services/muapi.py",
+      "size": 16577
+    },
+    {
+      "path": "app/services/ofox.py",
+      "size": 18729
+    },
+    {
+      "path": "app/services/sonilo.py",
+      "size": 16605
+    },
+    {
+      "path": "app/services/state.py",
+      "size": 11436
+    },
+    {
+      "path": "app/services/subtitle.py",
+      "size": 11795
+    },
+    {
+      "path": "app/services/task.py",
+      "size": 82417
+    },
+    {
+      "path": "app/services/task_artifacts.py",
+      "size": 3703
+    },
+    {
+      "path": "app/services/twelvelabs.py",
+      "size": 7097
+    },
+    {
+      "path": "app/services/upload_post.py",
+      "size": 16514
+    },
+    {
+      "path": "app/services/utils/subtitle_shaping.py",
+      "size": 7190
+    },
+    {
+      "path": "app/services/utils/video_effects.py",
+      "size": 5678
+    },
+    {
+      "path": "app/services/version_checker.py",
+      "size": 8246
+    },
+    {
+      "path": "app/services/video.py",
+      "size": 94842
+    },
+    {
+      "path": "app/services/video_project.py",
+      "size": 35772
+    },
+    {
+      "path": "app/services/voice.py",
+      "size": 162994
+    },
+    {
+      "path": "app/services/volcengine_seedance.py",
+      "size": 19958
+    },
+    {
+      "path": "app/services/webui_task.py",
+      "size": 14612
+    },
+    {
+      "path": "app/utils/file_security.py",
+      "size": 1396
+    },
+    {
+      "path": "app/utils/logging_utils.py",
+      "size": 8342
+    },
+    {
+      "path": "app/utils/request_logging.py",
+      "size": 7720
+    },
+    {
+      "path": "app/utils/subtitle_reader.py",
+      "size": 1738
+    },
+    {
+      "path": "app/utils/subtitle_writer.py",
+      "size": 2304
+    },
+    {
+      "path": "app/utils/utils.py",
+      "size": 28384
+    },
+    {
+      "path": "cli.py",
+      "size": 69244
+    },
+    {
+      "path": "config.example.toml",
+      "size": 37678
+    },
+    {
+      "path": "docker-compose.claude.yml",
+      "size": 1739
+    },
+    {
+      "path": "docker-compose.gpu.yml",
+      "size": 952
+    },
+    {
+      "path": "docker-compose.release.yml",
+      "size": 875
+    },
+    {
+      "path": "docker-compose.yml",
+      "size": 817
+    },
+    {
+      "path": "docs/MoneyPrinterTurbo.ipynb",
+      "size": 8313
+    },
+    {
+      "path": "docs/artifact-metadata.md",
+      "size": 836
+    },
+    {
+      "path": "docs/chatgpt-provider.md",
+      "size": 8440
+    },
+    {
+      "path": "docs/codex-provider.md",
+      "size": 8491
+    },
+    {
+      "path": "docs/diagnostic-logging.md",
+      "size": 2319
+    },
+    {
+      "path": "docs/docker-config-note.md",
+      "size": 991
+    },
+    {
+      "path": "docs/local-image-server/README.md",
+      "size": 5850
+    },
+    {
+      "path": "docs/local-image-server/policy.py",
+      "size": 2462
+    },
+    {
+      "path": "docs/local-image-server/policy.toml",
+      "size": 6219
+    },
+    {
+      "path": "docs/local-image-server/requirements.txt",
+      "size": 201
+    },
+    {
+      "path": "docs/local-image-server/server.py",
+      "size": 7081
+    },
+    {
+      "path": "docs/loomloom/moneyprinterturbo-ai-video-materials.template.json",
+      "size": 2994
+    },
+    {
+      "path": "docs/loomloom/moneyprinterturbo-script-candidates.template.json",
+      "size": 3218
+    },
+    {
+      "path": "docs/packaging.md",
+      "size": 3987
+    },
+    {
+      "path": "docs/pypi-description.md",
+      "size": 2662
+    },
+    {
+      "path": "docs/release-notes-v1.3.9.md",
+      "size": 14531
+    },
+    {
+      "path": "docs/security/trivy-2026-10-29.csv",
+      "size": 80923
+    },
+    {
+      "path": "docs/security/trivy-2026-10-29.md",
+      "size": 12354
+    },
+    {
+      "path": "docs/skill/SKILL.md",
+      "size": 8972
+    },
+    {
+      "path": "docs/skill/mpt_agent.py",
+      "size": 38711
+    },
+    {
+      "path": "docs/validation/chatgpt-native-oauth-windows-2026-10-27.json",
+      "size": 5235
+    },
+    {
+      "path": "docs/validation/codex-image-gpt-5.6-luna-2026-10-28.json",
+      "size": 2486
+    },
+    {
+      "path": "docs/validation/codex-image-gpt-6-luna-2026-10-28.json",
+      "size": 2480
+    },
+    {
+      "path": "docs/video-projects.md",
+      "size": 7861
+    },
+    {
+      "path": "docs/voice-list.txt",
+      "size": 12959
+    },
+    {
+      "path": "main.py",
+      "size": 566
+    },
+    {
+      "path": "pyproject.toml",
+      "size": 5085
+    },
+    {
+      "path": "requirements-security.txt",
+      "size": 234
+    },
+    {
+      "path": "requirements.txt",
+      "size": 898
+    },
+    {
+      "path": "resource/public/index.html",
+      "size": 689
+    },
+    {
+      "path": "resource/songs/output000.mp3",
+      "size": 2249517
+    }
+  ],
+  "texts": {
+    "main.py": "import uvicorn\nfrom loguru import logger\n\nfrom app.config import config\n\nif __name__ == \"__main__\":\n    logger.info(\n        \"start server, docs: http://127.0.0.1:\" + str(config.listen_port) + \"/docs\"\n    )\n    # FFmpeg 探测已经移到 app/services/task.py 的共享任务流水线里，这样\n    # API、CLI 和 WebUI 三条路径都能统一覆盖，这里不再单独检查。\n    uvicorn.run(\n        app=\"app.asgi:app\",\n        host=config.listen_host,\n        port=config.listen_port,\n        reload=config.reload_debug,\n        log_level=\"warning\",\n    )\n",
+    "pyproject.toml": "# 说明：\n# 1. 主依赖来源统一收敛到 pyproject.toml。\n# 2. 运行环境通过 uv.lock 固定，避免不同机器解析出不同版本组合。\n[build-system]\nrequires = [\"hatchling>=1.27.0\"]\nbuild-backend = \"hatchling.build\"\n\n[project]\nname = \"mpt\"\nversion = \"1.3.9\"\ndescription = \"Official MoneyPrinterTurbo package with WebUI and CLI, maintained by harry0703.\"\nreadme = \"docs/pypi-description.md\"\nrequires-python = \">=3.11\"\nlicense = { text = \"MIT\" }\ndependencies = [\n    \"moviepy==2.2.1\",\n    \"streamlit==1.66.1\",\n    # Keep the media-response compatibility test passing with the patched stack.\n    \"starlette==1.3.1\",\n    \"streamlit-tour==1.1.0\",\n    \"edge-tts==7.3.1\",\n    \"fastapi==0.136.3\",\n    \"uvicorn==0.32.1\",\n    \"openai==2.24.0\",\n    \"faster-whisper==1.1.0\",\n    # 与 requirements.txt 保持一致：PyAV 19 移除了 Whisper 使用的参数。\n    \"av<19\",\n    \"toml==0.10.2\",\n    \"imageio-ffmpeg==0.6.0\",\n    \"loguru==0.7.3\",\n    \"dashscope==1.20.14\",\n    \"azure-cognitiveservices-speech==1.41.1\",\n    \"redis==5.2.0\",\n    \"python-multipart==0.0.30\",\n    \"pyyaml==6.0.3\",\n    \"requests==2.33.1\",\n    \"packaging==24.2\",\n    \"socksio==1.0.0\",\n    \"pydub==0.25.1\",\n    \"audioop-lts==0.2.2; python_version >= '3.13'\",\n    \"litellm==1.103.1\",\n    \"google-genai==2.11.0\",\n    \"pyjwt[crypto]>=2.10.1,<3\",\n    \"filelock>=4.2.1,<5\",\n    # 阿拉伯字母字幕的整形与绘制（HarfBuzz + FreeType，wheel 自带，无需系统库）。\n    \"khatt[video]==0.4.0\",\n]\n\n[project.scripts]\nmpt = \"app.launcher:main\"\n\n[project.urls]\nHomepage = \"https://github.com/harry0703/MoneyPrinterTurbo\"\nIssues = \"https://github.com/harry0703/MoneyPrinterTurbo/issues\"\n\n[project.optional-dependencies]\n# Optional TwelveLabs (https://twelvelabs.io) video-understanding/embedding\n# integration. Only needed when `twelvelabs_api_keys` is configured; install\n# with `uv sync --extra twelvelabs`.\ntwelvelabs = [\n    \"twelvelabs>=1.2.8\",\n]\n\n[dependency-groups]\ndev = [\n    \"coverage==7.15.1\",\n    \"pytest==9.1.1\",\n    \"ruff==0.15.21\",\n]\n\n[tool.ruff.lint.per-file-ignores]\n# WebUI 需要先把项目根目录加入 sys.path，随后才能导入 app 包。\n\"webui/Main.py\" = [\"E402\"]\n\n[tool.coverage.run]\n# 统计分支覆盖率可以识别“代码行执行了，但条件的另一条分支从未验证”的情况，\n# 比只统计行覆盖率更适合作为 CI 质量基线。CLI 和 WebUI 都属于生产入口，\n# 因此与 app 服务层、服务启动入口和面向 Agent 用户发布的 Skill 脚本一起\n# 纳入统计，避免覆盖率只反映局部模块。\nbranch = true\nsource = [\"app\", \"cli\", \"webui\", \"main\", \"docs/skill\"]\n\n[tool.coverage.report]\n# Python 3.11 和 3.13 完整测试的实测分支覆盖率均超过 70.4%。以 70%\n# 作为稳定底线，可以固化失败状态、异步发布恢复和 Redis 原子更新测试，\n# 同时为不同 Python 版本与操作系统的少量分支差异保留余量。\nfail_under = 70\nshow_missing = true\nskip_covered = true\n\n[tool.hatch.build.targets.wheel]\npackages = [\"app\", \"webui\"]\n\n# 字体保留中英文默认字体和越南语字体。两个大体积备用字重不进入安装包，\n# 避免 wheel 超过 PyPI 默认文件大小限制；源码版的字体文件保持原样。\n[tool.hatch.build.targets.wheel.force-include]\n\"cli.py\" = \"app/cli.py\"\n\"config.example.toml\" = \"app/_assets/config.example.toml\"\n\"resource/fonts/STHeitiMedium.ttc\" = \"app/_assets/resource/fonts/STHeitiMedium.ttc\"\n\"resource/fonts/MicrosoftYaHeiBold.ttc\" = \"app/_assets/resource/fonts/MicrosoftYaHeiBold.ttc\"\n\"resource/fonts/BeVietnamPro-Bold.ttf\" = \"app/_assets/resource/fonts/BeVietnamPro-Bold.ttf\"\n\"resource/fonts/BeVietnamPro-Medium.ttf\" = \"app/_assets/resource/fonts/BeVietnamPro-Medium.ttf\"\n\"resource/fonts/Charm-Bold.ttf\" = \"app/_assets/resource/fonts/Charm-Bold.ttf\"\n\"resource/fonts/Charm-Regular.ttf\" = \"app/_assets/resource/fonts/Charm-Regular.ttf\"\n\"resource/fonts/UTM Kabel KT.ttf\" = \"app/_assets/resource/fonts/UTM Kabel KT.ttf\"\n\"resource/songs\" = \"app/_assets/resource/songs\"\n\"resource/public\" = \"app/_assets/resource/public\"\n\n[tool.hatch.build]\nexclude = [\"**/.DS_Store\", \"**/__pycache__\", \"**/*.pyc\", \"**/.streamlit\"]\n\n[tool.hatch.build.targets.sdist]\n# 使用白名单，禁止本机配置、凭据、storage、AGENTS.md 等混入源码发行包。\ninclude = [\n    \"/app\", \"/cli.py\", \"/webui\", \"/config.example.toml\", \"/pyproject.toml\",\n    \"/uv.lock\", \"/LICENSE\", \"/docs/pypi-description.md\", \"/docs/packaging.md\",\n    \"/test/services/test_packaging.py\", \"/resource/songs\", \"/resource/public\",\n    \"/resource/fonts/STHeitiMedium.ttc\", \"/resource/fonts/MicrosoftYaHeiBold.ttc\",\n    \"/resource/fonts/BeVietnamPro-Bold.ttf\", \"/resource/fonts/BeVietnamPro-Medium.ttf\",\n    \"/resource/fonts/Charm-Bold.ttf\", \"/resource/fonts/Charm-Regular.ttf\",\n    \"/resource/fonts/UTM Kabel KT.ttf\",\n]\n\n[tool.uv]\npackage = true\n# MoviePy 2.2.1 caps Pillow below 12; patched Pillow is required for image decoding.\n# Keep this in sync with requirements-security.txt for container/legacy installs.\noverride-dependencies = [\"pillow>=13.0.0,<14\"]\n",
+    "requirements.txt": "# Keep legacy pip install support; primary deps moved to pyproject.toml / uv.lock.\n# For patched Pillow despite MoviePy's cap, use:\n# uv pip install --overrides requirements-security.txt -r requirements.txt\nmoviepy==2.2.1\nstreamlit==1.66.1\nstarlette==1.3.1\nstreamlit-tour==1.1.0\nedge_tts==7.3.1\nfastapi==0.136.3\nuvicorn==0.32.1\nopenai==2.24.0\nfaster-whisper==1.1.0\n# faster-whisper passes metadata_errors to av.open(), which PyAV 19 removed\nav<19\ntoml==0.10.2\nimageio-ffmpeg==0.6.0\nloguru==0.7.3\ngoogle-genai==2.11.0\ndashscope==1.20.14\nazure-cognitiveservices-speech==1.41.1\nredis==5.2.0\npython-multipart==0.0.30\npyyaml==6.0.3\nrequests==2.33.1\nPyJWT[crypto]>=2.10.1,<3\nfilelock>=4.2.1,<5\npackaging==24.2\nsocksio==1.0.0\npydub==0.25.1\naudioop-lts==0.2.2; python_version >= \"3.13\"\nlitellm==1.103.1\n# Arabic-script subtitle shaping (HarfBuzz + FreeType wheels, no system libraries)\nkhatt[video]==0.4.0\n",
+    "README-en.md": "### Install the Official Package with pip\n\nThe official PyPI package is **[mpt](https://pypi.org/project/mpt/)**,\nmaintained by `harry0703`. The `MoneyPrinterTurbo` package on PyPI is maintained by a third party.\n\nNo repository clone is needed. Requires Python 3.11 or later; Python 3.11 is recommended.\n\n**① Create and activate a virtual environment**\n\nmacOS / Linux:\n\n```shell\npython3 -m venv .venv\nsource .venv/bin/activate\n```\n\nWindows PowerShell:\n\n```powershell\npython -m venv .venv\n.venv\\Scripts\\Activate.ps1\n```\n\n**② Install and start**\n\n```shell\npython -m pip install mpt\nmpt webui\n```\n\nThe WebUI opens in your browser automatically. Use `mpt webui --port 8503 --headless`\nto select a port without opening a browser. For CLI video generation, see `mpt cli --help`.\n\n**③ Configure services and find your files**\n\nThe application creates `config.toml` on first launch. Add the required API keys\nfor online models, footage, or speech services in the WebUI basic settings.\nThe installed application stores configuration and generated files here by default:\n\n| System  | Data directory                                                            |\n| ------- | ------------------------------------------------------------------------- |\n| macOS   | `~/Library/Application Support/MoneyPrinterTurbo`                         |\n| Windows | `%LOCALAPPDATA%\\MoneyPrinterTurbo`                                        |\n| Linux   | `~/.local/share/MoneyPrinterTurbo`, or `$XDG_DATA_HOME/MoneyPrinterTurbo` |\n\nSet `MPT_HOME` before launch to choose another directory. Generated videos are under\n`storage/tasks` in that directory. To upgrade, activate your virtual environment and",
+    "Dockerfile": "# Use an official Python runtime as a parent image\nFROM python:3.11-slim-trixie\n\nCMD [\"streamlit\", \"run\", \"./webui/Main.py\", \"--server.address=0.0.0.0\", \"--server.port=8501\", \"--browser.serverAddress=127.0.0.1\", \"--server.enableCORS=True\", \"--browser.gatherUsageStats=False\", \"--client.toolbarMode=minimal\", \"--logger.hideWelcomeMessage=True\", \"--server.showEmailPrompt=False\"]"
+  },
+  "registry": [],
+  "packages": {
+    "pypi": {
+      "mpt": {
+        "version": "1.3.9",
+        "urls": [
+          "https://github.com/harry0703/MoneyPrinterTurbo",
+          "https://github.com/harry0703/MoneyPrinterTurbo/issues"
+        ]
+      }
+    }
+  }
+}

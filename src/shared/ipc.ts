@@ -182,6 +182,19 @@ export const IPC_CHANNELS = {
   mcpGithubJson: "mcp:github-json",
   mcpSetEnabled: "mcp:set-enabled",
   mcpRemove: "mcp:remove",
+  mcpRecheck: "mcp:recheck",
+  mcpTest: "mcp:test",
+  mcpSetCoworkers: "mcp:set-coworkers",
+  mcpAnalyzeGithub: "mcp:analyze-github",
+  mcpAddCandidate: "mcp:add-candidate",
+  mcpPlanInstall: "mcp:plan-install",
+  mcpPlanSkill: "mcp:plan-skill",
+  mcpPlanTool: "mcp:plan-tool",
+  mcpRunInstall: "mcp:run-install",
+  mcpInstallStatus: "mcp:install-status",
+  mcpCancelInstall: "mcp:cancel-install",
+  mcpSetShared: "mcp:set-shared",
+  mcpAddAdapter: "mcp:add-adapter",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -2214,6 +2227,85 @@ export interface CustomSkillsDesktopApi {
   markReviewed: (id: string) => Promise<CustomSkill[]>;
 }
 
+/** What the owner can press to fix an MCP server problem. */
+export type McpFixAction =
+  | "edit"
+  | "recheck"
+  | "install-uv"
+  | "install-node"
+  | "install-python"
+  | "retry-long"
+  | "reinstall"
+  | "use-skill-route"
+  | "shared-mode";
+
+/** A problem Settings can see before any coworker starts the server (MCP-1, -5, -6, -9, -13). */
+export interface McpProblem {
+  kind:
+    | "placeholder"
+    | "missing-command"
+    | "store-stub"
+    | "missing-folder"
+    | "missing-file"
+    | "missing-env";
+  /** The command, folder, file, env name or template text the problem is about. */
+  subject: string;
+  detail?: string;
+  /** Where to download a missing program. */
+  link?: string;
+  fix?: McpFixAction;
+}
+
+/** Plain-English causes of a failed test (audit §11.7); the window words each one. */
+export type McpDiagnosisCode =
+  | "command-not-found"
+  | "store-stub"
+  | "module-missing"
+  | "not-mcp"
+  | "no-reply"
+  | "stdout-noise"
+  | "auth"
+  | "port-in-use"
+  | "first-run-timeout"
+  | "path-not-found"
+  | "long-path"
+  | "build-tools"
+  | "python-version"
+  | "exited"
+  | "unknown";
+
+export interface McpDiagnosis {
+  code: McpDiagnosisCode;
+  fix?: McpFixAction;
+}
+
+export interface McpToolInfo {
+  name: string;
+  description: string;
+}
+
+/** The last "Test server" result (MCP-18). */
+export interface McpServerStatus {
+  lastCheckedAt: string;
+  ok: boolean;
+  toolCount: number;
+  /** Up to 20 names. */
+  toolNames: string[];
+  tools?: McpToolInfo[];
+  error: string | null;
+  stderrTail: string;
+  diagnosis?: McpDiagnosis | null;
+  durationMs?: number;
+}
+
+/** An env value (or header) a server says it needs, from its server.json (MCP-13). */
+export interface McpEnvRequirement {
+  name: string;
+  description: string;
+  isRequired: boolean;
+  isSecret: boolean;
+}
+
 /** An MCP server as Settings shows it: secret values (env, headers) are never sent here. */
 export interface McpServerSummary {
   id: string;
@@ -2228,6 +2320,20 @@ export interface McpServerSummary {
   source: string;
   /** A local server whose command is not on this PC (not installed, or a wrong path). */
   missingCommand?: boolean;
+  /** Folder the server starts in. */
+  cwd?: string;
+  /** Everything wrong that can be seen without starting it. */
+  problems: McpProblem[];
+  status?: McpServerStatus | null;
+  /** Added after the "test first" rule: it can be turned on only after a passing test. */
+  needsTest?: boolean;
+  /** Coworkers that get it; null or missing means every coworker. */
+  coworkerIds?: string[] | null;
+  /** Started once for all coworkers instead of once per chat (MCP-7). */
+  shared?: boolean;
+  /** Big install or imports heavy libraries: better shared. */
+  heavy?: boolean;
+  requiredEnv?: McpEnvRequirement[];
 }
 
 export interface McpServerInput {
@@ -2241,22 +2347,177 @@ export interface McpServerInput {
   url?: string;
   headers?: Record<string, string>;
   enabled?: boolean;
+  /** Folder to start in (stdio only). */
+  cwd?: string;
+  requiredEnv?: McpEnvRequirement[];
+  /** Imports heavy libraries (video, speech, ML): Settings suggests shared mode. */
+  heavy?: boolean;
 }
 
 export interface McpImportResult {
   servers: McpServerSummary[];
   added: string[];
   skipped: string[];
+  /** Names that already exist; import again with them in `replace` to overwrite (MCP-14). */
+  conflicts: string[];
+}
+
+/** What "Connect from GitHub" found a repo to be (audit §11.5). */
+export type McpRepoKind = "mcp-stdio" | "mcp-http" | "mcp-needs-build" | "not-mcp" | "unknown";
+export type McpNotMcpKind = "cli" | "http-api" | "webapp";
+
+/** How a candidate gets onto this PC; every source is pinned to a version or a commit. */
+export type McpInstallSource =
+  | { type: "npm"; package: string; version: string }
+  | { type: "pypi"; package: string; version: string; script: string; requiresPython?: string }
+  | { type: "oci"; image: string }
+  | {
+      type: "clone-node";
+      repoUrl: string;
+      commit: string;
+      subPath: string;
+      bin: string;
+      build: boolean;
+    }
+  | {
+      type: "clone-python";
+      repoUrl: string;
+      commit: string;
+      subPath: string;
+      script: string | null;
+      entry: string | null;
+      requiresPython?: string;
+    };
+
+/** One way to run the server, with where each part came from. */
+export interface McpCandidate {
+  id: string;
+  label: string;
+  runtime: "node" | "python" | "docker" | "remote" | "other";
+  /** Ready-to-save settings; missing when the server must be installed first. */
+  server?: McpServerInput;
+  install: McpInstallSource | null;
+  evidence: string[];
+  requiredEnv: McpEnvRequirement[];
+  /** Template values still in the settings (MCP-1). */
+  placeholders: string[];
+  /** Programs it needs on this PC: node, uv, python, docker, git. */
+  needs: string[];
+}
+
+export interface McpRepoAnalysis {
+  id: string;
+  /** owner/repo */
+  repo: string;
+  url: string;
+  commit: string;
+  subPath: string;
+  kind: McpRepoKind;
+  notMcp: McpNotMcpKind[];
+  evidence: string[];
+  candidates: McpCandidate[];
+  /** A command-line program from PyPI it ships, for the "Use as a Skill" route. */
+  cli: { package: string; version: string; script: string; requiresPython?: string } | null;
+  /** Big libraries (video, speech, ML): better run once, shared, or as a Skill. */
+  heavy: boolean;
+  warnings: string[];
+  truncated: boolean;
+  /** Smart import switched off: the repo's .mcp.json files, merged, for the paste box. */
+  legacyJson?: string;
+}
+
+/** One step of a guided install, as the approval card shows it (audit §11.8). */
+export interface McpInstallStepView {
+  kind:
+    | "download-uv"
+    | "download-node"
+    | "python-install"
+    | "venv"
+    | "pip"
+    | "npm"
+    | "clone"
+    | "build"
+    | "docker-pull"
+    | "verify"
+    | "skill"
+    | "save"
+    | "test";
+  /** The exact command (or download address) that will run. */
+  command: string;
+}
+
+/** What the owner approves before anything is downloaded or run. */
+export interface McpInstallPlan {
+  id: string;
+  kind: "server" | "skill" | "tool";
+  name: string;
+  /** Repo + pinned commit, or package + version. */
+  source: string;
+  folder: string;
+  /** Rough download size in MB, when known. */
+  sizeMb: { min: number; max: number } | null;
+  heavy: boolean;
+  steps: McpInstallStepView[];
+  warnings: string[];
+}
+
+export interface McpInstallJob {
+  id: string;
+  planId: string;
+  state: "running" | "done" | "failed" | "cancelled";
+  steps: { kind: McpInstallStepView["kind"]; state: "waiting" | "running" | "done" | "failed" }[];
+  /** The last lines the programs printed. */
+  log: string;
+  error: string | null;
+  diagnosis: McpDiagnosis | null;
+  /** The server list after a server install (with the automatic test result). */
+  servers?: McpServerSummary[];
+  /** The skill written by the Skill route. */
+  skillName?: string;
 }
 
 export interface McpDesktopApi {
   list: () => Promise<McpServerSummary[]>;
   save: (input: McpServerInput) => Promise<McpServerSummary[]>;
-  importJson: (text: string) => Promise<McpImportResult>;
+  importJson: (text: string, replace?: string[]) => Promise<McpImportResult>;
   /** The .mcp.json files of a GitHub repo, merged, for the owner to review before importing. */
   githubJson: (url: string) => Promise<string>;
   setEnabled: (id: string, enabled: boolean) => Promise<McpServerSummary[]>;
   remove: (id: string) => Promise<McpServerSummary[]>;
+  /** Re-reads Windows' PATH (after installing something) and checks every server again. */
+  recheck: () => Promise<McpServerSummary[]>;
+  /** Starts the server once, lists its tools, stops it, and stores the result. */
+  test: (id: string) => Promise<McpServerSummary[]>;
+  /** null = every coworker. */
+  setCoworkers: (id: string, coworkerIds: string[] | null) => Promise<McpServerSummary[]>;
+  /** Reads a GitHub repo (and the MCP Registry) and says what it is and how it could run. */
+  analyzeGithub: (url: string) => Promise<McpRepoAnalysis>;
+  /** Saves one ready-made candidate (switched off until tested), with the env values filled in. */
+  addCandidate: (
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    env: Record<string, string>,
+  ) => Promise<McpServerSummary[]>;
+  /** Builds (does not run) the plan to install a candidate into its own folder. */
+  planInstall: (
+    analysisId: string,
+    candidateId: string,
+    name: string,
+    env: Record<string, string>,
+  ) => Promise<McpInstallPlan>;
+  /** Builds the "Use as a Skill (CLI)" plan for a repo that is not an MCP server. */
+  planSkill: (analysisId: string) => Promise<McpInstallPlan>;
+  /** Builds the plan to download a missing tool (uv, Python 3.11 or Node.js). */
+  planTool: (tool: "uv" | "python" | "node") => Promise<McpInstallPlan>;
+  /** Runs a plan the owner approved. */
+  runInstall: (planId: string) => Promise<McpInstallJob>;
+  installStatus: (jobId: string) => Promise<McpInstallJob>;
+  cancelInstall: (jobId: string) => Promise<McpInstallJob>;
+  /** Shared mode (MCP-7): start once for all coworkers instead of once per chat. */
+  setShared: (id: string, shared: boolean) => Promise<McpServerSummary[]>;
+  /** Writes a small MCP adapter for a repo whose local web API coworkers should call. */
+  addAdapter: (analysisId: string, name: string) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */

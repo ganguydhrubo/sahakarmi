@@ -348,11 +348,35 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   mcp: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
     save: (input) => ipcRenderer.invoke(IPC_CHANNELS.mcpSave, input),
-    importJson: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpImportJson, { text }),
+    importJson: (text: string, replace?: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpImportJson, { text, replace: replace ?? [] }),
     githubJson: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpGithubJson, { url }),
     setEnabled: (id: string, enabled: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, { id, enabled }),
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRemove, { id }),
+    recheck: () => ipcRenderer.invoke(IPC_CHANNELS.mcpRecheck),
+    test: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpTest, { id }),
+    setCoworkers: (id: string, coworkerIds: string[] | null) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpSetCoworkers, { id, coworkerIds }),
+    analyzeGithub: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpAnalyzeGithub, { url }),
+    addCandidate: (
+      analysisId: string,
+      candidateId: string,
+      name: string,
+      env: Record<string, string>,
+    ) => ipcRenderer.invoke(IPC_CHANNELS.mcpAddCandidate, { analysisId, candidateId, name, env }),
+    planInstall: (analysisId, candidateId, name, env) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpPlanInstall, { analysisId, candidateId, name, env }),
+    planSkill: (analysisId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpPlanSkill, { analysisId }),
+    planTool: (tool) => ipcRenderer.invoke(IPC_CHANNELS.mcpPlanTool, { tool }),
+    runInstall: (planId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpRunInstall, { planId }),
+    installStatus: (jobId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpInstallStatus, { jobId }),
+    cancelInstall: (jobId: string) => ipcRenderer.invoke(IPC_CHANNELS.mcpCancelInstall, { jobId }),
+    setShared: (id: string, shared: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpSetShared, { id, shared }),
+    addAdapter: (analysisId: string, name: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpAddAdapter, { analysisId, name }),
   },
   workflow: {
     export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),

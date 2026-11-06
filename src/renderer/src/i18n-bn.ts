@@ -5,6 +5,7 @@ import { backgroundBn } from "./i18n-background";
 import { engineBn } from "./i18n-engine";
 import { extensionsBn } from "./i18n-extensions-bn";
 import { marketplaceBn } from "./i18n-marketplace-bn";
+import { mcpBn } from "./i18n-mcp";
 import { memoryBn } from "./i18n-memory";
 import { onboardingBn } from "./i18n-onboarding";
 import { securityBn } from "./i18n-security";
@@ -300,5 +301,6 @@ export const bn: Dictionary = {
   ...memoryBn,
   ...securityBn,
   ...engineBn,
+  ...mcpBn,
   ...onboardingBn,
 };
