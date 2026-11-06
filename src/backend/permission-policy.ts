@@ -232,7 +232,13 @@ const VERSION_SEGMENT = /^\s*[\w.-]+\s+(--version|-version|-v|-V)\s*$/;
  * `&` (cmd and PowerShell run what follows), line breaks, cmd's `^` escape, backticks, `$(`,
  * `${` and `%VAR%` expansion, and redirection.
  */
-const UNSAFE_SHELL_SYNTAX = /[<>`\r\n^]|\$[({]|%[^%\s]+%|(^|[^&])&(?!&)/;
+const UNSAFE_SHELL_SYNTAX = /[<>`\r\n^]|\$[({]|(^|[^&])&(?!&)/;
+
+/** cmd's %VAR% expansion (%COMSPEC% /c …). git's --format=%h%x09%s placeholders are not it. */
+function expandsVariables(command: string): boolean {
+  const withoutFormats = command.replace(/--(format|pretty|date)(=|\s+)\S+/gi, "");
+  return /%[A-Za-z_][\w()]*%/.test(withoutFormats);
+}
 
 /** Flags that make a "looking" command write, delete or run something. */
 const WRITING_FORMS: RegExp[] = [
@@ -269,7 +275,7 @@ function isReadOnlySegment(part: string): boolean {
  * grep x). Redirection, substitution and anything else keep the command in "shell".
  */
 export function isReadOnlyCommand(command: string): boolean {
-  if (UNSAFE_SHELL_SYNTAX.test(command)) return false;
+  if (UNSAFE_SHELL_SYNTAX.test(command) || expandsVariables(command)) return false;
   if (mentionsSecretPath(command)) return false;
   const segments = command.split(/;|&&|\|\||\|/).filter((part) => part.trim());
   if (segments.length === 0) return false;

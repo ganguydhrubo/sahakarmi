@@ -202,6 +202,8 @@ describe("permission policy", () => {
       "Get-ChildItem -Recurse | Measure-Object",
       "node --version",
       "echo 100% done",
+      "git log --pretty=format:%h%x09%s -5",
+      "git log --format=%H",
     ]) {
       expect(classifyCommand(command), command).toBe("file_read");
     }
