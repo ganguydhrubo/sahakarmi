@@ -2622,6 +2622,8 @@ export interface ApiParam {
   required: boolean;
   type: string;
   description: string;
+  /** A value the specification gives (default, example or first allowed value). */
+  example?: string;
 }
 
 /** One endpoint a coworker may call. */

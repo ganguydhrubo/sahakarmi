@@ -9,7 +9,7 @@ import { type ApiCoworker, ApiIntegrationService, secretName } from "./api-servi
 import { exampleRequests } from "./discovery";
 import { requestUrl } from "./http";
 import { hintForKey } from "./key-hints";
-import { isRiskyOperation, parseSpec } from "./openapi";
+import { isRiskyOperation, parseSpec, sampleRequest } from "./openapi";
 
 const KEY = "3f9c1e7a2b4d6f8091a2b3c4d5e6f708";
 const cleanup: (() => Promise<void>)[] = [];
@@ -490,6 +490,37 @@ describe("helpers", () => {
       risky: true,
       params: [{ in: "body" }],
     });
+  });
+
+  it("builds a test request only from values the specification gives", async () => {
+    const spec = await parseSpec(
+      JSON.stringify({
+        openapi: "3.0.0",
+        servers: [{ url: "https://api.example.com" }],
+        paths: {
+          "/pets": {
+            get: {
+              operationId: "findPets",
+              parameters: [
+                {
+                  name: "status",
+                  in: "query",
+                  required: true,
+                  schema: { type: "string", default: "available" },
+                },
+              ],
+            },
+          },
+          "/owners": { get: { parameters: [{ name: "name", in: "query", required: true }] } },
+          "/pets/{id}": {
+            get: { parameters: [{ name: "id", in: "path", schema: { example: 4 } }] },
+          },
+        },
+      }),
+      null,
+    );
+    const operations = spec?.operations ?? [];
+    expect(operations.map(sampleRequest)).toEqual(["GET /pets?status=available", null, null]);
   });
 
   it("ignores page links that are not API examples", () => {

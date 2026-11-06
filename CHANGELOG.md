@@ -9,6 +9,13 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ### Added
 
+- Marketplace → APIs: paste an API key (and, if you like, a name or a docs link). Sahkarmi finds
+  how the API works from its OpenAPI/Swagger description, its documentation page or the public
+  APIs.guru directory, and asks only for what it could not find. Seven real tests run before you
+  can turn it on (key, connection, endpoint, a real answer, readable data, permissions, errors and
+  limits), and you choose which coworkers, workspaces or CEO may use it. Coworkers then answer
+  questions like "tomorrow's weather in Kolkata" with live data. Keys are encrypted on this PC and
+  never shown to coworkers; reading calls never ask, calls that change something ask you once.
 - MCP servers: "Test server" really connects, lists the server's tools, and explains a failure
   in plain words with a one-click fix (install uv, Node.js or Python, re-check PATH). New servers
   stay off until a test passes, and you can choose which coworkers get each server.
@@ -52,6 +59,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ### Fixed
 
+- A tab you were typing in is never reloaded because a coworker saved on the same site, even when
+  you started typing just before.
 - A coworker could run a shell command without your approval through an unchecked path; every
   command now goes through the approval rules.
 - Coworkers can no longer change Sahkarmi's own settings, other AI tools' settings, or files that

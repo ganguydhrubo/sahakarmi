@@ -1,7 +1,7 @@
 import type { ApiAuth, ApiDiscoverInput, ApiMissingField, ApiOperation } from "../../shared/ipc";
 import { isRecord } from "../protocol";
 import { hintForKey, providerKey } from "./key-hints";
-import { absoluteUrl, type ParsedSpec, parseSpec, slug } from "./openapi";
+import { absoluteUrl, type ParsedSpec, parseSpec, sampleRequest, slug } from "./openapi";
 
 export interface FetchedText {
   status: number;
@@ -136,7 +136,9 @@ export async function discoverApi(
         !operation.path.includes("{") &&
         operation.params.every((param) => !param.required),
     );
-    if (simple) testRequest = `GET ${simple.path}`;
+    testRequest = simple
+      ? `GET ${simple.path}`
+      : (operations.map(sampleRequest).find((request) => request !== null) ?? null);
   }
   if (!found && docsPage) {
     const examples = exampleRequests(docsPage.text, docsPage.url);
@@ -150,6 +152,11 @@ export async function discoverApi(
         `No API description was published, so Sahkarmi read ${examples.operations.length} example requests from the documentation page.`,
       );
     }
+  }
+  if (!found && docsPage && !operations.length) {
+    notes.push(
+      "The documentation page had no example requests Sahkarmi could read (it may be built with JavaScript).",
+    );
   }
   if (!found && !docsPage && !operations.length) {
     notes.push("No API description or documentation could be read yet.");

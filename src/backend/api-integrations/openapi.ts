@@ -180,6 +180,7 @@ function readOperation(
       required: where === "path" || param.required === true,
       type: isRecord(schema) && typeof schema.type === "string" ? schema.type : "string",
       description: text(param.description),
+      ...exampleOf(param, isRecord(schema) ? schema : null),
     });
   }
   if (!isSwagger && isRecord(resolve(document, operation.requestBody))) {
@@ -285,6 +286,42 @@ function uniqueIds(operations: ApiOperation[]): ApiOperation[] {
     used.set(operation.id, count + 1);
     return count === 0 ? operation : { ...operation, id: `${operation.id}_${count + 1}` };
   });
+}
+
+function exampleOf(
+  param: Record<string, unknown>,
+  schema: Record<string, unknown> | null,
+): { example?: string } {
+  const items = schema && isRecord(schema.items) ? schema.items : null;
+  for (const value of [
+    param.example,
+    schema?.default,
+    schema?.example,
+    Array.isArray(schema?.enum) ? schema.enum[0] : undefined,
+    items && Array.isArray(items.enum) ? items.enum[0] : undefined,
+    param.default,
+    Array.isArray(param.enum) ? param.enum[0] : undefined,
+  ]) {
+    if (typeof value === "string" && value) return { example: value.slice(0, 200) };
+    if (typeof value === "number" || typeof value === "boolean") return { example: String(value) };
+  }
+  return {};
+}
+
+/**
+ * A reading request built only from what the specification says: no path values to invent,
+ * and every required query value given by the specification. Null when that is not possible.
+ */
+export function sampleRequest(operation: ApiOperation): string | null {
+  if (operation.method !== "GET" || operation.path.includes("{")) return null;
+  const query = new URLSearchParams();
+  for (const param of operation.params) {
+    if (!param.required) continue;
+    if (param.in !== "query" || param.example === undefined) return null;
+    query.set(param.name, param.example);
+  }
+  const search = query.toString();
+  return `GET ${operation.path}${search ? `?${search}` : ""}`;
 }
 
 export function absoluteUrl(url: string, base: string | null): string | null {

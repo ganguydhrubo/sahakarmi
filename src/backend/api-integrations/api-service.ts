@@ -27,7 +27,7 @@ import {
   REQUEST_TIMEOUT_MS,
   sendApiRequest,
 } from "./http";
-import { absoluteUrl, isRiskyOperation, slug } from "./openapi";
+import { absoluteUrl, isRiskyOperation, sampleRequest, slug } from "./openapi";
 
 export const API_TOOL_NAMESPACE = "sahkarmi_api";
 const FILE_VERSION = 1;
@@ -235,7 +235,7 @@ export class ApiIntegrationService {
     }
     const key = await this.#key(item);
     const baseUrl = item.baseUrl;
-    const test = parseRequestLine(item.testRequest);
+    let test = parseRequestLine(item.testRequest);
     const tests: ApiTestResult[] = [];
     const send = (auth: ApiAuth, request: ApiRequest) =>
       sendApiRequest({
@@ -271,6 +271,36 @@ export class ApiIntegrationService {
           break;
         }
         if (response.status === null) break;
+      }
+    }
+    // A broken test endpoint should not sink a working API: try a few other simple reads.
+    if (
+      withKey &&
+      !withKey.ok &&
+      withKey.status !== null &&
+      withKey.status !== 401 &&
+      withKey.status !== 403 &&
+      item.auth
+    ) {
+      const auth = item.auth;
+      const alternatives = item.operations
+        .filter((operation) => !/(log_?in|log_?out|sign_?in|sign_?out|auth)/i.test(operation.path))
+        .map(sampleRequest)
+        .filter((request): request is string => request !== null && request !== item.testRequest)
+        .slice(0, 4);
+      for (const line of alternatives) {
+        const alternative = parseRequestLine(line);
+        const response = await send(auth, alternative);
+        if (response.ok && parsingResult(response).outcome === "passed") {
+          item.notes = [
+            ...item.notes,
+            `${test.method} ${test.path} answered HTTP ${withKey.status}, so the tests used ${line} instead.`,
+          ];
+          item.testRequest = line;
+          test = alternative;
+          withKey = response;
+          break;
+        }
       }
     }
     if (withKey?.ok && item.auth) {
