@@ -24,7 +24,8 @@ const latestPath = join(distDir, "latest.yml");
 let digest: { sha512: string; size: number };
 try {
   const { buildBlockMap } = await import("app-builder-lib/out/targets/blockmap/blockmap");
-  digest = await buildBlockMap(installerPath, "gzip", blockMapPath);
+  const built = await buildBlockMap(installerPath, "gzip", blockMapPath);
+  digest = { sha512: built.sha512, size: built.size ?? (await stat(installerPath)).size };
   console.log(`Rebuilt ${blockMapPath}`);
 } catch (error) {
   console.warn(`::warning::Could not rebuild the block map (${String(error)}); removing it.`);
