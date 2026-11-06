@@ -147,7 +147,7 @@ describe("routine folder triggers", () => {
     await schedules.tick();
     expect(ran).toEqual([]);
     schedules.setPaused(false);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitFor(() => ran.length > 0, 5_000);
     expect(ran).toEqual(["Morning report"]);
     schedules.stop();
   });
