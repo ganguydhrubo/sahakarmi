@@ -166,6 +166,7 @@ import {
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { codexMcpConfig, type McpServerStore } from "./mcp-servers";
 import { memoryContextLines } from "./memory/memory-context";
+import { HEAVY_RUNTIME_MB, hasRoomFor, readMemory } from "./memory-pressure";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
   classifyAcpTool,
@@ -391,6 +392,8 @@ interface ModelListResponse {
 }
 
 export class AgentService extends EventEmitter<AgentServiceEvents> {
+  /** A coworker waiting for free memory looks again this often. */
+  static MEMORY_RETRY_MS = 10_000;
   readonly #store: BotStore;
   readonly #mailbox: MailboxStore;
   readonly #browser: CoworkerBrowser;
@@ -446,6 +449,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #heldDrains = new Set<string>();
   /** Coworkers with a queued message waiting for a free turn slot (the concurrent-turn cap). */
   readonly #waitingForSlot = new Set<string>();
+  /** Looks again for free memory while a coworker waits for it (no turn may end meanwhile). */
+  #memoryRetryTimer: ReturnType<typeof setTimeout> | null = null;
   #runEvents: ((event: NewRunEvent) => void) | null = null;
   /** Tokens the runtime reported for each coworker's current turn, when it does. */
   readonly #turnTokens = new Map<string, { input: number | null; output: number | null }>();
@@ -2099,6 +2104,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#restartTimers.clear();
     if (this.#watchdogTimer) clearInterval(this.#watchdogTimer);
     this.#watchdogTimer = null;
+    if (this.#memoryRetryTimer) clearTimeout(this.#memoryRetryTimer);
+    this.#memoryRetryTimer = null;
     this.#clearCompactionRuntime();
     this.#pendingPrompts.clear();
     this.#scheduledDrains.clear();
@@ -4779,9 +4786,10 @@ ${carryOver}`
         return;
       }
       // Too many coworkers working at once slows a small PC to a crawl: this one waits for a
-      // free slot and starts when any running turn ends.
-      if (!this.#hasTurnSlot(botId)) {
-        this.#noteWaitingForSlot(botId);
+      // free slot (or for free memory) and starts when any running turn ends.
+      const slot = this.#turnSlot(botId, bot);
+      if (slot !== "free") {
+        this.#noteWaitingForSlot(botId, slot);
         return;
       }
       this.#waitingForSlot.delete(botId);
@@ -4811,13 +4819,31 @@ ${carryOver}`
     return busy;
   }
 
-  #hasTurnSlot(botId: string): boolean {
+  /**
+   * Whether this coworker may start a turn now. Besides the owner's cap on turns at once, a turn
+   * that needs a new heavy process (a Claude coworker whose process is closed: ~450 MB) waits
+   * while the PC is short of memory, and any turn waits when memory is critical. One turn can
+   * always run, so work never stops completely.
+   */
+  #turnSlot(botId: string, bot: BotSummary | undefined): "free" | "busy" | "memory" {
     const busy = this.#busyBotIds();
     busy.delete(botId);
-    return busy.size < this.#engineSettings().maxConcurrentTurns;
+    if (busy.size >= this.#engineSettings().maxConcurrentTurns) return "busy";
+    if (busy.size === 0) return "free";
+    if (readMemory().pressure === "critical") return "memory";
+    if (bot && providerForBot(bot) === "claude") {
+      const client = this.#clients.get("claude");
+      const live =
+        client instanceof ClaudeAgentClient && bot.threadId
+          ? client.hasLiveRuntime(bot.threadId)
+          : false;
+      if (!live && !hasRoomFor(HEAVY_RUNTIME_MB)) return "memory";
+    }
+    return "free";
   }
 
-  #noteWaitingForSlot(botId: string): void {
+  #noteWaitingForSlot(botId: string, reason: "busy" | "memory"): void {
+    if (reason === "memory") this.#scheduleMemoryRetry();
     if (this.#waitingForSlot.has(botId)) return;
     this.#waitingForSlot.add(botId);
     const limit = this.#engineSettings().maxConcurrentTurns;
@@ -4825,8 +4851,20 @@ ${carryOver}`
       type: "notice",
       botId,
       code: "waiting_for_turn_slot",
-      message: `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
+      message:
+        reason === "memory"
+          ? "This PC is short of free memory, so this message waits and starts as soon as another coworker finishes or memory frees up. Closing other apps helps."
+          : `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
     });
+  }
+
+  #scheduleMemoryRetry(): void {
+    if (this.#memoryRetryTimer || this.#stopping) return;
+    this.#memoryRetryTimer = setTimeout(() => {
+      this.#memoryRetryTimer = null;
+      this.#drainWaitingForSlot();
+    }, AgentService.MEMORY_RETRY_MS);
+    this.#memoryRetryTimer.unref?.();
   }
 
   /** Google reported a limit for the account Gemini runs on right now, a moment ago. */

@@ -2053,7 +2053,9 @@ export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
 };
 
 export const ENGINE_SETTINGS_LIMITS = {
-  maxConcurrentTurns: { min: 1, max: 8 },
+  // Up to 64: Codex and ACP agents share one process, so many can work at once; a Claude
+  // coworker's own process waits for free memory instead of being stopped by this number.
+  maxConcurrentTurns: { min: 1, max: 64 },
   watchdogMinutes: { min: 5, max: 240 },
 } as const;
 

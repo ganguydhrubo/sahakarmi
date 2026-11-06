@@ -192,6 +192,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return this.#threads.size;
   }
 
+  /** True while this thread's Claude process is open (a turn on it starts no new process). */
+  hasLiveRuntime(threadId: string): boolean {
+    return this.#threads.has(threadId);
+  }
+
   start(): void {
     this.#running = true;
     if (!this.#idleTimer) {

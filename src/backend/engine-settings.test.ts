@@ -16,7 +16,7 @@ describe("engine settings", () => {
     [{}, { maxConcurrentTurns: 3, watchdogMinutes: 45 }],
     [
       { maxConcurrentTurns: 99, watchdogMinutes: 1 },
-      { maxConcurrentTurns: 8, watchdogMinutes: 5 },
+      { maxConcurrentTurns: 64, watchdogMinutes: 5 },
     ],
     [
       { maxConcurrentTurns: 0, watchdogMinutes: 9_999 },

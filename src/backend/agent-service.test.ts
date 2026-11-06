@@ -24,6 +24,7 @@ import type { BrowserHost, DownloadRequest } from "./browser-host";
 import { CustomSkills } from "./custom-skills";
 import { KnowledgeService } from "./knowledge/knowledge-service";
 import { MailboxStore } from "./mailbox-store";
+import { setMemoryProbe } from "./memory-pressure";
 import { PermissionService } from "./permission-service";
 import { RoutineStore } from "./routine-store";
 import { LearnedSkills } from "./skill-library";
@@ -1747,6 +1748,40 @@ describe.sequential("AgentService", () => {
     if (started?.type !== "turn-started") throw new Error("no turn");
     await service.interrupt("chief", started.turnId);
     await waitFor(() => service?.listQueue("asha-accounts").deliveries[0]?.status === "running");
+  });
+
+  it("waits for free memory instead of starting more work on a full PC, then starts by itself", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.configureEngineSettings(() => ({ maxConcurrentTurns: 8, watchdogMinutes: 45 }));
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    const retry = AgentService.MEMORY_RETRY_MS;
+    AgentService.MEMORY_RETRY_MS = 50;
+    const GB = 1024 ** 3;
+    let free = 0.3 * GB;
+    setMemoryProbe({ free: () => free, total: () => 8 * GB });
+    try {
+      // The first turn always runs, so work never stops completely.
+      await service.sendMessage({ botId: "chief", text: "First" });
+      await waitFor(() => events.some((event) => event.type === "turn-started"));
+      await service.sendMessage({ botId: "asha-accounts", text: "Second" });
+      await waitFor(() =>
+        events.some(
+          (event) =>
+            event.type === "notice" &&
+            event.code === "waiting_for_turn_slot" &&
+            /short of free memory/.test(event.message),
+        ),
+      );
+      expect(service.listQueue("asha-accounts").deliveries[0]?.status).toBe("queued");
+      free = 4 * GB;
+      await waitFor(() => service?.listQueue("asha-accounts").deliveries[0]?.status === "running");
+    } finally {
+      setMemoryProbe(null);
+      AgentService.MEMORY_RETRY_MS = retry;
+    }
   });
 
   it("stops a turn that shows no progress for the watchdog time", async () => {
