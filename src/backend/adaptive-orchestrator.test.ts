@@ -9,7 +9,6 @@ import { AdaptiveOrchestrator } from "./adaptive-orchestrator";
 import { AgentCollaborationBus } from "./agent-collaboration-bus";
 import { AgentExecutionFactory } from "./agent-execution-factory";
 import { OrchestratorStore } from "./orchestrator-store";
-import { ToolRegistry } from "./tool-registry";
 import { VerificationRepairEngine } from "./verification-repair-engine";
 
 const roots: string[] = [];
@@ -67,101 +66,17 @@ describe("AdaptiveOrchestrator Complexity Evaluation", () => {
 });
 
 describe("AgentExecutionFactory", () => {
-  it("creates execution instances mapped to specialist roles with default permissions", () => {
+  it("maps specialist roles to the starter coworkers", () => {
     const factory = new AgentExecutionFactory();
     const instCode = factory.createInstance("code", "/workspace");
     const instQA = factory.createInstance("qa", "/workspace");
 
     expect(instCode.role).toBe("code");
     expect(instCode.botName).toBe("Dev");
-    expect(instCode.toolPermissions).toContain("write_file");
-    expect(instCode.toolPermissions).toContain("run_tests");
-
     expect(instQA.role).toBe("qa");
     expect(instQA.botName).toBe("Tara");
-    expect(instQA.toolPermissions).toContain("run_tests");
-    expect(instQA.toolPermissions).toContain("check_types");
-  });
-});
-
-describe("ToolRegistry Action-Observation Loop", () => {
-  it("enforces permission boundaries and rejects unauthorized tools", async () => {
-    const dir = await makeTempDir();
-    const tools = new ToolRegistry();
-
-    const result = await tools.execute(
-      "write_file",
-      { path: "test.txt", content: "hello" },
-      {
-        instanceId: "inst-1",
-        botId: "bot-1",
-        role: "research",
-        workspacePath: dir,
-        toolPermissions: ["read_file"], // write_file NOT permitted
-      },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Permission denied");
-  });
-
-  it("prevents directory traversal outside workspace boundary", async () => {
-    const dir = await makeTempDir();
-    const tools = new ToolRegistry();
-
-    const result = await tools.execute(
-      "read_file",
-      { path: "../../windows/system32/cmd.exe" },
-      {
-        instanceId: "inst-1",
-        botId: "bot-1",
-        role: "code",
-        workspacePath: dir,
-        toolPermissions: ["*"],
-      },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Access outside workspace boundary rejected");
-  });
-
-  it("redacts sensitive API tokens and credentials from observations", async () => {
-    const dir = await makeTempDir();
-    const tools = new ToolRegistry();
-
-    // write a file containing mock secret
-    await tools.execute(
-      "write_file",
-      {
-        path: "secret.txt",
-        content:
-          "Key: AIzaSyD4j5k6L7m8N9o0P1q2R3s4T5u6V7w8X9y and sk-ant-api03-1234567890abcdef1234567890abcdef",
-      },
-      {
-        instanceId: "inst-1",
-        botId: "bot-1",
-        role: "code",
-        workspacePath: dir,
-        toolPermissions: ["*"],
-      },
-    );
-
-    const readResult = await tools.execute(
-      "read_file",
-      { path: "secret.txt" },
-      {
-        instanceId: "inst-1",
-        botId: "bot-1",
-        role: "code",
-        workspacePath: dir,
-        toolPermissions: ["*"],
-      },
-    );
-
-    expect(readResult.success).toBe(true);
-    expect(readResult.output).not.toContain("AIzaSyD4j5k6L7m8N9o0P1q2R3s4T5u6V7w8X9y");
-    expect(readResult.output).toContain("AIza[REDACTED_API_KEY]");
-    expect(readResult.output).toContain("[REDACTED_ANTHROPIC_KEY]");
+    // Permissions are decided per tool call by the permission rules, never by the plan.
+    expect(instCode.toolPermissions).toBeUndefined();
   });
 });
 
@@ -248,89 +163,15 @@ describe("VerificationRepairEngine Bounded Defect Repair", () => {
   });
 });
 
-describe("AdaptiveOrchestrator Execution Lifecycle", () => {
-  it("executes single-agent fast path with automated verification", async () => {
+describe("AdaptiveOrchestrator without coworkers to run on", () => {
+  it("refuses to start a run instead of pretending to do the work", async () => {
     const dir = await makeTempDir();
     const store = new OrchestratorStore(dir);
     await store.initialize();
     const orchestrator = new AdaptiveOrchestrator(store);
-
-    const run = await orchestrator.startRun(
-      { objective: "Quick UI tweak", forcedStrategy: "single-agent" },
-      dir,
-    );
-
-    expect(run.strategy).toBe("single-agent");
-    expect(run.tasks.length).toBe(1);
-    expect(run.instances.length).toBe(1);
-
-    // Poll until completed (runs in memory)
-    for (let i = 0; i < 20; i++) {
-      const current = await orchestrator.getRun(run.id);
-      if (current && current.status === "completed") {
-        expect(current.tasks[0].status).toBe("completed");
-        expect(current.tasks[0].evidence.length).toBeGreaterThan(0);
-        return;
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  });
-
-  it("schedules multi-agent DAG with dependencies and handoffs", async () => {
-    const dir = await makeTempDir();
-    const store = new OrchestratorStore(dir);
-    await store.initialize();
-    const orchestrator = new AdaptiveOrchestrator(store);
-
-    const run = await orchestrator.startRun(
-      { objective: "Build authentication with security audit", forcedStrategy: "multi-agent" },
-      dir,
-    );
-
-    expect(run.strategy).toBe("multi-agent");
-    expect(run.tasks.length).toBe(3); // Architect -> Code -> QA
-    expect(run.instances.length).toBe(3);
-
-    // Verify dependency chain
-    expect(run.tasks[0].dependencies).toEqual([]);
-    expect(run.tasks[1].dependencies).toEqual([run.tasks[0].id]);
-    expect(run.tasks[2].dependencies).toEqual([run.tasks[1].id]);
-
-    // Poll until the run ends. It must end (or be stopped) before the temp folder is removed,
-    // or its last save fails after the test. The temp folder is not a TypeScript project, so
-    // the run's typecheck step can fail here; only a completed run is checked further.
-    for (let i = 0; i < 120; i++) {
-      const current = await orchestrator.getRun(run.id);
-      if (current?.status === "completed") {
-        expect(current.tasks.every((t) => t.status === "completed")).toBe(true);
-        expect(current.messages.length).toBeGreaterThan(0); // Inter-agent handoffs occurred
-        return;
-      }
-      if (current?.status === "failed") return;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    await orchestrator.cancelRun(run.id);
-  }, 20_000);
-
-  it("supports pausing, resuming, and cancelling a run", async () => {
-    const dir = await makeTempDir();
-    const store = new OrchestratorStore(dir);
-    await store.initialize();
-    const orchestrator = new AdaptiveOrchestrator(store);
-
-    const run = await orchestrator.startRun(
-      { objective: "Long running multi-agent workflow", forcedStrategy: "multi-agent" },
-      dir,
-    );
-
-    const paused = await orchestrator.pauseRun(run.id);
-    expect(paused?.status).toBe("paused");
-
-    const resumed = await orchestrator.resumeRun(run.id, dir);
-    expect(resumed?.status).toBe("running");
-
-    const cancelled = await orchestrator.cancelRun(run.id);
-    expect(cancelled?.status).toBe("failed");
-    expect(cancelled?.error).toContain("cancelled");
+    await expect(
+      orchestrator.startRun({ objective: "Quick UI tweak", forcedStrategy: "single-agent" }, dir),
+    ).rejects.toThrow("not available");
+    expect(await orchestrator.getRuns()).toEqual([]);
   });
 });

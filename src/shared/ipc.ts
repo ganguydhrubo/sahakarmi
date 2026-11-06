@@ -152,6 +152,11 @@ export const IPC_CHANNELS = {
   orchestratorPauseRun: "orchestrator:pause-run",
   orchestratorResumeRun: "orchestrator:resume-run",
   orchestratorCancelRun: "orchestrator:cancel-run",
+  orchestratorGetEngineSettings: "orchestrator:get-engine-settings",
+  orchestratorSetEngineSettings: "orchestrator:set-engine-settings",
+  orchestratorPerformance: "orchestrator:performance",
+  agentRerunInterrupted: "agent:rerun-interrupted",
+  agentDismissInterrupted: "agent:dismiss-interrupted",
   memoryList: "memory:list",
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
@@ -1301,6 +1306,14 @@ export interface QueueDelivery {
   messageId: string;
   recipientBotId: string;
   sender: { kind: "user" } | { kind: "bot"; botId: string };
+  /** Who really sent a "user" message: the owner, or the app on the owner's behalf. */
+  origin?: MessageOrigin;
+  /** Coworker-to-coworker messages in a row that led here (0 or absent for the owner). */
+  hops?: number;
+  /** This copy failed and the same message was sent again as this delivery. */
+  retriedAs?: string;
+  /** Interrupted when Sahkarmi closed: the chat offers to run it again. */
+  offerRerun?: boolean;
   text: string;
   attachments: AttachmentSummary[];
   replyToMessageId: string | null;
@@ -1402,11 +1415,24 @@ export interface MessageSearchHit {
   createdAt: string;
 }
 
+/**
+ * Where a message really came from. The owner's own messages carry "owner" (or nothing, for
+ * older data); the team-run engine, routines and schedules send on the owner's behalf.
+ */
+export type MessageOrigin = "owner" | "team-run" | "routine" | "schedule" | "system";
+
 export interface SendMessageInput {
   botId: string;
   text: string;
   attachmentDraftIds?: string[];
   replyToMessageId?: string | null;
+  /**
+   * The owner typed this in the composer while the coworker works: join the running turn
+   * (Codex/Claude) instead of waiting. Only the composer sets it; everything else queues.
+   */
+  steer?: boolean;
+  /** Set by the app (never the renderer) for messages it sends on the owner's behalf. */
+  origin?: MessageOrigin;
 }
 
 export interface SetMessageReactionInput {
@@ -1477,9 +1503,14 @@ export interface OrchestratorDeliverable {
   bytes?: number;
 }
 
+/** "unverified": nothing outside the coworker's own word could be checked. Never "passed". */
+export type OrchestratorVerificationVerdict = "passed" | "failed" | "unverified";
+
 export interface OrchestratorVerificationEvidence {
-  type: "lint" | "typecheck" | "test" | "build" | "review";
+  type: "lint" | "typecheck" | "test" | "build" | "review" | "files" | "check";
   passed: boolean;
+  /** Absent in runs from before 0.24: read `passed`. */
+  verdict?: OrchestratorVerificationVerdict;
   summary: string;
   output?: string;
   timestamp: string;
@@ -1502,6 +1533,8 @@ export interface OrchestratorTask {
   maxAttempts: number;
   error: string | null;
   evidence: OrchestratorVerificationEvidence[];
+  /** After completion: "verified" by outside evidence, or "unverified" (nothing to check). */
+  verification?: "verified" | "unverified" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1514,7 +1547,8 @@ export interface AgentExecutionInstance {
   assignedTaskId: string | null;
   status: "idle" | "running" | "waiting" | "completed" | "failed";
   workspacePath: string;
-  toolPermissions: string[];
+  /** Older runs only; permissions are decided per tool call. */
+  toolPermissions?: string[];
   turnCount: number;
   createdAt: string;
   completedAt: string | null;
@@ -1560,6 +1594,12 @@ export interface OrchestratorRun {
   engine?: "graph" | "legacy";
   /** Set while the run is paused on an approval the owner has not decided yet. */
   waitingOn?: OrchestratorWait | null;
+  /** The owner's check command for this run, if any. */
+  checkCommand?: string | null;
+  /** How the task list was made: the CEO coworker's plan, or the built-in template. */
+  plannedBy?: "ceo" | "template";
+  /** Revised plans made after a failure (at most 2). */
+  replans?: number;
 }
 
 export interface OrchestratorWait {
@@ -1573,6 +1613,8 @@ export interface StartOrchestratorRunInput {
   workspaceId?: string;
   objective: string;
   forcedStrategy?: TaskExecutionStrategy;
+  /** The owner's own check (e.g. "npm test"), run after each task through the permission rules. */
+  checkCommand?: string | null;
 }
 
 export interface RespondToPromptInput {
@@ -1757,6 +1799,10 @@ export interface AgentDesktopApi {
   setMessageReaction: (input: SetMessageReactionInput) => Promise<void>;
   listQueue: (botId: string) => Promise<QueueSnapshot>;
   cancelQueuedMessage: (input: CancelQueuedMessageInput) => Promise<void>;
+  /** Sends a task that was interrupted when Sahkarmi closed again, as a new message. */
+  rerunInterrupted: (input: CancelQueuedMessageInput) => Promise<void>;
+  /** Hides the "run again" offer for an interrupted task. */
+  dismissInterrupted: (input: CancelQueuedMessageInput) => Promise<void>;
   sendQueuedNow: (input: CancelQueuedMessageInput) => Promise<void>;
   setQueuePaused: (input: SetQueuePausedInput) => Promise<void>;
   interrupt: (input: InterruptTurnInput) => Promise<void>;
@@ -1966,6 +2012,68 @@ export interface OrchestratorDesktopApi {
   pauseRun: (runId: string) => Promise<OrchestratorRun | null>;
   resumeRun: (runId: string) => Promise<OrchestratorRun | null>;
   cancelRun: (runId: string) => Promise<OrchestratorRun | null>;
+  getEngineSettings: () => Promise<EngineSettings>;
+  setEngineSettings: (input: Partial<EngineSettings>) => Promise<EngineSettings>;
+  performance: () => Promise<PerformanceSummary>;
+}
+
+/** How hard the agent engine may work this PC. Owner-editable in Settings > Features. */
+export interface EngineSettings {
+  /** Coworker turns that may run at the same time (1-8). */
+  maxConcurrentTurns: number;
+  /** A turn with no sign of life (no text, no tool) this long is stopped (5-240 minutes). */
+  watchdogMinutes: number;
+}
+
+export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
+  maxConcurrentTurns: 3,
+  watchdogMinutes: 45,
+};
+
+export const ENGINE_SETTINGS_LIMITS = {
+  maxConcurrentTurns: { min: 1, max: 8 },
+  watchdogMinutes: { min: 5, max: 240 },
+} as const;
+
+/** One finished coworker turn, recorded on this PC only (never sent anywhere). */
+export interface RunEvent {
+  id: number;
+  botId: string;
+  botName: string | null;
+  provider: string | null;
+  model: string | null;
+  origin: MessageOrigin;
+  outcome: "completed" | "failed" | "interrupted" | "cancelled";
+  startedAt: string;
+  durationMs: number;
+  toolCount: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+export interface PerformanceRow {
+  key: string;
+  turns: number;
+  completed: number;
+  failed: number;
+  medianDurationMs: number;
+  averageTools: number;
+}
+
+export interface PerformanceSummary {
+  since: string | null;
+  totalTurns: number;
+  byCoworker: PerformanceRow[];
+  byModel: PerformanceRow[];
+  recent: RunEvent[];
+}
+
+/** A task that was running when Sahkarmi closed, offered to the owner to run again. */
+export interface InterruptedTask {
+  deliveryId: string;
+  botId: string;
+  text: string;
+  createdAt: string;
 }
 
 export interface SahkarmiDesktopApi {

@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { backgroundEn } from "./i18n-background";
+import { engineEn } from "./i18n-engine";
 import { extensionsEn } from "./i18n-extensions";
 import { marketplaceEn } from "./i18n-marketplace";
 import { memoryEn } from "./i18n-memory";
@@ -300,6 +301,7 @@ const en = {
   ...backgroundEn,
   ...memoryEn,
   ...securityEn,
+  ...engineEn,
   ...onboardingEn,
 };
 

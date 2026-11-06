@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   AgentCollaborationMessage,
@@ -12,6 +12,9 @@ interface StoredOrchestratorState {
   runs: OrchestratorRun[];
 }
 
+/** Runs kept; older ones (and their checkpoints) are dropped. */
+export const MAX_STORED_RUNS = 50;
+
 const DEFAULT_STATE: StoredOrchestratorState = {
   version: 1,
   runs: [],
@@ -21,6 +24,7 @@ export class OrchestratorStore {
   readonly #statePath: string;
   #state: StoredOrchestratorState = { ...DEFAULT_STATE };
   #writeQueue: Promise<void> = Promise.resolve();
+  #onRunsDropped: ((runIds: string[]) => void) | null = null;
 
   constructor(userDataRoot: string) {
     this.#statePath = join(userDataRoot, "orchestrator-state.json");
@@ -72,12 +76,32 @@ export class OrchestratorStore {
     } else {
       this.#state.runs.unshift(copy);
     }
-    // Cap stored runs to 50 for storage hygiene
-    if (this.#state.runs.length > 50) {
-      this.#state.runs = this.#state.runs.slice(0, 50);
+    // Cap stored runs to 50 for storage hygiene; a dropped run's checkpoints go with it.
+    if (this.#state.runs.length > MAX_STORED_RUNS) {
+      const dropped = this.#state.runs.slice(MAX_STORED_RUNS).map((r) => r.id);
+      this.#state.runs = this.#state.runs.slice(0, MAX_STORED_RUNS);
+      await this.#persist();
+      await this.#dropCheckpointFiles(dropped);
+      this.#onRunsDropped?.(dropped);
+      return copy;
     }
     await this.#persist();
     return copy;
+  }
+
+  /** The checkpoint store hears which runs were dropped (null stops it listening). */
+  onRunsDropped(handler: ((runIds: string[]) => void) | null): void {
+    this.#onRunsDropped = handler;
+  }
+
+  /** Older per-run JSON checkpoint files of dropped runs; only run-shaped ids. */
+  async #dropCheckpointFiles(runIds: string[]): Promise<void> {
+    for (const runId of runIds) {
+      if (!/^[A-Za-z0-9_-]{1,80}$/.test(runId)) continue;
+      await rm(join(this.checkpointDir, `${runId}.checkpoints.json`), { force: true }).catch(
+        () => undefined,
+      );
+    }
   }
 
   async updateTask(runId: string, task: OrchestratorTask): Promise<OrchestratorRun | null> {
@@ -115,6 +139,11 @@ export class OrchestratorStore {
     }
     await this.#persist();
     return JSON.parse(JSON.stringify(run));
+  }
+
+  /** Resolves once every save so far is on disk (shutdown, tests). */
+  async flush(): Promise<void> {
+    await this.#writeQueue.catch(() => undefined);
   }
 
   async #persist(): Promise<void> {

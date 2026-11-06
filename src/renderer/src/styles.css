@@ -14355,3 +14355,131 @@ fieldset.memory-filters {
   background: var(--indigo-accent);
   color: var(--surface-1);
 }
+
+/* A task interrupted when Sahkarmi closed, offered to run again. */
+.interrupted-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 8px 16px 0;
+  border: 1px solid var(--sahkarmi-line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  padding: 10px 14px;
+}
+
+.interrupted-card-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.interrupted-card-quote {
+  overflow: hidden;
+  color: var(--sahkarmi-muted);
+  font-size: 0.9em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interrupted-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Settings > Features: concurrent-turn cap and watchdog. */
+.engine-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.engine-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.engine-setting small {
+  grid-column: 1 / -1;
+}
+
+/* Team runs: owner's check command, honest verdicts, performance. */
+.orch-check {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.orch-verdict {
+  border-radius: 999px;
+  background: var(--surface-2);
+  padding: 2px 8px;
+  font-size: 0.8em;
+}
+
+.orch-verdict[data-verdict="unverified"],
+.orch-evidence span[data-verdict="unverified"] {
+  border: 1px dashed var(--sahkarmi-line);
+  color: var(--sahkarmi-muted);
+}
+
+.orch-performance-toggle {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.performance-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+  overflow-x: auto;
+}
+
+.performance-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.performance-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.performance-table th,
+.performance-table td {
+  border-bottom: 1px solid var(--sahkarmi-line);
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.performance-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85em;
+}
+
+.performance-recent li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.performance-recent li[data-outcome="failed"] {
+  color: var(--danger);
+}

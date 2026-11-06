@@ -2,6 +2,7 @@
 
 import type { Dictionary } from "./i18n";
 import { backgroundBn } from "./i18n-background";
+import { engineBn } from "./i18n-engine";
 import { extensionsBn } from "./i18n-extensions-bn";
 import { marketplaceBn } from "./i18n-marketplace-bn";
 import { memoryBn } from "./i18n-memory";
@@ -298,5 +299,6 @@ export const bn: Dictionary = {
   ...backgroundBn,
   ...memoryBn,
   ...securityBn,
+  ...engineBn,
   ...onboardingBn,
 };

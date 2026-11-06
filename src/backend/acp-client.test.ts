@@ -358,12 +358,30 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     );
     const note = events.find((event) => event.type === "error" && event.code === "fallback_model");
     expect(note?.message).toContain("Google Antigravity sent back an empty reply");
-    expect(note?.message).toContain("switched to the free model");
+    // Only this message moves; the coworker's own model comes back for the next one.
+    expect(note?.message).toContain("answering this message on the free model");
+    expect(note?.message).toContain("Your next message goes back to Google Antigravity");
     // The same text went out again on the free model; the failed copy is not shown twice.
     const userMessages = (await service.readConversation("meera-support")).messages.filter(
       (message) => message.author === "user",
     );
     expect(userMessages.map((message) => message.text)).toEqual(["say nothing, then Namaste"]);
+
+    // The next message runs on the coworker's own model again, with a note.
+    await waitFor(() =>
+      service
+        ?.listQueue("meera-support")
+        .deliveries.every(
+          (delivery) => delivery.status !== "running" && delivery.status !== "queued",
+        ),
+    );
+    await service.sendMessage({ botId: "meera-support", text: "Namaste again" });
+    await waitFor(() =>
+      events.some((event) => event.type === "notice" && event.code === "fallback_restored"),
+    );
+    expect(service.listBots().find((bot) => bot.id === "meera-support")?.model).toBe(
+      "antigravity-default",
+    );
   });
 
   it("shows a file the coworker made during the turn under its reply, also after a restart", async () => {

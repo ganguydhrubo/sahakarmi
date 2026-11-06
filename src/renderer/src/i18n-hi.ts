@@ -2,6 +2,7 @@
 
 import type { Dictionary } from "./i18n";
 import { backgroundHi } from "./i18n-background";
+import { engineHi } from "./i18n-engine";
 import { extensionsHi } from "./i18n-extensions-hi";
 import { marketplaceHi } from "./i18n-marketplace-hi";
 import { memoryHi } from "./i18n-memory";
@@ -299,5 +300,6 @@ export const hi: Dictionary = {
   ...backgroundHi,
   ...memoryHi,
   ...securityHi,
+  ...engineHi,
   ...onboardingHi,
 };

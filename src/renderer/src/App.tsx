@@ -990,7 +990,7 @@ export function App() {
   ): Promise<boolean> {
     const bot = activeBot();
     if (!bot || (!body.trim() && attachmentDraftIds.length === 0)) return false;
-    return sendMessageToBot(bot.id, body, attachmentDraftIds, replyToMessageId);
+    return sendMessageToBot(bot.id, body, attachmentDraftIds, replyToMessageId, true);
   }
 
   async function sendMessageToBot(
@@ -998,6 +998,8 @@ export function App() {
     body: string,
     attachmentDraftIds: string[],
     replyToMessageId: string | null = null,
+    /** Typed in the composer: may join the coworker's running turn. */
+    steer = false,
   ): Promise<boolean> {
     const text = body.trim();
     const pendingId = text ? `sending:${++sendSequence}` : null;
@@ -1031,6 +1033,7 @@ export function App() {
         text: body.trim(),
         attachmentDraftIds,
         ...(replyToMessageId ? { replyToMessageId } : {}),
+        ...(steer ? { steer: true } : {}),
       });
       setUiErrors((current) => ({ ...current, [botId]: [] }));
       // The queued message arrives in a snapshot applied on the next frame: swap in that frame.

@@ -107,6 +107,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     cancelQueuedMessage: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.agentCancelQueuedMessage, input),
     sendQueuedNow: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSendQueuedNow, input),
+    rerunInterrupted: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentRerunInterrupted, input),
+    dismissInterrupted: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentDismissInterrupted, input),
     setQueuePaused: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentSetQueuePaused, input),
     interrupt: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentInterrupt, input),
     respondToPrompt: (input) => ipcRenderer.invoke(IPC_CHANNELS.agentRespondToPrompt, input),
@@ -282,6 +284,10 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     pauseRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPauseRun, runId),
     resumeRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResumeRun, runId),
     cancelRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorCancelRun, runId),
+    getEngineSettings: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetEngineSettings),
+    setEngineSettings: (input) =>
+      ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetEngineSettings, input),
+    performance: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPerformance),
   },
   knowledge: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),

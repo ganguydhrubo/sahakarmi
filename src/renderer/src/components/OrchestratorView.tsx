@@ -1,9 +1,29 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import type { AgentEvent, OrchestratorRun, TaskExecutionStrategy } from "../../../shared/ipc";
+import type {
+  AgentEvent,
+  OrchestratorRun,
+  OrchestratorVerificationEvidence,
+  TaskExecutionStrategy,
+} from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
+import { PerformanceView } from "./PerformanceView";
 import { WorkflowExportMenu } from "./WorkflowExportMenu";
+
+/** Older runs have no verdict: read their pass/fail. */
+function verdictOf(evidence: OrchestratorVerificationEvidence) {
+  return evidence.verdict ?? (evidence.passed ? "passed" : "failed");
+}
+
+function verdictLabel(evidence: OrchestratorVerificationEvidence): string {
+  const verdict = verdictOf(evidence);
+  return verdict === "passed"
+    ? t("engineVerdictPassed")
+    : verdict === "failed"
+      ? t("engineVerdictFailed")
+      : t("engineVerdictUnverified");
+}
 
 export function OrchestratorView(props: {
   bots: BotProfile[];
@@ -14,6 +34,8 @@ export function OrchestratorView(props: {
   const [objective, setObjective] = createSignal("");
   const [strategyMode, setStrategyMode] = createSignal<"auto" | TaskExecutionStrategy>("auto");
   const [loading, setLoading] = createSignal(false);
+  const [checkCommand, setCheckCommand] = createSignal("");
+  const [showPerformance, setShowPerformance] = createSignal(false);
 
   const loadRuns = async () => {
     try {
@@ -58,6 +80,7 @@ export function OrchestratorView(props: {
       const newRun = await window.sahkarmi.orchestrator.startRun({
         objective: text,
         forcedStrategy: forced,
+        checkCommand: checkCommand().trim() || null,
       });
       setObjective("");
       await loadRuns();
@@ -104,7 +127,18 @@ export function OrchestratorView(props: {
           <span class="orch-badge">Adaptive DAG Engine</span>
         </div>
         <p>{t("orchestratorSubtitle")}</p>
+        <button
+          type="button"
+          class="orch-performance-toggle"
+          aria-expanded={showPerformance()}
+          onClick={() => setShowPerformance((value) => !value)}
+        >
+          {showPerformance() ? t("performanceHide") : t("performanceShow")}
+        </button>
       </header>
+      <Show when={showPerformance()}>
+        <PerformanceView />
+      </Show>
 
       <form class="orch-form" onSubmit={handleStartRun}>
         <textarea
@@ -114,6 +148,17 @@ export function OrchestratorView(props: {
           placeholder={t("orchestratorObjectivePlaceholder")}
           rows={3}
         />
+        <label class="orch-check">
+          <span>{t("engineCheckLabel")}</span>
+          <input
+            type="text"
+            maxLength={500}
+            value={checkCommand()}
+            onInput={(e) => setCheckCommand(e.currentTarget.value)}
+            placeholder={t("engineCheckPlaceholder")}
+          />
+          <small class="settings-meta">{t("engineCheckHint")}</small>
+        </label>
         <div class="orch-form-row">
           <div class="orch-modes">
             <span>Execution Mode:</span>
@@ -194,6 +239,16 @@ export function OrchestratorView(props: {
                       <span class="orch-detail-time">
                         {new Date(run().startedAt).toLocaleTimeString()}
                       </span>
+                      <Show when={run().plannedBy}>
+                        <span class="orch-detail-time">
+                          {run().plannedBy === "ceo"
+                            ? t("enginePlannedByCeo", { name: "CEO" })
+                            : t("enginePlannedByTemplate")}
+                          {(run().replans ?? 0) > 0
+                            ? ` · ${t("engineReplanned", { count: String(run().replans) })}`
+                            : ""}
+                        </span>
+                      </Show>
                     </div>
                     <h2>{run().objective}</h2>
                   </div>
@@ -285,6 +340,23 @@ export function OrchestratorView(props: {
                               <span class="orch-status" data-status={task.status}>
                                 {task.status}
                               </span>
+                              <Show when={task.status === "completed" && task.verification}>
+                                {(verification) => (
+                                  <span
+                                    class="orch-verdict"
+                                    data-verdict={verification()}
+                                    title={
+                                      verification() === "unverified"
+                                        ? t("engineUnverifiedHint")
+                                        : undefined
+                                    }
+                                  >
+                                    {verification() === "verified"
+                                      ? t("engineVerdictPassed")
+                                      : t("engineVerdictUnverified")}
+                                  </span>
+                                )}
+                              </Show>
                             </div>
 
                             <p>{task.description}</p>
@@ -302,8 +374,12 @@ export function OrchestratorView(props: {
                               <div class="orch-evidence">
                                 <For each={task.evidence}>
                                   {(ev) => (
-                                    <span data-passed={ev.passed ? "true" : "false"}>
-                                      {ev.type}: {ev.passed ? "PASS" : "FAIL"}
+                                    <span
+                                      data-passed={ev.passed ? "true" : "false"}
+                                      data-verdict={verdictOf(ev)}
+                                      title={ev.summary}
+                                    >
+                                      {ev.type}: {verdictLabel(ev)}
                                     </span>
                                   )}
                                 </For>

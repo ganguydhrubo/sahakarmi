@@ -47,6 +47,7 @@ import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
 import { desktopControlSupported } from "../backend/desktop/desktop-tools";
+import { EngineSettingsStore } from "../backend/engine-settings";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { COMPOSIO_SECRET, ComposioClient } from "../backend/integrations/composio-client";
@@ -56,17 +57,20 @@ import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
 import { MailboxStore } from "../backend/mailbox-store";
 import { McpServerStore } from "../backend/mcp-servers";
 import { OrchestratorStore } from "../backend/orchestrator-store";
+import { classifyCommand } from "../backend/permission-policy";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
 import { createRoutineExecutor } from "../backend/routine-executor";
 import { importDesktopRoutinesOnce } from "../backend/routine-import";
 import { parseRoutineCadence, parseRoutineTrigger, RoutineStore } from "../backend/routine-store";
+import { RunEventStore } from "../backend/run-events";
 import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SecretCodec, SecretStore } from "../backend/secret-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { TelegramBridge } from "../backend/telegram-bridge";
 import { UsageService } from "../backend/usage-service";
+import { VerificationRepairEngine } from "../backend/verification-repair-engine";
 import { VoiceService } from "../backend/voice/voice-service";
 import {
   chatWorkflow,
@@ -701,6 +705,14 @@ function registerIpcHandlers(
     const parsed = parseCancelQueuedMessage(input);
     return service.cancelQueuedMessage(parsed.botId, parsed.deliveryId);
   });
+  handleTrusted(IPC_CHANNELS.agentRerunInterrupted, (input: unknown) => {
+    const parsed = parseCancelQueuedMessage(input);
+    return service.rerunInterrupted(parsed.botId, parsed.deliveryId);
+  });
+  handleTrusted(IPC_CHANNELS.agentDismissInterrupted, (input: unknown) => {
+    const parsed = parseCancelQueuedMessage(input);
+    return service.dismissInterrupted(parsed.botId, parsed.deliveryId);
+  });
   handleTrusted(IPC_CHANNELS.agentSendQueuedNow, (input: unknown) => {
     const parsed = parseCancelQueuedMessage(input);
     return service.sendQueuedNow(parsed.botId, parsed.deliveryId);
@@ -1136,6 +1148,10 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.orchestratorStartRun, (input: unknown) => {
     if (!isObject(input) || typeof input.objective !== "string") {
       throw new Error("Invalid StartOrchestratorRunInput");
+    }
+    const check = input.checkCommand ?? null;
+    if (check !== null && (typeof check !== "string" || check.length > 500)) {
+      throw new Error("Invalid check command.");
     }
     const workspacePath = store.sharedRoot;
     const existingBots = store.list();
@@ -1944,6 +1960,18 @@ if (!hasSingleInstanceLock) {
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+      const engineSettings = new EngineSettingsStore(app.getPath("userData"));
+      await engineSettings.initialize();
+      service.configureEngineSettings(() => engineSettings.get());
+      let runEvents: RunEventStore | null = null;
+      try {
+        runEvents = new RunEventStore(join(app.getPath("userData"), "run-events.sqlite"));
+        const recorder = runEvents;
+        service.configureRunEvents((event) => recorder.record(event));
+      } catch (error) {
+        appLog.write("error", "Performance record unavailable", String(error));
+      }
+      registerEngineIpc(service, engineSettings, runEvents);
       keepRunningInTray = () => features.isEnabled("background-tray");
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
@@ -2159,10 +2187,6 @@ if (!hasSingleInstanceLock) {
       await orchestratorStore.initialize();
       const orchestrator = new AdaptiveOrchestrator(
         orchestratorStore,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
         {
           port: {
             sendMessage: (input) => service.sendMessage(input),
@@ -2172,8 +2196,34 @@ if (!hasSingleInstanceLock) {
             off: (event, listener) => service.off(event, listener),
             listBots: () => service.listBots(),
             listApprovals: () => service.listApprovals(),
+            withdrawDelivery: (botId, deliveryId) => service.withdrawDelivery(botId, deliveryId),
           },
-          enabled: () => features.isEnabled("team-run-engine"),
+          checkpoints: () =>
+            features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
+          review: () => features.isEnabled("cross-model-review"),
+          planner: (workspaceId) => {
+            if (!features.isEnabled("team-run-ai-planning")) return null;
+            const workspaces = service.listWorkspaces().workspaces;
+            const workspace =
+              workspaces.find((candidate) => candidate.id === workspaceId) ?? workspaces[0];
+            return workspace?.ceoBotId ?? null;
+          },
+        },
+        {
+          // The owner's check command runs only where the permission rules allow it.
+          verifier: new VerificationRepairEngine(({ botId, command, cwd }) =>
+            permissions.authorize(
+              {
+                botId,
+                provider: "sahkarmi",
+                category: classifyCommand(command),
+                action: `Run the team run's check command: ${command}`,
+                paths: [cwd],
+                reason: "The owner set this check for the team run.",
+              },
+              [cwd],
+            ),
+          ),
         },
       );
       orchestrator.onEvent((event) => forwardAgentEvent(event));
@@ -2251,9 +2301,14 @@ if (!hasSingleInstanceLock) {
           await service.sendMessage({
             botId: task.botId,
             text: `[Scheduled task] ${task.text}`,
+            origin: "schedule",
           });
         });
         routines.start(createRoutineExecutor(service));
+        // A team run paused on an approval before the restart listens for the decision again.
+        void orchestrator
+          .restoreWaitingRuns()
+          .catch((error) => appLog.write("error", "Team runs did not resume", error));
         void telegram
           .initialize()
           .catch((error) => appLog.write("error", "Telegram bridge did not start", error));
@@ -2427,6 +2482,32 @@ function requireString(value: unknown, field: string): string {
   return value;
 }
 
+/** Settings > Features engine limits and the local Performance view. */
+function registerEngineIpc(
+  service: AgentService,
+  engineSettings: EngineSettingsStore,
+  runEvents: RunEventStore | null,
+): void {
+  handleTrusted(IPC_CHANNELS.orchestratorGetEngineSettings, () => engineSettings.get());
+  handleTrusted(IPC_CHANNELS.orchestratorSetEngineSettings, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid engine settings.");
+    const saved = await engineSettings.update(input);
+    service.configureEngineSettings(() => engineSettings.get());
+    return saved;
+  });
+  handleTrusted(
+    IPC_CHANNELS.orchestratorPerformance,
+    () =>
+      runEvents?.summary() ?? {
+        since: null,
+        totalTurns: 0,
+        byCoworker: [],
+        byModel: [],
+        recent: [],
+      },
+  );
+}
+
 function parseSendMessage(value: unknown): SendMessageInput {
   if (!isObject(value)) throw new Error("Invalid send message request.");
   const attachmentDraftIds = value.attachmentDraftIds ?? [];
@@ -2449,6 +2530,8 @@ function parseSendMessage(value: unknown): SendMessageInput {
     text: value.text,
     attachmentDraftIds,
     replyToMessageId: replyToMessageId?.trim() || null,
+    // The composer asks to join a running turn; the renderer can never claim another origin.
+    ...(value.steer === true ? { steer: true } : {}),
   };
 }
 
