@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import {
   type AgentModelOption,
   type AgentProviderId,
@@ -46,6 +48,41 @@ export function mergeProviderCatalog(
   }
   if (!reported.length) return previous.length ? previous : fallbacks;
   return [...new Map([...fallbacks, ...reported].map((item) => [item.id, item])).values()];
+}
+
+/**
+ * A provider's model list saved with the CLI version it came from. A different version, or an
+ * entry older than `maxAgeMs`, reads as missing.
+ */
+export async function readCachedCatalog<T>(
+  path: string,
+  version: string,
+  maxAgeMs: number,
+  now = Date.now(),
+): Promise<T | null> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!isRecord(parsed) || parsed.version !== version || !Array.isArray(parsed.models)) {
+      return null;
+    }
+    const savedAt = typeof parsed.savedAt === "number" ? parsed.savedAt : 0;
+    if (now - savedAt > maxAgeMs || savedAt > now) return null;
+    return parsed.models as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeCachedCatalog(
+  path: string,
+  version: string,
+  models: unknown[],
+  now = Date.now(),
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, JSON.stringify({ version, savedAt: now, models }), "utf8");
+  await rename(temporary, path);
 }
 
 /** Coalesce periodic refreshes with throttled window-focus refreshes. */
