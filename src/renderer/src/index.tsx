@@ -9,7 +9,8 @@ import "@fontsource/hind-siliguri/400.css";
 import "@fontsource/hind-siliguri/500.css";
 import "@fontsource/hind-siliguri/600.css";
 import { App } from "./App";
-import { applyStoredPreferences } from "./preferences";
+import { loadLanguage } from "./i18n";
+import { applyStoredPreferences, language } from "./preferences";
 import "./styles.css";
 import "./routines.css";
 
@@ -20,4 +21,5 @@ if (!root) {
 }
 
 applyStoredPreferences();
-render(() => <App />, root);
+// Only English is in the first bundle; wait for the chosen language so the first paint is in it.
+void loadLanguage(language()).finally(() => render(() => <App />, root));
