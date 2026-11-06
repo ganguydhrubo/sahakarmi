@@ -104,9 +104,11 @@ export function adapterScript(spec: AdapterSpec): string {
   if (!isLoopbackBase(spec.baseUrl))
     throw new Error("The adapter only calls APIs on this PC (127.0.0.1).");
   const config = JSON.stringify({ ...spec, baseUrl: spec.baseUrl.replace(/\/+$/, "") });
+  // No static `import ... from` line in this string: the build adds its __dirname shim after the
+  // last one it finds, and one inside a string breaks the packaged app's start-up.
   return `// Written by Sahkarmi: MCP adapter for ${spec.title.replace(/[^\w .-]/g, "")}'s local web API.
 // It only calls the base address below (this PC), never the internet.
-import { createInterface } from "node:readline";
+const { createInterface } = await import("node:readline");
 
 const SPEC = ${config};
 const BASE = process.env.API_BASE_URL && /^http:\\/\\/(127\\.0\\.0\\.1|localhost)(:\\d{1,5})?\\/?$/.test(process.env.API_BASE_URL)

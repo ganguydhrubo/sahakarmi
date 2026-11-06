@@ -92,6 +92,7 @@ for (const [fuse, expected] of expectedFuses) {
   }
 }
 
+await verifyCommonJsShims("out/main");
 await verifyLaunch(executablePath);
 
 console.log(`Verified ${appPath}`);
@@ -143,6 +144,10 @@ async function verifyLaunch(executable: string): Promise<void> {
       }),
       new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 3_000)),
     ]);
+    // Start-up errors are caught and logged, so the process stays alive without a window.
+    if (stderr.includes("Sahkarmi failed to start")) {
+      throw new Error(`Packaged Sahkarmi failed to start: ${stderr.trim()}`);
+    }
     await verifySecondInstanceExits(executable, userDataPath);
   } finally {
     terminateProcessTree(child.pid);
@@ -154,6 +159,23 @@ async function verifyLaunch(executable: string): Promise<void> {
       await rm(userDataPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
     } catch (error) {
       console.warn(`Could not remove the temporary Windows profile: ${String(error)}`);
+    }
+  }
+}
+
+/**
+ * The build adds its __dirname shim after the last `import ... from` it finds. One inside a string
+ * moves the shim into that string, and the app then fails to start with "__dirname is not defined".
+ */
+async function verifyCommonJsShims(folder: string): Promise<void> {
+  for (const file of ["index.js", "knowledge-worker.js"]) {
+    const code = await readFile(join(folder, file), "utf8");
+    const marker = code.indexOf("// -- CommonJS Shims --");
+    if (marker < 0) continue;
+    const firstStatement = code.search(/^(?:const|let|var|function|class|async|export|if|for)\b/m);
+    if (firstStatement >= 0 && firstStatement < marker) {
+      const line = code.slice(0, marker).split("\n").length;
+      throw new Error(`${file}: the CommonJS shim landed inside code at line ${line}.`);
     }
   }
 }
