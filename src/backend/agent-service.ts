@@ -691,9 +691,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#desktop = new DesktopControlService({
       host,
       level: () => this.#permissions?.get().levels.desktop_control ?? "ask",
-      authorize: ({ provider, threadId, action, reason }) =>
+      authorize: ({ provider, threadId, action, reason, category }) =>
         this.#authorize(provider, threadId, {
-          category: "desktop_control",
+          category: category ?? "desktop_control",
           paths: [],
           action,
           reason,

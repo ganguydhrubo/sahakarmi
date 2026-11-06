@@ -20,6 +20,8 @@ export interface DesktopControlDeps {
     /** Always the same words, so a deferred approval matches when the coworker repeats it. */
     action: string;
     reason: string;
+    /** "shell" for a step that opens a command line (Win+R); otherwise desktop control. */
+    category?: "desktop_control" | "shell";
   }) => Promise<{ allowed: boolean; reason: string }>;
   /** A line in that coworker's chat, so the owner always sees who is using the desktop. */
   notify: (botId: string, message: string) => void;
@@ -134,6 +136,27 @@ export class DesktopControlService {
     if (level === "deny") {
       return "The owner has turned off desktop control (Settings > Permissions > Control this PC). Do the task another way, or ask the owner.";
     }
+    const desktop = await this.#desktopGate(botId, provider, threadId, call, level);
+    if (desktop || !call.shellStep) return desktop;
+    // Typing into Run is running a command: it follows the Commands permission every time.
+    const verdict = await this.#deps.authorize({
+      botId,
+      provider,
+      threadId,
+      action: call.shellStep,
+      reason: "This opens a box where typed text runs as a command.",
+      category: "shell",
+    });
+    return verdict.allowed ? null : verdict.reason;
+  }
+
+  async #desktopGate(
+    botId: string,
+    provider: string,
+    threadId: string,
+    call: DesktopCall,
+    level: PermissionLevel,
+  ): Promise<string | null> {
     if (this.#approved.get(botId) === level) return null;
     this.#approved.delete(botId);
     const verdict = await this.#deps.authorize({
