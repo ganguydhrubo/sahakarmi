@@ -247,7 +247,7 @@ export class ComposioClient {
           "This Composio key is limited and cannot manage app sign-ins. Create a full Project API key under dashboard.composio.dev → Settings → API keys and paste that one.",
         );
       }
-      if (!res.ok) throw new Error(await this.#failure("check the key", res));
+      if (!res.ok) throw new Error(await this.#failure("check your Composio key", res));
     }
     if (this.#secrets) await this.#secrets.set(COMPOSIO_SECRET, trimmed);
     else await writeFile(this.keyFilePath, `${trimmed}\n`, { encoding: "utf8", mode: 0o600 });
@@ -375,7 +375,7 @@ export class ComposioClient {
       { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
     );
     if (res.status === 404) return { connectionId, status: "NOT_FOUND", state: "failed" };
-    if (!res.ok) throw new Error(await this.#failure("check the connection", res));
+    if (!res.ok) throw new Error(await this.#failure("check the app's connection", res));
     const json = await readJson(res);
     const status = isRecord(json) && typeof json.status === "string" ? json.status : "UNKNOWN";
     const state = connectionState(status);
@@ -477,11 +477,17 @@ export class ComposioClient {
       };
     }
     try {
-      const account = connectedAccountId
+      const account: { id: string; userId?: string | null } | null = connectedAccountId
         ? { id: connectedAccountId }
         : await this.#accountForTool(slug, key);
+      // Composio now refuses a connected account without the user it belongs to (400 "User ID
+      // is required with connected account"); Sahkarmi connects every app as OWNER_USER_ID.
       const body = account
-        ? { connected_account_id: account.id, arguments: args }
+        ? {
+            connected_account_id: account.id,
+            user_id: account.userId || OWNER_USER_ID,
+            arguments: args,
+          }
         : { user_id: OWNER_USER_ID, arguments: args };
       const res = await this.#request(
         `${this.#baseUrl}/tools/execute/${encodeURIComponent(slug)}`,
@@ -493,7 +499,11 @@ export class ComposioClient {
           retries: isActionSensitive(slug) ? 0 : 2,
         },
       );
-      if (!res.ok) return { success: false, error: await this.#failure(`run ${slug}`, res) };
+      if (!res.ok)
+        return {
+          success: false,
+          error: await this.#failure(`use ${appLabel(this.toolkitOf(slug) ?? "the app")}`, res),
+        };
       const json = await readJson(res);
       if (!isRecord(json)) return { success: true, data: json ?? null };
       if (json.successful === false) {
@@ -638,7 +648,7 @@ export class ComposioClient {
           "Composio no longer accepts the saved key. Add it again in Marketplace → Apps.",
         );
       }
-      if (!res.ok) throw new Error(await this.#failure("list connected apps", res));
+      if (!res.ok) throw new Error(await this.#failure("check your connected apps", res));
       const json = await readJson(res);
       for (const item of itemsOf(json)) {
         const connection = connectionFromApi(item);
@@ -777,7 +787,8 @@ export class ComposioClient {
       { method: "GET" },
       { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 2 },
     );
-    if (!res.ok) throw new Error(await this.#failure(`list ${toolkitSlug} tools`, res));
+    if (!res.ok)
+      throw new Error(await this.#failure(`see what ${appLabel(toolkitSlug)} can do`, res));
     const toolkitName =
       this.#catalogue?.value.find((toolkit) => toolkit.slug === toolkitSlug)?.name ??
       FALLBACK_TOOLKITS.find((toolkit) => toolkit.slug === toolkitSlug)?.name ??
@@ -905,20 +916,58 @@ export class ComposioClient {
         detail = "";
       }
     }
-    const hint =
-      res.status === 403 && /permission|access/i.test(detail)
-        ? " The key is limited: make a new Composio key with Full access and paste it in Marketplace → Apps."
-        : res.status === 401 || res.status === 403
-          ? " Check the Composio key in Marketplace → Apps."
-          : res.status === 402
-            ? " The Composio plan's monthly limit may be used up."
-            : "";
-    const shown = detail ? ` (${clip(detail, 200)})` : "";
-    return `Could not ${action}: Composio answered ${res.status}${shown}.${hint}`;
+    return plainComposioFailure(action, res.status, detail);
   }
 }
 
 // ----- helpers ---------------------------------------------------------------------------------
+
+/** "google_sheets" → "Google Sheets". */
+function appLabel(slug: string): string {
+  if (!/^[a-z0-9_-]+$/i.test(slug)) return slug;
+  return slug
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * What went wrong, in words an owner who is not technical can act on: what happened and what to
+ * do next. Composio's own wording is added only when the coworker can fix its request with it.
+ */
+export function plainComposioFailure(action: string, status: number, detail: string): string {
+  const head = `Could not ${action}.`;
+  if (
+    /connected account|user id|not connected|no active connection|expired|re-?auth|revoked|invalid_grant/i.test(
+      detail,
+    )
+  ) {
+    return `${head} The app's sign-in needs a refresh. Open Marketplace > Apps and connect the app again; your coworkers can use it right after.`;
+  }
+  if (status === 401) {
+    return `${head} Your Composio key is not working any more. Copy a new key from composio.dev and paste it in Marketplace > Apps.`;
+  }
+  if (status === 403) {
+    return /permission|access|scope/i.test(detail)
+      ? `${head} Your Composio key is not allowed to do this. Make a new key with full access at composio.dev and paste it in Marketplace > Apps.`
+      : `${head} Composio said no to this. Check your Composio key in Marketplace > Apps, or connect the app again.`;
+  }
+  if (status === 402 || status === 429) {
+    return `${head} Your free Composio allowance is used up for now. Wait a little and try again, or check your plan at composio.dev.`;
+  }
+  if (status === 404) {
+    return `${head} This app action is not available. Ask the coworker to try another way, or connect the app again in Marketplace > Apps.`;
+  }
+  if (status >= 500) {
+    return `${head} Composio, the service that links your apps, is having trouble right now. Try again in a few minutes.`;
+  }
+  if (status === 400 || status === 422) {
+    const why = detail ? ` (For the coworker: ${clip(detail, 200)})` : "";
+    return `${head} The app did not accept the request. The coworker can try again with different details.${why}`;
+  }
+  return `${head} Something went wrong while reaching your apps. Try again; if it keeps happening, connect the app again in Marketplace > Apps.`;
+}
 
 function appFromToolkit(
   toolkit: ComposioToolkitRecord,

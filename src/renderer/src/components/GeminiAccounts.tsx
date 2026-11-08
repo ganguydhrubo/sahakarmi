@@ -37,6 +37,12 @@ export function GeminiAccounts(props: { busy: boolean }) {
 
   const label = (account: GeminiAccount, index: number) =>
     account.email ?? t("geminiAccountNumber", { n: String(index + 1) });
+  // Two slots signed in to one Google account share its limits; adding it twice gains nothing.
+  const duplicate = (account: GeminiAccount, index: number) =>
+    Boolean(account.email) &&
+    accounts()
+      .slice(0, index)
+      .some((other) => other.email?.toLowerCase() === account.email?.toLowerCase());
 
   return (
     <Show when={api()}>
@@ -50,9 +56,11 @@ export function GeminiAccounts(props: { busy: boolean }) {
                   <span class="gemini-account-name">
                     {label(account, index())}
                     <small>
-                      {account.signedIn
-                        ? (account.tier ?? t("geminiAccountSignedIn"))
-                        : t("geminiAccountNotSignedIn")}
+                      {!account.signedIn
+                        ? t("geminiAccountNotSignedIn")
+                        : duplicate(account, index())
+                          ? t("geminiAccountDuplicate")
+                          : (account.tier ?? t("geminiAccountSignedIn"))}
                     </small>
                   </span>
                   <Show

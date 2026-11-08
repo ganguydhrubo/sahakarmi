@@ -532,6 +532,7 @@ export const workspaceBn: WorkspaceDictionary = {
     "Gemini-এর জন্য Google অ্যাকাউন্ট। কোনো অ্যাকাউন্টের Google ব্যবহারসীমা শেষ হলে Gemini পরের সাইন-ইন করা অ্যাকাউন্টে চলে যায় এবং বার্তাটি আবার পাঠায়।",
   geminiAccountNumber: "Google অ্যাকাউন্ট {n}",
   geminiAccountSignedIn: "সাইন ইন করা আছে",
+  geminiAccountDuplicate: "উপরের একই Google অ্যাকাউন্ট (একই সীমা)",
   geminiAccountNotSignedIn: "এখনও সাইন ইন করা হয়নি",
   geminiAccountInUse: "ব্যবহৃত হচ্ছে",
   geminiAccountUse: "এটি ব্যবহার করুন",
