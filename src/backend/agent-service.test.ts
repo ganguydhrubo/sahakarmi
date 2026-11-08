@@ -92,6 +92,7 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_RETRY;
   delete process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY;
   delete process.env.SAHKARMI_FAKE_EXIT_ON_TURN;
+  delete process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE;
   delete process.env.SAHKARMI_FAKE_FAIL_TURNS;
   delete process.env.SAHKARMI_FAKE_FAIL_MESSAGE;
   // Windows may briefly retain handles after the child process and atomic writes close.
@@ -2789,7 +2790,11 @@ describe.sequential("AgentService", () => {
   }, 20_000);
 
   it("starts queued messages after restart when provider process exits mid-turn", async () => {
+    // The first engine exits on its first turn; the restarted one answers. Set up front: changing
+    // the environment after the exit raced the restart, which could start with the old settings.
     process.env.SAHKARMI_FAKE_EXIT_ON_TURN = "1";
+    process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE = join(root, "fake-exit-once");
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Answer after restart";
     process.env.SAHKARMI_FAKE_REFUSE_STEER = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
@@ -2807,8 +2812,6 @@ describe.sequential("AgentService", () => {
     await waitFor(() =>
       events.some((event) => event.type === "error" && event.code === "codex_exited"),
     );
-    delete process.env.SAHKARMI_FAKE_EXIT_ON_TURN;
-    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Answer after restart";
 
     // Coworker's activeTurnId must be cleared so it is not stuck busy
     const snapshot = await service.readConversation("chief");
@@ -3472,7 +3475,10 @@ process.stdin.on("data", (chunk) => {
           setTimeout(() => write({ id: "agent-tool-1", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-1", namespace: "sahkarmi", tool: "send_message", arguments: { recipientBotIds: ["sales-outbound", "inbox-manager"], text: "Please prepare your reports.", paths: JSON.parse(process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS || "[]") } } }), 30);
         }
         const completeDelay = Number(process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY || 20);
-        if (process.env.SAHKARMI_FAKE_AUTO_COMPLETE) {
+        // With an exit-once file, only the first process exits (a restarted one carries on).
+        const exitOnce = process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE;
+        const exiting = process.env.SAHKARMI_FAKE_EXIT_ON_TURN === String(turnCounter) && !(exitOnce && fs.existsSync(exitOnce));
+        if (process.env.SAHKARMI_FAKE_AUTO_COMPLETE && !exiting) {
           setTimeout(() => {
             const text = process.env.SAHKARMI_FAKE_AUTO_COMPLETE;
             const item = { type: "agentMessage", id: "message-" + turnId, text, phase: "final_answer" };
@@ -3494,7 +3500,8 @@ process.stdin.on("data", (chunk) => {
             write({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: turnId, status: "failed" } } });
           }, 20);
         }
-        if (process.env.SAHKARMI_FAKE_EXIT_ON_TURN === String(turnCounter)) {
+        if (exiting) {
+          if (exitOnce) fs.writeFileSync(exitOnce, "exited");
           setTimeout(() => {
             process.exit(1);
           }, 30);
