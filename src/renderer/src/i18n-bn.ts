@@ -5,6 +5,7 @@ import { apisBn } from "./i18n-apis";
 import { assignBn } from "./i18n-assign";
 import { backgroundBn } from "./i18n-background";
 import { engineBn } from "./i18n-engine";
+import { safetyBn } from "./i18n-safety";
 import { extensionsBn } from "./i18n-extensions-bn";
 import { marketplaceBn } from "./i18n-marketplace-bn";
 import { mcpBn } from "./i18n-mcp";
@@ -304,6 +305,7 @@ export const bn: Dictionary = {
   ...securityBn,
   ...apisBn,
   ...engineBn,
+  ...safetyBn,
   ...assignBn,
   ...mcpBn,
   ...onboardingBn,

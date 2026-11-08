@@ -14247,6 +14247,16 @@ fieldset.memory-filters {
   opacity: 0.8;
 }
 
+.approval-provenance {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted, inherit);
+}
+
+.approval-provenance > span {
+  font-weight: 600;
+}
+
 /* ---- Knowledge Bases ---- */
 
 .knowledge-create {

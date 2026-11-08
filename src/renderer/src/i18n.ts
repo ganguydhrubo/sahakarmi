@@ -3,6 +3,7 @@ import { apisEn } from "./i18n-apis";
 import { assignEn } from "./i18n-assign";
 import { backgroundEn } from "./i18n-background";
 import { engineEn } from "./i18n-engine";
+import { safetyEn } from "./i18n-safety";
 import { extensionsEn } from "./i18n-extensions";
 import { marketplaceEn } from "./i18n-marketplace";
 import { mcpEn } from "./i18n-mcp";
@@ -306,6 +307,7 @@ const en = {
   ...securityEn,
   ...apisEn,
   ...engineEn,
+  ...safetyEn,
   ...assignEn,
   ...mcpEn,
   ...onboardingEn,
