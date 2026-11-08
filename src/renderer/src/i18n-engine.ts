@@ -24,6 +24,11 @@ export const engineEn = {
   engineWatchdogLabel: "Stop a turn with no progress after (minutes)",
   engineWatchdogHint:
     "A turn that shows no text and uses no tool for this long is stopped. Turns waiting for your approval are never stopped.",
+  engineAutoTurnsLabel: "Auto: follow free memory",
+  engineAutoTurnsHint:
+    "Sahkarmi decides each time a coworker starts: as many as this PC's free memory fits, keeping 1.5 GB free for Windows and your apps. At least one always works.",
+  meterCpu: "Processor {percent}%",
+  meterPages: "{count} browser pages awake",
   engineSaved: "Saved",
   memoryTitle: "Memory limit",
   memoryIntro:
@@ -93,6 +98,11 @@ export const engineHi: EngineDictionary = {
   engineWatchdogLabel: "बिना प्रगति वाले टर्न को इतने मिनट बाद रोकें",
   engineWatchdogHint:
     "जो टर्न इतनी देर तक न कुछ लिखे, न कोई टूल चलाए, उसे रोक दिया जाता है। आपकी मंज़ूरी का इंतज़ार कर रहे टर्न कभी नहीं रोके जाते।",
+  engineAutoTurnsLabel: "अपने-आप: खाली मेमोरी के हिसाब से",
+  engineAutoTurnsHint:
+    "हर बार कोई सहकर्मी शुरू होता है तो Sahkarmi तय करता है: इस PC की खाली मेमोरी में जितने समा सकें, Windows और आपके ऐप्स के लिए 1.5 GB खाली रखकर। कम से कम एक हमेशा काम करता है।",
+  meterCpu: "प्रोसेसर {percent}%",
+  meterPages: "{count} ब्राउज़र पेज जागे हुए",
   engineSaved: "सहेजा गया",
   memoryTitle: "मेमोरी सीमा",
   memoryIntro:
@@ -159,6 +169,11 @@ export const engineBn: EngineDictionary = {
   engineWatchdogLabel: "অগ্রগতি না থাকলে এত মিনিট পরে টার্ন থামান",
   engineWatchdogHint:
     "যে টার্ন এতক্ষণ কিছু লেখে না বা কোনো টুল চালায় না, সেটি থামানো হয়। আপনার অনুমোদনের অপেক্ষায় থাকা টার্ন কখনো থামানো হয় না।",
+  engineAutoTurnsLabel: "স্বয়ংক্রিয়: খালি মেমোরি অনুযায়ী",
+  engineAutoTurnsHint:
+    "প্রতিবার কোনো সহকর্মী শুরু হলে Sahkarmi ঠিক করে: এই PC-র খালি মেমোরিতে যতজন আঁটে, Windows আর আপনার অ্যাপের জন্য 1.5 GB খালি রেখে। অন্তত একজন সবসময় কাজ করে।",
+  meterCpu: "প্রসেসর {percent}%",
+  meterPages: "{count}টি ব্রাউজার পেজ জেগে আছে",
   engineSaved: "সংরক্ষিত",
   memoryTitle: "মেমোরি সীমা",
   memoryIntro:

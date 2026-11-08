@@ -14660,6 +14660,11 @@ fieldset.memory-filters {
   grid-column: 1 / -1;
 }
 
+/* A switch line: the box first, then its label (Auto concurrency). */
+.engine-setting-toggle {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 /* Settings > Features: the owner's memory limit. */
 .memory-limit {
   display: flex;
