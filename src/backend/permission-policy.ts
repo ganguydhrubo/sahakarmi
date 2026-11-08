@@ -76,6 +76,12 @@ export interface PermissionRequest {
   reason?: string;
   /** The page and control a browser step touches, so the owner's card can name them. */
   browser?: { type: string; label: string; url: string; text?: string };
+  /**
+   * Set by the untrusted-content rule (taint-guard.ts): this turn read outside content, so this
+   * one request is asked even when auto mode, a level or a pre-authorisation would allow it.
+   * A "deny" level and the protected-path rules still come first.
+   */
+  taint?: { source: string };
 }
 
 export interface PermissionDecision {
@@ -101,6 +107,14 @@ export function decide(
   // anything; one that could read a key file could send it anywhere.
   const guarded = protectedPathReason(request);
   if (guarded) return { effective: "ask", level, reason: guarded, grant: null };
+  if (request.taint) {
+    return {
+      effective: "ask",
+      level,
+      reason: `It read ${request.taint.source} in this task; asking the owner once.`,
+      grant: null,
+    };
+  }
   if (policy.autoMode && !isSensitive(request.category)) {
     return { effective: "allow", level, reason: "Auto mode.", grant: null };
   }

@@ -2225,6 +2225,10 @@ if (!hasSingleInstanceLock) {
       const features = new FeatureRegistry(app.getPath("userData"));
       mcpServers.setFeatureCheck((id) => features.isEnabled(id));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+      service.configureSafety({
+        taintGuard: () => features.isEnabled("taint-guard"),
+        provenance: () => features.isEnabled("approval-provenance"),
+      });
       const engineSettings = new EngineSettingsStore(app.getPath("userData"));
       await engineSettings.initialize();
       service.configureEngineSettings(() => engineSettings.get());

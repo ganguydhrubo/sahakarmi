@@ -407,7 +407,12 @@ describe("TelegramBridge", () => {
     await until(() => telegram.sent.at(-1)?.text === "Now talking to 1xl reporting.");
     telegram.say(OWNER, "Send me today's report status");
     await until(() => coworkers.asked.length === 1);
-    expect(coworkers.asked[0]).toEqual({ botId: "bot-b", text: "Send me today's report status" });
+    expect(coworkers.asked[0]).toEqual({
+      botId: "bot-b",
+      text: "Send me today's report status",
+      // Labels the approval card "from your phone"; nothing else changes.
+      remote: true,
+    });
 
     const before = telegram.sent.length;
     coworkers.finishTurn("bot-b", "turn-1", ["Draft saved for 26 Oct.", "3 of 4 people sent it."]);

@@ -4,6 +4,7 @@ import {
   APPROVAL_CATEGORIES,
   type ApprovalAuthorityGrant,
   type ApprovalCategory,
+  type ApprovalProvenance,
   type ApprovalRequest,
   type ApprovalRiskLevel,
   type DecideApprovalInput,
@@ -35,6 +36,37 @@ export interface CreateApprovalInput {
   expiresAt?: string | null;
   ownerOnly?: boolean;
   bindsAccount?: ApprovalRequest["bindsAccount"];
+  provenance?: ApprovalProvenance;
+}
+
+const PROVENANCE_KINDS = new Set<ApprovalProvenance["kind"]>([
+  "owner",
+  "remote",
+  "routine",
+  "schedule",
+  "team-run",
+  "coworker",
+  "system",
+  "web",
+  "app",
+  "file",
+]);
+
+/** A known kind and a short one-line label, or nothing. */
+export function cleanProvenance(value: unknown): ApprovalProvenance | null {
+  if (!isRecord(value) || !PROVENANCE_KINDS.has(value.kind as ApprovalProvenance["kind"])) {
+    return null;
+  }
+  const label =
+    typeof value.label === "string" ? value.label.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+  return label
+    ? { kind: value.kind as ApprovalProvenance["kind"], label }
+    : { kind: value.kind as ApprovalProvenance["kind"] };
+}
+
+function provenanceField(value: unknown): { provenance?: ApprovalProvenance } {
+  const provenance = cleanProvenance(value);
+  return provenance ? { provenance } : {};
 }
 
 const MAX_AUTHORITY_MS = 30 * 24 * 60 * 60 * 1000;
@@ -211,6 +243,7 @@ export class ApprovalStore {
       routedToBotId: null,
       ...(input.ownerOnly ? { ownerOnly: true } : {}),
       ...(input.bindsAccount ? { bindsAccount: { ...input.bindsAccount } } : {}),
+      ...provenanceField(input.provenance),
       notifiedAt: null,
       deliveryError: null,
     };

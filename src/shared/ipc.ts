@@ -963,6 +963,27 @@ export interface ApprovalRequest {
   notifiedAt?: string | null;
   /** Why the Telegram notification could not be delivered, if it failed. */
   deliveryError?: string | null;
+  /** Where the request came from ("approval-provenance"). Absent on older requests. */
+  provenance?: ApprovalProvenance;
+}
+
+/**
+ * "Where this request came from" on an approval card. `label` is data (a coworker's name, a
+ * site's domain, an app's name), never instructions; the card words it by `kind`.
+ */
+export interface ApprovalProvenance {
+  kind:
+    | "owner"
+    | "remote"
+    | "routine"
+    | "schedule"
+    | "team-run"
+    | "coworker"
+    | "system"
+    | "web"
+    | "app"
+    | "file";
+  label?: string;
 }
 
 /** Operations the permission engine distinguishes. Order is the Settings display order. */
@@ -1472,6 +1493,8 @@ export interface SendMessageInput {
   steer?: boolean;
   /** Set by the app (never the renderer) for messages it sends on the owner's behalf. */
   origin?: MessageOrigin;
+  /** Set by the app (never the renderer): the owner sent this from their phone. Labels only. */
+  remote?: boolean;
 }
 
 export interface SetMessageReactionInput {

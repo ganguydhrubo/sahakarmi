@@ -14,6 +14,7 @@ import type {
   AgentStatus,
   ApprovalAuthorityGrant,
   ApprovalCategory,
+  ApprovalProvenance,
   ApprovalRequest,
   AttachmentDataInput,
   BotSummary,
@@ -182,7 +183,7 @@ import {
   insideAny,
   type PermissionRequest,
 } from "./permission-policy";
-import type { PermissionService } from "./permission-service";
+import { DEFERRED_APPROVAL_REASON, type PermissionService } from "./permission-service";
 import {
   type AccountRateLimitResult,
   type AccountRateLimitsReadResult,
@@ -217,6 +218,14 @@ import {
   recallableBots,
   teamInstructions,
 } from "./team-rules";
+import {
+  describeSource,
+  isTaintGuarded,
+  provenanceOfSource,
+  TaintGuard,
+  type TaintSource,
+  webSource,
+} from "./taint-guard";
 import { toolCallFromItem } from "./tool-calls";
 import { capContentItems, capToolText } from "./tool-result-cap";
 import {
@@ -423,6 +432,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   >();
   /** Task approvals: one "yes" covers the same kind of step on the same site for this task. */
   readonly #taskGrants = new Map<string, number>();
+  /** Untrusted-content rule: per-turn taint and its one question (taint-guard.ts). */
+  readonly #taint = new TaintGuard();
+  /** Task grants the owner gave on a card that already said the coworker read outside content. */
+  readonly #taintAwareGrants = new Set<string>();
+  #taintGuardEnabled: () => boolean = () => false;
+  #provenanceEnabled: () => boolean = () => false;
+  /** Messages the owner sent from their phone, so a card can say so. Bounded; memory only. */
+  readonly #remoteMessageIds = new Set<string>();
   /**
    * Task refusals: the owner said "no" to this exact step for this task, so a retry (the
    * coworker's own, or an automatic re-send after a failure) is refused without a new card.
@@ -800,12 +817,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       host,
       level: () => this.#permissions?.get().levels.desktop_control ?? "ask",
       authorize: ({ provider, threadId, action, reason, category }) =>
-        this.#authorize(provider, threadId, {
-          category: category ?? "desktop_control",
-          paths: [],
-          action,
-          reason,
-        }),
+        this.#authorize(
+          provider,
+          threadId,
+          {
+            category: category ?? "desktop_control",
+            paths: [],
+            action,
+            reason,
+          },
+          { command: category === "shell" },
+        ),
       notify: (botId, message) =>
         this.#emit({ type: "notice", botId, code: "desktop_control", message }),
       botName: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name ?? "A coworker",
@@ -1500,12 +1522,71 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /** Which workspace and turn an approval belongs to, so a remote decision names the right one. */
-  #approvalContext(botId: string): { workspaceId?: string; taskId: string | null } {
+  #approvalContext(botId: string): {
+    workspaceId?: string;
+    taskId: string | null;
+    provenance?: ApprovalProvenance;
+  } {
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    const provenance = this.#turnProvenance(botId);
     return {
       workspaceId: bot?.workspaceId,
       taskId: this.#snapshots.get(botId)?.activeTurnId ?? null,
+      ...(provenance ? { provenance } : {}),
     };
+  }
+
+  /** "Where this request came from" for a paused tool call: outside content first. */
+  #provenanceFor(request: PermissionRequest): ApprovalProvenance | null {
+    if (!request.botId) return null;
+    try {
+      if (!this.#provenanceEnabled()) return null;
+      if (request.taint) {
+        const turnId = this.#snapshots.get(request.botId)?.activeTurnId ?? null;
+        const source = this.#taint.source(request.botId, turnId);
+        if (source) return provenanceOfSource(source);
+      }
+      return this.#turnProvenance(request.botId);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Who started the turn this coworker is in now, from the message that started it. */
+  #turnProvenance(botId: string): ApprovalProvenance | null {
+    try {
+      if (!this.#provenanceEnabled()) return null;
+      const turnId = this.#snapshots.get(botId)?.activeTurnId;
+      const delivery = turnId ? this.#mailbox.findDeliveryByTurn(turnId)?.delivery : null;
+      if (!delivery) return null;
+      if (delivery.sender.kind === "bot") {
+        const senderId = delivery.sender.botId;
+        const name = this.#store.list().find((bot) => bot.id === senderId)?.name;
+        return name ? { kind: "coworker", label: name } : { kind: "coworker" };
+      }
+      switch (delivery.origin) {
+        case "routine":
+        case "schedule":
+        case "team-run":
+        case "system":
+          return { kind: delivery.origin };
+        default:
+          return this.#remoteMessageIds.has(delivery.messageId)
+            ? { kind: "remote" }
+            : { kind: "owner" };
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Phase 1 safety switches (Settings > Features). Not configured (tests, embedders): all off,
+   * which is exactly the behaviour before they existed.
+   */
+  configureSafety(options: { taintGuard?: () => boolean; provenance?: () => boolean }): void {
+    if (options.taintGuard) this.#taintGuardEnabled = options.taintGuard;
+    if (options.provenance) this.#provenanceEnabled = options.provenance;
   }
 
   /**
@@ -2363,6 +2444,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     const delivery = this.#mailbox.getDelivery(receipt.deliveries[0].id);
     if (!delivery) throw new Error("Unable to create queued message.");
+    if (input.remote === true) {
+      this.#remoteMessageIds.add(receipt.messageId);
+      if (this.#remoteMessageIds.size > 500) {
+        const oldest = this.#remoteMessageIds.values().next().value;
+        if (oldest !== undefined) this.#remoteMessageIds.delete(oldest);
+      }
+    }
     const snapshot = this.#ensureSnapshot(bot.id, bot.threadId);
     this.#syncMailboxMessages(snapshot);
     await this.#store.updatePreview(
@@ -3628,6 +3716,7 @@ ${carryOver}`
     provider: string,
     threadId: string | null,
     request: Omit<PermissionRequest, "botId" | "provider">,
+    options: { command?: boolean } = {},
   ): Promise<{ allowed: boolean; reason: string }> {
     const botId = threadId ? (this.#threadToBot.get(threadId) ?? null) : null;
     const colleague = botId ? this.#colleagueFolderIn(botId, request.paths, request.action) : null;
@@ -3638,10 +3727,69 @@ ${carryOver}`
       };
     }
     if (!this.#permissions) return { allowed: true, reason: "No permission policy configured." };
-    return this.#permissions.authorize(
-      { ...request, botId, provider },
-      this.#workspaceRoots(botId),
-    );
+    const full: PermissionRequest = { ...request, botId, provider };
+    const roots = this.#workspaceRoots(botId);
+    const guarded = botId ? await this.#taintGate(full, roots, options.command === true) : null;
+    if (guarded) return guarded;
+    const verdict = await this.#permissions.authorize(full, roots);
+    // Reading a file outside the coworker's folders brings outside content into this turn.
+    if (verdict.allowed && botId && request.category === "file_read" && request.paths.length) {
+      const outside = request.paths.find((path) => !insideAny(path, roots));
+      if (outside) this.#markTaint(botId, { kind: "file", label: basename(outside) });
+    }
+    return verdict;
+  }
+
+  /**
+   * The untrusted-content rule. Null: decide exactly as before. Otherwise the answer for this
+   * request: the one question of this turn, or the owner's earlier answer in this turn.
+   * Any error inside falls back to the normal decision.
+   */
+  async #taintGate(
+    request: PermissionRequest,
+    roots: string[],
+    command: boolean,
+  ): Promise<{ allowed: boolean; reason: string } | null> {
+    const permissions = this.#permissions;
+    const botId = request.botId;
+    if (!permissions || !botId) return null;
+    try {
+      if (!this.#taintGuardEnabled() || !isTaintGuarded(request, command)) return null;
+      const turnId = this.#snapshots.get(botId)?.activeTurnId ?? null;
+      if (!this.#taint.source(botId, turnId)) return null;
+      // A "deny" setting stays a plain refusal and does not use up the turn's question.
+      if (permissions.evaluate(request, roots).effective === "deny") return null;
+      const first: { verdict: { allowed: boolean; reason: string } | null } = { verdict: null };
+      const gate = await this.#taint.gate(botId, turnId, async (source) => {
+        const verdict = await permissions.authorize(
+          { ...request, taint: { source: describeSource(source) } },
+          roots,
+        );
+        first.verdict = verdict;
+        if (verdict.allowed) return "approved";
+        return verdict.reason === DEFERRED_APPROVAL_REASON ? "deferred" : "declined";
+      });
+      if (!gate) return null;
+      if (gate.asked && first.verdict) return first.verdict;
+      if (gate.outcome === "deferred") return { allowed: false, reason: DEFERRED_APPROVAL_REASON };
+      return {
+        allowed: false,
+        reason: `The owner did not approve a step after you read ${describeSource(gate.source)} in this task, so commands, outgoing messages and key files stay off until the owner's next message. Tell the owner what you wanted to do.`,
+      };
+    } catch (error) {
+      this.emit("log", `taint guard skipped: ${String(error)}`);
+      return null;
+    }
+  }
+
+  /** This coworker's current turn read outside content. Never throws. */
+  #markTaint(botId: string, source: TaintSource): void {
+    try {
+      if (!this.#taintGuardEnabled()) return;
+      this.#taint.mark(botId, this.#snapshots.get(botId)?.activeTurnId ?? null, source);
+    } catch {
+      // The rule is a safety net; a failure here must never break the coworker's turn.
+    }
   }
 
   /**
@@ -3684,7 +3832,10 @@ ${carryOver}`
     // page redraw do not each ask again. A new instruction from the owner is a new task.
     // Payments and account changes still ask every time.
     const grantKey = taskGrantKey(request, this.#ownerAsked(request.botId));
-    if (grantKey) {
+    // After outside content, a task "yes" counts only if the owner gave it on a card that said
+    // so; otherwise this turn's one question is asked.
+    const grantUsable = !request.taint || (grantKey !== null && this.#taintAwareGrants.has(grantKey));
+    if (grantKey && grantUsable) {
       const until = this.#taskGrants.get(grantKey);
       if (until !== undefined && until > Date.now()) return "approved";
       if (until !== undefined) this.#taskGrants.delete(grantKey);
@@ -3705,6 +3856,13 @@ ${carryOver}`
       const outcome = await answer;
       if (outcome === "approved" && grantKey) {
         this.#taskGrants.set(grantKey, Date.now() + TASK_GRANT_MS);
+        if (request.taint) {
+          this.#taintAwareGrants.add(grantKey);
+          if (this.#taintAwareGrants.size > MAX_TASK_DECLINES) {
+            const oldest = this.#taintAwareGrants.values().next().value;
+            if (oldest !== undefined) this.#taintAwareGrants.delete(oldest);
+          }
+        }
       }
       if (outcome === "rejected") this.#rememberDecline(refusal);
       return outcome;
@@ -3779,17 +3937,24 @@ ${carryOver}`
       },
       this.#ownerAsked(request.botId),
     );
+    const taintNote = request.taint
+      ? `\n\n${bot?.name ?? "Your coworker"} read ${request.taint.source} in this task. Content from outside can carry instructions you never gave, so Sahkarmi checks with you once. Approving covers the rest of this reply.`
+      : "";
+    const provenance = this.#provenanceFor(request);
     const approval = await this.#approvals.create({
       botId: request.botId,
       title: wording.title,
-      details: grantKey
-        ? `${wording.details}\n\nApproving covers this kind of step on this site for the task you gave (up to ${TASK_GRANT_MS / 3_600_000} hours), so you are not asked again for each click. A new instruction asks again.`
-        : wording.details,
+      details: `${
+        grantKey
+          ? `${wording.details}\n\nApproving covers this kind of step on this site for the task you gave (up to ${TASK_GRANT_MS / 3_600_000} hours), so you are not asked again for each click. A new instruction asks again.`
+          : wording.details
+      }${taintNote}`,
       technical: `${wording.technical}\nProvider: ${request.provider}`,
       category: approvalCategoryFor(request.category),
       kind: "permission",
       permissionCategory: request.category,
       ...this.#approvalContext(request.botId),
+      ...(provenance ? { provenance } : {}),
       // The tool call is parked on the same timeout, so the deadline shown to the owner in
       // Telegram is the real one.
       expiresAt: new Date(Date.now() + permissionTimeoutMs).toISOString(),
@@ -3833,8 +3998,25 @@ ${carryOver}`
     const threadId = getString(params, "threadId");
     if (getString(params, "source") === "claude") {
       const input = getRecord(params, "input") ?? {};
-      const classified = classifyClaudeTool(getString(params, "toolName") ?? "", input);
-      return this.#authorize(client.provider, threadId, classified);
+      const toolName = getString(params, "toolName") ?? "";
+      const classified = classifyClaudeTool(toolName, input);
+      const verdict = await this.#authorize(client.provider, threadId, classified, {
+        command: CLAUDE_COMMAND_TOOLS.has(toolName),
+      });
+      const botId = threadId ? this.#threadToBot.get(threadId) : undefined;
+      if (verdict.allowed && botId) {
+        if (toolName === "WebFetch" || toolName === "WebSearch") {
+          const url = getString(input, "url");
+          this.#markTaint(
+            botId,
+            url ? webSource(url) : { kind: "web", label: "web search results" },
+          );
+        } else if (toolName.startsWith("mcp__")) {
+          // The owner's own tool servers (Sahkarmi's own tools never reach this check).
+          this.#markTaint(botId, { kind: "app", label: mcpServerLabel(toolName) });
+        }
+      }
+      return verdict;
     }
     const title = getString(params, "title") ?? "Tool call";
     const paths =
@@ -3844,11 +4026,18 @@ ${carryOver}`
     const rawInput = isRecord(params) ? params.rawInput : null;
     const category = classifyAcpTool(getString(params, "kind"), title, paths, rawInput);
     const command = getString(rawInput, "command");
-    return this.#authorize(client.provider, threadId, {
-      category,
-      paths,
-      action: command ?? title,
-    });
+    const kind = getString(params, "kind");
+    const verdict = await this.#authorize(
+      client.provider,
+      threadId,
+      { category, paths, action: command ?? title },
+      { command: kind === "execute" },
+    );
+    const botId = threadId ? this.#threadToBot.get(threadId) : undefined;
+    if (verdict.allowed && botId && kind === "fetch") {
+      this.#markTaint(botId, webSource(getString(rawInput, "url")));
+    }
+    return verdict;
   }
 
   async #handleServerRequest(client: AgentClient, request: AppServerRequest): Promise<void> {
@@ -3868,6 +4057,7 @@ ${carryOver}`
               action: command || getString(request.params, "reason") || "Run a command",
               reason: getString(request.params, "reason") ?? undefined,
             },
+            { command: true },
           );
           client.respond(request.id, { decision: verdict.allowed ? "accept" : "decline" });
           return;
@@ -3894,6 +4084,7 @@ ${carryOver}`
             client.provider,
             getString(request.params, "conversationId"),
             { category: classifyCommand(command), paths: [], action: command || "Run a command" },
+            { command: true },
           );
           client.respond(request.id, { decision: verdict.allowed ? "approved" : "denied" });
           return;
@@ -3950,6 +4141,10 @@ ${carryOver}`
               });
               return;
             }
+            // The page's text, its elements or a picture of it enter the turn from here on.
+            if (BROWSER_READ_TOOLS.has(request.params.tool)) {
+              this.#markTaint(callerBotId, webSource(this.#browserTabUrl(request.params)));
+            }
             client.respond(request.id, await this.#browser.handleDynamicTool(browserParams));
             return;
           }
@@ -3989,6 +4184,9 @@ ${carryOver}`
                     request.params.arguments,
                   )
                 : { success: false, text: "No web APIs are connected." };
+            if (senderBotId && result.success && request.params.tool !== "list_apis") {
+              this.#markTaint(senderBotId, { kind: "app", label: "a connected web service" });
+            }
             client.respond(request.id, {
               success: result.success,
               contentItems: [{ type: "inputText", text: capToolText(result.text) }],
@@ -3996,10 +4194,13 @@ ${carryOver}`
             return;
           }
           if (request.params.namespace === "composio") {
-            client.respond(
-              request.id,
-              capContentItems(await this.#handleComposioTool(request.params)),
-            );
+            const appResult = await this.#handleComposioTool(request.params);
+            const appBotId = this.#threadToBot.get(request.params.threadId);
+            if (appBotId && appResult.success) {
+              const app = this.#composioClient?.toolkitOf(request.params.tool) ?? null;
+              this.#markTaint(appBotId, { kind: "app", label: app ?? "a connected app" });
+            }
+            client.respond(request.id, capContentItems(appResult));
             return;
           }
           throw new Error(`Unsupported dynamic tool namespace: ${request.params.namespace}`);
@@ -4025,6 +4226,10 @@ ${carryOver}`
                 action: `Use the "${toolCall.tool}" tool of the ${toolCall.server} tool server`,
               },
             );
+            const mcpBotId = this.#threadToBot.get(getString(request.params, "threadId") ?? "");
+            if (verdict.allowed && mcpBotId) {
+              this.#markTaint(mcpBotId, { kind: "app", label: `the ${toolCall.server} tool server` });
+            }
             client.respond(
               request.id,
               verdict.allowed
@@ -4060,6 +4265,18 @@ ${carryOver}`
         }
       }
       this.#emitError("server_request_failed", error);
+    }
+  }
+
+  /** The address of the coworker's tab a browser call reads, when known. */
+  #browserTabUrl(params: DynamicToolCallParams): string | null {
+    try {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const tabId = getString(args, "tabId") ?? getString(args, "pageId");
+      const tab = tabId ? this.#browser.listTabs().find((candidate) => candidate.id === tabId) : null;
+      return tab?.url ?? null;
+    } catch {
+      return null;
     }
   }
 
@@ -5751,6 +5968,10 @@ ${carryOver}`
             this.#markContextCompacted(threadId);
           }
           return;
+        }
+        // The runtime's own web search brings search results into the turn.
+        if (item.type === "webSearch" && notification.method === "item/completed") {
+          this.#markTaint(botId, { kind: "web", label: "web search results" });
         }
         this.#applyItem(
           botId,
@@ -7962,6 +8183,17 @@ const TASK_GRANT_CATEGORIES = new Set<string>([
  * The task an approval covers: same coworker, same kind of step, same site, and the same owner
  * instruction (a new instruction is a new task). Null when every action must ask on its own.
  */
+/** Claude tools that run a command (taint-guard: "commands"). MCP tools are not commands. */
+const CLAUDE_COMMAND_TOOLS = new Set(["Bash", "BashOutput", "KillShell"]);
+/** Browser tools whose result carries the page's content into the turn. */
+const BROWSER_READ_TOOLS = new Set(["snapshot", "act", "screenshot"]);
+
+/** "mcp__notes__search" → "the notes tool server". */
+function mcpServerLabel(toolName: string): string {
+  const server = toolName.split("__")[1]?.trim();
+  return server ? `the ${server.slice(0, 60)} tool server` : "a tool server";
+}
+
 export function taskGrantKey(
   request: PermissionRequest,
   ownerInstruction: string | null,
