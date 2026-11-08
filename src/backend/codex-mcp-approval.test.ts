@@ -22,6 +22,24 @@ describe("Codex MCP tool approval", () => {
     ).toEqual({ server: "sim-tools", tool: "add", input: { a: 1, b: 2 } });
   });
 
+  it("reads the tool name from the question when Codex leaves tool_name out", () => {
+    expect(
+      codexMcpToolApproval({
+        threadId: "t1",
+        serverName: "sim-tools",
+        mode: "form",
+        message: 'Allow the sim-tools MCP server to run tool "secret_word"?',
+        _meta: {
+          codex_approval_kind: "mcp_tool_call",
+          persist: ["session", "always"],
+          tool_description: "Returns the word",
+          tool_params: {},
+          tool_params_display: [],
+        },
+      }),
+    ).toEqual({ server: "sim-tools", tool: "secret_word", input: {} });
+  });
+
   it("leaves a real form from a server alone", () => {
     expect(
       codexMcpToolApproval({ serverName: "x", mode: "form", message: "Your name?", _meta: null }),
