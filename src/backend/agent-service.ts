@@ -64,6 +64,7 @@ import {
   type MessageSearchHit,
   modelWireId,
   PROVIDER_LABELS,
+  providerFeatureId,
   providerForModel,
   type QueueDelivery,
   type SaveInstructionsInput,
@@ -574,6 +575,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #probedProviders = new Set<AgentProvider>();
   /** Settings > Features: start only the AIs coworkers use (on by default). */
   #lazyProviderStart: () => boolean = () => true;
+  /** Settings > Features: engines that ship switched off are only offered while switched on. */
+  #featureOn: (featureId: string) => boolean = () => false;
   #claudeIdleClose: () => boolean = () => true;
   #assignments: ResourceAssignmentStore | null = null;
   /** Turns already warned that the watchdog is close (one warning per turn). */
@@ -909,7 +912,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         ACP_AGENT_PROVIDERS.map((provider) => [provider, () => resolveAcpAgentCli(provider)]),
       ) as Record<AcpAgentProviderId, () => Promise<AcpCliInfo>>),
     };
-    for (const provider of this.#lazyProviderStart() ? this.#wantedProviders() : AGENT_PROVIDERS) {
+    for (const provider of this.#lazyProviderStart()
+      ? this.#wantedProviders()
+      : this.#offeredProviders()) {
       if (this.#stopping) return;
       // Busy only matters for a running provider (a restart would cut its turns). One that is
       // not connected, e.g. signed out, has no turns: it was skipped whenever any coworker was
@@ -2057,13 +2062,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
     }
     const lazy = this.#lazyProviderStart();
-    const wanted = lazy ? this.#wantedProviders() : AGENT_PROVIDERS;
+    const wanted = lazy ? this.#wantedProviders() : this.#offeredProviders();
     await this.#connect("starting", wanted);
     if (lazy && this.#clients.size === 0 && !this.#stopping) {
       // None of the AIs the team uses is installed or signed in: look for any AI that is, so a
       // fresh install still lands on the first one available (the bundled free model).
-      for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
-      const rest = AGENT_PROVIDERS.filter((provider) => !wanted.includes(provider));
+      const offered = this.#offeredProviders();
+      for (const provider of offered) this.#probedProviders.add(provider);
+      const rest = offered.filter((provider) => !wanted.includes(provider));
       if (rest.length) await this.#connect("starting", rest);
     }
     this.#modelRefresh.start();
@@ -2072,6 +2078,19 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** Lets the app switch lazy AI start off (Settings > Features). */
   configureLazyProviderStart(enabled: () => boolean): void {
     this.#lazyProviderStart = enabled;
+  }
+
+  /** Settings > Features: engines behind a switch (SWITCHED_PROVIDERS) are offered only while on. */
+  configureProviderSwitches(isEnabled: (featureId: string) => boolean): void {
+    this.#featureOn = isEnabled;
+  }
+
+  /** Every provider this build offers right now: switched-off engines are left out entirely. */
+  #offeredProviders(): AgentProvider[] {
+    return AGENT_PROVIDERS.filter((provider) => {
+      const featureId = providerFeatureId(provider);
+      return !featureId || this.#featureOn(featureId);
+    });
   }
 
   /** Lets the app switch closing idle Claude processes off (Settings > Features). */
@@ -2106,7 +2125,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    */
   #wantedProviders(): AgentProvider[] {
     const used = new Set(this.#store.list().map(providerForBot));
-    return AGENT_PROVIDERS.filter(
+    return this.#offeredProviders().filter(
       (provider) =>
         provider === this.#preferredProvider ||
         used.has(provider) ||
@@ -2122,14 +2141,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    */
   async probeProviders(): Promise<void> {
     if (!this.#initialized || this.#stopping) return;
-    const unchecked = AGENT_PROVIDERS.filter(
+    const offered = this.#offeredProviders();
+    const unchecked = offered.filter(
       (provider) =>
         !this.#probedProviders.has(provider) &&
         !this.#clients.has(provider) &&
         !this.#providerStarts.has(provider) &&
         !this.#dormantClients.has(provider),
     );
-    for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
+    for (const provider of offered) this.#probedProviders.add(provider);
     const fresh = unchecked.filter((provider) =>
       [null, "not-started"].includes(this.#providerState(provider)),
     );
@@ -2810,8 +2830,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   async #connect(
     phase: "starting" | "restarting",
-    requestedProviders: readonly AgentProvider[],
+    requested: readonly AgentProvider[],
   ): Promise<void> {
+    // An engine whose Settings > Features switch is off is never started or listed.
+    const offered = this.#offeredProviders();
+    const requestedProviders = requested.filter((provider) => offered.includes(provider));
     const hadClients = this.#clients.size > 0;
     // Deliveries that a previous process, or a provider that went away, left unresolved. Only
     // these are settled at the end; anything that starts while the providers come up is live.
@@ -5387,7 +5410,7 @@ ${carryOver}`
       }),
     );
     if (this.#stopping) return;
-    this.#models = AGENT_PROVIDERS.flatMap(
+    this.#models = this.#offeredProviders().flatMap(
       (provider) =>
         this.#providerCatalogs.get(provider) ??
         FALLBACK_MODELS.filter((model) => providerForModel(model.id) === provider),

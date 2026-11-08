@@ -317,6 +317,7 @@ export const ACP_AGENT_PROVIDERS = [
   "goose",
   "vibe",
   "kiro",
+  "openmodel",
 ] as const;
 export type AcpAgentProviderId = (typeof ACP_AGENT_PROVIDERS)[number];
 
@@ -328,6 +329,19 @@ export const AGENT_PROVIDERS = [
   ...ACP_AGENT_PROVIDERS,
 ] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
+
+/**
+ * Engines that ship switched off: each is listed, probed and offered only while its Settings >
+ * Features switch is on. Off, Sahkarmi behaves exactly as if the engine did not exist.
+ */
+export const SWITCHED_PROVIDERS: Partial<Record<AgentProviderId, string>> = {
+  openmodel: "engine-open-model",
+};
+
+/** The feature switch an engine needs, or null for engines that are always offered. */
+export function providerFeatureId(provider: AgentProviderId): string | null {
+  return SWITCHED_PROVIDERS[provider] ?? null;
+}
 
 export function isAcpAgentProvider(value: unknown): value is AcpAgentProviderId {
   return typeof value === "string" && ACP_AGENT_PROVIDERS.includes(value as AcpAgentProviderId);
@@ -354,6 +368,7 @@ export const PROVIDER_LABELS: Record<AgentProviderId, string> = {
   goose: "Goose",
   vibe: "Mistral Vibe",
   kiro: "Kiro",
+  openmodel: "Open-model engine",
 };
 export type AgentProviderState =
   | "not-started"

@@ -18,6 +18,7 @@ import {
   ACP_AGENT_SPECS,
   type AcpAgentSpec,
   findAcpAgentExecutable,
+  notInstalledMessage,
   signInCommandFor,
 } from "./acp-agents";
 import type { AcpAgentClient } from "./acp-client";
@@ -249,6 +250,8 @@ export class ProviderSetup extends EventEmitter<ProviderSetupEvents> {
     const label = PROVIDER_LABELS[id];
     let executable = await findAcpAgentExecutable(spec);
     if (!executable) {
+      // A program the owner installs themselves is never installed for them.
+      if (spec.installHint) throw new Error(notInstalledMessage(spec, label));
       if (!spec.install) {
         throw new Error(
           `${label} is not installed. Install it from its website, then click Connect again.`,

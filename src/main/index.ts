@@ -34,6 +34,7 @@ import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
 import { createCoworkerBrowser } from "../backend/browser-factory";
+import { configureBrowserGuards } from "../backend/browser-guard";
 import type { CoworkerBrowser } from "../backend/browser-host";
 import { browserPagesFromAudit } from "../backend/browser-state";
 import { BusinessStore } from "../backend/business-store";
@@ -2257,6 +2258,11 @@ if (!hasSingleInstanceLock) {
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
       service.configureLazyProviderStart(() => features.isEnabled("lean-runtime"));
+      service.configureProviderSwitches((id) => features.isEnabled(id));
+      configureBrowserGuards({
+        hideSecrets: () => features.isEnabled("browser-hide-secrets"),
+        actionMemory: () => features.isEnabled("browser-action-memory"),
+      });
       service.configureClaudeIdleClose(() => features.isEnabled("lean-runtime"));
       service.configureDeltaUpdates(() => features.isEnabled("chat-delta-updates"));
       // Knowledge Bases run in a utility process (indexing never blocks the window); the host

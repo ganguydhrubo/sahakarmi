@@ -5,11 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ACP_AGENT_PROVIDERS,
+  ACP_AGENT_PROVIDERS as ALL_ACP_AGENT_PROVIDERS,
   type AgentEvent,
   type ConversationSnapshot,
   DEFAULT_ENGINE_SETTINGS,
+  providerFeatureId,
 } from "../shared/ipc";
+
+/** The ACP engines offered with every Settings > Features switch at its default. */
+const ACP_AGENT_PROVIDERS = ALL_ACP_AGENT_PROVIDERS.filter((id) => !providerFeatureId(id));
 import {
   AgentService,
   isNoisyDiagnostic,
@@ -1556,6 +1560,24 @@ describe.sequential("AgentService", () => {
     expect((await store.getOrCreate("chief")).threadId).not.toBe(
       (await store.getOrCreate("sales-outbound")).threadId,
     );
+  });
+
+  it("offers a switched-off engine nowhere, and checks it once its switch is on", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser(), null);
+    let on = false;
+    service.configureProviderSwitches((id) => on && id === "engine-open-model");
+    await service.initialize();
+    await service.probeProviders();
+    const ids = () => (service?.getStatus().providers ?? []).map((provider) => provider.id);
+    expect(ids()).not.toContain("openmodel");
+    expect(service.listModels().some((model) => model.id.startsWith("openmodel:"))).toBe(false);
+    on = true;
+    await service.probeProviders();
+    await waitFor(async () => ids().includes("openmodel"));
+    expect(service.getStatus().providers?.find((p) => p.id === "openmodel")).toMatchObject({
+      state: "not-installed",
+    });
   });
 
   it("updates the active account and new-agent defaults with the preferred provider", async () => {
