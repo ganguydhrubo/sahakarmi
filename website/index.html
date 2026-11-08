@@ -374,6 +374,21 @@
     .card .tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--saffron-ink); margin-bottom: 6px; }
     .team-card { display: flex; gap: 14px; align-items: flex-start; }
     .avatar { width: 44px; height: 44px; border-radius: 14px; flex: none; display: grid; place-items: center; font: 800 18px var(--font-display); color: #fff; }
+    .crew-stage { position: relative; aspect-ratio: 16 / 7; min-height: 300px; border-radius: var(--radius); overflow: hidden; background: radial-gradient(120% 90% at 50% 20%, #f6efe3 0%, #eadfcb 70%, #ddcfb6 100%); box-shadow: var(--shadow); }
+    .crew-stage canvas, .crew-stage img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .crew-stage img { object-fit: cover; }
+    .crew-stage.is-live img { display: none; }
+    .crew-stage canvas { cursor: pointer; }
+    @media (max-width: 639px) { .crew-stage { aspect-ratio: 1 / 1; min-height: 0; } }
+    .crew-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; list-style: none; padding: 0; }
+    .crew-chip { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card); color: var(--text); font: inherit; cursor: pointer; text-align: left; min-height: 44px; }
+    .crew-chip:hover { border-color: var(--c); }
+    .crew-chip:focus-visible, .crew-walk:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    .crew-chip i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); flex: none; }
+    .crew-chip b { font-family: var(--font-display); }
+    .crew-chip span { color: var(--text-2); font-size: 14px; }
+    .crew-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 14px; color: var(--muted); font-size: 14px; }
+    .crew-walk[aria-pressed="true"] { border-color: var(--saffron); }
 
     /* Compare table */
     .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
@@ -1250,6 +1265,31 @@
       </div>
     </section>
 
+    <!-- 3D coworkers -->
+    <section id="crew" aria-labelledby="crew-h">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow" data-i18n="crewEyebrow">Meet the crew</p>
+          <h2 id="crew-h" data-i18n="crewH2">Five coworker buddies, always on duty.</h2>
+          <p class="lead" data-i18n="crewLead">Tap a coworker to say hello. Each one is a real 3D character with its own walk, wave and glow.</p>
+        </div>
+        <div class="crew-stage" id="crew-stage">
+          <img src="/assets/3d/crew-poster.webp" width="1200" height="676" loading="lazy" decoding="async" alt="Five Sahkarmi 3D coworker robots on glowing pedestals: Startup, Publisher, Outreach, Mailer and WhatsApp">
+        </div>
+        <ul class="crew-chips">
+          <li><button type="button" class="crew-chip" data-crew="startup" style="--c:#3cc8ff"><i></i><b>Startup</b><span data-i18n="crewStartupP">Plans your launch and builds the first version.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="publisher" style="--c:#ff6fb1"><i></i><b>Publisher</b><span data-i18n="crewPublisherP">Writes posts and publishes them after you approve.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="outreach" style="--c:#a86bff"><i></i><b>Outreach</b><span data-i18n="crewOutreachP">Finds leads and sends friendly first messages.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="mailer" style="--c:#ffb02e"><i></i><b>Mailer</b><span data-i18n="crewMailerP">Drafts and sends your emails and follow-ups.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="whatsapp" style="--c:#36e27a"><i></i><b>WhatsApp</b><span data-i18n="crewWhatsappP">Answers customer chats on WhatsApp.</span></button></li>
+        </ul>
+        <div class="crew-bar">
+          <span data-i18n="crewHint">Tip: tap any robot in the picture to make it wave.</span>
+          <button type="button" class="btn btn-secondary btn-small crew-walk" id="crew-walk" aria-pressed="false"><span data-i18n="crewWalk">Walk / hover</span></button>
+        </div>
+      </div>
+    </section>
+
     <!-- AI providers -->
     <section id="providers" aria-labelledby="ai-h">
       <div class="wrap">
@@ -1775,6 +1815,16 @@
         devP: "Code: scripts, spreadsheets, small tools and fixes.",
         taraP: "Ops: checklists, scheduling and day-to-day coordination.",
         kabirP: "Security: reviews risky requests and keeps an eye on permissions.",
+        crewEyebrow: "Meet the crew",
+        crewH2: "Five coworker buddies, always on duty.",
+        crewLead: "Tap a coworker to say hello. Each one is a real 3D character with its own walk, wave and glow.",
+        crewHint: "Tip: tap any robot in the picture to make it wave.",
+        crewWalk: "Walk / hover",
+        crewStartupP: "Plans your launch and builds the first version.",
+        crewPublisherP: "Writes posts and publishes them after you approve.",
+        crewOutreachP: "Finds leads and sends friendly first messages.",
+        crewMailerP: "Drafts and sends your emails and follow-ups.",
+        crewWhatsappP: "Answers customer chats on WhatsApp.",
         aiEyebrow: "AI providers",
         aiH2: "15 AIs. Free ones built in. Yours when you want.",
         aiLead: "Sahkarmi finds the AI tools installed on your computer and reuses their existing login. It never copies your tokens, and your password is only ever typed on the provider's own page.",
@@ -2185,6 +2235,16 @@
         devP: "कोड: स्क्रिप्ट, स्प्रेडशीट, छोटे टूल और सुधार.",
         taraP: "ऑप्स: चेकलिस्ट, शेड्यूल और रोज़ का तालमेल.",
         kabirP: "सिक्योरिटी: जोखिम वाले अनुरोधों की जाँच और अनुमतियों पर नज़र.",
+        crewEyebrow: "मिलिए टीम से",
+        crewH2: "पाँच सहकर्मी साथी, हमेशा काम पर.",
+        crewLead: "किसी सहकर्मी पर टैप करके हैलो कहें. हर एक असली 3D किरदार है, अपनी चाल, हाथ हिलाने और चमक के साथ.",
+        crewHint: "सुझाव: तस्वीर में किसी भी रोबोट पर टैप करें, वह हाथ हिलाएगा.",
+        crewWalk: "चलें / उड़ें",
+        crewStartupP: "आपके लॉन्च की योजना बनाता है और पहला वर्शन तैयार करता है.",
+        crewPublisherP: "पोस्ट लिखता है और आपकी मंज़ूरी के बाद प्रकाशित करता है.",
+        crewOutreachP: "लीड ढूँढता है और दोस्ताना पहले संदेश भेजता है.",
+        crewMailerP: "आपके ईमेल और फ़ॉलो-अप लिखता और भेजता है.",
+        crewWhatsappP: "WhatsApp पर ग्राहकों की बातों का जवाब देता है.",
         aiEyebrow: "AI प्रदाता",
         aiH2: "15 AI. मुफ़्त वाले पहले से. आपके अपने, जब चाहें.",
         aiLead: "सहकर्मी आपके कंप्यूटर पर इंस्टॉल AI टूल ढूँढकर उनका मौजूदा लॉगिन इस्तेमाल करता है. आपके टोकन कभी कॉपी नहीं करता, और पासवर्ड सिर्फ़ प्रदाता के अपने पेज पर टाइप होता है.",
@@ -2541,5 +2601,7 @@
       }).observe(heroButton);
     }
   </script>
+  <script type="importmap">{ "imports": { "three": "/assets/3d/three.module.min.js" } }</script>
+  <script type="module" src="/assets/crew.js"></script>
 </body>
 </html>
