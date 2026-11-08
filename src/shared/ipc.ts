@@ -159,6 +159,8 @@ export const IPC_CHANNELS = {
   orchestratorSetEngineSettings: "orchestrator:set-engine-settings",
   orchestratorPerformance: "orchestrator:performance",
   orchestratorResourceStatus: "orchestrator:resource-status",
+  orchestratorGetBudgets: "orchestrator:get-budgets",
+  orchestratorSetBudgets: "orchestrator:set-budgets",
   assignmentsOverview: "assignments:overview",
   assignmentsSet: "assignments:set",
   agentRerunInterrupted: "agent:rerun-interrupted",
@@ -2076,9 +2078,28 @@ export interface OrchestratorDesktopApi {
   cancelRun: (runId: string) => Promise<OrchestratorRun | null>;
   getEngineSettings: () => Promise<EngineSettings>;
   setEngineSettings: (input: Partial<EngineSettings>) => Promise<EngineSettings>;
+  /** Work limits (Settings > Features). Optional: older preloads do not have them. */
+  getBudgets?: () => Promise<BudgetSettings>;
+  setBudgets?: (input: SetBudgetInput) => Promise<BudgetSettings>;
   performance: () => Promise<PerformanceSummary>;
   /** Live memory use, the owner's limit and a recommendation (Settings > Features). */
   resourceStatus: () => Promise<ResourceStatus>;
+}
+
+/** Work limits ("budget-stop"). A missing entry or null means no limit. */
+export interface BudgetSettings {
+  /** Coworker id → replies it may start in one day. */
+  coworkers: Record<string, number>;
+  /** Steps (task messages) one team run may send. */
+  teamRunSteps: number | null;
+  /** Replies started today by coworkers that have a limit. */
+  usedToday: Record<string, number>;
+}
+
+export interface SetBudgetInput {
+  /** Coworker id → new limit, or null to remove it. */
+  coworkers?: Record<string, number | null>;
+  teamRunSteps?: number | null;
 }
 
 /** How hard the agent engine may work this PC. Owner-editable in Settings > Features. */

@@ -293,6 +293,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetEngineSettings, input),
     performance: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPerformance),
     resourceStatus: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResourceStatus),
+    getBudgets: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetBudgets),
+    setBudgets: (input) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetBudgets, input),
   },
   knowledge: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),

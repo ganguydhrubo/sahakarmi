@@ -31,6 +31,8 @@ export interface OrchestratorEngineOptions {
   planner?: (workspaceId: string | null) => string | null;
   /** How long the CEO may take to plan (tests shorten it). */
   planTimeoutMs?: number;
+  /** Work limit: most task messages one team run may send (null: none). */
+  stepBudget?: () => number | null;
   /** Flag cross-model-review, read for every finished task. */
   review?: () => boolean;
 }
@@ -90,6 +92,7 @@ export class AdaptiveOrchestrator {
             retryGraceMs: options.retryGraceMs,
             checkpoints: options.checkpoints?.() ?? "sqlite",
             review: options.review,
+            stepBudget: options.stepBudget,
           }),
       );
       this.#engine.catch(() => {

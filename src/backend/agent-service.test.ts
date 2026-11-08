@@ -24,6 +24,7 @@ import {
   taskGrantKey,
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
+import { BudgetStore } from "./budget-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost, DownloadRequest } from "./browser-host";
 import { CustomSkills } from "./custom-skills";
@@ -682,6 +683,40 @@ describe.sequential("AgentService", () => {
       await waitFor(() => service?.listApprovals().length === 1);
       expect(service?.listApprovals()[0]?.provenance).toBeUndefined();
     });
+  });
+
+  it("a 10-reply daily limit stops the coworker after reply 10, with a notice", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const budgets = new BudgetStore(join(root, "user-data"));
+    await budgets.initialize();
+    await budgets.set({ coworkers: { "arjun-research": 10 } });
+    let enabled = true;
+    service.configureSafety({ budget: () => (enabled ? budgets : null) });
+    await service.initialize();
+    const notices: string[] = [];
+    service.on("event", (event: AgentEvent) => {
+      if (event.type === "notice" && event.code === "budget_limit") notices.push(event.message);
+    });
+    for (let index = 1; index <= 11; index += 1) {
+      await service.sendMessage({ botId: "arjun-research", text: `Task number ${index}` });
+    }
+    const completed = () =>
+      service?.listQueue("arjun-research").deliveries.filter((d) => d.status === "completed")
+        .length ?? 0;
+    await waitFor(() => completed() === 10 && notices.length > 0, 30_000);
+    // The 11th waits in a paused queue; nothing was cut short.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(completed()).toBe(10);
+    const queue = service.listQueue("arjun-research");
+    expect(queue.paused).toBe(true);
+    expect(queue.deliveries.filter((d) => d.status === "queued")).toHaveLength(1);
+    expect(notices[0]).toMatch(/limit of 10 replies today.*Settings > Features > Work limits/);
+    // Switched off (or the limit raised): it goes on.
+    enabled = false;
+    service.budgetsChanged();
+    await waitFor(() => completed() === 11, 30_000);
   });
 
   it("a card says who started the request (approval provenance)", async () => {

@@ -438,6 +438,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #taintAwareGrants = new Set<string>();
   #taintGuardEnabled: () => boolean = () => false;
   #provenanceEnabled: () => boolean = () => false;
+  #budget: () => CoworkerBudget | null = () => null;
+  /** Coworkers stopped by a work limit, and those whose queue the limit paused. */
+  readonly #budgetHeld = new Set<string>();
+  readonly #budgetPaused = new Set<string>();
+  readonly #budgetNoticeAt = new Map<string, number>();
   /** Messages the owner sent from their phone, so a card can say so. Bounded; memory only. */
   readonly #remoteMessageIds = new Set<string>();
   /**
@@ -1584,9 +1589,70 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    * Phase 1 safety switches (Settings > Features). Not configured (tests, embedders): all off,
    * which is exactly the behaviour before they existed.
    */
-  configureSafety(options: { taintGuard?: () => boolean; provenance?: () => boolean }): void {
+  configureSafety(options: {
+    taintGuard?: () => boolean;
+    provenance?: () => boolean;
+    /** Work limits: null (or the switch off) means none, as before. */
+    budget?: () => CoworkerBudget | null;
+  }): void {
     if (options.taintGuard) this.#taintGuardEnabled = options.taintGuard;
     if (options.provenance) this.#provenanceEnabled = options.provenance;
+    if (options.budget) this.#budget = options.budget;
+  }
+
+  /** Limits changed: coworkers held by a limit may go on if it was raised or removed. */
+  budgetsChanged(): void {
+    for (const botId of [...this.#budgetHeld]) {
+      this.#budgetHeld.delete(botId);
+      if (this.#budgetPaused.delete(botId)) {
+        void this.setQueuePaused(botId, false).catch(() => undefined);
+      } else {
+        this.#scheduleDrain(botId);
+      }
+    }
+  }
+
+  /**
+   * The coworker reached its daily reply limit: it stops before the next reply (a running one is
+   * never cut short), its queue pauses and the chat says why and how to raise the limit.
+   * Any error inside falls back to no limit.
+   */
+  #budgetHold(botId: string): boolean {
+    try {
+      const budget = this.#budget();
+      const hit = budget?.coworkerLimitReached(botId);
+      if (!hit) return false;
+      this.#budgetHeld.add(botId);
+      if (!this.#mailbox.listQueue(botId).paused) {
+        this.#budgetPaused.add(botId);
+        void this.#mailbox
+          .setPaused(botId, true)
+          .then(() => this.#emitQueue(botId))
+          .catch(() => undefined);
+      }
+      const now = Date.now();
+      if (now - (this.#budgetNoticeAt.get(botId) ?? 0) >= 60_000) {
+        this.#budgetNoticeAt.set(botId, now);
+        const name = this.#store.list().find((bot) => bot.id === botId)?.name ?? "This coworker";
+        this.#emit({
+          type: "notice",
+          botId,
+          code: "budget_limit",
+          message: `${name} reached its limit of ${hit.limit} replies today, so it paused before the next one. Waiting messages stay in its queue. To go on, raise or clear the limit in Settings > Features > Work limits; it also resets tomorrow.`,
+        });
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  #recordBudgetTurn(botId: string): void {
+    try {
+      this.#budget()?.recordTurn(botId);
+    } catch {
+      // Counting is best effort; a failure never stops a reply.
+    }
   }
 
   /**
@@ -5148,6 +5214,7 @@ ${carryOver}`
       if (snapshot?.activeTurnId) return;
       const context = this.#mailbox.nextQueued(botId);
       if (!context) return;
+      if (this.#budgetHold(botId)) return;
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       // A provider waiting for a sign-in: the message stays queued and starts after the owner
       // signs in (the next provider check or message brings the provider back).
@@ -5178,6 +5245,7 @@ ${carryOver}`
         return;
       }
       await this.#restoreOwnRuntime(botId, context);
+      this.#recordBudgetTurn(botId);
       await this.#startDelivery(context);
     } finally {
       this.#drainingBots.delete(botId);
@@ -8171,6 +8239,23 @@ export function declineKey(key: string, ownerInstruction: string | null): string
 ${ownerInstruction ?? ""}`;
 }
 
+/** The part of BudgetStore the service uses (work limits, "budget-stop"). */
+export interface CoworkerBudget {
+  coworkerLimitReached(botId: string): { limit: number; used: number } | null;
+  recordTurn(botId: string): void;
+}
+
+/** Claude tools that run a command (taint-guard: "commands"). MCP tools are not commands. */
+const CLAUDE_COMMAND_TOOLS = new Set(["Bash", "BashOutput", "KillShell"]);
+/** Browser tools whose result carries the page's content into the turn. */
+const BROWSER_READ_TOOLS = new Set(["snapshot", "act", "screenshot"]);
+
+/** "mcp__notes__search" → "the notes tool server". */
+function mcpServerLabel(toolName: string): string {
+  const server = toolName.split("__")[1]?.trim();
+  return server ? `the ${server.slice(0, 60)} tool server` : "a tool server";
+}
+
 /** Steps that one approval may cover for a whole task; money and account changes never are. */
 const TASK_GRANT_CATEGORIES = new Set<string>([
   "publication",
@@ -8183,17 +8268,6 @@ const TASK_GRANT_CATEGORIES = new Set<string>([
  * The task an approval covers: same coworker, same kind of step, same site, and the same owner
  * instruction (a new instruction is a new task). Null when every action must ask on its own.
  */
-/** Claude tools that run a command (taint-guard: "commands"). MCP tools are not commands. */
-const CLAUDE_COMMAND_TOOLS = new Set(["Bash", "BashOutput", "KillShell"]);
-/** Browser tools whose result carries the page's content into the turn. */
-const BROWSER_READ_TOOLS = new Set(["snapshot", "act", "screenshot"]);
-
-/** "mcp__notes__search" → "the notes tool server". */
-function mcpServerLabel(toolName: string): string {
-  const server = toolName.split("__")[1]?.trim();
-  return server ? `the ${server.slice(0, 60)} tool server` : "a tool server";
-}
-
 export function taskGrantKey(
   request: PermissionRequest,
   ownerInstruction: string | null,
