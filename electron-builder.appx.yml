@@ -1,0 +1,123 @@
+appId: in.sahkarmi.desktop
+productName: Sahkarmi
+asar: true
+# Claude Code ships with the Claude Agent SDK as a native binary; it must sit outside the
+# asar archive to be executable.
+asarUnpack:
+  - node_modules/@anthropic-ai/claude-agent-sdk-*/**
+  # sqlite-vec is loaded by SQLite with the OS loader, which cannot read inside the asar.
+  - node_modules/sqlite-vec-windows-x64/**
+artifactName: ${productName}-${version}-${arch}.${ext}
+electronUpdaterCompatibility: ">=2.16"
+electronFuses:
+  resetAdHocDarwinSignature: true
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+publish:
+  provider: github
+  owner: ganguydhrubo
+  repo: sahakarmi
+files:
+  - out/**/*
+  - package.json
+  - LICENSE
+  - NOTICE
+  # The team-run graph library ships its code only; types and source maps are a developer's.
+  - "!node_modules/@langchain/**/*.d.ts"
+  - "!node_modules/@langchain/**/*.d.cts"
+  - "!node_modules/@langchain/**/*.map"
+  - "!node_modules/langsmith/**/*.d.ts"
+  - "!node_modules/langsmith/**/*.d.cts"
+  - "!node_modules/langsmith/**/*.map"
+extraResources:
+  - from: node_modules/electron/dist/LICENSE
+    to: licenses/Electron-LICENSE
+  - from: node_modules/electron/dist/LICENSES.chromium.html
+    to: licenses/LICENSES.chromium.html
+  # Bundled OpenCode (MIT): free, no-login models. Fetched by `bun run fetch:opencode`.
+  - from: build/opencode/${os}-${arch}
+    to: bin
+  - from: resources/licenses
+    to: licenses
+  # Window and taskbar icon, set at runtime so the taskbar never falls back to a generic icon.
+  - from: build/icon.ico
+    to: icons/icon.ico
+  - from: build/icons/512x512.png
+    to: icons/icon.png
+directories:
+  output: dist
+mac:
+  category: public.app-category.productivity
+  minimumSystemVersion: "12.0"
+  notarize: true
+  hardenedRuntime: true
+  icon: build/icon.icns
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  darkModeSupport: true
+  extendInfo:
+    NSMicrophoneUsageDescription: Sahkarmi records voice notes for your coworkers only when you press record.
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+win:
+  icon: build/icon.ico
+  # Windows builds are intentionally unsigned until release signing is configured.
+  signExecutable: false
+  verifyUpdateCodeSignature: false
+  target:
+    - target: appx
+      arch:
+        - x64
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Sahkarmi
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  uninstallDisplayName: Sahkarmi
+  # Asks on uninstall (never on update) whether to delete the owner data too; default keeps it.
+  include: build/installer.nsh
+  deleteAppDataOnUninstall: false
+linux:
+  icon: build/icons
+  category: Office
+  target:
+    - target: AppImage
+      arch:
+        - x64
+dmg:
+  title: ${productName} ${version}
+  backgroundColor: "#0F1220"
+  contents:
+    - x: 145
+      y: 180
+    - x: 395
+      y: 180
+      type: link
+      path: /Applications
+
+# Microsoft Store package (MSIX/appx): Microsoft signs it after upload, so no certificate is needed.
+appx:
+  identityName: Dhrubo.Sahkarmi
+  publisher: CN=AC5018AB-212B-4344-8711-542293D00C55
+  publisherDisplayName: Dhrubo
+  applicationId: Sahkarmi
+  backgroundColor: "#0F1220"
+  showNameOnTiles: true
+  minVersion: 10.0.17763.0
+  maxVersionTested: 10.0.26100.0
+  languages:
+    - en-US

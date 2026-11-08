@@ -1003,7 +1003,8 @@ async function readLog(): Promise<Array<Record<string, unknown>>> {
 }
 
 async function waitFor(check: () => unknown): Promise<void> {
-  const deadline = Date.now() + 10_000;
+  // Generous for a busy PC or CI runner; a wait that succeeds returns at once.
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 20));

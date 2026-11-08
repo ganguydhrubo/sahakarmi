@@ -3075,9 +3075,10 @@ async function protocolMessages(): Promise<Array<Record<string, unknown>>> {
 
 async function waitFor(
   check: () => boolean | undefined | Promise<boolean | undefined>,
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 ): Promise<void> {
-  // Generous: the suite runs test files in parallel, so CI machines can be slow.
+  // Generous: the suite runs test files in parallel, so a busy PC or CI runner can take well
+  // over 10 s to start a fake server. A wait that succeeds returns at once, so this costs nothing.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await check()) return;
