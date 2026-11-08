@@ -1810,6 +1810,7 @@ function toBotProfile(stored: BotSummary): BotProfile {
           : accentForBot(stored.id),
     avatarShape: stored.avatarShape ?? "blob",
     avatarColor: stored.avatarColor ?? "orange",
+    avatarModel: stored.avatarModel ?? null,
     time: stored.updatedAt ? formatTime(stored.updatedAt) : "now",
     preview: cleanPreview(stored.preview),
     updatedAt: stored.updatedAt,

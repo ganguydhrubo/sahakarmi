@@ -9,6 +9,7 @@ import {
   type BotAvatarShape,
   type BotTemplateRef,
   type BranchOrigin,
+  type CrewAvatar,
   type KnowledgeCitation,
   type MessageReaction,
   type PendingBotRuntime,
@@ -59,6 +60,7 @@ export interface BotProfile {
   accent: BotAccent;
   avatarShape: BotAvatarShape;
   avatarColor: BotAvatarColor;
+  avatarModel?: CrewAvatar | null;
   time: string;
   preview: string;
   updatedAt?: string | null;

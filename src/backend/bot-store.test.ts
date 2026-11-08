@@ -205,6 +205,25 @@ describe("BotStore", () => {
     });
   });
 
+  it("keeps a 3D crew robot as the face and drops it again", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
+    temporaryRoots.push(root);
+    const userData = join(root, "user-data");
+    const store = new BotStore(userData, join(root, "home"));
+    await store.initialize();
+    await store.getOrCreate("chief");
+
+    await store.updateBot({ botId: "chief", avatarModel: "mailer" });
+    const restored = new BotStore(userData, join(root, "home"));
+    await restored.initialize();
+    expect(restored.list().find((bot) => bot.id === "chief")?.avatarModel).toBe("mailer");
+
+    await restored.updateBot({ botId: "chief", avatarModel: null });
+    expect(restored.list().find((bot) => bot.id === "chief")?.avatarModel).toBeNull();
+    // Coworkers saved before robots existed load unchanged, with the drawn shape.
+    expect(restored.list().find((bot) => bot.id !== "chief")?.avatarModel).toBeUndefined();
+  });
+
   it("starts a new thread when the model changes provider", async () => {
     const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);

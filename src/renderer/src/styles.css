@@ -1190,6 +1190,45 @@ textarea {
   overflow: visible;
 }
 
+/* 3D crew robot avatar: animated idle loop, wave loop while the coworker works, still frame for
+   reduced motion. Full body in miniature, standing on a soft halo of its status colour. */
+.crew-avatar {
+  position: relative;
+  background: radial-gradient(
+    circle at 50% 88%,
+    color-mix(in srgb, var(--crew-halo) 42%, transparent) 0 26%,
+    transparent 58%
+  );
+}
+
+.crew-avatar img {
+  position: absolute;
+  inset: -24%;
+  width: 148%;
+  height: 148%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.crew-avatar .crew-avatar-wave {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .avatar-aura[data-aura="thinking"] .crew-avatar-idle,
+  .avatar-aura[data-aura="working"] .crew-avatar-idle,
+  .avatar-aura[data-aura="done"] .crew-avatar-idle {
+    visibility: hidden;
+  }
+
+  .avatar-aura[data-aura="thinking"] .crew-avatar-wave,
+  .avatar-aura[data-aura="working"] .crew-avatar-wave,
+  .avatar-aura[data-aura="done"] .crew-avatar-wave {
+    visibility: visible;
+  }
+}
+
 .agent-mark {
   width: 36.2px;
   height: 36.2px;
@@ -14955,4 +14994,147 @@ fieldset.memory-filters {
 
 .assignments-note {
   color: var(--warning);
+}
+
+/* 3D robot row in the avatar editor */
+.avatar-crew-grid {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+  padding: 12px 10px 4px;
+}
+
+.avatar-crew-grid legend {
+  padding: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.avatar-crew-choice {
+  display: grid;
+  place-items: center;
+  height: 46px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(var(--ink-rgb) / 0.72);
+}
+
+.avatar-crew-choice:hover {
+  background: rgb(var(--ink-rgb) / 0.065);
+}
+
+.avatar-crew-choice .crew-avatar {
+  width: 36px;
+  height: 36px;
+}
+
+.avatar-crew-none {
+  grid-column: 1 / -1;
+  height: 30px;
+  font-size: 12px;
+}
+
+/* "Meet the crew" stage in an empty chat */
+.crew-stage-card {
+  display: grid;
+  gap: 10px;
+  max-width: 640px;
+  margin: 8px 0 4px;
+}
+
+.crew-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.crew-stage-actions {
+  display: flex;
+  gap: 14px;
+}
+
+.crew-stage-canvas {
+  position: relative;
+  aspect-ratio: 16 / 6;
+  min-height: 170px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, #f6efe3 0%, #eadfcb 70%, #ddcfb6 100%);
+}
+
+.crew-stage-canvas canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.crew-stage-still {
+  position: absolute;
+  inset: 8% 6%;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+}
+
+.crew-stage-still img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.crew-stage-live .crew-stage-still {
+  display: none;
+}
+
+.crew-stage-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crew-stage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.14);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.crew-stage-chip i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--crew-halo);
+  box-shadow: 0 0 8px var(--crew-halo);
+}
+
+.crew-stage-chip:hover,
+.crew-stage-chip-selected {
+  border-color: var(--crew-halo);
+}
+
+.crew-stage-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.crew-stage-show {
+  justify-self: start;
+  margin: 4px 0;
+  font-size: 12.5px;
 }

@@ -184,6 +184,11 @@ export function HelpPanel(props: HelpPanelProps) {
               "helpTipBrowser",
               "helpTipPublishing",
               "helpTipDeleteWorkspace",
+              "helpTipAssign",
+              "helpTipMcp",
+              "helpTipMemory",
+              "helpTipErrors",
+              "helpTipCrew",
             ] as MessageKey[]
           }
         >

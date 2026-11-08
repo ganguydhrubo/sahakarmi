@@ -1,6 +1,17 @@
 /** Welcome card, Help panel, Getting started checklist and the Show me around tour. */
 export const onboardingEn = {
   helpTeamTitle: "Your team",
+  crewPickerLabel: "3D robot",
+  crewPickRobot: "Use the {name} robot",
+  crewPickShape: "Drawn shape",
+  crewStageTitle: "Meet the crew",
+  crewStageHint:
+    "Tap a robot to make it this coworker's face. It always moves a little and waves while it works.",
+  crewStageHide: "Hide the crew",
+  crewStageShow: "Show the 3D crew",
+  crewStageWalk: "Walk",
+  crewStageStop: "Stand still",
+  crewStageChosen: "{name} is now this coworker's face.",
   helpTipCeo:
     "CEO: open the workspace menu at the top left, choose Team and CEO, and pick a coworker. Give it a task; it hands out the work, collects the results and reports to you. It decides approvals only for the kinds you tick, for 24 hours.",
   helpTipTelegram:
@@ -11,6 +22,16 @@ export const onboardingEn = {
     "Posting: the first time a coworker posts to Facebook, Instagram or LinkedIn, you approve the account it is signed in to. After that it stops if a different account is signed in or the account cannot be confirmed. You can remove a tied account in Team and CEO.",
   helpTipDeleteWorkspace:
     "Delete a workspace: in Team and CEO, choose to move its coworkers or delete them too, then confirm. Files they saved stay on your computer.",
+  helpTipMemory:
+    "Memory limit: Settings > Features > Memory limit. Choose how much RAM Sahkarmi may use. It warns early, shows when the limit will be reached at the present pace, and makes new background work wait so your PC stays fast. Work already running is never stopped.",
+  helpTipAssign:
+    "Who can use what: Settings > Assignments lists every API, app, skill and MCP server, who has it, and whether it is ready to use or what is missing. Press Assign to give it to everyone, a workspace or chosen coworkers.",
+  helpTipMcp:
+    "Tool servers: add one in Settings > MCP servers and press Test server; it turns on only after the test passes. If a server breaks during a task, Sahkarmi leaves it out for a while, tells you which one, and sends your message again.",
+  helpTipErrors:
+    "When something fails, the message says in plain words what happened and what to do next, for example reconnect an app or try again later. Nothing technical is needed from you.",
+  helpTipCrew:
+    "3D robots: open a coworker's Settings, tap its picture and choose a robot. It moves all the time and waves while the coworker is busy. In an empty chat, tap a robot on the crew stage to give it to that coworker.",
   welcomeTitle: "Welcome to Sahkarmi",
   welcomeBody:
     "Your AI coworkers can help you work with information, use tools, and automate tasks.",
@@ -83,11 +104,22 @@ export const onboardingEn = {
   screenActivity:
     "Actions your permission rules blocked, asked about or allowed. Secrets are removed.",
   screenSettings:
-    "Connect AI providers, add Skills and tools, and change language, theme and permissions.",
+    "Connect AI providers, add Skills and tools, give them to coworkers in Assignments, set the memory limit in Features, and change language, theme and permissions.",
 };
 
 export const onboardingHi: typeof onboardingEn = {
   helpTeamTitle: "आपकी टीम",
+  crewPickerLabel: "3D रोबोट",
+  crewPickRobot: "{name} रोबोट लगाएँ",
+  crewPickShape: "बनी हुई आकृति",
+  crewStageTitle: "मिलिए टीम से",
+  crewStageHint:
+    "किसी रोबोट पर टैप करें, वह इस सहकर्मी का चेहरा बन जाएगा। यह हमेशा हल्का हिलता है और काम करते समय हाथ हिलाता है।",
+  crewStageHide: "टीम छिपाएँ",
+  crewStageShow: "3D टीम दिखाएँ",
+  crewStageWalk: "चलें",
+  crewStageStop: "रुकें",
+  crewStageChosen: "{name} अब इस सहकर्मी का चेहरा है।",
   helpTipCeo:
     "सीईओ: ऊपर बाईं ओर वर्कस्पेस मेनू खोलें, टीम और सीईओ चुनें और एक सहकर्मी चुनें। उसे काम दें; वह काम बाँटता है, नतीजे जमा करता है और आपको बताता है। मंज़ूरी का फैसला वह सिर्फ़ उन्हीं तरह के कामों में करता है जो आप चुनें, 24 घंटे के लिए।",
   helpTipTelegram:
@@ -98,6 +130,16 @@ export const onboardingHi: typeof onboardingEn = {
     "पोस्ट करना: सहकर्मी जब पहली बार फ़ेसबुक, इंस्टाग्राम या लिंक्डइन पर पोस्ट करता है, तो आप उसके लॉगिन खाते को मंज़ूरी देते हैं। उसके बाद दूसरा खाता लॉगिन होने या खाते की पुष्टि न होने पर वह रुक जाता है। जुड़ा खाता टीम और सीईओ में हटाया जा सकता है।",
   helpTipDeleteWorkspace:
     "वर्कस्पेस हटाना: टीम और सीईओ में चुनें कि सहकर्मियों को ले जाना है या उन्हें भी हटाना है, फिर पुष्टि करें। उनकी सहेजी फ़ाइलें आपके कंप्यूटर पर रहती हैं।",
+  helpTipMemory:
+    "मेमोरी सीमा: सेटिंग्स > फ़ीचर > मेमोरी सीमा। चुनें कि सहकर्मी कितनी RAM इस्तेमाल करे। यह पहले से चेतावनी देता है, बताता है कि मौजूदा रफ़्तार से सीमा कब पहुँचेगी, और नया बैकग्राउंड काम रुकवाता है ताकि आपका PC तेज़ रहे। चल रहा काम कभी नहीं रोका जाता।",
+  helpTipAssign:
+    "किसे क्या मिला: सेटिंग्स > असाइनमेंट में हर API, ऐप, स्किल और MCP सर्वर दिखता है, किसके पास है, और इस्तेमाल के लिए तैयार है या क्या कमी है। Assign दबाकर सबको, किसी वर्कस्पेस को या चुने सहकर्मियों को दें।",
+  helpTipMcp:
+    "टूल सर्वर: सेटिंग्स > MCP सर्वर में जोड़ें और Test server दबाएँ; टेस्ट पास होने पर ही यह चालू होता है। काम के बीच कोई सर्वर टूटे तो सहकर्मी उसे कुछ देर के लिए छोड़ देता है, बताता है कौन सा, और आपका संदेश फिर भेजता है।",
+  helpTipErrors:
+    "कुछ गड़बड़ होने पर संदेश आसान शब्दों में बताता है क्या हुआ और आगे क्या करें, जैसे ऐप फिर से जोड़ें या थोड़ी देर बाद कोशिश करें। आपको कुछ तकनीकी नहीं करना होता।",
+  helpTipCrew:
+    "3D रोबोट: किसी सहकर्मी की सेटिंग्स खोलें, उसकी तस्वीर पर टैप करें और एक रोबोट चुनें। यह हमेशा हल्का-हल्का हिलता है और सहकर्मी के व्यस्त होने पर हाथ हिलाता है। खाली चैट में क्रू स्टेज पर किसी रोबोट को टैप करके उसे उस सहकर्मी को दें।",
   welcomeTitle: "सहकर्मी में आपका स्वागत है",
   welcomeBody: "आपके AI सहकर्मी जानकारी पर काम करने, टूल इस्तेमाल करने और काम अपने-आप करने में मदद करते हैं।",
   welcomeNeedsProvider: "अपने AI सहकर्मी से काम शुरू करने के लिए कोई AI प्रदाता जोड़ें।",
@@ -165,11 +207,23 @@ export const onboardingHi: typeof onboardingEn = {
   screenBusiness: "आपके तय किए लक्ष्य, जैसे इस महीने 40 ऑर्डर, और आप कितना पास हैं।",
   screenMarketplace: "तैयार सहकर्मी और स्किल। एक जोड़ें, उसका काम पहले से तय होता है।",
   screenActivity: "वे काम जिन्हें आपके अनुमति नियमों ने रोका, पूछा या मंज़ूर किया। गुप्त बातें हटा दी जाती हैं।",
-  screenSettings: "AI प्रदाता जोड़ें, स्किल और टूल जोड़ें, और भाषा, थीम व अनुमतियाँ बदलें।",
+  screenSettings:
+    "AI प्रदाता जोड़ें, स्किल और टूल जोड़ें, असाइनमेंट में उन्हें सहकर्मियों को दें, फ़ीचर में मेमोरी सीमा तय करें, और भाषा, थीम व अनुमतियाँ बदलें।",
 };
 
 export const onboardingBn: typeof onboardingEn = {
   helpTeamTitle: "আপনার টিম",
+  crewPickerLabel: "3D রোবট",
+  crewPickRobot: "{name} রোবট ব্যবহার করুন",
+  crewPickShape: "আঁকা আকার",
+  crewStageTitle: "টিমের সঙ্গে আলাপ করুন",
+  crewStageHint:
+    "কোনও রোবটে ট্যাপ করুন, সেটি এই সহকর্মীর মুখ হবে। এটি সবসময় হালকা নড়ে আর কাজের সময় হাত নাড়ে।",
+  crewStageHide: "টিম লুকান",
+  crewStageShow: "3D টিম দেখান",
+  crewStageWalk: "হাঁটুন",
+  crewStageStop: "থামুন",
+  crewStageChosen: "{name} এখন এই সহকর্মীর মুখ।",
   helpTipCeo:
     "সিইও: উপরে বাঁয়ে ওয়ার্কস্পেস মেনু খুলে টিম ও সিইও বেছে একজন সহকর্মী ঠিক করুন। তাকে কাজ দিন; সে কাজ ভাগ করে, ফলাফল জড়ো করে আপনাকে জানায়। অনুমোদনের সিদ্ধান্ত সে শুধু আপনার বাছা ধরনের কাজেই নেয়, ২৪ ঘণ্টার জন্য।",
   helpTipTelegram:
@@ -180,6 +234,16 @@ export const onboardingBn: typeof onboardingEn = {
     "পোস্ট করা: সহকর্মী প্রথমবার ফেসবুক, ইনস্টাগ্রাম বা লিংকডইনে পোস্ট করলে আপনি তার সাইন-ইন করা অ্যাকাউন্ট অনুমোদন করেন। এরপর অন্য অ্যাকাউন্ট সাইন-ইন থাকলে বা অ্যাকাউন্ট নিশ্চিত না হলে সে থেমে যায়। যুক্ত অ্যাকাউন্ট টিম ও সিইও থেকে সরানো যায়।",
   helpTipDeleteWorkspace:
     "ওয়ার্কস্পেস মোছা: টিম ও সিইও-তে বেছে নিন সহকর্মীদের সরাবেন না কি তাদেরও মুছবেন, তারপর নিশ্চিত করুন। তাদের সেভ করা ফাইল আপনার কম্পিউটারে থাকে।",
+  helpTipMemory:
+    "মেমরি সীমা: সেটিংস > ফিচার > মেমরি সীমা। সহকর্মী কতটা RAM ব্যবহার করবে বেছে নিন। এটি আগেই সতর্ক করে, এখনকার গতিতে কখন সীমায় পৌঁছবে দেখায়, আর নতুন ব্যাকগ্রাউন্ড কাজ অপেক্ষা করায় যাতে আপনার PC দ্রুত থাকে। চলমান কাজ কখনও থামানো হয় না।",
+  helpTipAssign:
+    "কে কী পাবে: সেটিংস > অ্যাসাইনমেন্টে প্রতিটি API, অ্যাপ, স্কিল আর MCP সার্ভার দেখায়, কার কাছে আছে, আর ব্যবহারের জন্য তৈরি কি না বা কী বাকি। Assign চেপে সবাইকে, কোনও ওয়ার্কস্পেসকে বা বাছাই করা সহকর্মীদের দিন।",
+  helpTipMcp:
+    "টুল সার্ভার: সেটিংস > MCP সার্ভারে যোগ করে Test server চাপুন; পরীক্ষা পাস হলেই এটি চালু হয়। কাজের মাঝে কোনও সার্ভার ভাঙলে সহকর্মী সেটিকে কিছুক্ষণ বাদ দেয়, কোনটা তা জানায়, আর আপনার বার্তা আবার পাঠায়।",
+  helpTipErrors:
+    "কিছু ভুল হলে বার্তা সহজ ভাষায় বলে কী হয়েছে আর এরপর কী করবেন, যেমন অ্যাপ আবার যুক্ত করুন বা পরে চেষ্টা করুন। আপনাকে প্রযুক্তিগত কিছু করতে হয় না।",
+  helpTipCrew:
+    "3D রোবট: কোনও সহকর্মীর সেটিংস খুলে তার ছবিতে ট্যাপ করুন আর একটি রোবট বেছে নিন। এটি সবসময় হালকা নড়ে আর সহকর্মী ব্যস্ত থাকলে হাত নাড়ে। খালি চ্যাটে ক্রু স্টেজে কোনও রোবটে ট্যাপ করে সেটি ওই সহকর্মীকে দিন।",
   welcomeTitle: "সহকর্মীতে স্বাগতম",
   welcomeBody: "আপনার AI সহকর্মীরা তথ্য নিয়ে কাজ করতে, টুল ব্যবহার করতে আর কাজ নিজে থেকে করাতে সাহায্য করে।",
   welcomeNeedsProvider: "আপনার AI সহকর্মীকে দিয়ে কাজ শুরু করতে একটি AI প্রদানকারী যোগ করুন।",
@@ -247,5 +311,6 @@ export const onboardingBn: typeof onboardingEn = {
   screenMarketplace: "তৈরি সহকর্মী আর স্কিল। একটি যোগ করুন, তার কাজ আগে থেকেই ঠিক করা থাকে।",
   screenActivity:
     "যে কাজগুলো আপনার অনুমতির নিয়ম আটকেছে, জিজ্ঞেস করেছে বা অনুমতি দিয়েছে। গোপন তথ্য সরানো থাকে।",
-  screenSettings: "AI প্রদানকারী যোগ করুন, স্কিল আর টুল যোগ করুন, আর ভাষা, থিম ও অনুমতি বদলান।",
+  screenSettings:
+    "AI প্রদানকারী যোগ করুন, স্কিল আর টুল যোগ করুন, অ্যাসাইনমেন্টে সেগুলো সহকর্মীদের দিন, ফিচারে মেমরি সীমা ঠিক করুন, আর ভাষা, থিম ও অনুমতি বদলান।",
 };

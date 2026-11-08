@@ -27,6 +27,7 @@ import type {
   BrowserTakeoverState,
   CoworkerInstructionsView,
   CoworkerStatus,
+  CrewAvatar,
   DraftAttachment,
   KnowledgeCitation,
   MessageReaction,
@@ -48,6 +49,7 @@ import { format } from "../activity-hinglish";
 import { vocab } from "../activity-vocab";
 import { anchorBelow } from "../anchored-popover";
 import { copySelectionAsPlainText, copyText } from "../clipboard";
+import { CREW } from "../crew";
 import type { BotMessage, BotProfile } from "../data";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
 import { featureOn } from "../features";
@@ -63,6 +65,7 @@ import { AvatarAura, statusAura } from "./AvatarAura";
 import { BrowserPageList, type BrowserStartAction, BrowserStartMenu } from "./BrowserPages";
 import { ComposerEditor, expandComposerMentions } from "./ComposerEditor";
 import { ChoiceCard, PromptCard } from "./ConversationPrompts";
+import { CrewStage } from "./CrewStage";
 import { InterruptedTaskCard } from "./InterruptedTaskCard";
 import { PanelResizer, readPanelWidth, savePanelWidth } from "./PanelResizer";
 import { PlanCard } from "./PlanCard";
@@ -1240,6 +1243,7 @@ export function Conversation(props: ConversationProps) {
   const [avatarPickerOpen, setAvatarPickerOpen] = createSignal(false);
   const [avatarShape, setAvatarShape] = createSignal<BotAvatarShape>("blob");
   const [avatarColor, setAvatarColor] = createSignal<BotAvatarColor>("orange");
+  const [avatarModel, setAvatarModel] = createSignal<CrewAvatar | null>(null);
   const [browserAddress, setBrowserAddress] = createSignal("https://www.google.com");
   const [scheduleMode, setScheduleMode] = createSignal(false);
   const [cadenceDraft, setCadenceDraft] = createSignal<CadenceDraft>(defaultCadenceDraft());
@@ -1909,6 +1913,7 @@ export function Conversation(props: ConversationProps) {
     setSettingsReasoning(bot.pendingRuntime?.reasoningEffort ?? bot.reasoningEffort);
     setAvatarShape(bot.avatarShape);
     setAvatarColor(bot.avatarColor);
+    setAvatarModel(bot.avatarModel ?? null);
     setAvatarPickerOpen(false);
   });
 
@@ -2854,6 +2859,23 @@ export function Conversation(props: ConversationProps) {
           </Show>
           <Show
             when={
+              props.bot &&
+              props.loaded &&
+              props.messages.length === 0 &&
+              !onboardingActive() &&
+              !props.activeTurnId
+            }
+          >
+            <CrewStage
+              current={avatarModel()}
+              onPick={(id) => {
+                setAvatarModel(id);
+                void saveBotPatch({ avatarModel: id });
+              }}
+            />
+          </Show>
+          <Show
+            when={
               agentReady() &&
               props.loaded &&
               props.messages.length === 0 &&
@@ -3785,10 +3807,49 @@ export function Conversation(props: ConversationProps) {
               aria-expanded={avatarPickerOpen()}
               onClick={() => setAvatarPickerOpen((open) => !open)}
             >
-              <AgentAvatar shape={avatarShape()} color={avatarColor()} bot={props.bot} />
+              <AgentAvatar
+                shape={avatarShape()}
+                color={avatarColor()}
+                model={avatarModel()}
+                bot={props.bot}
+              />
             </button>
             <Show when={avatarPickerOpen()}>
               <section class="avatar-editor" aria-label="Avatar editor">
+                <fieldset class="avatar-crew-grid" aria-label={t("crewPickerLabel")}>
+                  <legend>{t("crewPickerLabel")}</legend>
+                  <For each={CREW}>
+                    {(member) => (
+                      <button
+                        type="button"
+                        class="avatar-crew-choice"
+                        classList={{ "avatar-choice-selected": avatarModel() === member.id }}
+                        aria-label={t("crewPickRobot", { name: member.name })}
+                        aria-pressed={avatarModel() === member.id}
+                        title={member.name}
+                        onClick={() => {
+                          setAvatarModel(member.id);
+                          void saveBotPatch({ avatarModel: member.id });
+                        }}
+                      >
+                        <AgentAvatar model={member.id} />
+                      </button>
+                    )}
+                  </For>
+                  <button
+                    type="button"
+                    class="avatar-crew-choice avatar-crew-none"
+                    classList={{ "avatar-choice-selected": avatarModel() === null }}
+                    aria-pressed={avatarModel() === null}
+                    onClick={() => {
+                      setAvatarModel(null);
+                      void saveBotPatch({ avatarModel: null });
+                    }}
+                  >
+                    {t("crewPickShape")}
+                  </button>
+                </fieldset>
+                <div class="avatar-editor-divider" />
                 <fieldset class="avatar-shape-grid" aria-label="Character shape">
                   <For each={AVATAR_SHAPES}>
                     {(shape) => (
@@ -3800,10 +3861,16 @@ export function Conversation(props: ConversationProps) {
                         aria-pressed={avatarShape() === shape}
                         onClick={() => {
                           setAvatarShape(shape);
-                          saveBotPatch({ avatarShape: shape });
+                          setAvatarModel(null);
+                          saveBotPatch({ avatarShape: shape, avatarModel: null });
                         }}
                       >
-                        <AgentAvatar shape={shape} color={avatarColor()} bot={props.bot} />
+                        <AgentAvatar
+                          shape={shape}
+                          color={avatarColor()}
+                          model={null}
+                          bot={props.bot}
+                        />
                       </button>
                     )}
                   </For>

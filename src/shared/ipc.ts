@@ -595,6 +595,8 @@ export interface BotSummary {
   updatedAt: string | null;
   avatarShape: BotAvatarShape;
   avatarColor: BotAvatarColor;
+  /** A 3D crew robot shown instead of the drawn shape; null or missing = the shape. */
+  avatarModel?: CrewAvatar | null;
   /** The Marketplace template this coworker was added from, if any. */
   template?: BotTemplateRef;
   /**
@@ -756,6 +758,14 @@ export const BOT_AVATAR_COLORS = [
 ] as const;
 export type BotAvatarColor = (typeof BOT_AVATAR_COLORS)[number];
 
+/** The five 3D crew robots a coworker can use as its face instead of a drawn shape. */
+export const CREW_AVATARS = ["startup", "publisher", "outreach", "mailer", "whatsapp"] as const;
+export type CrewAvatar = (typeof CREW_AVATARS)[number];
+
+export function isCrewAvatar(value: unknown): value is CrewAvatar {
+  return typeof value === "string" && CREW_AVATARS.includes(value as CrewAvatar);
+}
+
 export function isAgentModel(value: unknown): value is AgentModelId {
   if (typeof value !== "string") return false;
   if (AGENT_MODELS.some((model) => model === value)) return true;
@@ -848,6 +858,7 @@ export interface UpdateBotInput {
   reasoningEffort?: AgentReasoningEffort;
   avatarShape?: BotAvatarShape;
   avatarColor?: BotAvatarColor;
+  avatarModel?: CrewAvatar | null;
   template?: BotTemplateRef;
 }
 

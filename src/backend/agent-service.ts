@@ -1123,6 +1123,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       reasoningEffort: source.reasoningEffort,
       avatarShape: source.avatarShape,
       avatarColor: source.avatarColor,
+      ...(source.avatarModel ? { avatarModel: source.avatarModel } : {}),
       ...(source.template ? { template: source.template } : {}),
     });
     if (source.folderId) bot = await this.#store.setBotFolder(bot.id, source.folderId);

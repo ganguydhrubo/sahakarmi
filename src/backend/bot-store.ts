@@ -16,6 +16,7 @@ import {
   isAvatarColor,
   isAvatarShape,
   isBotTemplateRef,
+  isCrewAvatar,
   isReasoningEffort,
   legacyModelReplacement,
   MAX_FOLDER_DEPTH,
@@ -459,6 +460,7 @@ export class BotStore {
     if (input.reasoningEffort !== undefined) bot.reasoningEffort = input.reasoningEffort;
     if (input.avatarShape !== undefined) bot.avatarShape = input.avatarShape;
     if (input.avatarColor !== undefined) bot.avatarColor = input.avatarColor;
+    if (input.avatarModel !== undefined) bot.avatarModel = input.avatarModel;
     if (input.template !== undefined) bot.template = { ...input.template };
     bot.updatedAt = new Date().toISOString();
     await this.#persist();
@@ -731,6 +733,9 @@ function isStoredBot(value: unknown): value is StoredBot {
     (typeof value.updatedAt === "string" || value.updatedAt === null) &&
     isAvatarShape(value.avatarShape) &&
     isAvatarColor(value.avatarColor) &&
+    (value.avatarModel === undefined ||
+      value.avatarModel === null ||
+      isCrewAvatar(value.avatarModel)) &&
     (value.template === undefined || isBotTemplateRef(value.template)) &&
     (value.pendingRuntime === undefined ||
       value.pendingRuntime === null ||
