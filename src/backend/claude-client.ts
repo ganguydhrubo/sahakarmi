@@ -1861,7 +1861,9 @@ function appsSdkServer(
           (args) => {
             if (!known.has(args.tool.toLowerCase())) {
               return Promise.resolve({
-                ...text(`Unknown app tool "${args.tool}". Find the exact name with list_app_tools.`),
+                ...text(
+                  `Unknown app tool "${args.tool}". Find the exact name with list_app_tools.`,
+                ),
                 isError: true,
               });
             }
