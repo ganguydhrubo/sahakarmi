@@ -1192,24 +1192,39 @@ textarea {
 
 /* 3D crew robot avatar: animated idle loop, wave loop while the coworker works, still frame for
    reduced motion. Full body in miniature, standing on a soft halo of its status colour. */
+/* The head pops out of its brand disc in 3D: the disc sits behind as a pedestal, the head is
+   not clipped and rises above the rim. */
 .crew-avatar {
   position: relative;
-  overflow: hidden;
+  isolation: isolate;
+  overflow: visible;
+}
+
+.crew-avatar::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 50%;
   background: radial-gradient(
-    circle at 50% 32%,
-    color-mix(in srgb, var(--crew-halo) 42%, #121722) 0%,
-    color-mix(in srgb, var(--crew-halo) 14%, #090b11) 78%
+    circle at 50% 30%,
+    color-mix(in srgb, var(--crew-halo) 48%, #121722) 0%,
+    color-mix(in srgb, var(--crew-halo) 16%, #090b11) 80%
   );
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--crew-halo) 45%, transparent),
-    0 1px 3px rgb(0 0 0 / 0.25);
+    inset 0 0 0 1px color-mix(in srgb, var(--crew-halo) 55%, transparent),
+    0 0 8px color-mix(in srgb, var(--crew-halo) 35%, transparent);
+  content: "";
 }
 
 .crew-avatar img {
   position: absolute;
-  inset: -19%;
-  width: 138%;
-  height: 138%;
+  top: -58%;
+  left: -38%;
+  width: 176%;
+  max-width: none;
+  height: 176%;
+  max-height: none;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35));
   object-fit: contain;
   pointer-events: none;
   user-select: none;
