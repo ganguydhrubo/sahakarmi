@@ -2062,6 +2062,11 @@ export interface OrchestratorDesktopApi {
 export interface EngineSettings {
   /** Coworker turns that may run at the same time (1-8). */
   maxConcurrentTurns: number;
+  /**
+   * "fixed" (default): maxConcurrentTurns is the cap. "auto": the cap follows the PC's free
+   * memory at each start (1-64), and maxConcurrentTurns is kept for when the owner switches back.
+   */
+  concurrencyMode?: ConcurrencyMode;
   /** A turn with no sign of life (no text, no tool) this long is stopped (5-240 minutes). */
   watchdogMinutes: number;
   /**
@@ -2075,8 +2080,11 @@ export interface EngineSettings {
   maxStepsPerTurn: number;
 }
 
+export type ConcurrencyMode = "fixed" | "auto";
+
 export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   maxConcurrentTurns: 3,
+  concurrencyMode: "fixed",
   watchdogMinutes: 45,
   memoryLimitMb: 0,
   memoryWarnPercent: 80,
@@ -2136,6 +2144,10 @@ export interface ResourceStatus {
   /** Ready-made limits that fit this PC, in MB. */
   presetsMb: number[];
   sampledAt: string | null;
+  /** Processor use of Sahkarmi and its programs (% of the whole PC); with the detail meter only. */
+  cpuPercent?: number | null;
+  /** Browser pages awake right now; with the detail meter only. */
+  awakePages?: number | null;
 }
 
 /** One finished coworker turn, recorded on this PC only (never sent anywhere). */

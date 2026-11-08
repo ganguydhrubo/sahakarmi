@@ -1801,6 +1801,76 @@ describe.sequential("AgentService", () => {
     }
   });
 
+  it.each([
+    [true, ["chief", "asha-accounts", "chief"]],
+    [false, ["chief", "chief", "asha-accounts"]],
+  ])("fair turns=%s: who takes the one free slot after a turn ends", async (fair, expected) => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "400";
+    const { store, mailbox } = stores();
+    await store.initialize();
+    await mailbox.initialize();
+    await store.getOrCreate("chief");
+    await store.getOrCreate("asha-accounts");
+    for (const text of ["Long job, part one", "Long job, part two"]) {
+      await mailbox.enqueue({ sender: { kind: "user" }, recipientBotIds: ["chief"], text });
+    }
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.configureEngineSettings(() => ({ ...DEFAULT_ENGINE_SETTINGS, maxConcurrentTurns: 1 }));
+    service.configureFairTurns(() => fair);
+    const started: string[] = [];
+    service.on("event", (event) => {
+      if (event.type === "turn-started") started.push(event.botId);
+    });
+    await service.initialize();
+    await waitFor(() => started.length === 1);
+    // A short task arrives while the chief works through its own queue.
+    await service.sendMessage({ botId: "asha-accounts", text: "Quick question" });
+    await waitFor(() => started.length === 3, 15_000);
+    expect(started).toEqual(expected);
+  });
+
+  it("Auto concurrency: as many coworkers as free memory fits, read again at each start", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    let settings = { ...DEFAULT_ENGINE_SETTINGS, concurrencyMode: "auto" as const };
+    service.configureEngineSettings(() => settings);
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    const MB = 1024 ** 2;
+    // 1536 MB kept free + 2 x 150 MB: two coworkers on the shared engine fit.
+    let free = 1_836 * MB;
+    setMemoryProbe({ free: () => free, total: () => 16 * 1024 * MB });
+    try {
+      await service.sendMessage({ botId: "chief", text: "One" });
+      await service.sendMessage({ botId: "asha-accounts", text: "Two" });
+      await waitFor(
+        () =>
+          service?.listQueue("chief").deliveries[0]?.status === "running" &&
+          service?.listQueue("asha-accounts").deliveries[0]?.status === "running",
+      );
+      await service.sendMessage({ botId: "sales-outbound", text: "Three" });
+      await waitFor(() =>
+        events.some(
+          (event) =>
+            event.type === "notice" &&
+            event.code === "waiting_for_turn_slot" &&
+            event.botId === "sales-outbound" &&
+            /free memory fits/.test(event.message),
+        ),
+      );
+      expect(service.listQueue("sales-outbound").deliveries[0]?.status).toBe("queued");
+      // More memory free: the next decision lets it start.
+      free = 8 * 1024 * MB;
+      settings = { ...settings };
+      service.configureEngineSettings(() => settings);
+      await waitFor(() => service?.listQueue("sales-outbound").deliveries[0]?.status === "running");
+    } finally {
+      setMemoryProbe(null);
+    }
+  });
+
   it("stops a turn that shows no progress for the watchdog time", async () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());

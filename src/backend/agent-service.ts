@@ -172,6 +172,7 @@ import {
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { codexMcpConfig, type McpServerStore } from "./mcp-servers";
 import { memoryContextLines, SentMemories } from "./memory/memory-context";
+import { autoTurnLimit, fairOrder } from "./concurrency";
 import { HEAVY_RUNTIME_MB, hasRoomFor, readMemory } from "./memory-pressure";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
@@ -464,6 +465,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #heldDrains = new Set<string>();
   /** Coworkers with a queued message waiting for a free turn slot (the concurrent-turn cap). */
   readonly #waitingForSlot = new Set<string>();
+  /** Fair turns (Settings > Features): waiting coworkers take free slots in round-robin order. */
+  #fairTurns: () => boolean = () => false;
+  /** When each coworker last finished (or started) a turn, for the fair-turns order. */
+  readonly #lastServedAt = new Map<string, number>();
+  /** Awake browser pages a coworker holds; Auto concurrency counts their memory. */
+  #awakePagesFor: (botId: string) => number = () => 0;
   /** Looks again for free memory while a coworker waits for it (no turn may end meanwhile). */
   #memoryRetryTimer: ReturnType<typeof setTimeout> | null = null;
   #runEvents: ((event: NewRunEvent) => void) | null = null;
@@ -2067,6 +2074,16 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (rest.length) await this.#connect("starting", rest);
     }
     this.#modelRefresh.start();
+  }
+
+  /** Lets the app switch fair turns on (Settings > Features). */
+  configureFairTurns(enabled: () => boolean): void {
+    this.#fairTurns = enabled;
+  }
+
+  /** How many awake browser pages a coworker holds (for the Auto turn cap). */
+  configureAwakePages(count: (botId: string) => number): void {
+    this.#awakePagesFor = count;
   }
 
   /** Lets the app switch lazy AI start off (Settings > Features). */
@@ -4955,6 +4972,7 @@ ${carryOver}`
         return;
       }
       this.#waitingForSlot.delete(botId);
+      this.#lastServedAt.set(botId, Date.now());
       attempted = true;
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
@@ -4997,7 +5015,7 @@ ${carryOver}`
   ): "free" | "busy" | "memory" {
     const busy = this.#busyBotIds();
     busy.delete(botId);
-    if (busy.size >= this.#engineSettings().maxConcurrentTurns) return "busy";
+    if (busy.size >= this.#turnLimit(botId, bot)) return "busy";
     if (busy.size === 0) return "free";
     const fromOwner =
       delivery.sender.kind === "user" && (!delivery.origin || delivery.origin === "owner");
@@ -5014,6 +5032,25 @@ ${carryOver}`
     // Adaptive: close idle Claude processes, then look again before making anyone wait.
     if (client.closeIdleRuntimesNow().length > 0 && hasRoomFor(HEAVY_RUNTIME_MB)) return "free";
     return "memory";
+  }
+
+  /**
+   * The cap on turns at once. Fixed (the default): the owner's number. Auto: what the PC's free
+   * memory fits for this coworker's kind and its awake pages, read fresh at each decision. Any
+   * failure falls back to the owner's number.
+   */
+  #turnLimit(botId: string, bot: BotSummary | undefined): number {
+    const settings = this.#engineSettings();
+    if (settings.concurrencyMode !== "auto") return settings.maxConcurrentTurns;
+    try {
+      return autoTurnLimit({
+        freeMb: readMemory().freeMb,
+        kind: bot && providerForBot(bot) === "claude" ? "heavy" : "shared",
+        awakePages: this.#awakePagesFor(botId),
+      });
+    } catch {
+      return settings.maxConcurrentTurns;
+    }
   }
 
   /**
@@ -5048,7 +5085,8 @@ ${carryOver}`
     if (reason === "memory") this.#scheduleMemoryRetry();
     if (this.#waitingForSlot.has(botId)) return;
     this.#waitingForSlot.add(botId);
-    const limit = this.#engineSettings().maxConcurrentTurns;
+    const auto = this.#engineSettings().concurrencyMode === "auto";
+    const limit = auto ? this.#busyBotIds().size : this.#engineSettings().maxConcurrentTurns;
     this.#emit({
       type: "notice",
       botId,
@@ -5058,7 +5096,9 @@ ${carryOver}`
           ? this.#engineSettings().memoryLimitMb > 0
             ? "This background message waits for memory: Sahkarmi is near the memory limit you set. It starts by itself as soon as memory frees up. You can raise the limit in Settings > Features."
             : "This background message waits for free memory on this PC and starts by itself as soon as memory frees up. Closing other apps helps."
-          : `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
+          : auto
+            ? `${limit} coworkers are already working, as many as this PC's free memory fits right now, so this message waits its turn and starts as soon as one finishes. You can set a fixed number in Settings > Features.`
+            : `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
     });
   }
 
@@ -5077,14 +5117,37 @@ ${carryOver}`
     return Date.now() - at < GEMINI_QUOTA_WINDOW_MS;
   }
 
-  /** A turn ended: coworkers waiting for a slot get their chance, oldest first. */
+  /**
+   * A turn ended: coworkers waiting for a slot get their chance, oldest first. With fair turns,
+   * owner-typed messages first, then the coworker served least recently (round-robin).
+   */
   #drainWaitingForSlot(): void {
-    for (const botId of [...this.#waitingForSlot]) {
+    for (const botId of this.#waitingOrder()) {
       if (!this.#mailbox.nextQueued(botId)) {
         this.#waitingForSlot.delete(botId);
         continue;
       }
       this.#scheduleDrain(botId);
+    }
+  }
+
+  /** Waiting coworkers in the order they get a free slot. */
+  #waitingOrder(): string[] {
+    const arrival = [...this.#waitingForSlot];
+    if (!this.#fairTurns()) return arrival;
+    try {
+      return fairOrder(
+        arrival.map((botId) => {
+          const next = this.#mailbox.nextQueued(botId)?.delivery;
+          return {
+            botId,
+            fromOwner: next?.sender.kind === "user" && (!next.origin || next.origin === "owner"),
+            lastServedAt: this.#lastServedAt.get(botId),
+          };
+        }),
+      );
+    } catch {
+      return arrival;
     }
   }
 
@@ -6054,7 +6117,14 @@ ${carryOver}`
       );
     }
     if (shouldCompact) await this.#requestContextCompaction(botId, threadId);
-    else this.#scheduleDrain(botId);
+    else if (this.#fairTurns()) {
+      // Fair turns: the coworker that just finished goes behind those already waiting, so one
+      // busy coworker cannot keep a slot to itself.
+      this.#lastServedAt.set(botId, Date.now());
+      this.#drainWaitingForSlot();
+      this.#scheduleDrain(botId);
+      return;
+    } else this.#scheduleDrain(botId);
     this.#drainWaitingForSlot();
   }
 
