@@ -43,7 +43,11 @@ describe("page budget", () => {
     // Everything protected: nothing sleeps, even over budget.
     expect(
       pagesOverBudget(
-        [tab("a", "x", ago(900), true), tab("b", "x", ago(800), true), tab("c", "x", ago(700), true)],
+        [
+          tab("a", "x", ago(900), true),
+          tab("b", "x", ago(800), true),
+          tab("c", "x", ago(700), true),
+        ],
         NOW,
       ),
     ).toEqual([]);

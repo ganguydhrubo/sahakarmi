@@ -36,13 +36,8 @@ import {
   sameLocator,
   uniqueMatch,
 } from "./browser-guard";
+import { pagesOverBudget, restingSiteMessage, SiteCrashGuard, siteOfPage } from "./browser-guards";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
-import {
-  pagesOverBudget,
-  restingSiteMessage,
-  SiteCrashGuard,
-  siteOfPage,
-} from "./browser-guards";
 import { persistentBrowserUrl } from "./browser-state";
 import { readMemory } from "./memory-pressure";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
@@ -966,7 +961,7 @@ export class BrowserHost implements CoworkerBrowser {
    */
   #dropDeadPage(tab: InternalTab): boolean {
     const view = tab.view;
-    if (!view || !view.webContents.isDestroyed()) return false;
+    if (!view?.webContents.isDestroyed()) return false;
     tab.view = null;
     tab.revision += 1;
     tab.stale = false;

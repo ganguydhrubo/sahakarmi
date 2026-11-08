@@ -30,7 +30,6 @@ import { memoryCategory } from "../backend/agent-memory-store";
 import { AgentService } from "../backend/agent-service";
 import { ApiIntegrationService } from "../backend/api-integrations/api-service";
 import { AppMemoryMonitor } from "../backend/app-memory";
-import { closeLeftoverEngines, SAHKARMI_LAUNCH_MARKERS } from "../backend/leftover-processes";
 import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
@@ -38,6 +37,7 @@ import { createCoworkerBrowser } from "../backend/browser-factory";
 import { configureBrowserGuards } from "../backend/browser-guard";
 import type { CoworkerBrowser } from "../backend/browser-host";
 import { browserPagesFromAudit } from "../backend/browser-state";
+import { BudgetStore } from "../backend/budget-store";
 import { BusinessStore } from "../backend/business-store";
 import {
   resolveClaudeCli,
@@ -51,7 +51,6 @@ import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills, parseSkillMarkdown } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
 import { desktopControlSupported } from "../backend/desktop/desktop-tools";
-import { BudgetStore } from "../backend/budget-store";
 import { EngineSettingsStore } from "../backend/engine-settings";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
@@ -59,6 +58,7 @@ import { COMPOSIO_SECRET, ComposioClient } from "../backend/integrations/composi
 import { onCorruptFileRecovered } from "../backend/json-file";
 import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
 import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
+import { closeLeftoverEngines, SAHKARMI_LAUNCH_MARKERS } from "../backend/leftover-processes";
 import { MailboxStore } from "../backend/mailbox-store";
 import {
   genericApiSpec,
@@ -2615,8 +2615,7 @@ if (!hasSingleInstanceLock) {
           checkpoints: () =>
             features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
           review: () => features.isEnabled("cross-model-review"),
-          stepBudget: () =>
-            features.isEnabled("budget-stop") ? budgets.teamRunSteps() : null,
+          stepBudget: () => (features.isEnabled("budget-stop") ? budgets.teamRunSteps() : null),
           planner: (workspaceId) => {
             if (!features.isEnabled("team-run-ai-planning")) return null;
             const workspaces = service.listWorkspaces().workspaces;

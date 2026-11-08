@@ -62,7 +62,12 @@ const ROWS: EngineProcess[] = [
   // the owner's own Codex session started from an editor that exited,
   proc({ pid: 303, name: "codex.exe", executablePath: "C:\\Users\\me\\npm\\codex.exe" }),
   // this run's own engine (parent alive),
-  proc({ pid: 304, ppid: 500, name: "codex.exe", executablePath: `${TOOLS}\\codex\\bin\\codex.exe` }),
+  proc({
+    pid: 304,
+    ppid: 500,
+    name: "codex.exe",
+    executablePath: `${TOOLS}\\codex\\bin\\codex.exe`,
+  }),
   // a Sahkarmi engine started after this run began (another window's, mid-start),
   proc({
     pid: 305,

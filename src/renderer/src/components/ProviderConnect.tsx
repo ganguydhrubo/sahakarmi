@@ -77,9 +77,9 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
     const onComputer = catalog.filter(
       (entry) => !connected(entry.id) && found(entry.id) && entry.kind === "agent",
     );
-    const others = catalog.filter(
-      (entry) => !ready.includes(entry) && !onComputer.includes(entry),
-    ).sort((left, right) => Number(right.free) - Number(left.free));
+    const others = catalog
+      .filter((entry) => !ready.includes(entry) && !onComputer.includes(entry))
+      .sort((left, right) => Number(right.free) - Number(left.free));
     return { ready, onComputer, others };
   });
 

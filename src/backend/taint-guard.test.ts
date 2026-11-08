@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanProvenance } from "./approval-store";
-import { decide, DEFAULT_PERMISSION_LEVELS, type PermissionRequest } from "./permission-policy";
+import { DEFAULT_PERMISSION_LEVELS, decide, type PermissionRequest } from "./permission-policy";
 import { PermissionService } from "./permission-service";
 import {
   describeSource,
@@ -119,9 +119,7 @@ describe("permission decision with taint", () => {
     expect(decide(policy, request(), []).effective).toBe("allow");
     expect(decide(policy, request({ taint: { source: "a web page" } }), []).effective).toBe("ask");
     const denied = { ...policy, levels: { ...policy.levels, shell: "deny" as const } };
-    expect(decide(denied, request({ taint: { source: "a web page" } }), []).effective).toBe(
-      "deny",
-    );
+    expect(decide(denied, request({ taint: { source: "a web page" } }), []).effective).toBe("deny");
   });
 
   describe("with a pre-authorisation", () => {

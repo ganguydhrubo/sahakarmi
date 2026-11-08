@@ -63,7 +63,9 @@ function inFolder(path: string | null, folders: string[]): boolean {
 /** The leftovers among `rows` (a list of every process), by the rules above. Pure. */
 export function findLeftoverEngines(rows: EngineProcess[], rules: LeftoverRules): EngineProcess[] {
   const alive = new Set(rows.map((row) => row.pid));
-  const folders = rules.ownFolders.filter((folder) => folder.trim().length > 3).map(normaliseFolder);
+  const folders = rules.ownFolders
+    .filter((folder) => folder.trim().length > 3)
+    .map(normaliseFolder);
   const markers = rules.markers.filter((marker) => marker.length >= 6);
   return rows.filter((row) => {
     if (!Number.isInteger(row.pid) || row.pid <= 4 || row.pid === rules.selfPid) return false;

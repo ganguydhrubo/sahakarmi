@@ -79,9 +79,7 @@ export function BudgetSettingsPanel() {
                   min={1}
                   placeholder={t("budgetNoLimit")}
                   value={current().coworkers[bot.id] ?? ""}
-                  onChange={(event) =>
-                    void save({ coworkers: { [bot.id]: limitFrom(event) } })
-                  }
+                  onChange={(event) => void save({ coworkers: { [bot.id]: limitFrom(event) } })}
                 />
                 <Show when={current().coworkers[bot.id] !== undefined}>
                   <small class="settings-meta">

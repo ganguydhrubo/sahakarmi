@@ -45,9 +45,9 @@ describe("hide secrets: true positives", () => {
   });
 
   it("hides secret address parameters but keeps the rest of the address", () => {
-    expect(hideSecretsInText("https://x.test/cb?code=4%2F0AeanS0bXk9Lq2Zp7Rt3Wm5Yv8&state=abc")).toBe(
-      `https://x.test/cb?code=${HIDDEN}&state=abc`,
-    );
+    expect(
+      hideSecretsInText("https://x.test/cb?code=4%2F0AeanS0bXk9Lq2Zp7Rt3Wm5Yv8&state=abc"),
+    ).toBe(`https://x.test/cb?code=${HIDDEN}&state=abc`);
     expect(hideSecretsInText("https://x.test/a?access_token=short&x=1")).toBe(
       `https://x.test/a?access_token=${HIDDEN}&x=1`,
     );
@@ -168,7 +168,9 @@ beforeAll(() => {
 });
 
 const PAGE = "https://shop.test/cart?x=1";
-const run = (script: string): Promise<unknown> => Promise.resolve((0, eval)(script));
+// The page scripts are expressions; run them in this test page the way browser-isolation does.
+const run = (script: string): Promise<unknown> =>
+  Promise.resolve(new Function(`return ${script};`)());
 
 function page(html: string): void {
   document.body.innerHTML = html;

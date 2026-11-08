@@ -125,6 +125,7 @@ import {
   joinThreadHistory,
   toolShape,
 } from "./codex-tool-refresh";
+import { autoTurnLimit, fairOrder } from "./concurrency";
 import {
   branchName,
   branchPromptLines,
@@ -175,7 +176,6 @@ import {
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { codexMcpConfig, type McpServerStore } from "./mcp-servers";
 import { memoryContextLines, SentMemories } from "./memory/memory-context";
-import { autoTurnLimit, fairOrder } from "./concurrency";
 import { HEAVY_RUNTIME_MB, hasRoomFor, readMemory } from "./memory-pressure";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
@@ -214,14 +214,6 @@ import type { ResourceAssignmentStore } from "./resource-assignments";
 import type { NewRunEvent } from "./run-events";
 import { installedSkillNames, LearnedSkills, learnedSkillNames } from "./skill-library";
 import {
-  decideRefusal,
-  deciderFor,
-  delegateRefusal,
-  messageRefusal,
-  recallableBots,
-  teamInstructions,
-} from "./team-rules";
-import {
   describeSource,
   isTaintGuarded,
   provenanceOfSource,
@@ -229,6 +221,14 @@ import {
   type TaintSource,
   webSource,
 } from "./taint-guard";
+import {
+  decideRefusal,
+  deciderFor,
+  delegateRefusal,
+  messageRefusal,
+  recallableBots,
+  teamInstructions,
+} from "./team-rules";
 import { toolCallFromItem } from "./tool-calls";
 import { capContentItems, capToolText } from "./tool-result-cap";
 import {
@@ -3941,7 +3941,8 @@ ${carryOver}`
     const grantKey = taskGrantKey(request, this.#ownerAsked(request.botId));
     // After outside content, a task "yes" counts only if the owner gave it on a card that said
     // so; otherwise this turn's one question is asked.
-    const grantUsable = !request.taint || (grantKey !== null && this.#taintAwareGrants.has(grantKey));
+    const grantUsable =
+      !request.taint || (grantKey !== null && this.#taintAwareGrants.has(grantKey));
     if (grantKey && grantUsable) {
       const until = this.#taskGrants.get(grantKey);
       if (until !== undefined && until > Date.now()) return "approved";
@@ -4354,7 +4355,10 @@ ${carryOver}`
             );
             const mcpBotId = this.#threadToBot.get(getString(request.params, "threadId") ?? "");
             if (verdict.allowed && mcpBotId) {
-              this.#markTaint(mcpBotId, { kind: "app", label: `the ${toolCall.server} tool server` });
+              this.#markTaint(mcpBotId, {
+                kind: "app",
+                label: `the ${toolCall.server} tool server`,
+              });
             }
             client.respond(
               request.id,
@@ -4399,7 +4403,9 @@ ${carryOver}`
     try {
       const args = isRecord(params.arguments) ? params.arguments : {};
       const tabId = getString(args, "tabId") ?? getString(args, "pageId");
-      const tab = tabId ? this.#browser.listTabs().find((candidate) => candidate.id === tabId) : null;
+      const tab = tabId
+        ? this.#browser.listTabs().find((candidate) => candidate.id === tabId)
+        : null;
       return tab?.url ?? null;
     } catch {
       return null;

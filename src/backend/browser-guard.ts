@@ -239,8 +239,7 @@ export class ActionMemory {
   }
 }
 
-const CANDIDATES =
-  'a,button,input,textarea,select,[role],[contenteditable="true"],[tabindex]';
+const CANDIDATES = 'a,button,input,textarea,select,[role],[contenteditable="true"],[tabindex]';
 
 /** In-page helpers shared by both scripts, so an element is described the same way twice. */
 const PAGE_HELPERS = `

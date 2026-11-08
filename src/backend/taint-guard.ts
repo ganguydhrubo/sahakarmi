@@ -1,9 +1,5 @@
 import type { ApprovalProvenance } from "../shared/ipc";
-import {
-  isSecretPath,
-  mentionsSecretPath,
-  type PermissionRequest,
-} from "./permission-policy";
+import { isSecretPath, mentionsSecretPath, type PermissionRequest } from "./permission-policy";
 
 /**
  * Untrusted-content rule ("taint-guard" in Settings > Features).

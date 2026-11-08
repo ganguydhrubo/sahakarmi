@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ACP_AGENT_PROVIDERS as ALL_ACP_AGENT_PROVIDERS,
   type AgentEvent,
+  ACP_AGENT_PROVIDERS as ALL_ACP_AGENT_PROVIDERS,
   type ConversationSnapshot,
   DEFAULT_ENGINE_SETTINGS,
   providerFeatureId,
@@ -14,6 +14,7 @@ import {
 
 /** The ACP engines offered with every Settings > Features switch at its default. */
 const ACP_AGENT_PROVIDERS = ALL_ACP_AGENT_PROVIDERS.filter((id) => !providerFeatureId(id));
+
 import {
   AgentService,
   isNoisyDiagnostic,
@@ -28,9 +29,9 @@ import {
   taskGrantKey,
 } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
-import { BudgetStore } from "./budget-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost, DownloadRequest } from "./browser-host";
+import { BudgetStore } from "./budget-store";
 import { CustomSkills } from "./custom-skills";
 import { KnowledgeService } from "./knowledge/knowledge-service";
 import { MailboxStore } from "./mailbox-store";
