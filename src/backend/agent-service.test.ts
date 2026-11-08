@@ -3298,10 +3298,17 @@ describe("AgentService team, authority and accounts", () => {
   });
 });
 
-function planEvents(target: AgentService): ConversationSnapshot[] {
-  const seen: ConversationSnapshot[] = [];
+function planEvents(
+  target: AgentService,
+): Array<Pick<ConversationSnapshot, "plan" | "activeTurnId" | "messages">> {
+  const seen: Array<Pick<ConversationSnapshot, "plan" | "activeTurnId" | "messages">> = [];
   target.on("event", (event: AgentEvent) => {
     if (event.type === "conversation" && event.snapshot.plan) seen.push(event.snapshot);
+    // With one-message updates on, a plan change goes out on its own, not in a full snapshot;
+    // watching only full snapshots made this pass or fail on timing alone.
+    if (event.type === "message-upsert" && "plan" in event && event.plan) {
+      seen.push({ plan: event.plan, activeTurnId: event.activeTurnId, messages: [] });
+    }
   });
   return seen;
 }
