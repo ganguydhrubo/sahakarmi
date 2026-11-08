@@ -80,6 +80,7 @@ import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SecretCodec, SecretStore } from "../backend/secret-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
+import { StartupTimings } from "../backend/startup-timings";
 import { TelegramBridge } from "../backend/telegram-bridge";
 import { UsageService } from "../backend/usage-service";
 import { VerificationRepairEngine } from "../backend/verification-repair-engine";
@@ -2050,11 +2051,14 @@ if (!hasSingleInstanceLock) {
   void app
     .whenReady()
     .then(async () => {
+      const timings = new StartupTimings();
       // tasklist takes a few hundred ms: it runs while everything else starts. The window only
       // shows once the page is loaded, which waits for this answer.
       const runningInstaller = findRunningInstaller().catch(() => null);
       configureContentSecurityPolicy();
       mainWindow = createWindow();
+      timings.mark("window");
+      let timingsLogged = false;
       // Work that the first screen does not need starts once the window is on screen.
       const shownWindow = mainWindow;
       const windowShown = new Promise<void>((resolve) => {
@@ -2088,6 +2092,7 @@ if (!hasSingleInstanceLock) {
         .catch(() => undefined);
       mailboxStore = new MailboxStore(app.getPath("userData"), store.sharedRoot);
       await mailboxStore.initialize();
+      timings.mark("keys, coworkers, chats");
       configureApplicationProtocol();
       configureAttachmentProtocol(mailboxStore, store);
       browserHost = createCoworkerBrowser(
@@ -2103,6 +2108,7 @@ if (!hasSingleInstanceLock) {
         loadUsedPages: () =>
           browserPagesFromAudit(join(app.getPath("userData"), "permission-audit.json")),
       });
+      timings.mark("browser");
       const setupFile = join(app.getPath("userData"), SETUP_FILE);
       const setupState = await readSetupState(setupFile);
       const permissions = new PermissionService(app.getPath("userData"));
@@ -2286,6 +2292,7 @@ if (!hasSingleInstanceLock) {
       );
       const routines = new RoutineStore(app.getPath("userData"));
       await routines.initialize();
+      timings.mark("settings and stores");
       // Bring the owner's routines from their previous desktop agent over once (paused), so a
       // switch loses nothing. Not needed for the first screen: it runs once the window shows.
       void windowShown
@@ -2604,7 +2611,9 @@ if (!hasSingleInstanceLock) {
       registerTelegramIpc(telegram);
       configureApplicationMenu(service, updateService);
       if (await waitForRunningInstaller(await runningInstaller)) return;
+      timings.mark("services");
       await loadRenderer(mainWindow);
+      timings.mark("first screen");
       mainProcessStarted = true;
       showCorruptFileNotices();
       void pruneCrashDumps(app.getPath("crashDumps"))
@@ -2615,6 +2624,12 @@ if (!hasSingleInstanceLock) {
       // Runs after the first successful start, including a retry from the window after a failed
       // first try; before, a failed first try left these off until the app restarted.
       agentInitialization.onReady(() => {
+        if (!timingsLogged) {
+          timingsLogged = true;
+          timings.mark("AI engines ready");
+          const summary = timings.summary();
+          appLog.write(summary.slow ? "warn" : "info", "startup timings", summary);
+        }
         schedules.start(async (task) => {
           await service.sendMessage({
             botId: task.botId,

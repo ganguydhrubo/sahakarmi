@@ -124,6 +124,22 @@ export function freshPath(): string {
   return mergePathLists(cachedPath ?? processPath(), extraDirectories.join(";"));
 }
 
+/**
+ * `env` with its PATH swapped for the fresh one, under the one key name Windows already used
+ * ("Path" or "PATH"), so a child never sees two PATH variables. Other platforms are unchanged.
+ */
+export function withFreshPath(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  if (platform !== "win32") return env;
+  const result = { ...env };
+  const keys = Object.keys(result).filter((key) => key.toUpperCase() === "PATH");
+  for (const key of keys) delete result[key];
+  result[keys[0] ?? "Path"] = freshPath();
+  return result;
+}
+
 /** Test hook. */
 export function resetFreshPathForTests(): void {
   cachedPath = null;

@@ -336,11 +336,17 @@ const SCREENSHOT_MAX_WIDTH = 1280;
 const SCREENSHOT_JPEG_QUALITY = 80;
 
 /** A screenshot as the model gets it: resized to SCREENSHOT_MAX_WIDTH, JPEG. */
-export function screenshotDataUrl(image: Electron.NativeImage): string {
-  const small =
-    image.getSize().width > SCREENSHOT_MAX_WIDTH
-      ? image.resize({ width: SCREENSHOT_MAX_WIDTH, quality: "good" })
-      : image;
+/**
+ * `cssWidth` is the page's (or element's) width in CSS pixels. Captures come in screen pixels,
+ * 1.25-2x larger on scaled Windows displays; scaling back to CSS size makes the picture lighter
+ * for the model and its coordinates match the page's.
+ */
+export function screenshotDataUrl(image: Electron.NativeImage, cssWidth?: number): string {
+  const width =
+    cssWidth && Number.isFinite(cssWidth) && cssWidth >= 1
+      ? Math.min(SCREENSHOT_MAX_WIDTH, Math.round(cssWidth))
+      : SCREENSHOT_MAX_WIDTH;
+  const small = image.getSize().width > width ? image.resize({ width, quality: "good" }) : image;
   return `data:image/jpeg;base64,${small.toJPEG(SCREENSHOT_JPEG_QUALITY).toString("base64")}`;
 }
 /** Pages change their title and loading state many times a second; the app hears at most this often. */
@@ -1234,7 +1240,7 @@ export class BrowserHost implements CoworkerBrowser {
           10_000,
           "Browser screenshot timed out.",
         );
-        return screenshotDataUrl(image);
+        return screenshotDataUrl(image, clip?.width ?? view.getBounds().width);
       } finally {
         restore?.();
       }

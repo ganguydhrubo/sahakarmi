@@ -167,7 +167,7 @@ import {
 } from "./learning-tools";
 import type { DeliveryContext, MailboxStore } from "./mailbox-store";
 import { codexMcpConfig, type McpServerStore } from "./mcp-servers";
-import { memoryContextLines } from "./memory/memory-context";
+import { memoryContextLines, SentMemories } from "./memory/memory-context";
 import { HEAVY_RUNTIME_MB, hasRoomFor, readMemory } from "./memory-pressure";
 import { ModelRefreshLoop, mergeProviderCatalog } from "./model-catalog";
 import {
@@ -214,6 +214,7 @@ import {
   teamInstructions,
 } from "./team-rules";
 import { toolCallFromItem } from "./tool-calls";
+import { capContentItems, capToolText } from "./tool-result-cap";
 import {
   type ContinuationState,
   continuationNote,
@@ -505,6 +506,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #finishedTurnIds = new Set<string>();
   /** When each coworker's current turn began: files changed after this are its deliverables. */
   readonly #turnStartedAt = new Map<string, number>();
+  /** Team memories each chat already holds, so they are not attached to every message again. */
+  readonly #sentMemories = new SentMemories();
   /** Files each turn produced, by bot then turn; saved to disk so a thread re-read keeps them. */
   #deliverables = new Map<string, Record<string, AttachmentSummary[]>>();
   #deliverablesSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3981,12 +3984,15 @@ ${carryOver}`
                 : { success: false, text: "No web APIs are connected." };
             client.respond(request.id, {
               success: result.success,
-              contentItems: [{ type: "inputText", text: result.text }],
+              contentItems: [{ type: "inputText", text: capToolText(result.text) }],
             });
             return;
           }
           if (request.params.namespace === "composio") {
-            client.respond(request.id, await this.#handleComposioTool(request.params));
+            client.respond(
+              request.id,
+              capContentItems(await this.#handleComposioTool(request.params)),
+            );
             return;
           }
           throw new Error(`Unsupported dynamic tool namespace: ${request.params.namespace}`);
@@ -5192,7 +5198,10 @@ ${carryOver}`
         !delivery.text.startsWith("[")
       ) {
         try {
-          const memories = await this.#memoryStore.relevant(bot.workspaceId, delivery.text);
+          const memories = this.#sentMemories.fresh(
+            threadId,
+            await this.#memoryStore.relevant(bot.workspaceId, delivery.text),
+          );
           if (memories.length > 0) text += `\n\n${memoryContextLines(memories).join("\n")}`;
         } catch (error) {
           this.emit("log", `team memory for ${bot.id} failed: ${String(error)}`);
@@ -6273,6 +6282,8 @@ ${carryOver}`
   }
 
   #markContextCompacted(threadId: string): void {
+    // A compacted chat no longer holds the memories it was given; they go again when relevant.
+    this.#sentMemories.forget(threadId);
     const budget = this.#contextBudgets.get(threadId);
     if (!budget) return;
     budget.pending = false;
