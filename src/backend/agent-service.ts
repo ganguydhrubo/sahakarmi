@@ -8044,7 +8044,8 @@ export function codexMcpToolApproval(
   if (meta?.codex_approval_kind !== "mcp_tool_call") return null;
   const server = typeof params.serverName === "string" ? params.serverName : "";
   // Codex names the tool only in its question: 'Allow the X MCP server to run tool "add"?'.
-  const asked = typeof params.message === "string" ? /run tool "([^"]+)"/.exec(params.message)?.[1] : undefined;
+  const asked =
+    typeof params.message === "string" ? /run tool "([^"]+)"/.exec(params.message)?.[1] : undefined;
   const tool = typeof meta.tool_name === "string" ? meta.tool_name : (asked ?? "");
   if (!server || !tool) return null;
   return { server, tool, input: isRecord(meta.tool_params) ? meta.tool_params : {} };
