@@ -13750,6 +13750,62 @@ fieldset.memory-filters {
   color: var(--warning);
 }
 
+/* ---------- Skill packs, suggested connections, open-source credits ---------- */
+.skill-packs,
+.skill-mcp-recs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-pack-list {
+  max-height: 520px;
+}
+
+.skill-pack {
+  align-items: flex-start;
+}
+
+.skill-pack-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill-pack-skills li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.skill-mcp-json,
+.open-source-notice {
+  max-height: 160px;
+  margin: 0;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
+.open-source-credits summary {
+  cursor: pointer;
+  list-style: revert;
+}
+
+.open-source-credits summary .about-heading {
+  display: inline;
+}
+
 /* The generic settings-card button style must not flatten the switch. */
 .extension-settings .feature-switch {
   border: 0;

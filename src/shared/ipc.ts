@@ -193,6 +193,7 @@ export const IPC_CHANNELS = {
   customSkillsInstallGithub: "custom-skills:install-github",
   customSkillsRemove: "custom-skills:remove",
   customSkillsMarkReviewed: "custom-skills:mark-reviewed",
+  customSkillsInstallPack: "custom-skills:install-pack",
   mcpList: "mcp:list",
   mcpSave: "mcp:save",
   mcpImportJson: "mcp:import-json",
@@ -2368,6 +2369,36 @@ export interface CustomSkill {
   reviewNeeded?: boolean;
   /** What was flagged, in plain English. */
   risks?: string[];
+  /** Installed from a Sahkarmi skill pack: its id (see shared/skill-packs.ts). */
+  pack?: string;
+  /** Files from the rest of its plugin or repo that were brought along (links rewritten). */
+  linkedFiles?: number;
+  /** Files it mentions that could not be brought along (binary, too large, a script). */
+  unresolvedLinks?: string[];
+  /** MCP servers its plugin's .mcp.json suggests. Recommendations only: never connected. */
+  mcpRecommendations?: McpRecommendation[];
+  /** From the plugin's .claude-plugin/plugin.json, when it has one. */
+  plugin?: SkillPluginInfo;
+}
+
+/** An MCP server a skill's plugin suggests. No secrets: only the names of settings it needs. */
+export interface McpRecommendation {
+  name: string;
+  transport: "http" | "stdio";
+  url?: string;
+  command?: string;
+  args?: string[];
+  /** Names of environment settings it expects (values are never kept). */
+  envKeys: string[];
+  /** Names of HTTP headers it expects (values are never kept). */
+  headerKeys: string[];
+}
+
+export interface SkillPluginInfo {
+  name: string;
+  displayName?: string;
+  version?: string;
+  description?: string;
 }
 
 /** One skill folder (with a SKILL.md) found in a GitHub repo. */
@@ -2398,6 +2429,8 @@ export interface CustomSkillsDesktopApi {
   remove: (id: string) => Promise<CustomSkill[]>;
   /** The owner has read a flagged skill and trusts it. */
   markReviewed: (id: string) => Promise<CustomSkill[]>;
+  /** Installs a whole skill pack, or the named skills of it, at the pack's pinned commit. */
+  installPack?: (packId: string, skills?: string[]) => Promise<CustomSkill[]>;
 }
 
 /** What the owner can press to fix an MCP server problem. */

@@ -387,6 +387,14 @@ function registerExtensionsIpc(
   handleTrusted(IPC_CHANNELS.customSkillsMarkReviewed, (input: unknown) =>
     skills.markReviewed(requireString(isObject(input) ? input.id : null, "id")),
   );
+  handleTrusted(IPC_CHANNELS.customSkillsInstallPack, (input: unknown) =>
+    skills.installPack(
+      requireString(isObject(input) ? input.packId : null, "packId"),
+      isObject(input) && Array.isArray(input.skills)
+        ? input.skills.filter((skill): skill is string => typeof skill === "string").slice(0, 100)
+        : undefined,
+    ),
+  );
   // Guided installs (audit §11.6): plans are built here and run only after the owner approves.
   const installer = new McpInstaller(app.getPath("userData"), {
     saveServer: (input, source) => mcp.save(input, source),
@@ -2227,7 +2235,18 @@ if (!hasSingleInstanceLock) {
         appLog.write("error", "MCP server list unreadable; starting with none", String(error));
       });
       service.setMcpServers(mcpServers);
-      registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers, store.sharedRoot);
+      registerExtensionsIpc(
+        new CustomSkills(store.sharedRoot, undefined, (id) => {
+          // The feature registry is created a few lines below; until then, the switches are off.
+          try {
+            return features.isEnabled(id);
+          } catch {
+            return false;
+          }
+        }),
+        mcpServers,
+        store.sharedRoot,
+      );
       // Who may use each app, skill and MCP server (web APIs keep their own access list).
       const assignments = new ResourceAssignmentStore(app.getPath("userData"));
       await assignments.initialize().catch((error) => {

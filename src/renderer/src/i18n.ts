@@ -11,6 +11,7 @@ import { mcpEn } from "./i18n-mcp";
 import { memoryEn } from "./i18n-memory";
 import { onboardingEn } from "./i18n-onboarding";
 import { securityEn } from "./i18n-security";
+import { skillPacksEn } from "./i18n-skill-packs";
 import { storageEn } from "./i18n-storage";
 import { workspaceEn } from "./i18n-workspace";
 import { type LanguageCode, language } from "./preferences";
@@ -312,6 +313,7 @@ const en = {
   ...assignEn,
   ...mcpEn,
   ...connectorsEn,
+  ...skillPacksEn,
   ...onboardingEn,
 };
 

@@ -2,6 +2,7 @@ import { createSignal, For, type JSX, Show } from "solid-js";
 import { type MessageKey, t } from "../i18n";
 import { chooseUsageCount, usageCountChoice } from "../usage-count";
 import { LogoMark } from "./Logo";
+import { OpenSourceCredits } from "./OpenSourceCredits";
 
 const FOUNDER_LINKEDIN = "https://www.linkedin.com/in/dhrubojyoti-gangopadhyay";
 const FOUNDER_TELEGRAM = "https://t.me/dhruboG";
@@ -252,6 +253,7 @@ export function AboutCard(props: { version: string | null }) {
         </div>
         <p>{t("aboutBody")}</p>
         <UsageCountSwitch />
+        <OpenSourceCredits />
         <p class="settings-meta">{t("attribution")}</p>
       </div>
     </section>
