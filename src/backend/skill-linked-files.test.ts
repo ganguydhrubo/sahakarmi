@@ -73,7 +73,8 @@ const PLUGIN_REPO: Record<string, string> = {
     },
   }),
   "small-business/shared/connector-neutrality.md":
-    "# Connector neutrality\n\nSee also [tenant scope](tenant-scope.md).\n",
+    "# Connector neutrality\n\nSee also [tenant scope](tenant-scope.md) and [the repo](../../README.md).\n",
+  "small-business/skills/lead-triage/SKILL.md": "---\nname: lead-triage\n---\n\nAnother skill.\n",
   "small-business/shared/tenant-scope.md": "# Tenant scope\n\nCheck the mailbox owner.\n",
   "small-business/shared/unused.md": "# Not linked from anywhere\n",
   "small-business/skills/invoice-chase/SKILL.md": [
@@ -87,6 +88,7 @@ const PLUGIN_REPO: Record<string, string> = {
     "Details in [gotchas](reference/gotchas.md) and `reference/gotchas.md`.",
     "Never read [this](../../../../../etc/passwd) or [that](..%2F..%2F..%2F..%2Fsecret.md).",
     "Website: [home](https://example.com/x.md).",
+    "Then hand over to [lead triage](../lead-triage/SKILL.md).",
   ].join("\n"),
   "small-business/skills/invoice-chase/reference/gotchas.md":
     "# Gotchas\n\nSee [neutrality](../../../shared/connector-neutrality.md).\n",
@@ -160,13 +162,28 @@ describe("plugin-aware import", () => {
     expect(files.get("LICENSE")).toBe(PLUGIN_REPO.LICENSE);
     // Only the traversal links and the web link are not files in the folder.
     const contents = new Map([...files].filter(([path]) => path !== ".sahkarmi-skill.json"));
+    // Another skill's folder, and repo files outside a brought-along doc's own folder, are by
+    // design left as written (and recorded), so one shared doc never pulls in the whole repo.
     expect(brokenLinks(contents)).toEqual([
       "SKILL.md -> ../../../../../etc/passwd",
       "SKILL.md -> ..%2F..%2F..%2F..%2Fsecret.md",
+      "SKILL.md -> ../lead-triage/SKILL.md",
+      "_plugin/shared/connector-neutrality.md -> ../../README.md",
+    ]);
+    const record = JSON.parse(
+      await readFile(
+        join(root, "Skills", "Custom", "invoice-chase", ".sahkarmi-skill.json"),
+        "utf8",
+      ),
+    );
+    expect(record.notBrought).toEqual([
+      "SKILL.md -> ../lead-triage/SKILL.md (another-skill, skill)",
+      "_plugin/shared/connector-neutrality.md -> ../../README.md (outside-folder, linked)",
     ]);
     // Path traversal was never followed: nothing outside the repo was asked for.
     expect(requested.some((url) => /passwd|secret\.md/.test(url))).toBe(false);
     expect(requested.some((url) => url.endsWith("unused.md"))).toBe(false);
+    expect(requested.some((url) => url.endsWith("lead-triage/SKILL.md"))).toBe(false);
   });
 
   it("lists a plugin's .mcp.json servers as recommendations only, with no secrets", async () => {

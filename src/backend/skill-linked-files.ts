@@ -230,6 +230,8 @@ export interface LinkedFilesInput {
   maxBytes: number;
   maxFileBytes: number;
   isText: (repoPath: string) => boolean;
+  /** Every skill folder in the repo: another skill's files are never brought along. */
+  skillDirs?: ReadonlySet<string>;
 }
 
 export interface LinkedFilesResult {
@@ -241,7 +243,31 @@ export interface LinkedFilesResult {
   unresolved: string[];
   /** Links rewritten to their new place. */
   rewritten: number;
+  /**
+   * References (in installed files) to real repo files that were not brought along, with the
+   * reason and whether the mention is in the skill's own files or a brought-along one.
+   */
+  notBrought: string[];
 }
+
+/** Why a file a skill mentions was not brought along. */
+export type SkippedReason =
+  | "another-skill"
+  | "outside-folder"
+  | "script"
+  | "not-text"
+  | "too-large"
+  | "limit"
+  | "download";
+
+/** Reasons the owner is told about (the others are by design). */
+const UNRESOLVED_REASONS = new Set<SkippedReason>([
+  "script",
+  "not-text",
+  "too-large",
+  "limit",
+  "download",
+]);
 
 /** Where a repo file lives inside the installed skill folder. */
 export function installedLocation(
@@ -289,6 +315,37 @@ export async function bringLinkedFiles(input: LinkedFilesInput): Promise<LinkedF
     return null;
   };
 
+  /** The skill folder a repo path belongs to (the deepest one holding it), if any. */
+  const owningSkill = (path: string): string | null => {
+    let best: string | null = null;
+    for (const dir of input.skillDirs ?? []) {
+      if (
+        (dir === "" || path.startsWith(`${dir}/`)) &&
+        (best === null || dir.length > best.length)
+      ) {
+        best = dir;
+      }
+    }
+    return best;
+  };
+
+  /** Why a real file a reference names is not brought along (null: bring it). */
+  const whyNot = (from: string, target: string): SkippedReason | null => {
+    const owner = owningSkill(target);
+    if (owner !== null && owner !== skillDir && !insideSkill(target)) return "another-skill";
+    // From a brought-along file, only its own folder is followed, so one shared/ doc does not
+    // pull in the whole repo.
+    if (!insideSkill(from) && !target.startsWith(`${posix.dirname(from)}/`))
+      return "outside-folder";
+    if (EXECUTABLE_FILE.test(target)) return "script";
+    if (!input.isText(target)) return "not-text";
+    const size = sizes.get(target) ?? 0;
+    if (size > input.maxFileBytes) return "too-large";
+    if (linked.length >= input.maxFiles || bytes + size > input.maxBytes) return "limit";
+    return null;
+  };
+
+  const skipped = new Map<string, SkippedReason>();
   const queue = [...texts.keys()];
   while (queue.length > 0) {
     const from = queue.shift() as string;
@@ -296,15 +353,10 @@ export async function bringLinkedFiles(input: LinkedFilesInput): Promise<LinkedF
     for (const ref of fileReferences(texts.get(from) ?? "")) {
       const target = targetOf(from, ref);
       if (!target || texts.has(target)) continue;
-      const size = sizes.get(target) ?? 0;
-      if (
-        !input.isText(target) ||
-        EXECUTABLE_FILE.test(target) ||
-        size > input.maxFileBytes ||
-        linked.length >= input.maxFiles ||
-        bytes + size > input.maxBytes
-      ) {
-        unresolved.add(target);
+      const reason = whyNot(from, target);
+      if (reason) {
+        if (!skipped.has(target)) skipped.set(target, reason);
+        if (UNRESOLVED_REASONS.has(reason)) unresolved.add(target);
         continue;
       }
       try {
@@ -312,8 +364,11 @@ export async function bringLinkedFiles(input: LinkedFilesInput): Promise<LinkedF
         texts.set(target, text);
         bytes += Buffer.byteLength(text);
         if (!insideSkill(target)) linked.push(target);
+        skipped.delete(target);
+        unresolved.delete(target);
         queue.push(target);
       } catch {
+        skipped.set(target, "download");
         unresolved.add(target);
       }
     }
@@ -321,6 +376,7 @@ export async function bringLinkedFiles(input: LinkedFilesInput): Promise<LinkedF
 
   let rewritten = 0;
   const contents = new Map<string, string>();
+  const notBrought: string[] = [];
   for (const [from, text] of texts) {
     const here = installedLocation(from, skillDir, pluginRoot);
     let next = text;
@@ -328,7 +384,12 @@ export async function bringLinkedFiles(input: LinkedFilesInput): Promise<LinkedF
       // Right to left, so earlier offsets stay valid.
       for (const ref of fileReferences(text).reverse()) {
         const target = targetOf(from, ref);
-        if (!target || !texts.has(target)) continue;
+        if (!target) continue;
+        if (!texts.has(target)) {
+          const origin = insideSkill(from) ? "skill" : "linked";
+          notBrought.push(`${here} -> ${ref.path} (${skipped.get(target) ?? "?"}, ${origin})`);
+          continue;
+        }
         if (insideSkill(from) && insideSkill(target)) continue;
         const there = installedLocation(target, skillDir, pluginRoot);
         const relative = posix.relative(posix.dirname(here), there) || posix.basename(there);
@@ -339,7 +400,13 @@ export async function bringLinkedFiles(input: LinkedFilesInput): Promise<LinkedF
     }
     contents.set(here, next);
   }
-  return { contents, linked, unresolved: [...unresolved].sort(), rewritten };
+  return {
+    contents,
+    linked,
+    unresolved: [...unresolved].sort(),
+    rewritten,
+    notBrought: notBrought.sort(),
+  };
 }
 
 /**

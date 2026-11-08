@@ -64,6 +64,8 @@ interface SourceRecord {
   origin?: string;
   linkedFiles?: number;
   unresolvedLinks?: string[];
+  /** Mentions of repo files left as written, with why (record only, for checking imports). */
+  notBrought?: string[];
   mcp?: McpRecommendation[];
   plugin?: SkillPluginInfo;
 }
@@ -73,6 +75,7 @@ interface WriteExtras {
   origin?: string;
   linkedFiles?: number;
   unresolvedLinks?: string[];
+  notBrought?: string[];
   mcp?: McpRecommendation[];
   plugin?: SkillPluginInfo;
 }
@@ -397,6 +400,11 @@ export class CustomSkills {
       maxBytes: MAX_SKILL_BYTES,
       maxFileBytes: MAX_FILE_BYTES,
       isText: (path) => TEXT_FILE.test(path),
+      skillDirs: new Set(
+        tree.files
+          .filter((file) => /(^|\/)SKILL\.md$/i.test(file.path))
+          .map((file) => file.path.split("/").slice(0, -1).join("/")),
+      ),
     });
     const contents = new Map<string, string>();
     for (const [location, text] of linked.contents) {
@@ -450,6 +458,7 @@ export class CustomSkills {
       origin: `github.com/${tree.owner}/${tree.repo}@${tree.ref}${dir ? `/${dir}` : ""}`,
       linkedFiles: linked.linked.length,
       ...(linked.unresolved.length ? { unresolvedLinks: linked.unresolved.slice(0, 20) } : {}),
+      ...(linked.notBrought.length ? { notBrought: linked.notBrought.slice(0, 100) } : {}),
       ...(mcp.length ? { mcp } : {}),
       ...(plugin && !pack ? { plugin } : {}),
     });
