@@ -82,6 +82,7 @@ import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { StartupTimings } from "../backend/startup-timings";
 import { TelegramBridge } from "../backend/telegram-bridge";
+import { type InstallChannel, UsagePing } from "../backend/usage-ping";
 import { UsageService } from "../backend/usage-service";
 import { VerificationRepairEngine } from "../backend/verification-repair-engine";
 import { VoiceService } from "../backend/voice/voice-service";
@@ -2251,6 +2252,7 @@ if (!hasSingleInstanceLock) {
         appLog.write("error", "Performance record unavailable", String(error));
       }
       registerEngineIpc(service, engineSettings, runEvents, appMemory);
+      startDailyUsageCount();
       keepRunningInTray = () => features.isEnabled("background-tray");
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
@@ -2974,6 +2976,47 @@ async function resourceOverview(deps: {
 }
 
 /** The owner's memory limit and warning share, as the memory monitor reads them. */
+/**
+ * The anonymous daily user number (backend/usage-ping.ts): one note a day, a minute after start
+ * and then checked every hour for copies left open past midnight. Only the real packaged app
+ * counts; development runs and test builds under another name never send anything.
+ */
+function startDailyUsageCount(): void {
+  let usage: UsagePing | null = null;
+  handleTrusted(IPC_CHANNELS.usageCountGet, () => usage?.choice() ?? null);
+  handleTrusted(IPC_CHANNELS.usageCountSet, (value: unknown) => {
+    if (typeof value !== "boolean") throw new Error("Choose on or off.");
+    if (!usage) throw new Error("The daily count is not ready yet. Try again in a moment.");
+    return usage.setEnabled(value);
+  });
+  if (
+    !app.isPackaged ||
+    app.getName() !== "Sahkarmi" ||
+    process.platform !== "win32" ||
+    process.env.SAHKARMI_NO_USAGE_COUNT === "1"
+  )
+    return;
+  const channel: InstallChannel = process.windowsStore
+    ? "store"
+    : installedByInstaller(process.execPath, app.getName())
+      ? "installer"
+      : "scoop";
+  const ping = new UsagePing(app.getPath("userData"), { version: app.getVersion(), channel });
+  void ping
+    .initialize()
+    .then(() => {
+      usage = ping;
+      const tick = () => {
+        void ping.sendIfDue().then((result) => {
+          if (result === "failed") appLog.write("info", "Daily count not sent; will try later");
+        });
+      };
+      setTimeout(tick, 60_000).unref();
+      setInterval(tick, 60 * 60_000).unref();
+    })
+    .catch((error) => appLog.write("warn", "Daily count unavailable", String(error)));
+}
+
 function memoryLimitOf(settings: EngineSettings): { limitMb: number; warnPercent: number } {
   return { limitMb: settings.memoryLimitMb, warnPercent: settings.memoryWarnPercent };
 }

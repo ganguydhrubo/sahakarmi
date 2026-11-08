@@ -8,6 +8,8 @@ export const IPC_CHANNELS = {
   requestMacPermission: "app:request-mac-permission",
   openExternal: "app:open-external",
   openUrl: "app:open-url",
+  usageCountGet: "app:usage-count-get",
+  usageCountSet: "app:usage-count-set",
   updateGetStatus: "update:get-status",
   updateCheck: "update:check",
   updateDownload: "update:download",
@@ -2186,6 +2188,14 @@ export interface SahkarmiDesktopApi {
   requestMacPermission: (permission: MacPermissionId) => Promise<MacPermissionsState>;
   openExternal: (destination: ExternalDestination) => Promise<void>;
   openUrl: (url: string) => Promise<void>;
+  /**
+   * The anonymous daily user number: asked once in the sidebar, changeable in Settings > About.
+   * "ask" until answered; null in copies that never count (development and test builds).
+   */
+  usageCount: {
+    get: () => Promise<"ask" | "on" | "off" | null>;
+    set: (enabled: boolean) => Promise<"ask" | "on" | "off">;
+  };
   agent: AgentDesktopApi;
   browser: BrowserDesktopApi;
   team: TeamDesktopApi;

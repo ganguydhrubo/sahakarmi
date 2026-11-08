@@ -11,6 +11,13 @@ export const onboardingEn = {
   crewStageShow: "Show the 3D crew",
   crewStageWalk: "Fly",
   crewStageStop: "Stand still",
+  usageCountLabel: "Count this PC in Sahkarmi's daily user number",
+  usageCountHelp:
+    "Once a day Sahkarmi sends a random number made for this copy, the app version, how it was installed and your time zone. Never your name, chats, files or accounts. Turn it off any time.",
+  usageCountSaveFailed: "Could not save this choice. Try again in a moment.",
+  usageAskTitle: "Help us count Sahkarmi users?",
+  usageAskYes: "Yes, count me",
+  usageAskNo: "No thanks",
   crewStageChosen: "{name} is now this coworker's face.",
   helpTipCeo:
     "CEO: open the workspace menu at the top left, choose Team and CEO, and pick a coworker. Give it a task; it hands out the work, collects the results and reports to you. It decides approvals only for the kinds you tick, for 24 hours.",
@@ -119,6 +126,13 @@ export const onboardingHi: typeof onboardingEn = {
   crewStageShow: "3D टीम दिखाएँ",
   crewStageWalk: "उड़ें",
   crewStageStop: "रुकें",
+  usageCountLabel: "Sahkarmi के रोज़ाना यूज़र नंबर में इस PC को गिनें",
+  usageCountHelp:
+    "दिन में एक बार Sahkarmi इस कॉपी के लिए बना एक रैंडम नंबर, ऐप वर्ज़न, इंस्टॉल करने का तरीका और आपका टाइम ज़ोन भेजता है. आपका नाम, चैट, फ़ाइलें या अकाउंट कभी नहीं. जब चाहें बंद करें.",
+  usageCountSaveFailed: "यह पसंद सेव नहीं हो सकी. थोड़ी देर में फिर कोशिश करें.",
+  usageAskTitle: "Sahkarmi के यूज़र गिनने में मदद करेंगे?",
+  usageAskYes: "हाँ, मुझे गिनें",
+  usageAskNo: "नहीं, धन्यवाद",
   crewStageChosen: "{name} अब इस सहकर्मी का चेहरा है।",
   helpTipCeo:
     "सीईओ: ऊपर बाईं ओर वर्कस्पेस मेनू खोलें, टीम और सीईओ चुनें और एक सहकर्मी चुनें। उसे काम दें; वह काम बाँटता है, नतीजे जमा करता है और आपको बताता है। मंज़ूरी का फैसला वह सिर्फ़ उन्हीं तरह के कामों में करता है जो आप चुनें, 24 घंटे के लिए।",
@@ -223,6 +237,13 @@ export const onboardingBn: typeof onboardingEn = {
   crewStageShow: "3D টিম দেখান",
   crewStageWalk: "উড়ুন",
   crewStageStop: "থামুন",
+  usageCountLabel: "Sahkarmi-র দৈনিক ব্যবহারকারী সংখ্যায় এই PC গুনুন",
+  usageCountHelp:
+    "দিনে একবার Sahkarmi এই কপির জন্য তৈরি একটি র‍্যান্ডম নম্বর, অ্যাপ ভার্সন, কীভাবে ইনস্টল হয়েছে আর আপনার টাইম জোন পাঠায়। আপনার নাম, চ্যাট, ফাইল বা অ্যাকাউন্ট কখনও নয়। যখন খুশি বন্ধ করুন।",
+  usageCountSaveFailed: "এই পছন্দ সেভ করা গেল না। একটু পরে আবার চেষ্টা করুন।",
+  usageAskTitle: "Sahkarmi-র ব্যবহারকারী গুনতে সাহায্য করবেন?",
+  usageAskYes: "হ্যাঁ, আমাকে গুনুন",
+  usageAskNo: "না, ধন্যবাদ",
   crewStageChosen: "{name} এখন এই সহকর্মীর মুখ।",
   helpTipCeo:
     "সিইও: উপরে বাঁয়ে ওয়ার্কস্পেস মেনু খুলে টিম ও সিইও বেছে একজন সহকর্মী ঠিক করুন। তাকে কাজ দিন; সে কাজ ভাগ করে, ফলাফল জড়ো করে আপনাকে জানায়। অনুমোদনের সিদ্ধান্ত সে শুধু আপনার বাছা ধরনের কাজেই নেয়, ২৪ ঘণ্টার জন্য।",

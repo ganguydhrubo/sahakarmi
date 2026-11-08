@@ -23,6 +23,7 @@ import { AvatarAura, statusAura } from "./AvatarAura";
 import { LogoMark } from "./Logo";
 import { type ProviderRefresh, ProviderUpdates } from "./ProviderUpdates";
 import { StatusDot, statusLabel } from "./StatusDot";
+import { UsageCountAsk } from "./UsageCountAsk";
 import { UsageRings } from "./UsageRings";
 import { WorkspaceTeamDialog } from "./WorkspaceTeamDialog";
 
@@ -1077,6 +1078,7 @@ export function Sidebar(props: SidebarProps) {
       </nav>
 
       <div class="coworker-panel-footer">
+        <UsageCountAsk />
         <Show when={props.agentStatus && props.onRefreshModels}>
           <ProviderUpdates
             status={props.agentStatus as AgentStatus}

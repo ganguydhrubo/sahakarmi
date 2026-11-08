@@ -74,6 +74,10 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     ipcRenderer.invoke(IPC_CHANNELS.requestMacPermission, permission),
   openExternal: (destination) => ipcRenderer.invoke(IPC_CHANNELS.openExternal, destination),
   openUrl: (url) => ipcRenderer.invoke(IPC_CHANNELS.openUrl, url),
+  usageCount: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.usageCountGet),
+    set: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.usageCountSet, enabled),
+  },
   agent: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetStatus),
     getUsage: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetUsage),

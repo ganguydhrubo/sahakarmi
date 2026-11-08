@@ -15157,3 +15157,42 @@ fieldset.memory-filters {
   margin: 4px 0;
   font-size: 12.5px;
 }
+
+.about-usage {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 0;
+}
+
+.about-usage input {
+  margin-top: 3px;
+}
+
+.about-usage > span {
+  display: grid;
+  gap: 2px;
+}
+
+.usage-ask {
+  display: grid;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+
+.usage-ask p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.usage-ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

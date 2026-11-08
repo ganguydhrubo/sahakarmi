@@ -1,5 +1,6 @@
-import { For, type JSX } from "solid-js";
+import { createSignal, For, type JSX, Show } from "solid-js";
 import { type MessageKey, t } from "../i18n";
+import { chooseUsageCount, usageCountChoice } from "../usage-count";
 import { LogoMark } from "./Logo";
 
 const FOUNDER_LINKEDIN = "https://www.linkedin.com/in/dhrubojyoti-gangopadhyay";
@@ -121,6 +122,39 @@ function open(href: string) {
 const label = (item: LinkItem) =>
   item.translated ? t(item.label as MessageKey) : (item.label as string);
 
+/** The anonymous daily user number; hidden in copies that never count. */
+function UsageCountSwitch() {
+  const [failed, setFailed] = createSignal(false);
+  return (
+    <Show when={usageCountChoice() !== null}>
+      <label class="about-usage">
+        <input
+          type="checkbox"
+          checked={usageCountChoice() === "on"}
+          onChange={(event) => {
+            const input = event.currentTarget;
+            const next = input.checked;
+            setFailed(false);
+            chooseUsageCount(next).catch(() => {
+              input.checked = !next;
+              setFailed(true);
+            });
+          }}
+        />
+        <span>
+          <strong>{t("usageCountLabel")}</strong>
+          <span class="settings-meta">{t("usageCountHelp")}</span>
+          <Show when={failed()}>
+            <span class="settings-meta" role="alert">
+              {t("usageCountSaveFailed")}
+            </span>
+          </Show>
+        </span>
+      </label>
+    </Show>
+  );
+}
+
 /** Settings > About: the app, its founder and where to find Sahkarmi. */
 export function AboutCard(props: { version: string | null }) {
   return (
@@ -217,6 +251,7 @@ export function AboutCard(props: { version: string | null }) {
           </ul>
         </div>
         <p>{t("aboutBody")}</p>
+        <UsageCountSwitch />
         <p class="settings-meta">{t("attribution")}</p>
       </div>
     </section>
