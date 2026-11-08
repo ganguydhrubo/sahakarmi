@@ -5,6 +5,21 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-11-08
+
+### Fixed
+
+- Built-in browser stopped working for every coworker (errors naming getTitle or getURL) after
+  a page ended by itself, for example a video or upload page that closed its own window, or a
+  page whose process was killed while memory was short. The tab kept pointing at the dead page,
+  so every later browser call failed until Sahkarmi was restarted, and coworkers looped asking
+  the owner to hand the browser back. A tab now lets go of a dead page at once and opens its
+  address in a fresh page on its next use; a crashed page is reloaded the same way. Other tabs
+  and coworkers are not affected.
+- "… is using your desktop" was posted again and again in one chat, even after the coworker's
+  last reply (every 3 minutes without a desktop step, and on each follow-up turn). A chat now
+  gets the line once, and again only after 30 minutes without desktop use there.
+
 ## [0.26.0] - 2026-11-08
 
 0.25.1 was never published, so its two fixes ship here too.

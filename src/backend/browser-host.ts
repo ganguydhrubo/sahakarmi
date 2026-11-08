@@ -818,6 +818,7 @@ export class BrowserHost implements CoworkerBrowser {
 
   /** Gives a sleeping tab its live page again; the page starts loading its saved address. */
   #wake(tab: InternalTab): WebContentsView {
+    this.#dropDeadPage(tab);
     if (tab.view) {
       tab.lastUsed = Date.now();
       return tab.view;
@@ -831,6 +832,7 @@ export class BrowserHost implements CoworkerBrowser {
   /** The tab's live page, created (but not loaded) if the tab sleeps. */
   #attachLiveView(tab: InternalTab): WebContentsView {
     tab.lastUsed = Date.now();
+    this.#dropDeadPage(tab);
     if (tab.view) return tab.view;
     const view = this.#createView(this.#sessionFor(tab.ownerBotId));
     tab.view = view;
@@ -892,14 +894,28 @@ export class BrowserHost implements CoworkerBrowser {
     const view = tab.view;
     if (!view) return;
     tab.requestedUrl = persistentBrowserUrl(currentTabUrl(tab));
-    tab.title = view.webContents.getTitle() || tab.title;
+    tab.title = livePage(view)?.getTitle() || tab.title;
     tab.view = null;
     // Element refs from the old page are gone: the coworker is told to take a fresh snapshot.
     tab.revision += 1;
     tab.stale = false;
     tab.ownerTouched = false;
     this.#unmountView(view);
-    view.webContents.close();
+    if (!view.webContents.isDestroyed()) view.webContents.close();
+  }
+
+  /**
+   * A tab whose page ended by itself turns into a sleeping tab: it keeps its address and wakes
+   * with a fresh page on its next use, instead of breaking every browser call.
+   */
+  #dropDeadPage(tab: InternalTab): boolean {
+    const view = tab.view;
+    if (!view || !view.webContents.isDestroyed()) return false;
+    tab.view = null;
+    tab.revision += 1;
+    tab.stale = false;
+    this.#unmountView(view);
+    return true;
   }
 
   /**
@@ -919,6 +935,7 @@ export class BrowserHost implements CoworkerBrowser {
     const candidates: InternalTab[] = [];
     let awake = 0;
     for (const tab of this.#tabs.values()) {
+      if (this.#dropDeadPage(tab)) slept = true;
       const view = tab.view;
       if (!view) continue;
       awake += 1;
@@ -1068,9 +1085,10 @@ export class BrowserHost implements CoworkerBrowser {
     const tab = this.#requireTab(tabId);
     this.#tabs.delete(tabId);
     if (tab.view) {
-      this.#unmountView(tab.view);
-      tab.view.webContents.close();
+      const view = tab.view;
       tab.view = null;
+      this.#unmountView(view);
+      if (!view.webContents.isDestroyed()) view.webContents.close();
     }
 
     if (this.#activeTabId === tabId) {
@@ -1321,7 +1339,7 @@ export class BrowserHost implements CoworkerBrowser {
       for (const tab of this.#tabs.values()) {
         if (!tab.view) continue;
         this.#unmountView(tab.view);
-        tab.view.webContents.close();
+        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
         tab.view = null;
       }
       this.#tabs.clear();
@@ -1434,6 +1452,20 @@ export class BrowserHost implements CoworkerBrowser {
     const changed = () => {
       if (current()) this.#emitChanged();
     };
+    contents.once("destroyed", () => {
+      if (!current() || this.#destroyed) return;
+      this.#dropDeadPage(tab);
+      this.#syncAttachedView();
+      this.#emitChanged();
+    });
+    // A crashed page (often memory) would stay blank: the tab sleeps and its next use loads
+    // the address again in a fresh page.
+    contents.once("render-process-gone", () => {
+      if (!current() || this.#destroyed) return;
+      this.#sleep(tab);
+      this.#syncAttachedView();
+      this.#emitChanged();
+    });
     contents.on("did-start-loading", changed);
     contents.on("did-stop-loading", changed);
     contents.on("page-title-updated", (_event, title) => {
@@ -1665,9 +1697,7 @@ export class BrowserHost implements CoworkerBrowser {
     const settled = result.finally(() => {
       tab.busy -= 1;
       tab.lastUsed = Date.now();
-      if (tab.busy === 0 && tab.view && !tab.view.webContents.isDestroyed()) {
-        tab.view.webContents.setBackgroundThrottling(true);
-      }
+      if (tab.busy === 0) livePage(tab.view)?.setBackgroundThrottling(true);
     });
     tab.queue = settled.catch(() => undefined);
     return settled;
@@ -2321,12 +2351,25 @@ export function fitInWindow(bounds: BrowserBounds, [width, height]: number[]): B
   };
 }
 
+/**
+ * The page of a view, or null once it is gone. A page can end by itself (a site calling
+ * window.close(), its process killed while memory is short); reading it then throws
+ * "Object has been destroyed", which broke the tab list for every coworker until a restart.
+ */
+export function livePage<T extends { isDestroyed(): boolean }>(
+  view: { webContents: T } | null | undefined,
+): T | null {
+  const contents = view?.webContents;
+  return contents && !contents.isDestroyed() ? contents : null;
+}
+
 function toPublicTab(tab: InternalTab): BrowserTab {
+  const contents = livePage(tab.view);
   return {
     id: tab.id,
-    title: tab.view?.webContents.getTitle() || tab.title || "New tab",
+    title: contents?.getTitle() || tab.title || "New tab",
     url: currentTabUrl(tab),
-    loading: tab.view?.webContents.isLoading() ?? false,
+    loading: contents?.isLoading() ?? false,
     ownerThreadId: tab.ownerThreadId,
     ownerBotId: tab.ownerBotId,
   };
@@ -2359,7 +2402,7 @@ export function isLinkedInUrl(url: string): boolean {
 }
 
 function currentTabUrl(tab: InternalTab): string {
-  const currentUrl = tab.view?.webContents.getURL() ?? "";
+  const currentUrl = livePage(tab.view)?.getURL() ?? "";
   return isPersistableBrowserUrl(currentUrl) ? currentUrl : tab.requestedUrl;
 }
 
