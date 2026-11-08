@@ -13,6 +13,7 @@ const {
   elementRectScript,
   fitInWindow,
   fitSnapshot,
+  livePage,
   runBrowserTool,
   validateBounds,
 } = await import("./browser-host");
@@ -289,5 +290,21 @@ describe("browser page bounds", () => {
       width: 50,
       height: 40,
     });
+  });
+});
+
+describe("a page that ended by itself", () => {
+  const page = (destroyed: boolean) => ({
+    isDestroyed: () => destroyed,
+    getTitle: () => {
+      if (destroyed) throw new Error("Object has been destroyed");
+      return "YouTube";
+    },
+  });
+
+  it("is not read again, so one closed page never breaks the tab list", () => {
+    expect(livePage({ webContents: page(true) })).toBeNull();
+    expect(livePage(null)).toBeNull();
+    expect(livePage({ webContents: page(false) })?.getTitle()).toBe("YouTube");
   });
 });
