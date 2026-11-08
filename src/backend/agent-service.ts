@@ -6298,7 +6298,7 @@ ${carryOver}`
       budget.failures = (budget.failures ?? 0) + 1;
       this.#emitError(
         "context_compaction_failed",
-        `Codex context compaction ended with status ${status}.`,
+        "Sahkarmi could not shorten this long chat. The coworker keeps working; if replies get slow, start a new chat with it.",
         botId,
       );
     }
