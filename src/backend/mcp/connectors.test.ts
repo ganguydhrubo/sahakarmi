@@ -325,6 +325,14 @@ describe("safe defaults", () => {
     expect(
       connectorToolCategory(files, "move_file", { source: "C:\\S\\a", destination: "C:\\S\\b" }),
     ).toEqual({ category: "file_modify", paths: ["C:\\S\\a", "C:\\S\\b"] });
+    for (const tool of ["git_commit", "git_merge", "git_checkout"]) {
+      expect(connectorToolCategory(preset("git"), tool, { repo_path: "C:\\S\\shop" })).toEqual({
+        category: "file_modify",
+        paths: ["C:\\S\\shop"],
+      });
+    }
+    // Remote changes are not guessed: asked like any tool server's.
+    expect(connectorToolCategory(preset("git"), "git_remote", {})).toBeNull();
     const converter = preset("document-converter");
     expect(
       connectorToolCategory(converter, "convert_to_markdown", { uri: "file:///C:/S/report.pdf" }),

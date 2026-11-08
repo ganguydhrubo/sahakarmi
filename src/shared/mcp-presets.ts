@@ -209,7 +209,7 @@ export const CONNECTOR_PRESETS: readonly ConnectorPreset[] = [
         pathKeys: ["repo_path"],
       },
       {
-        tool: "^git_(commit|add|reset|create_branch|checkout)$",
+        tool: "^git_(commit|add|reset|create_branch|checkout|merge)$",
         category: "file_modify",
         pathKeys: ["repo_path"],
       },
