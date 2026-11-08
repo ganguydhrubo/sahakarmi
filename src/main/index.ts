@@ -30,6 +30,7 @@ import { memoryCategory } from "../backend/agent-memory-store";
 import { AgentService } from "../backend/agent-service";
 import { ApiIntegrationService } from "../backend/api-integrations/api-service";
 import { AppMemoryMonitor } from "../backend/app-memory";
+import { closeLeftoverEngines, SAHKARMI_LAUNCH_MARKERS } from "../backend/leftover-processes";
 import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
@@ -2243,6 +2244,17 @@ if (!hasSingleInstanceLock) {
           : null;
       });
       service.configureMemoryMonitor(appMemory);
+      // Phase 2 resource guards, each behind its own switch in Settings > Features.
+      appMemory.configureDetail(
+        () => features.isEnabled("live-meter-detail"),
+        () => browserHost?.awakePageCount?.() ?? null,
+      );
+      service.configureFairTurns(() => features.isEnabled("fair-turns"));
+      service.configureAwakePages((botId) => browserHost?.awakePageCount?.(botId) ?? 0);
+      browserHost?.configureGuards?.({
+        pageBudget: () => features.isEnabled("page-budget"),
+        crashGuard: () => features.isEnabled("page-crash-guard"),
+      });
       let runEvents: RunEventStore | null = null;
       try {
         runEvents = new RunEventStore(join(app.getPath("userData"), "run-events.sqlite"));
@@ -2285,6 +2297,23 @@ if (!hasSingleInstanceLock) {
       await features.initialize().catch((error) => {
         appLog.write("error", "feature settings unreadable; using defaults", String(error));
       });
+      // Coworker programs a crashed or force-closed run left behind (off unless switched on).
+      if (process.platform === "win32" && features.isEnabled("leftover-cleanup")) {
+        const startedAt = Date.now() - Math.round(process.uptime() * 1000);
+        void windowShown.then(() =>
+          closeLeftoverEngines({
+            selfPid: process.pid,
+            startedAt,
+            ownFolders: [
+              process.resourcesPath,
+              join(app.getPath("userData"), "tools"),
+              join(app.getPath("userData"), "runtime"),
+            ].filter((folder): folder is string => typeof folder === "string" && folder.length > 0),
+            markers: SAHKARMI_LAUNCH_MARKERS,
+            log: (message) => appLog.write("info", "leftover cleanup", message),
+          }),
+        );
+      }
       const business = new BusinessStore(app.getPath("userData"));
       await business.initialize();
       const schedules = new ScheduleStore(app.getPath("userData"));

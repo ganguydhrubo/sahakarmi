@@ -1,6 +1,7 @@
 import { totalmem } from "node:os";
 import { join } from "node:path";
 import {
+  type ConcurrencyMode,
   DEFAULT_ENGINE_SETTINGS,
   ENGINE_SETTINGS_LIMITS,
   type EngineSettings,
@@ -26,6 +27,7 @@ export function normaliseEngineSettings(
       ENGINE_SETTINGS_LIMITS.maxConcurrentTurns,
       base.maxConcurrentTurns,
     ),
+    concurrencyMode: concurrencyMode(input.concurrencyMode, base.concurrencyMode),
     watchdogMinutes: clamp(
       input.watchdogMinutes,
       ENGINE_SETTINGS_LIMITS.watchdogMinutes,
@@ -43,6 +45,12 @@ export function normaliseEngineSettings(
       base.maxStepsPerTurn ?? DEFAULT_ENGINE_SETTINGS.maxStepsPerTurn,
     ),
   };
+}
+
+/** "fixed" or "auto"; anything else keeps what was there ("fixed" when nothing was). */
+function concurrencyMode(value: unknown, fallback: ConcurrencyMode | undefined): ConcurrencyMode {
+  if (value === "fixed" || value === "auto") return value;
+  return fallback === "auto" ? "auto" : "fixed";
 }
 
 /** 0 (Automatic), or between 1 GB and the PC's installed RAM. */

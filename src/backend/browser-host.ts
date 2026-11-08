@@ -22,6 +22,12 @@ import type {
 } from "../shared/ipc";
 import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
+import {
+  pagesOverBudget,
+  restingSiteMessage,
+  SiteCrashGuard,
+  siteOfPage,
+} from "./browser-guards";
 import { persistentBrowserUrl } from "./browser-state";
 import { readMemory } from "./memory-pressure";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
@@ -514,6 +520,10 @@ export class BrowserHost implements CoworkerBrowser {
   readonly #sleepTimer: ReturnType<typeof setInterval>;
   #pressureTimer: ReturnType<typeof setTimeout> | null = null;
   #destroyed = false;
+  /** Feature switches (Settings > Features); both off keep the old behaviour exactly. */
+  #pageBudgetOn: () => boolean = () => false;
+  #crashGuardOn: () => boolean = () => false;
+  readonly #crashGuard = new SiteCrashGuard();
 
   constructor(window: BrowserWindow, downloadsRoot: string, statePath: string) {
     this.#window = window;
@@ -816,6 +826,30 @@ export class BrowserHost implements CoworkerBrowser {
     return [...this.#tabs.values()].filter((tab) => tab.view).length;
   }
 
+  /** Awake pages, all of them or one coworker's (the live meter and the Auto turn cap). */
+  awakePageCount(botId?: string): number {
+    let count = 0;
+    for (const tab of this.#tabs.values()) {
+      if (!tab.view || tab.view.webContents.isDestroyed()) continue;
+      if (botId === undefined || tab.ownerBotId === botId) count += 1;
+    }
+    return count;
+  }
+
+  /** The per-coworker page budget and the crash guard, each behind its own feature switch. */
+  configureGuards(options: { pageBudget?: () => boolean; crashGuard?: () => boolean }): void {
+    if (options.pageBudget) this.#pageBudgetOn = options.pageBudget;
+    if (options.crashGuard) this.#crashGuardOn = options.crashGuard;
+  }
+
+  #guardOn(check: () => boolean): boolean {
+    try {
+      return check();
+    } catch {
+      return false;
+    }
+  }
+
   /** Gives a sleeping tab its live page again; the page starts loading its saved address. */
   #wake(tab: InternalTab): WebContentsView {
     this.#dropDeadPage(tab);
@@ -861,6 +895,11 @@ export class BrowserHost implements CoworkerBrowser {
 
   /** Like #wake, and waits for a page that has only just started to finish its first load. */
   async #wakeLoaded(tab: InternalTab): Promise<WebContentsView> {
+    // A site whose page keeps crashing is not woken for a coworker; it is told why instead.
+    if (!livePage(tab.view) && this.#guardOn(this.#crashGuardOn)) {
+      const site = siteOfPage(tab.requestedUrl);
+      if (this.#crashGuard.isResting(site, Date.now())) throw new Error(restingSiteMessage(site));
+    }
     const view = this.#wake(tab);
     const contents = view.webContents;
     // A hidden page's timers are slowed down; a coworker's call runs it at full speed until it ends.
@@ -931,7 +970,7 @@ export class BrowserHost implements CoworkerBrowser {
     const idleFloor =
       pressure === "ok" ? BrowserHost.AWAKE_LIMIT_IDLE_MS : BrowserHost.PRESSURE_IDLE_MS;
     if (pressure !== "ok") this.#schedulePressureCheck();
-    let slept = false;
+    let slept = this.#keepPageBudget(now);
     const candidates: InternalTab[] = [];
     let awake = 0;
     for (const tab of this.#tabs.values()) {
@@ -962,6 +1001,45 @@ export class BrowserHost implements CoworkerBrowser {
       this.#emitChanged();
       this.#schedulePersist();
     }
+  }
+
+  /** A page that must stay awake: on screen, in use, with unsaved typing, or playing sound. */
+  #mustStayAwake(tab: InternalTab): boolean {
+    const view = tab.view;
+    if (!view) return false;
+    if (this.#visible && this.#attachedView === view) return true;
+    if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) return true;
+    return !view.webContents.isDestroyed() && view.webContents.isCurrentlyAudible();
+  }
+
+  /**
+   * Page budget (feature switch): each coworker keeps at most two awake pages; its least recently
+   * used extra page sleeps. Any failure leaves the pages as they are. True when one slept.
+   */
+  #keepPageBudget(now: number): boolean {
+    if (!this.#guardOn(this.#pageBudgetOn)) return false;
+    let slept = false;
+    try {
+      const awake = [...this.#tabs.values()].filter((tab) => livePage(tab.view));
+      const over = pagesOverBudget(
+        awake.map((tab) => ({
+          id: tab.id,
+          ownerBotId: tab.ownerBotId,
+          lastUsed: tab.lastUsed,
+          protected: this.#mustStayAwake(tab),
+        })),
+        now,
+      );
+      for (const id of over) {
+        const tab = this.#tabs.get(id);
+        if (!tab?.view || this.#mustStayAwake(tab)) continue;
+        this.#sleep(tab);
+        slept = true;
+      }
+    } catch {
+      // The page budget is an extra; the normal sleep rules still run.
+    }
+    return slept;
   }
 
   /**
@@ -1462,12 +1540,19 @@ export class BrowserHost implements CoworkerBrowser {
     // the address again in a fresh page.
     contents.once("render-process-gone", () => {
       if (!current() || this.#destroyed) return;
+      if (this.#guardOn(this.#crashGuardOn)) {
+        this.#crashGuard.noteCrash(siteOfPage(currentTabUrl(tab)), Date.now());
+      }
       this.#sleep(tab);
       this.#syncAttachedView();
       this.#emitChanged();
     });
     contents.on("did-start-loading", changed);
     contents.on("did-stop-loading", changed);
+    contents.on("did-finish-load", () => {
+      if (!current() || !this.#guardOn(this.#crashGuardOn)) return;
+      this.#crashGuard.noteLoaded(siteOfPage(currentTabUrl(tab)), Date.now());
+    });
     contents.on("page-title-updated", (_event, title) => {
       if (current()) tab.title = title;
       changed();
@@ -1659,6 +1744,10 @@ export class BrowserHost implements CoworkerBrowser {
       return;
     }
 
+    // The owner opened this tab on screen: a resting site may be used again.
+    if (!livePage(tab.view) && this.#guardOn(this.#crashGuardOn)) {
+      this.#crashGuard.noteSuccess(siteOfPage(tab.requestedUrl));
+    }
     const view = this.#wake(tab);
     if (this.#attachedView !== view) {
       this.#attachedView?.setVisible(false);
@@ -1866,6 +1955,10 @@ export interface CoworkerBrowser extends BrowserToolTarget {
   releaseBot?(botId: string): Promise<void>;
   /** The app window was minimised/hidden (true) or shown (false); hidden pages are quietened. */
   setWindowHidden?(hidden: boolean): void;
+  /** Awake pages, all or one coworker's (the built-in browser). */
+  awakePageCount?(botId?: string): number;
+  /** Page budget and crash guard switches (the built-in browser). */
+  configureGuards?(options: { pageBudget?: () => boolean; crashGuard?: () => boolean }): void;
   /** Types the owner's secret into the sign-in field, found again if the page redrew it. */
   fillSecureField?(tabId: string, input: SecureFillInput): Promise<void>;
   onChanged(listener: (...args: BrowserHostEvents["changed"]) => void): () => void;

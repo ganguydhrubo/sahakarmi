@@ -3,11 +3,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   AppMemoryMonitor,
+  cpuPercentBetween,
   groupTree,
   type ProcessRow,
   parseProcessRows,
   presets,
   recommend,
+  treeCpuTicks,
 } from "./app-memory";
 import { hasRoomFor, readMemory, setMemoryBudget, setMemoryProbe } from "./memory-pressure";
 
@@ -90,6 +92,71 @@ describe("app memory", () => {
     await monitor.sample();
     expect(monitor.level).toBe("over");
     monitor.stop();
+  });
+
+  it("reads processor time from the detail query, and the plain query stays as it was", () => {
+    expect(parseProcessRows("10|1|Sahkarmi.exe|1048576|200|300\n")).toEqual([
+      { pid: 10, ppid: 1, name: "Sahkarmi.exe", bytes: MB, cpuTicks: 500 },
+    ]);
+    expect(parseProcessRows("10|1|Sahkarmi.exe|1048576\n")[0]).not.toHaveProperty("cpuTicks");
+    const rows = ROWS.map((row) => ({ ...row, cpuTicks: 1_000 }));
+    // Eight processes in Sahkarmi's tree; chrome.exe is not counted.
+    expect(treeCpuTicks(rows, 10)).toBe(8_000);
+    expect(treeCpuTicks(ROWS, 10)).toBeNull();
+  });
+
+  it("turns processor time into a share of the whole PC", () => {
+    // 1 s of processor time in 1 s of wall time on 4 cores = 25 %.
+    expect(cpuPercentBetween({ at: 0, ticks: 0 }, { at: 1_000, ticks: 10_000_000 }, 4)).toBe(25);
+    expect(cpuPercentBetween({ at: 0, ticks: 500 }, { at: 1_000, ticks: 100 }, 4)).toBe(0);
+    expect(cpuPercentBetween({ at: 0, ticks: 0 }, { at: 0, ticks: 100 }, 4)).toBeNull();
+    expect(cpuPercentBetween({ at: 0, ticks: 0 }, { at: 1, ticks: 1e12 }, 1)).toBe(100);
+  });
+
+  it("adds processor and awake pages to the meter only while the detail switch is on", async () => {
+    setMemoryProbe({ free: () => 8 * GB, total: () => 16 * GB });
+    let now = 0;
+    let ticks = 0;
+    const plain: number[] = [];
+    const detailed: number[] = [];
+    const monitor = new AppMemoryMonitor({
+      rootPid: 10,
+      now: () => now,
+      cores: 2,
+      lister: async () => {
+        plain.push(now);
+        return [{ pid: 10, ppid: 1, name: "Sahkarmi.exe", bytes: 1_000 * MB }];
+      },
+      detailLister: async () => {
+        detailed.push(now);
+        return [{ pid: 10, ppid: 1, name: "Sahkarmi.exe", bytes: 1_000 * MB, cpuTicks: ticks }];
+      },
+    });
+    monitor.configure(() => ({ limitMb: 0, warnPercent: 80 }));
+    let detail = false;
+    monitor.configureDetail(
+      () => detail,
+      () => 4,
+    );
+    try {
+      await monitor.sample();
+      const off = await monitor.status();
+      expect(off).not.toHaveProperty("cpuPercent");
+      expect(off).not.toHaveProperty("awakePages");
+      expect(detailed).toHaveLength(0);
+      expect(plain.length).toBeGreaterThan(0);
+      detail = true;
+      now = 60_000;
+      await monitor.sample();
+      now = 90_000;
+      ticks = 30 * 10_000_000; // 30 s of processor in 30 s on 2 cores = 50 %
+      const on = await monitor.status();
+      expect(on.cpuPercent).toBe(50);
+      expect(on.awakePages).toBe(4);
+      expect(detailed.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      monitor.dispose();
+    }
   });
 
   it("respects the owner's limit on top of the PC's free memory", () => {
