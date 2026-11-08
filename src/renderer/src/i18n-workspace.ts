@@ -552,6 +552,7 @@ export const workspaceEn = {
     "Google accounts for Gemini. When one reaches Google's usage limit, Gemini moves to the next signed-in account and sends the message again.",
   geminiAccountNumber: "Google account {n}",
   geminiAccountSignedIn: "Signed in",
+  geminiAccountDuplicate: "Same Google account as one above (shares its limits)",
   geminiAccountNotSignedIn: "Not signed in yet",
   geminiAccountInUse: "In use",
   geminiAccountUse: "Use",

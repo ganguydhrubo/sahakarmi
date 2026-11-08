@@ -173,6 +173,9 @@ const ONBOARDING_PROFILES: Record<
 
 const EMPTY_TAKEOVER: BrowserTakeoverState = { humanInControl: false, requests: [] };
 
+/** Chat notes that say a message waits for a turn slot; removed when the turn starts. */
+const WAIT_NOTE_PREFIX = "wait-";
+
 export function App() {
   const [botList, setBotList] = createSignal<BotProfile[]>([]);
   const [modelOptions, setModelOptions] = createSignal<AgentModelOption[]>([]);
@@ -541,6 +544,7 @@ export function App() {
         return;
       case "turn-started":
         clearRetry(event.botId);
+        clearWaitNotes(event.botId);
         clearRecentReply(event.botId);
         setActiveTurns((current) => ({ ...current, [event.botId]: event.turnId }));
         return;
@@ -560,7 +564,13 @@ export function App() {
         setPendingPrompts((current) => ({ ...current, [event.botId]: event }));
         return;
       case "notice":
-        appendUiError(event.botId, event.message, vocab().ERROR_TITLES.notice ?? "Note");
+        appendUiError(
+          event.botId,
+          event.message,
+          vocab().ERROR_TITLES.notice ?? "Note",
+          // A "waits for a slot or memory" note is only true until the turn starts.
+          event.code === "waiting_for_turn_slot" ? WAIT_NOTE_PREFIX : "ui-",
+        );
         return;
       case "error":
         if (event.botId) appendUiError(event.botId, event.message, vocab().ERROR_TITLES.error);
@@ -1221,20 +1231,33 @@ export function App() {
       .catch((error) => appendUiError(bot.id, error, vocab().ERROR_TITLES.stop));
   }
 
-  function appendUiError(botId: string, error: unknown, status: string) {
+  function appendUiError(botId: string, error: unknown, status: string, idPrefix = "ui-") {
     const body = error instanceof Error ? error.message : String(error);
     setUiErrors((current) => ({
       ...current,
       [botId]: [
-        ...(current[botId] ?? []),
+        // One wait note at a time: a newer one replaces the older one.
+        ...(current[botId] ?? []).filter(
+          (item) => idPrefix !== WAIT_NOTE_PREFIX || !item.id.startsWith(WAIT_NOTE_PREFIX),
+        ),
         {
-          id: `ui-${Date.now()}-${Math.random()}`,
+          id: `${idPrefix}${Date.now()}-${Math.random()}`,
           author: "bot",
           body,
           time: formatTime(new Date().toISOString()),
           status,
         },
       ],
+    }));
+  }
+
+  /** The coworker started working: its "this message waits" note is no longer true. */
+  function clearWaitNotes(botId: string) {
+    const notes = uiErrors()[botId];
+    if (!notes?.some((item) => item.id.startsWith(WAIT_NOTE_PREFIX))) return;
+    setUiErrors((current) => ({
+      ...current,
+      [botId]: (current[botId] ?? []).filter((item) => !item.id.startsWith(WAIT_NOTE_PREFIX)),
     }));
   }
 
@@ -1787,6 +1810,7 @@ function toBotProfile(stored: BotSummary): BotProfile {
           : accentForBot(stored.id),
     avatarShape: stored.avatarShape ?? "blob",
     avatarColor: stored.avatarColor ?? "orange",
+    avatarModel: stored.avatarModel ?? null,
     time: stored.updatedAt ? formatTime(stored.updatedAt) : "now",
     preview: cleanPreview(stored.preview),
     updatedAt: stored.updatedAt,

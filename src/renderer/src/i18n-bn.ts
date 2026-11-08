@@ -2,6 +2,7 @@
 
 import type { Dictionary } from "./i18n";
 import { apisBn } from "./i18n-apis";
+import { assignBn } from "./i18n-assign";
 import { backgroundBn } from "./i18n-background";
 import { engineBn } from "./i18n-engine";
 import { extensionsBn } from "./i18n-extensions-bn";
@@ -303,6 +304,7 @@ export const bn: Dictionary = {
   ...securityBn,
   ...apisBn,
   ...engineBn,
+  ...assignBn,
   ...mcpBn,
   ...onboardingBn,
 };

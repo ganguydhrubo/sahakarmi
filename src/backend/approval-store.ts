@@ -146,7 +146,7 @@ export class ApprovalStore {
    */
   async expire(approvalId: string, note: string): Promise<ApprovalRequest | null> {
     const approval = this.#state.approvals.find((candidate) => candidate.id === approvalId);
-    if (!approval || approval.status !== "pending") return null;
+    if (approval?.status !== "pending") return null;
     approval.status = "expired";
     approval.decidedAt = new Date().toISOString();
     approval.note = note;

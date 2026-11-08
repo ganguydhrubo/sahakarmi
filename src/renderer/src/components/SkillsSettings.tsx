@@ -1,6 +1,7 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import type { CustomSkill, GithubSkillPreview } from "../../../shared/ipc";
 import { t } from "../i18n";
+import { AssignButton } from "./AssignAccess";
 
 /** Public repos of Claude-format skills, offered as a starting point. */
 const SUGGESTED_REPOS = ["https://github.com/anthropics/skills"];
@@ -200,6 +201,7 @@ export function SkillsSettings() {
                     <small>{skill.description}</small>
                   </Show>
                   <small class="extension-source">{skill.source}</small>
+                  <AssignButton kind="skill" id={`custom:${skill.id}`} name={skill.name} />
                   <Show when={skill.reviewNeeded}>
                     <small class="extension-review" role="note">
                       {t("skillsReviewWhy")} {t("skillsReviewFlagged")}{" "}

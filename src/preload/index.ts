@@ -74,6 +74,10 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     ipcRenderer.invoke(IPC_CHANNELS.requestMacPermission, permission),
   openExternal: (destination) => ipcRenderer.invoke(IPC_CHANNELS.openExternal, destination),
   openUrl: (url) => ipcRenderer.invoke(IPC_CHANNELS.openUrl, url),
+  usageCount: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.usageCountGet),
+    set: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.usageCountSet, enabled),
+  },
   agent: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetStatus),
     getUsage: () => ipcRenderer.invoke(IPC_CHANNELS.agentGetUsage),
@@ -288,6 +292,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     setEngineSettings: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetEngineSettings, input),
     performance: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPerformance),
+    resourceStatus: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResourceStatus),
   },
   knowledge: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),
@@ -317,6 +322,11 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     list: (input) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, input),
     save: (entry) => ipcRenderer.invoke(IPC_CHANNELS.memorySave, entry),
     delete: (id, workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, { id, workspaceId }),
+  },
+  assignments: {
+    overview: () => ipcRenderer.invoke(IPC_CHANNELS.assignmentsOverview),
+    set: (kind, id, access) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsSet, { kind, id, access }),
   },
   composio: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.composioGetStatus),

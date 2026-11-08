@@ -72,7 +72,8 @@ async function getJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
   if (response.status === 403 || response.status === 429) {
     throw new Error("GitHub's limit for apps without sign-in is used up. Try again in an hour.");
   }
-  if (!response.ok) throw new Error(`GitHub answered ${response.status}. Try again later.`);
+  if (!response.ok)
+    throw new Error("GitHub is not answering right now. Try again in a few minutes.");
   return response.json();
 }
 
@@ -118,7 +119,7 @@ export async function fetchRepoText(
   const url = `https://raw.githubusercontent.com/${tree.owner}/${tree.repo}/${encodeURIComponent(tree.ref)}/${encoded}`;
   const response = await fetchImpl(url, { headers: { "User-Agent": "Sahkarmi" } });
   if (!response.ok)
-    throw new Error(`Could not download ${path} (GitHub answered ${response.status}).`);
+    throw new Error(`Could not download ${path} from GitHub. Try again in a few minutes.`);
   const text = await response.text();
   if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error(`${path} is too large.`);
   return text;

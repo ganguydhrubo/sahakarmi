@@ -11,6 +11,7 @@ import {
 import type { ComposioAppMeta, ComposioStatus } from "../../../shared/ipc";
 import { t } from "../i18n";
 import { speechLocale } from "../preferences";
+import { AssignButton } from "./AssignAccess";
 
 const PAGE_SIZE = 24;
 const PAGE_STEP = 48;
@@ -449,6 +450,9 @@ function AppCard(props: {
           </button>
         </Show>
       </div>
+      <Show when={props.app.isConnected}>
+        <AssignButton kind="app" id={props.app.id.toLowerCase()} name={props.app.name} />
+      </Show>
     </li>
   );
 }

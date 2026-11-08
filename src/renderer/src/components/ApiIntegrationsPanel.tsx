@@ -11,8 +11,10 @@ import type {
   BotSummary,
   WorkspaceSummary,
 } from "../../../shared/ipc";
+import { PROVIDER_LABELS } from "../../../shared/ipc";
 import { type MessageKey, t } from "../i18n";
 import { speechLocale } from "../preferences";
+import { assignableEngines } from "./AssignAccess";
 
 /** Electron wraps errors from the main process; the owner only needs the message itself. */
 function plainError(cause: unknown): string {
@@ -69,7 +71,11 @@ export function apiMatches(api: ApiIntegrationSummary, words: string[]): boolean
 /** Nobody may use an API until the owner picks at least one of these. */
 export function accessChosen(access: ApiAccess): boolean {
   return (
-    access.everyone || access.ceo || access.botIds.length > 0 || access.workspaceIds.length > 0
+    access.everyone ||
+    access.ceo ||
+    access.botIds.length > 0 ||
+    access.workspaceIds.length > 0 ||
+    (access.providers?.length ?? 0) > 0
   );
 }
 
@@ -294,7 +300,7 @@ function ApiCard(props: {
       : (props.bots.find((bot) => bot.id === id)?.name ?? t("apisActivityUnknown"));
   const canTest = () => api().missing.length === 0 && status() !== "needs-info";
   const showAccess = () => ["tested", "active", "disabled"].includes(status());
-  const accessDirty = () => JSON.stringify(access()) !== JSON.stringify(api().access);
+  const accessDirty = () => JSON.stringify(access()) !== JSON.stringify(copyAccess(api().access));
 
   async function act(kind: Exclude<CardBusy, null>, action: () => Promise<void>): Promise<void> {
     if (busy()) return;
@@ -327,15 +333,24 @@ function ApiCard(props: {
     });
   }
 
-  function toggleList(list: "botIds" | "workspaceIds", id: string, checked: boolean): void {
+  function toggleList(
+    list: "botIds" | "workspaceIds" | "providers",
+    id: string,
+    checked: boolean,
+  ): void {
     setAccessSaved(false);
-    setAccess((current) => ({
-      ...current,
-      [list]: checked
-        ? [...current[list].filter((item) => item !== id), id]
-        : current[list].filter((item) => item !== id),
-    }));
+    setAccess((current) => {
+      const items = current[list] ?? [];
+      return {
+        ...current,
+        [list]: checked
+          ? [...items.filter((item) => item !== id), id]
+          : items.filter((item) => item !== id),
+      };
+    });
   }
+  // Engines the owner's coworkers run on (Claude, Codex, Antigravity…): give it to all of one.
+  const engines = () => assignableEngines(props.bots);
 
   function saveAccess(): void {
     void act("access", async () => {
@@ -587,6 +602,24 @@ function ApiCard(props: {
             />
             {t("apisAccessCeo")}
           </label>
+          <Show when={engines().length > 0}>
+            <small class="apis-access-group">{t("accessEngines")}</small>
+            <For each={engines()}>
+              {(engine) => (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={(access().providers ?? []).includes(engine)}
+                    disabled={access().everyone}
+                    onChange={(event) =>
+                      toggleList("providers", engine, event.currentTarget.checked)
+                    }
+                  />
+                  {t("accessEngine", { name: PROVIDER_LABELS[engine] })}
+                </label>
+              )}
+            </For>
+          </Show>
           <Show when={props.workspaces.length > 0}>
             <small class="apis-access-group">{t("apisAccessWorkspaces")}</small>
             <For each={props.workspaces}>
@@ -799,5 +832,6 @@ function copyAccess(access: ApiAccess): ApiAccess {
     ceo: access.ceo,
     botIds: [...access.botIds],
     workspaceIds: [...access.workspaceIds],
+    providers: [...(access.providers ?? [])],
   };
 }

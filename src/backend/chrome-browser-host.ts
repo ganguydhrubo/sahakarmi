@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
-import { type BrowserWindow, clipboard, WebContentsView } from "electron";
+import { type BrowserWindow, clipboard, nativeImage, WebContentsView } from "electron";
 import type {
   BrowserBounds,
   BrowserControlState,
@@ -35,6 +35,7 @@ import {
   readBrowserState,
   runBrowserTool,
   type StoredBrowserState,
+  screenshotDataUrl,
   snapshotScript,
   statusScript,
   type UploadCdp,
@@ -521,7 +522,13 @@ export class ChromeBrowserHost implements CoworkerBrowser {
         10_000,
       );
       if (typeof result.data !== "string") throw new Error("Browser screenshot failed.");
-      return `data:image/png;base64,${result.data}`;
+      const cssWidth =
+        clip?.width ??
+        (await evaluate(pipe, tab, "window.innerWidth", 3_000).catch(() => undefined));
+      const image = nativeImage.createFromDataURL(`data:image/png;base64,${result.data}`);
+      // A page that could not be decoded is sent as Chrome gave it.
+      if (image.isEmpty()) return `data:image/png;base64,${result.data}`;
+      return screenshotDataUrl(image, typeof cssWidth === "number" ? cssWidth : undefined);
     });
   }
 

@@ -59,8 +59,17 @@ jobs:
         with:
           bun-version: 1.3.11
 
+      # GitHub's release downloads (the Electron zip) sometimes answer 504 for a few minutes.
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 4; $attempt++) {
+            bun install --frozen-lockfile
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Host "Install attempt $attempt failed; trying again in 60 s."
+            Start-Sleep -Seconds 60
+          }
+          exit 1
 
       - name: Run Windows checks
         run: bun run check

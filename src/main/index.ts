@@ -29,6 +29,7 @@ import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
 import { memoryCategory } from "../backend/agent-memory-store";
 import { AgentService } from "../backend/agent-service";
 import { ApiIntegrationService } from "../backend/api-integrations/api-service";
+import { AppMemoryMonitor } from "../backend/app-memory";
 import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
@@ -65,10 +66,12 @@ import { McpInstaller } from "../backend/mcp/installer";
 import { SharedMcpBridge } from "../backend/mcp/shared-bridge";
 import { serverEnvironment } from "../backend/mcp/windows-env";
 import { McpServerStore } from "../backend/mcp-servers";
+import { setMemoryBudget } from "../backend/memory-pressure";
 import { OrchestratorStore } from "../backend/orchestrator-store";
 import { classifyCommand } from "../backend/permission-policy";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
+import { ResourceAssignmentStore } from "../backend/resource-assignments";
 import { createRoutineExecutor } from "../backend/routine-executor";
 import { importDesktopRoutinesOnce } from "../backend/routine-import";
 import { parseRoutineCadence, parseRoutineTrigger, RoutineStore } from "../backend/routine-store";
@@ -77,7 +80,9 @@ import { parseCadence, ScheduleStore } from "../backend/schedule-store";
 import { SecretCodec, SecretStore } from "../backend/secret-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
+import { StartupTimings } from "../backend/startup-timings";
 import { TelegramBridge } from "../backend/telegram-bridge";
+import { type InstallChannel, UsagePing } from "../backend/usage-ping";
 import { UsageService } from "../backend/usage-service";
 import { VerificationRepairEngine } from "../backend/verification-repair-engine";
 import { VoiceService } from "../backend/voice/voice-service";
@@ -106,6 +111,7 @@ import {
   type CreateScheduleInput,
   type DecideApprovalInput,
   type DesktopPlatform,
+  type EngineSettings,
   type ExternalDestination,
   type ImportAttachmentsInput,
   type InterruptTurnInput,
@@ -116,10 +122,12 @@ import {
   isAvatarColor,
   isAvatarShape,
   isBotTemplateRef,
+  isCrewAvatar,
   isMessageReaction,
   isReasoningEffort,
   type MacPermissionId,
   type MacPermissionsState,
+  type McpProblem,
   type McpServerInput,
   type OpenAttachmentInput,
   type OpenSharedFileInput,
@@ -127,7 +135,9 @@ import {
   PERMISSION_LEVELS,
   type PermissionCategory,
   type PermissionLevel,
+  providerForModel,
   type ReadConversationOptions,
+  type ResourceOverviewItem,
   type RespondToPromptInput,
   type SaveBusinessTargetInput,
   type SendMessageInput,
@@ -140,6 +150,14 @@ import {
   type UpdateBotInput,
   type WorkflowDoc,
 } from "../shared/ipc";
+import { MARKETPLACE_SKILLS } from "../shared/marketplace";
+import {
+  accessIsEmpty,
+  EVERYONE_ACCESS,
+  normaliseAccess,
+  type ResourceAccess,
+  type ResourceKind,
+} from "../shared/resource-access";
 import { AgentInitializationGate } from "./agent-initialization";
 import {
   type AgentNotificationContent,
@@ -1154,6 +1172,7 @@ function registerIpcHandlers(
       ceo: access.ceo === true,
       botIds: strings(access.botIds),
       workspaceIds: strings(access.workspaceIds),
+      providers: strings(access.providers),
     });
   });
   handleTrusted(IPC_CHANNELS.apisActivity, (id: unknown) => apis.activity(requireString(id, "id")));
@@ -1174,12 +1193,19 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.composioConnectionStatus, (input: unknown) => {
     const connectionId =
       isObject(input) && typeof input.connectionId === "string" ? input.connectionId : "";
-    return composio.getConnectionStatus(connectionId);
+    return composio.getConnectionStatus(connectionId).then((status) => {
+      // A newly connected app reaches idle coworkers at their next message.
+      if (status.state === "connected") service.refreshCoworkerTools();
+      return status;
+    });
   });
   handleTrusted(IPC_CHANNELS.composioDisconnectApp, (input: unknown) => {
     const connectionId =
       isObject(input) && typeof input.connectionId === "string" ? input.connectionId : "";
-    return composio.deleteConnection(connectionId);
+    return composio.deleteConnection(connectionId).then((removed) => {
+      service.refreshCoworkerTools();
+      return removed;
+    });
   });
 
   handleTrusted(IPC_CHANNELS.schedulesList, () => schedules.list());
@@ -2027,11 +2053,14 @@ if (!hasSingleInstanceLock) {
   void app
     .whenReady()
     .then(async () => {
+      const timings = new StartupTimings();
       // tasklist takes a few hundred ms: it runs while everything else starts. The window only
       // shows once the page is loaded, which waits for this answer.
       const runningInstaller = findRunningInstaller().catch(() => null);
       configureContentSecurityPolicy();
       mainWindow = createWindow();
+      timings.mark("window");
+      let timingsLogged = false;
       // Work that the first screen does not need starts once the window is on screen.
       const shownWindow = mainWindow;
       const windowShown = new Promise<void>((resolve) => {
@@ -2065,6 +2094,7 @@ if (!hasSingleInstanceLock) {
         .catch(() => undefined);
       mailboxStore = new MailboxStore(app.getPath("userData"), store.sharedRoot);
       await mailboxStore.initialize();
+      timings.mark("keys, coworkers, chats");
       configureApplicationProtocol();
       configureAttachmentProtocol(mailboxStore, store);
       browserHost = createCoworkerBrowser(
@@ -2080,6 +2110,7 @@ if (!hasSingleInstanceLock) {
         loadUsedPages: () =>
           browserPagesFromAudit(join(app.getPath("userData"), "permission-audit.json")),
       });
+      timings.mark("browser");
       const setupFile = join(app.getPath("userData"), SETUP_FILE);
       const setupState = await readSetupState(setupFile);
       const permissions = new PermissionService(app.getPath("userData"));
@@ -2145,7 +2176,11 @@ if (!hasSingleInstanceLock) {
           },
         },
         coworkers: () =>
-          service.listBots().map((bot) => ({ id: bot.id, workspaceId: bot.workspaceId ?? null })),
+          service.listBots().map((bot) => ({
+            id: bot.id,
+            workspaceId: bot.workspaceId ?? null,
+            provider: providerForModel(bot.model),
+          })),
         ceoOf: (workspaceId) =>
           service.listWorkspaces().workspaces.find((workspace) => workspace.id === workspaceId)
             ?.ceoBotId ?? null,
@@ -2168,6 +2203,24 @@ if (!hasSingleInstanceLock) {
       });
       service.setMcpServers(mcpServers);
       registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
+      // Who may use each app, skill and MCP server (web APIs keep their own access list).
+      const assignments = new ResourceAssignmentStore(app.getPath("userData"));
+      await assignments.initialize().catch((error) => {
+        appLog.write(
+          "error",
+          "Assignments unreadable; everything stays for everyone",
+          String(error),
+        );
+      });
+      service.configureAssignments(assignments);
+      registerAssignmentsIpc({
+        assignments,
+        apis,
+        composio: composioClient,
+        mcp: mcpServers,
+        sharedRoot: store.sharedRoot,
+        onApiAccessChanged: () => service.refreshCoworkerTools(),
+      });
       usageService = usage;
       const features = new FeatureRegistry(app.getPath("userData"));
       mcpServers.setFeatureCheck((id) => features.isEnabled(id));
@@ -2175,6 +2228,21 @@ if (!hasSingleInstanceLock) {
       const engineSettings = new EngineSettingsStore(app.getPath("userData"));
       await engineSettings.initialize();
       service.configureEngineSettings(() => engineSettings.get());
+      // The owner's memory limit (Settings > Features): measured, never guessed, and only
+      // sampled while a limit is set or the Settings view is open.
+      const appMemory = new AppMemoryMonitor({ rootPid: process.pid });
+      appMemory.configure(() => memoryLimitOf(engineSettings.get()));
+      setMemoryBudget(() => {
+        const current = engineSettings.get();
+        return current.memoryLimitMb > 0
+          ? {
+              limitMb: current.memoryLimitMb,
+              warnPercent: current.memoryWarnPercent,
+              usedMb: appMemory.usedMb,
+            }
+          : null;
+      });
+      service.configureMemoryMonitor(appMemory);
       let runEvents: RunEventStore | null = null;
       try {
         runEvents = new RunEventStore(join(app.getPath("userData"), "run-events.sqlite"));
@@ -2183,7 +2251,8 @@ if (!hasSingleInstanceLock) {
       } catch (error) {
         appLog.write("error", "Performance record unavailable", String(error));
       }
-      registerEngineIpc(service, engineSettings, runEvents);
+      registerEngineIpc(service, engineSettings, runEvents, appMemory);
+      startDailyUsageCount();
       keepRunningInTray = () => features.isEnabled("background-tray");
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
@@ -2226,6 +2295,7 @@ if (!hasSingleInstanceLock) {
       );
       const routines = new RoutineStore(app.getPath("userData"));
       await routines.initialize();
+      timings.mark("settings and stores");
       // Bring the owner's routines from their previous desktop agent over once (paused), so a
       // switch loses nothing. Not needed for the first screen: it runs once the window shows.
       void windowShown
@@ -2544,7 +2614,9 @@ if (!hasSingleInstanceLock) {
       registerTelegramIpc(telegram);
       configureApplicationMenu(service, updateService);
       if (await waitForRunningInstaller(await runningInstaller)) return;
+      timings.mark("services");
       await loadRenderer(mainWindow);
+      timings.mark("first screen");
       mainProcessStarted = true;
       showCorruptFileNotices();
       void pruneCrashDumps(app.getPath("crashDumps"))
@@ -2555,6 +2627,12 @@ if (!hasSingleInstanceLock) {
       // Runs after the first successful start, including a retry from the window after a failed
       // first try; before, a failed first try left these off until the app restarted.
       agentInitialization.onReady(() => {
+        if (!timingsLogged) {
+          timingsLogged = true;
+          timings.mark("AI engines ready");
+          const summary = timings.summary();
+          appLog.write(summary.slow ? "warn" : "info", "startup timings", summary);
+        }
         schedules.start(async (task) => {
           await service.sendMessage({
             botId: task.botId,
@@ -2737,6 +2815,212 @@ function readConversationOptions(value: unknown): ReadConversationOptions | unde
   return { limit: Math.max(1, Math.min(100_000, Math.floor(value.limit))) };
 }
 
+const MCP_PROBLEM_WORDS: Record<McpProblem["kind"], string> = {
+  placeholder: "Needs a value filled in ({subject}) in Settings > MCP Servers.",
+  "missing-command": "The program {subject} is not installed on this PC.",
+  "store-stub": "{subject} is only a Microsoft Store shortcut; install the real program.",
+  "missing-folder": "The folder {subject} does not exist.",
+  "missing-file": "The file {subject} does not exist.",
+  "missing-env": "Needs the setting {subject} in Settings > MCP Servers.",
+};
+
+/** Settings > Assignments: one list of every resource, and who may use it. */
+function registerAssignmentsIpc(deps: {
+  assignments: ResourceAssignmentStore;
+  apis: ApiIntegrationService;
+  composio: ComposioClient;
+  mcp: McpServerStore;
+  sharedRoot: string;
+  onApiAccessChanged: () => void;
+}): void {
+  handleTrusted(IPC_CHANNELS.assignmentsOverview, () => resourceOverview(deps));
+  handleTrusted(IPC_CHANNELS.assignmentsSet, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid assignment.");
+    const kind = input.kind;
+    if (kind !== "api" && kind !== "app" && kind !== "skill" && kind !== "mcp") {
+      throw new Error("Unknown resource kind.");
+    }
+    const id = requireString(input.id, "id");
+    const access = input.access === null ? null : normaliseAccess(input.access);
+    if (kind === "api") {
+      // Web APIs keep their access in their own store (default: nobody until the owner picks).
+      await deps.apis.setAccess(
+        id,
+        access ?? { everyone: true, ceo: false, botIds: [], workspaceIds: [], providers: [] },
+      );
+      deps.onApiAccessChanged();
+      return;
+    }
+    if (kind === "mcp") {
+      // The older per-server coworker list is folded into the new assignment.
+      await deps.mcp.setCoworkers(id, null);
+    }
+    await deps.assignments.set(kind, id, access);
+  });
+}
+
+async function resourceOverview(deps: {
+  assignments: ResourceAssignmentStore;
+  apis: ApiIntegrationService;
+  composio: ComposioClient;
+  mcp: McpServerStore;
+  sharedRoot: string;
+}): Promise<ResourceOverviewItem[]> {
+  const items: ResourceOverviewItem[] = [];
+  const unusable = (access: ResourceAccess) =>
+    accessIsEmpty(access) ? "Connected, but given to nobody yet." : null;
+  const assigned = (kind: ResourceKind, id: string) =>
+    deps.assignments.get(kind, id) ?? { ...EVERYONE_ACCESS };
+
+  for (const api of await deps.apis.list().catch(() => [])) {
+    const access = normaliseAccess(api.access);
+    const active = api.status === "active";
+    items.push({
+      kind: "api",
+      id: api.id,
+      name: api.name,
+      connected: active,
+      access,
+      available: active && !accessIsEmpty(access),
+      note: active
+        ? unusable(access)
+        : api.status === "disabled"
+          ? "Turned off."
+          : "Not active yet: test it and turn it on in Marketplace > APIs.",
+    });
+  }
+
+  const status = await deps.composio.getStatus().catch(() => null);
+  if (status?.configured) {
+    const apps = await deps.composio.listApps(false).catch(() => []);
+    for (const app of apps.filter((candidate) => candidate.isConnected)) {
+      const access = assigned("app", app.id.toLowerCase());
+      items.push({
+        kind: "app",
+        id: app.id.toLowerCase(),
+        name: app.name,
+        connected: true,
+        access,
+        available: !accessIsEmpty(access),
+        note:
+          unusable(access) ??
+          (status.connectionsError
+            ? "Composio could not be reached just now; this is the last known state."
+            : null),
+      });
+    }
+  }
+
+  const library = new SkillLibrary(deps.sharedRoot);
+  const installed = new Set(await library.installed().catch(() => [] as string[]));
+  for (const skill of MARKETPLACE_SKILLS.filter((candidate) => installed.has(candidate.id))) {
+    const access = assigned("skill", `market:${skill.id}`);
+    items.push({
+      kind: "skill",
+      id: `market:${skill.id}`,
+      name: skill.name,
+      connected: true,
+      access,
+      available: !accessIsEmpty(access),
+      note: unusable(access),
+    });
+  }
+  for (const skill of await new CustomSkills(deps.sharedRoot).list().catch(() => [])) {
+    const access = assigned("skill", `custom:${skill.id}`);
+    items.push({
+      kind: "skill",
+      id: `custom:${skill.id}`,
+      name: skill.name,
+      connected: true,
+      access,
+      available: !accessIsEmpty(access),
+      note:
+        unusable(access) ?? (skill.reviewNeeded ? "Not reviewed yet: shown as untrusted." : null),
+    });
+  }
+  for (const skill of await new LearnedSkills(deps.sharedRoot).list().catch(() => [])) {
+    const access = assigned("skill", `learned:${skill.id}`);
+    items.push({
+      kind: "skill",
+      id: `learned:${skill.id}`,
+      name: skill.name,
+      connected: true,
+      access,
+      available: !accessIsEmpty(access),
+      note: unusable(access),
+    });
+  }
+
+  for (const server of deps.mcp.list()) {
+    const legacy = Array.isArray(server.coworkerIds)
+      ? { ...EVERYONE_ACCESS, everyone: false, botIds: server.coworkerIds }
+      : null;
+    const access = deps.assignments.get("mcp", server.id) ?? legacy ?? { ...EVERYONE_ACCESS };
+    const blocking = server.problems[0];
+    const available = server.enabled && !blocking && !accessIsEmpty(access);
+    items.push({
+      kind: "mcp",
+      id: server.id,
+      name: server.name,
+      connected: server.enabled,
+      access,
+      available,
+      note: !server.enabled
+        ? "Turned off."
+        : blocking
+          ? MCP_PROBLEM_WORDS[blocking.kind].replace("{subject}", blocking.subject)
+          : unusable(access),
+    });
+  }
+  return items;
+}
+
+/** The owner's memory limit and warning share, as the memory monitor reads them. */
+/**
+ * The anonymous daily user number (backend/usage-ping.ts): one note a day, a minute after start
+ * and then checked every hour for copies left open past midnight. Only the real packaged app
+ * counts; development runs and test builds under another name never send anything.
+ */
+function startDailyUsageCount(): void {
+  let usage: UsagePing | null = null;
+  handleTrusted(IPC_CHANNELS.usageCountGet, () => usage?.choice() ?? null);
+  handleTrusted(IPC_CHANNELS.usageCountSet, (value: unknown) => {
+    if (typeof value !== "boolean") throw new Error("Choose on or off.");
+    if (!usage) throw new Error("The daily count is not ready yet. Try again in a moment.");
+    return usage.setEnabled(value);
+  });
+  if (
+    !app.isPackaged ||
+    app.getName() !== "Sahkarmi" ||
+    process.platform !== "win32" ||
+    process.env.SAHKARMI_NO_USAGE_COUNT === "1"
+  )
+    return;
+  const channel: InstallChannel = process.windowsStore
+    ? "store"
+    : installedByInstaller(process.execPath, app.getName())
+      ? "installer"
+      : "scoop";
+  const ping = new UsagePing(app.getPath("userData"), { version: app.getVersion(), channel });
+  void ping
+    .initialize()
+    .then(() => {
+      usage = ping;
+      const tick = () => {
+        void ping.sendIfDue().then((result) => {
+          if (result === "failed") appLog.write("info", "Daily count not sent; will try later");
+        });
+      };
+      setTimeout(tick, 60_000).unref();
+      setInterval(tick, 60 * 60_000).unref();
+    })
+    .catch((error) => appLog.write("warn", "Daily count unavailable", String(error)));
+}
+
+function memoryLimitOf(settings: EngineSettings): { limitMb: number; warnPercent: number } {
+  return { limitMb: settings.memoryLimitMb, warnPercent: settings.memoryWarnPercent };
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required.`);
   return value;
@@ -2747,14 +3031,17 @@ function registerEngineIpc(
   service: AgentService,
   engineSettings: EngineSettingsStore,
   runEvents: RunEventStore | null,
+  appMemory: AppMemoryMonitor,
 ): void {
   handleTrusted(IPC_CHANNELS.orchestratorGetEngineSettings, () => engineSettings.get());
   handleTrusted(IPC_CHANNELS.orchestratorSetEngineSettings, async (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid engine settings.");
     const saved = await engineSettings.update(input);
     service.configureEngineSettings(() => engineSettings.get());
+    appMemory.configure(() => memoryLimitOf(engineSettings.get()));
     return saved;
   });
+  handleTrusted(IPC_CHANNELS.orchestratorResourceStatus, () => appMemory.status());
   handleTrusted(
     IPC_CHANNELS.orchestratorPerformance,
     () =>
@@ -2836,6 +3123,12 @@ function parseUpdateBot(value: unknown): UpdateBotInput {
   if (value.avatarColor !== undefined) {
     if (!isAvatarColor(value.avatarColor)) throw new Error("Invalid avatar color.");
     result.avatarColor = value.avatarColor;
+  }
+  if (value.avatarModel !== undefined) {
+    if (value.avatarModel !== null && !isCrewAvatar(value.avatarModel)) {
+      throw new Error("Invalid crew avatar.");
+    }
+    result.avatarModel = value.avatarModel;
   }
   if (value.template !== undefined) {
     if (!isBotTemplateRef(value.template)) throw new Error("Invalid coworker template.");

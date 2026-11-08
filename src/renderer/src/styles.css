@@ -1190,6 +1190,64 @@ textarea {
   overflow: visible;
 }
 
+/* 3D crew robot avatar: animated idle loop, wave loop while the coworker works, still frame for
+   reduced motion. Full body in miniature, standing on a soft halo of its status colour. */
+/* The head pops out of its brand disc in 3D: the disc sits behind as a pedestal, the head is
+   not clipped and rises above the rim. */
+.crew-avatar {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+}
+
+.crew-avatar::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 30%,
+    color-mix(in srgb, var(--crew-halo) 48%, #121722) 0%,
+    color-mix(in srgb, var(--crew-halo) 16%, #090b11) 80%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--crew-halo) 55%, transparent),
+    0 0 8px color-mix(in srgb, var(--crew-halo) 35%, transparent);
+  content: "";
+}
+
+.crew-avatar img {
+  position: absolute;
+  top: -58%;
+  left: -38%;
+  width: 176%;
+  max-width: none;
+  height: 176%;
+  max-height: none;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35));
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.crew-avatar .crew-avatar-wave {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .avatar-aura[data-aura="thinking"] .crew-avatar-idle,
+  .avatar-aura[data-aura="working"] .crew-avatar-idle,
+  .avatar-aura[data-aura="done"] .crew-avatar-idle {
+    visibility: hidden;
+  }
+
+  .avatar-aura[data-aura="thinking"] .crew-avatar-wave,
+  .avatar-aura[data-aura="working"] .crew-avatar-wave,
+  .avatar-aura[data-aura="done"] .crew-avatar-wave {
+    visibility: visible;
+  }
+}
+
 .agent-mark {
   width: 36.2px;
   height: 36.2px;
@@ -14602,6 +14660,108 @@ fieldset.memory-filters {
   grid-column: 1 / -1;
 }
 
+/* Settings > Features: the owner's memory limit. */
+.memory-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--surface-3);
+  padding-top: 10px;
+}
+
+.memory-limit h4 {
+  margin: 0;
+}
+
+.memory-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.memory-presets button {
+  border: 1px solid var(--surface-4);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.memory-presets button[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+
+.memory-meter {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.memory-meter span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  transition: width 0.3s ease;
+}
+
+.memory-status[data-level="warn"] .memory-meter span {
+  background: var(--warning);
+}
+
+.memory-status[data-level="over"] .memory-meter span {
+  background: var(--danger);
+}
+
+.memory-meter i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-secondary);
+}
+
+.memory-line {
+  margin: 4px 0 0;
+}
+
+.memory-alert {
+  color: var(--warning);
+}
+
+.memory-suggest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.memory-suggest span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.memory-groups ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-groups li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
 /* Team runs: owner's check command, honest verdicts, performance. */
 .orch-check {
   display: flex;
@@ -14770,5 +14930,269 @@ fieldset.memory-filters {
 .mcp-shared {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+/* Assign an API, app, skill or MCP server to coworkers; Settings > Assignments overview. */
+.assign-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.assign-inline .assign-access {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.assignments {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.assignments-group {
+  width: 100%;
+}
+
+.assignments-group h3 {
+  margin: 8px 0 6px;
+}
+
+.assignments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assignments-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.assignments-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.assignments-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assignments-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.assignments-badge[data-ok="true"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.assignments-note {
+  color: var(--warning);
+}
+
+/* 3D robot row in the avatar editor */
+.avatar-crew-grid {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+  padding: 12px 10px 4px;
+}
+
+.avatar-crew-grid legend {
+  padding: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.avatar-crew-choice {
+  display: grid;
+  place-items: center;
+  height: 46px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(var(--ink-rgb) / 0.72);
+}
+
+.avatar-crew-choice:hover {
+  background: rgb(var(--ink-rgb) / 0.065);
+}
+
+.avatar-crew-choice .crew-avatar {
+  width: 36px;
+  height: 36px;
+}
+
+.avatar-crew-none {
+  grid-column: 1 / -1;
+  height: 30px;
+  font-size: 12px;
+}
+
+/* "Meet the crew" stage in an empty chat */
+.crew-stage-card {
+  display: grid;
+  gap: 10px;
+  max-width: 640px;
+  margin: 8px 0 4px;
+}
+
+.crew-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.crew-stage-actions {
+  display: flex;
+  gap: 14px;
+}
+
+.crew-stage-canvas {
+  position: relative;
+  aspect-ratio: 16 / 6;
+  min-height: 170px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, #f6efe3 0%, #eadfcb 70%, #ddcfb6 100%);
+}
+
+.crew-stage-canvas canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.crew-stage-still {
+  position: absolute;
+  inset: 8% 6%;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+}
+
+.crew-stage-still img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.crew-stage-live .crew-stage-still {
+  display: none;
+}
+
+.crew-stage-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crew-stage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.14);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.crew-stage-chip i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--crew-halo);
+  box-shadow: 0 0 8px var(--crew-halo);
+}
+
+.crew-stage-chip:hover,
+.crew-stage-chip-selected {
+  border-color: var(--crew-halo);
+}
+
+.crew-stage-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.crew-stage-show {
+  justify-self: start;
+  margin: 4px 0;
+  font-size: 12.5px;
+}
+
+.about-usage {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 0;
+}
+
+.about-usage input {
+  margin-top: 3px;
+}
+
+.about-usage > span {
+  display: grid;
+  gap: 2px;
+}
+
+.usage-ask {
+  display: grid;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+
+.usage-ask p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.usage-ask-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }

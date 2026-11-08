@@ -17,6 +17,7 @@ import {
   refreshFreshPath,
   resetFreshPathForTests,
   serverEnvironment,
+  withFreshPath,
 } from "./windows-env";
 
 const folders: string[] = [];
@@ -108,6 +109,16 @@ describe("fresh Windows PATH (MCP-3)", () => {
     } finally {
       process.env.PATH = original;
     }
+  });
+
+  it("gives Antigravity and OpenCode the fresh PATH under one key", async () => {
+    await refreshFreshPath(async () => ({ machine: "C:\\Machine", user: "C:\\Installed\\uv" }));
+    const env = withFreshPath({ Path: "C:\\Old", PATH: "C:\\Dup", GEMINI_HOME: "g" }, "win32");
+    expect(Object.keys(env).filter((key) => key.toUpperCase() === "PATH")).toEqual(["Path"]);
+    expect(env.Path).toContain("C:\\Installed\\uv");
+    expect(env.GEMINI_HOME).toBe("g");
+    const linux = { PATH: "/usr/bin" };
+    expect(withFreshPath(linux, "linux")).toBe(linux);
   });
 
   it("builds a server env with PATH and Windows basics but no provider keys (MCP-16)", () => {

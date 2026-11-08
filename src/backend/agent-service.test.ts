@@ -4,7 +4,12 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACP_AGENT_PROVIDERS, type AgentEvent, type ConversationSnapshot } from "../shared/ipc";
+import {
+  ACP_AGENT_PROVIDERS,
+  type AgentEvent,
+  type ConversationSnapshot,
+  DEFAULT_ENGINE_SETTINGS,
+} from "../shared/ipc";
 import {
   AgentService,
   isNoisyDiagnostic,
@@ -1731,7 +1736,11 @@ describe.sequential("AgentService", () => {
   it("caps how many coworkers work at once; the next starts when one finishes", async () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
-    service.configureEngineSettings(() => ({ maxConcurrentTurns: 1, watchdogMinutes: 45 }));
+    service.configureEngineSettings(() => ({
+      ...DEFAULT_ENGINE_SETTINGS,
+      maxConcurrentTurns: 1,
+      watchdogMinutes: 45,
+    }));
     const events: AgentEvent[] = [];
     service.on("event", (event) => events.push(event));
     await service.initialize();
@@ -1753,7 +1762,11 @@ describe.sequential("AgentService", () => {
   it("waits for free memory instead of starting more work on a full PC, then starts by itself", async () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
-    service.configureEngineSettings(() => ({ maxConcurrentTurns: 8, watchdogMinutes: 45 }));
+    service.configureEngineSettings(() => ({
+      ...DEFAULT_ENGINE_SETTINGS,
+      maxConcurrentTurns: 8,
+      watchdogMinutes: 45,
+    }));
     const events: AgentEvent[] = [];
     service.on("event", (event) => events.push(event));
     await service.initialize();
@@ -1772,7 +1785,7 @@ describe.sequential("AgentService", () => {
           (event) =>
             event.type === "notice" &&
             event.code === "waiting_for_turn_slot" &&
-            /short of free memory/.test(event.message),
+            /waits for free memory/.test(event.message),
         ),
       );
       expect(service.listQueue("asha-accounts").deliveries[0]?.status).toBe("queued");
@@ -1792,7 +1805,11 @@ describe.sequential("AgentService", () => {
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
     // A tiny limit for the test; the settings screen keeps it between 5 and 240 minutes.
-    service.configureEngineSettings(() => ({ maxConcurrentTurns: 3, watchdogMinutes: 0.005 }));
+    service.configureEngineSettings(() => ({
+      ...DEFAULT_ENGINE_SETTINGS,
+      maxConcurrentTurns: 3,
+      watchdogMinutes: 0.005,
+    }));
     const events: AgentEvent[] = [];
     service.on("event", (event) => events.push(event));
     await service.initialize();

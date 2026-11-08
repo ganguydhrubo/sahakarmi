@@ -205,6 +205,58 @@ describe("BotStore", () => {
     });
   });
 
+  it("keeps a 3D crew robot as the face and drops it again", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
+    temporaryRoots.push(root);
+    const userData = join(root, "user-data");
+    const store = new BotStore(userData, join(root, "home"));
+    await store.initialize();
+    await store.getOrCreate("chief");
+
+    await store.updateBot({ botId: "chief", avatarModel: "mailer" });
+    const restored = new BotStore(userData, join(root, "home"));
+    await restored.initialize();
+    expect(restored.list().find((bot) => bot.id === "chief")?.avatarModel).toBe("mailer");
+
+    await restored.updateBot({ botId: "chief", avatarModel: null });
+    expect(restored.list().find((bot) => bot.id === "chief")?.avatarModel).toBeNull();
+    expect(restored.list().find((bot) => bot.id === "mitra-lead")?.avatarModel).toBe("startup");
+  });
+
+  it("gives the starter team its brand faces once and never overrides a choice", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
+    temporaryRoots.push(root);
+    const userData = join(root, "user-data");
+    const store = new BotStore(userData, join(root, "home"));
+    await store.initialize();
+    const face = (list: ReturnType<BotStore["list"]>, id: string) =>
+      list.find((bot) => bot.id === id)?.avatarModel;
+    expect(face(store.list(), "mitra-lead")).toBe("startup");
+    expect(face(store.list(), "vikram-sales")).toBe("outreach");
+    expect(face(store.list(), "meera-support")).toBe("whatsapp");
+    expect(face(store.list(), "kavya-content")).toBe("publisher");
+
+    // A saved file from before brand faces: one coworker had no face yet, one chose the drawn shape.
+    const statePath = join(userData, "bots.json");
+    const saved = JSON.parse(await readFile(statePath, "utf8"));
+    delete saved.brandFacesApplied;
+    for (const bot of saved.bots) {
+      if (bot.id === "mitra-lead") delete bot.avatarModel;
+      if (bot.id === "vikram-sales") bot.avatarModel = null;
+    }
+    await writeFile(statePath, JSON.stringify(saved));
+    const upgraded = new BotStore(userData, join(root, "home"));
+    await upgraded.initialize();
+    expect(face(upgraded.list(), "mitra-lead")).toBe("startup");
+    expect(face(upgraded.list(), "vikram-sales")).toBeNull();
+
+    // After the one-time step, removing a face sticks.
+    await upgraded.updateBot({ botId: "mitra-lead", avatarModel: null });
+    const again = new BotStore(userData, join(root, "home"));
+    await again.initialize();
+    expect(face(again.list(), "mitra-lead")).toBeNull();
+  });
+
   it("starts a new thread when the model changes provider", async () => {
     const root = await mkdtemp(join(tmpdir(), "sahkarmi-store-"));
     temporaryRoots.push(root);

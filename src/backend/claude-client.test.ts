@@ -5,17 +5,22 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CLAUDE_SETTING_SOURCES,
   ClaudeAgentClient,
   planUsageWindows,
   rateLimitWindows,
 } from "./claude-client";
+import { setMemoryProbe } from "./memory-pressure";
 
 let root: string | null = null;
 
+// Idle closing depends on free memory; tests use a PC with plenty, whatever this one has.
+beforeEach(() => setMemoryProbe({ free: () => 12 * 1024 ** 3, total: () => 16 * 1024 ** 3 }));
+
 afterEach(async () => {
+  setMemoryProbe(null);
   if (root) await rm(root, { recursive: true, force: true });
   root = null;
 });
@@ -1222,3 +1227,29 @@ async function waitFor(check: () => boolean): Promise<void> {
   }
   throw new Error("Timed out waiting for Claude adapter events.");
 }
+
+describe("Claude idle processes when memory is short", () => {
+  it("closes an idle process after a minute instead of ten", async () => {
+    root = await mkdtemp(join(tmpdir(), "sahkarmi-claude-short-"));
+    const output = new TestQueue<SDKMessage>();
+    const generator = output[Symbol.asyncIterator]() as Query;
+    Object.assign(generator, {
+      [Symbol.asyncIterator]: () => generator,
+      interrupt: async () => undefined,
+      close: () => output.close(),
+    });
+    const client = new ClaudeAgentClient(
+      { executable: "/bin/true", version: "2.1.231" },
+      () => generator,
+    );
+    client.start();
+    const thread = await client.request<{ thread: { id: string } }>("thread/start", {
+      cwd: root,
+      developerInstructions: "",
+    });
+    expect(client.closeIdleRuntimes(Date.now() + 2 * 60_000)).toEqual([]);
+    setMemoryProbe({ free: () => 0.3 * 1024 ** 3, total: () => 16 * 1024 ** 3 });
+    expect(client.closeIdleRuntimes(Date.now() + 2 * 60_000)).toEqual([thread.thread.id]);
+    await client.stop();
+  });
+});

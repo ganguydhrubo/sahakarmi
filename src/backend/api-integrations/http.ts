@@ -186,7 +186,7 @@ export async function sendApiRequest(options: SendOptions): Promise<ApiResponse>
           .filter(([name]) => /ratelimit|rate-limit|retry-after/i.test(name))
           .map(([name, value]) => `${name}: ${value}`)
           .slice(0, 6),
-        error: response.ok ? null : `The API answered ${response.status}.`,
+        error: response.ok ? null : plainApiFailure(response.status),
         attempts,
       };
     } catch (error) {
@@ -241,4 +241,15 @@ function failure(started: number, error: string, attempts: number): ApiResponse 
     error,
     attempts,
   };
+}
+
+/** A failed answer in plain words with what to do next (the status code stays in `status`). */
+export function plainApiFailure(status: number): string {
+  if (status === 401 || status === 403) {
+    return "The service refused the key. Check the key for this API in Marketplace > APIs.";
+  }
+  if (status === 404) return "That page or item does not exist on this service.";
+  if (status === 429) return "The service says too many requests. Wait a minute and try again.";
+  if (status >= 500) return "The service is having trouble right now. Try again in a few minutes.";
+  return "The service did not accept the request. The coworker can try again with different details.";
 }

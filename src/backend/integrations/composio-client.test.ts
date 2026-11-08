@@ -9,6 +9,7 @@ import {
   HOBBY_PLAN_TOOL_CALLS,
   normalizeComposioKey,
   OWNER_USER_ID,
+  plainComposioFailure,
 } from "./composio-client";
 
 interface Call {
@@ -515,6 +516,7 @@ describe("ComposioClient", () => {
     expect(call?.url.pathname).toBe("/api/v3.1/tools/execute/GITHUB_GET_AN_ISSUE");
     expect(call?.body).toEqual({
       connected_account_id: "ca_gh",
+      user_id: expect.any(String),
       arguments: { owner: "a", repo: "b" },
     });
   });
@@ -558,7 +560,7 @@ describe("ComposioClient", () => {
     await composio.setApiKey("key_1234567890", { verify: false });
     const result = await composio.executeAction("GMAIL_SEND_EMAIL", { to: "x" });
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/502/);
+    expect(result.error).toMatch(/having trouble right now/);
     expect(fake.executions.get("GMAIL_SEND_EMAIL")).toBe(2);
   });
 
@@ -600,6 +602,40 @@ describe("ComposioClient", () => {
     expect(result.error).toBe("Composio did not answer within 45 s.");
   });
 
+  it("keeps showing connected apps when one connection check fails, and says so", async () => {
+    const fake = fakeComposio({
+      connections: [{ id: "ca_gh", status: "ACTIVE", toolkit: { slug: "github" } }],
+    });
+    let offline = false;
+    const fetchImpl = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (offline && url.pathname.endsWith("/connected_accounts")) {
+        return Promise.reject(new Error("network down"));
+      }
+      return fake.fetchImpl(input, init);
+    }) as typeof fetch;
+    const composio = client(fake, { fetchImpl });
+    await composio.setApiKey("key_1234567890", { verify: false });
+    expect((await composio.listApps(true)).find((app) => app.id === "github")?.isConnected).toBe(
+      true,
+    );
+    offline = true;
+    const again = await composio.listApps(true);
+    expect(again.find((app) => app.id === "github")?.isConnected).toBe(true);
+    expect((await composio.getStatus()).connectionsError).toMatch(/network down/);
+  });
+
+  it("gives coworkers only the apps their filter allows", async () => {
+    const fake = fakeComposio({
+      connections: [{ id: "ca_gh", status: "ACTIVE", toolkit: { slug: "github" } }],
+    });
+    const composio = client(fake);
+    await composio.setApiKey("key_1234567890", { verify: false });
+    expect((await composio.getDynamicTools()).length).toBeGreaterThan(0);
+    expect(await composio.getDynamicTools((slug) => slug !== "github")).toEqual([]);
+    expect(composio.toolkitOf("GITHUB_GET_AN_ISSUE")).toBe("github");
+  });
+
   it("runs at most four requests at a time", async () => {
     let inFlight = 0;
     let peak = 0;
@@ -619,5 +655,33 @@ describe("ComposioClient", () => {
     );
     expect(peak).toBeLessThanOrEqual(4);
     expect(peak).toBeGreaterThan(1);
+  });
+});
+
+describe("plain Composio errors", () => {
+  it("says what happened and what to do, without codes", () => {
+    const signIn = plainComposioFailure(
+      "use Notion",
+      400,
+      "User ID is required with connected account. Please provide a user ID to identify the connected account.",
+    );
+    expect(signIn).toBe(
+      "Could not use Notion. The app's sign-in needs a refresh. Open Marketplace > Apps and connect the app again; your coworkers can use it right after.",
+    );
+    for (const [status, words] of [
+      [401, /new key/],
+      [402, /allowance/],
+      [404, /not available/],
+      [503, /try again in a few minutes/i],
+      [400, /did not accept/],
+    ] as const) {
+      const text = plainComposioFailure(
+        "use Notion",
+        status,
+        status === 400 ? "page_id is missing" : "",
+      );
+      expect(text).toMatch(words);
+      expect(text).not.toMatch(/\b(40[0-9]|50[0-9])\b|Composio answered/);
+    }
   });
 });

@@ -113,6 +113,18 @@ describe("Test server handshake (MCP-2)", () => {
     ]);
     expect(httpCandidates("https://x.test/mcp")).toEqual(["https://x.test/mcp"]);
   });
+
+  it("tries a localhost server over IPv4 too", () => {
+    expect(httpCandidates("http://localhost:3000/sse")).toEqual([
+      "http://localhost:3000/sse",
+      "http://localhost:3000/mcp",
+      "http://127.0.0.1:3000/sse",
+      "http://127.0.0.1:3000/mcp",
+    ]);
+    expect(httpCandidates("http://localhost.example.com/mcp")).toEqual([
+      "http://localhost.example.com/mcp",
+    ]);
+  });
 });
 
 describe("store test, status and test-first rule (MCP-11, MCP-18)", () => {

@@ -114,6 +114,18 @@ export async function refreshFreshPath(
   return freshPath();
 }
 
+let lastBackgroundRefresh = 0;
+
+/**
+ * Background refresh for agent starts: at most once a minute, since each read starts PowerShell
+ * and agents can restart often.
+ */
+export function refreshFreshPathSoon(now = Date.now()): void {
+  if (now - lastBackgroundRefresh < 60_000) return;
+  lastBackgroundRefresh = now;
+  void refreshFreshPath().catch(() => undefined);
+}
+
 /** Folders of tools Sahkarmi downloaded (managed uv / Node), searched last. */
 export function setManagedToolDirectories(directories: string[]): void {
   extraDirectories = directories.filter(Boolean);
@@ -122,6 +134,22 @@ export function setManagedToolDirectories(directories: string[]): void {
 /** The merged PATH (or the process PATH before the first refresh). */
 export function freshPath(): string {
   return mergePathLists(cachedPath ?? processPath(), extraDirectories.join(";"));
+}
+
+/**
+ * `env` with its PATH swapped for the fresh one, under the one key name Windows already used
+ * ("Path" or "PATH"), so a child never sees two PATH variables. Other platforms are unchanged.
+ */
+export function withFreshPath(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  if (platform !== "win32") return env;
+  const result = { ...env };
+  const keys = Object.keys(result).filter((key) => key.toUpperCase() === "PATH");
+  for (const key of keys) delete result[key];
+  result[keys[0] ?? "Path"] = freshPath();
+  return result;
 }
 
 /** Test hook. */

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_MODEL_FOR_PROVIDER } from "../shared/ipc";
-import { readModelOptions, stripLeakedToolCalls } from "./acp-client";
+import { MCP_SERVER_SKIPPED_HINT, readModelOptions, stripLeakedToolCalls } from "./acp-client";
 import { createOpenCodeClient, openCodeModelValue, readAntigravityAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
 import { ApprovalStore } from "./approval-store";
@@ -584,6 +584,103 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     expect((await readLog()).filter((entry) => entry.method === "session/new").length).toBe(news);
   });
 
+  it("keeps working without an MCP server that breaks the session, and says so in the chat", async () => {
+    const client = createOpenCodeClient(
+      { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
+      join(root, "transcripts"),
+    );
+    const notices: unknown[] = [];
+    client.on("notification", (notification) => {
+      if (notification.method === "sahkarmi/notice") notices.push(notification.params);
+    });
+    client.start();
+    try {
+      const opened = await client.request<{ thread: { id: string } }>("thread/start", {
+        cwd: root,
+        customMcpServers: [
+          { name: "broken-mcp", transport: "stdio", command: "node", args: [], env: {} },
+        ],
+      });
+      expect(opened.thread.id).toBeTruthy();
+      const newSessions = (await readLog()).filter((entry) => entry.method === "session/new");
+      // First with the owner's server (refused), then again without it.
+      expect(newSessions.length).toBeGreaterThanOrEqual(2);
+      void client
+        .request("turn/start", {
+          threadId: opened.thread.id,
+          input: [{ type: "text", text: "hello" }],
+        })
+        .catch(() => undefined);
+      await waitFor(() => notices.length > 0);
+      expect(JSON.stringify(notices[0])).toContain("broken-mcp");
+    } finally {
+      await client.stop();
+    }
+  });
+
+  it("leaves out an MCP server that breaks a turn and reopens the same chat without it", async () => {
+    const client = createOpenCodeClient(
+      { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
+      join(root, "transcripts"),
+    );
+    const finished: Array<{ status: string }> = [];
+    const errors: string[] = [];
+    const seen: string[] = [];
+    client.on("notification", (notification) => {
+      const params = notification.params as { turn?: { status: string }; message?: string };
+      seen.push(notification.method);
+      if (notification.method === "turn/completed" && params.turn) finished.push(params.turn);
+      if (notification.method === "error") errors.push(String(params.message));
+    });
+    client.on("diagnostic", (line) => seen.push(`diag ${String(line).slice(0, 120)}`));
+    client.start();
+    try {
+      const opened = await client.request<{ thread: { id: string } }>("thread/start", {
+        cwd: root,
+        customMcpServers: [
+          { name: "run-broken", transport: "stdio", command: "node", args: [], env: {} },
+        ],
+      });
+      const threadId = opened.thread.id;
+      await client.request("turn/start", {
+        threadId,
+        input: [{ type: "text", text: "please use broken server, plain answer" }],
+      });
+      await waitFor(() => finished.length === 1).catch((error) => {
+        throw new Error(`${String(error)} seen=${JSON.stringify(seen.slice(-12))}`);
+      });
+      expect(finished[0]?.status).toBe("failed");
+      expect(errors[0]).toContain('"run-broken"');
+      expect(errors[0]).toContain(MCP_SERVER_SKIPPED_HINT);
+      // The resend: the session is opened again without the server and the turn completes.
+      await client.request("turn/start", {
+        threadId,
+        input: [{ type: "text", text: "please use broken server, plain answer" }],
+      });
+      await waitFor(() => finished.length === 2).catch(async (error) => {
+        const tail = (await readLog())
+          .slice(-8)
+          .map(
+            (entry) =>
+              `${String(entry.method ?? "reply")} ${JSON.stringify(entry.params ?? entry.result ?? entry.error ?? "").slice(0, 90)}`,
+          );
+        throw new Error(
+          `${String(error)} seen=${JSON.stringify(seen.slice(-12))} log=${JSON.stringify(tail)}`,
+        );
+      });
+      expect(finished[1]?.status).toBe("completed");
+      const opens = (await readLog()).filter(
+        (entry) => entry.method === "session/new" || entry.method === "session/load",
+      );
+      const names = (entry: (typeof opens)[number]) =>
+        (entry.params as { mcpServers: Array<{ name: string }> }).mcpServers.map((s) => s.name);
+      expect(names(opens[0] as (typeof opens)[number])).toContain("run-broken");
+      expect(names(opens.at(-1) as (typeof opens)[number])).not.toContain("run-broken");
+    } finally {
+      await client.stop();
+    }
+  });
+
   it("drops the tool routes of an agent's sessions when it stops", async () => {
     const client = createOpenCodeClient(
       { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
@@ -930,6 +1027,7 @@ let nextId = 1000;
 const waiting = new Map();
 const cancellable = new Map();
 const cwdBySession = {};
+const serversBySession = {};
 let lastCwd = null;
 const agent = process.env.ANTIGRAVITY_HARNESS_PATH ? "antigravity" : "opencode";
 log({ method: "started", agent, geminiHome: process.env.GEMINI_HOME || null, at: Date.now() });
@@ -953,13 +1051,16 @@ async function handle(message) {
     const known = fs.existsSync(process.env.SAHKARMI_FAKE_ACP_LOG + ".sessions") ? fs.readFileSync(process.env.SAHKARMI_FAKE_ACP_LOG + ".sessions", "utf8").split(String.fromCharCode(10)) : [];
     if (!known.includes(params.sessionId) || params.sessionId === process.env.SAHKARMI_FAKE_FORGET) return write({ id, error: { code: -32000, message: "Session not found in the current GEMINI_HOME" } });
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
+    serversBySession[params.sessionId] = params.mcpServers.map((server) => server.name);
     return write({ id, result: {} });
   }
   if (method === "session/new") {
+    if (params.mcpServers.some((server) => server.name === "broken-mcp")) return write({ id, error: { code: -32603, message: "mcp server broken-mcp failed to start" } });
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
     const newId = "ses_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
     fs.appendFileSync(process.env.SAHKARMI_FAKE_ACP_LOG + ".sessions", newId + String.fromCharCode(10));
     cwdBySession[newId] = params.cwd; lastCwd = params.cwd;
+    serversBySession[newId] = params.mcpServers.map((server) => server.name);
     return write({ id, result: { sessionId: newId, configOptions: [{ id: "model", category: "model", type: "select", currentValue: "anthropic/x", options: [{ value: "opencode/big-pickle", name: "Big Pickle" }, { value: "opencode/nemotron-free", name: "Nemotron" }, { value: "anthropic/x", name: "X" }] }] } });
   }
   if (method === "session/set_config_option") return write({ id, result: {} });
@@ -973,6 +1074,17 @@ async function handle(message) {
     if (text.includes("hit quota") && agent === "antigravity" && !process.env.GEMINI_HOME) {
       process.stderr.write("Error 429 RESOURCE_EXHAUSTED: Individual quota reached for this model. Resets in 1h2m3s\\n");
       await new Promise((resolve) => setTimeout(resolve, 300));
+      return write({ id, result: { stopReason: "end_turn" } });
+    }
+    // Like Google's Antigravity: an owner MCP server that dies fails the run, not the session.
+    if (text.includes("use broken") && (serversBySession[sessionId] || []).includes("run-broken")) {
+      process.stderr.write("Agent run failed: executor run failed: MCP load failed for run-broken: connection closed\\n");
+      update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "The MCP server 'run-broken' failed to initialize: EOF" } });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return write({ id, result: { stopReason: "end_turn" } });
+    }
+    if (text.includes("plain answer")) {
+      update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done." } });
       return write({ id, result: { stopReason: "end_turn" } });
     }
     if (text.includes("make a picture") && lastCwd) { fs.writeFileSync(require("node:path").join(lastCwd, "made.png"), Buffer.from("iVBORw0KGgo=", "base64")); }

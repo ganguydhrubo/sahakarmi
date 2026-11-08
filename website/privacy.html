@@ -71,8 +71,8 @@
 
   <main class="wrap">
     <h1>Privacy policy</h1>
-    <p class="lead">Sahkarmi is a free, open-source desktop app for Windows. It keeps your coworkers, chats and files on your own computer. There is no Sahkarmi account, no Sahkarmi cloud and no analytics in the app. This page explains exactly what is stored, what leaves your computer, and where it goes.</p>
-    <p><strong>Last updated: 29 October 2026.</strong> This policy covers the current Sahkarmi Windows app (version 0.12) and the website sahkarmi.site.</p>
+    <p class="lead">Sahkarmi is a free, open-source desktop app for Windows. It keeps your coworkers, chats and files on your own computer. There is no Sahkarmi account, no Sahkarmi cloud and no analytics in the app; the only thing the app can tell the Sahkarmi Team is an anonymous daily "used today" count, and only if you say yes. This page explains exactly what is stored, what leaves your computer, and where it goes.</p>
+    <p><strong>Last updated: 8 November 2026.</strong> This policy covers the current Sahkarmi Windows app (version 0.26) and the website sahkarmi.site.</p>
     <ul class="toc">
       <li><a href="#short">In short</a></li>
       <li><a href="#stored">Stored on your PC</a></li>
@@ -88,7 +88,8 @@
 
     <h2 id="short">In short</h2>
     <ul>
-      <li>Sahkarmi has no account, no cloud service, no telemetry and no analytics. The Sahkarmi Team cannot see your coworkers, chats, files or settings.</li>
+      <li>Sahkarmi has no account, no cloud service and no analytics. The Sahkarmi Team cannot see your coworkers, chats, files or settings.</li>
+      <li>From version 0.26.0 the app asks once whether it may add this PC to an anonymous daily user count. Nothing is sent unless you say yes, and you can change it any time in Settings, About. See <a href="#daily-count">Daily user count</a>.</li>
       <li>Your data is stored as files on your computer, inside your Windows user profile.</li>
       <li>When a coworker works, the text and files it needs go to the AI provider you chose for it, under that provider's terms.</li>
       <li>The app also talks to GitHub (updates), the npm registry (AI tool downloads), and to the websites and services you or your coworkers use.</li>
@@ -125,9 +126,13 @@
         <tr><td>Marketplace, Apps (optional)</td><td>Composio (composio.dev)</td><td>App logos load from logos.composio.dev when you open the Apps tab. If you add your own Composio key, coworker actions on your connected apps go through Composio under its terms.</td></tr>
         <tr><td>Telegram chat (optional)</td><td>Telegram (api.telegram.org)</td><td>See <a href="#telegram">Telegram</a>.</td></tr>
         <tr><td>You click an outside link</td><td>That website, in your normal browser</td><td>A normal page visit.</td></tr>
+        <tr><td>Daily user count, only if you said yes</td><td>A Google Apps Script web app run by the Sahkarmi Team</td><td>See <a href="#daily-count">Daily user count</a>.</td></tr>
       </tbody>
     </table>
-    <p>Nothing in this list goes to the Sahkarmi Team. The app sends no usage statistics, crash reports or analytics.</p>
+    <p>Apart from the daily user count you can say yes to, nothing in this list goes to the Sahkarmi Team. The app sends no crash reports or analytics.</p>
+
+    <h3 id="daily-count">Daily user count</h3>
+    <p>From version 0.26.0 the app asks once, in the coworker list, whether it may help count how many people use Sahkarmi each day. If you say yes, once a day it sends one small message with: a random number made for this copy of the app (not linked to you, your PC or any account), the app version, how it was installed (installer, Microsoft Store or Scoop), whether this is its first day, and your time zone (to estimate the country). Your name, chats, files, coworkers, accounts and IP-derived data are never included. The message goes to the same Google Apps Script web app that counts download clicks; it counts each copy once per day, keeps only a short scrambled form of the random number until that day is counted, and emails the Sahkarmi Team the totals. If you say no, nothing is sent. You can change your answer any time in Settings, About; deleting <code>%APPDATA%\Sahkarmi\usage-count.json</code> makes the app ask again with a new random number.</p>
 
     <h2 id="providers">AI providers</h2>
     <p>Each coworker uses one AI provider: OpenCode's free models (built in), Claude, ChatGPT (Codex), Google Antigravity or Gemini, or another agent you connect. When a coworker thinks, the text and files it needs are sent to that provider. The provider handles them under its own terms and privacy policy, and with your own account where you signed in. Sahkarmi does not control what the provider stores or how long it keeps it. Read the provider's policy before you give a coworker private or customer data.</p>

@@ -66,6 +66,15 @@ export function httpCandidates(url: string): string[] {
   const list = [url];
   const swapped = url.replace(/\/sse\/?(\?.*)?$/i, "/mcp$1");
   if (swapped !== url) list.push(swapped);
+  // "localhost" can resolve to IPv6 (::1) first while a local server listens only on 127.0.0.1;
+  // the same address is tried over IPv4 before the server counts as down.
+  for (const candidate of [...list]) {
+    const ipv4 = candidate.replace(
+      /^(https?:\/\/)localhost(?=[:/?#]|$)/i,
+      (_match, scheme: string) => `${scheme}127.0.0.1`,
+    );
+    if (ipv4 !== candidate) list.push(ipv4);
+  }
   return list;
 }
 
