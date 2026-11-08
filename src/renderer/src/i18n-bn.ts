@@ -11,6 +11,7 @@ import { mcpBn } from "./i18n-mcp";
 import { memoryBn } from "./i18n-memory";
 import { onboardingBn } from "./i18n-onboarding";
 import { securityBn } from "./i18n-security";
+import { skillPacksBn } from "./i18n-skill-packs";
 import { storageBn } from "./i18n-storage";
 import { workspaceBn } from "./i18n-workspace-bn";
 
@@ -306,5 +307,6 @@ export const bn: Dictionary = {
   ...engineBn,
   ...assignBn,
   ...mcpBn,
+  ...skillPacksBn,
   ...onboardingBn,
 };

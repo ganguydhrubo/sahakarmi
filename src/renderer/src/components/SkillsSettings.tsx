@@ -1,7 +1,9 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import type { CustomSkill, GithubSkillPreview } from "../../../shared/ipc";
+import { featureOn } from "../features";
 import { t } from "../i18n";
 import { AssignButton } from "./AssignAccess";
+import { McpRecommendations, packOfSkill, packTitle, SkillPacks } from "./SkillPacks";
 
 /** Public repos of Claude-format skills, offered as a starting point. */
 const SUGGESTED_REPOS = ["https://github.com/anthropics/skills"];
@@ -54,6 +56,10 @@ export function SkillsSettings() {
     <div class="extension-settings">
       <p class="settings-meta">{t("skillsIntro")}</p>
 
+      <Show when={featureOn("skill-packs") && window.sahkarmi.customSkills.installPack}>
+        <SkillPacks skills={skills()} busy={busy()} run={run} onSkills={setSkills} />
+      </Show>
+
       <label class="extension-field">
         <span>{t("skillsGithubLabel")}</span>
         <div class="extension-row">
@@ -75,16 +81,19 @@ export function SkillsSettings() {
           </button>
         </div>
       </label>
-      <p class="settings-meta">
-        {t("skillsSuggested")}{" "}
-        <For each={SUGGESTED_REPOS}>
-          {(repo) => (
-            <button type="button" class="extension-link" onClick={() => void find(repo)}>
-              {repo.replace("https://github.com/", "")}
-            </button>
-          )}
-        </For>
-      </p>
+      {/* With skill packs on, the packs replace the suggested repo (no upstream names shown). */}
+      <Show when={!featureOn("skill-packs")}>
+        <p class="settings-meta">
+          {t("skillsSuggested")}{" "}
+          <For each={SUGGESTED_REPOS}>
+            {(repo) => (
+              <button type="button" class="extension-link" onClick={() => void find(repo)}>
+                {repo.replace("https://github.com/", "")}
+              </button>
+            )}
+          </For>
+        </p>
+      </Show>
 
       <Show when={preview()}>
         {(found) => (
@@ -200,7 +209,46 @@ export function SkillsSettings() {
                   <Show when={skill.description}>
                     <small>{skill.description}</small>
                   </Show>
-                  <small class="extension-source">{skill.source}</small>
+                  <Show
+                    when={packOfSkill(skill)}
+                    fallback={<small class="extension-source">{skill.source}</small>}
+                  >
+                    {(pack) => (
+                      <>
+                        <small class="extension-source">
+                          {t("packsFrom", { pack: packTitle(pack()) })}
+                        </small>
+                        <Show when={pack().notice === "legal"}>
+                          <span class="extension-badge extension-badge-warn" role="note">
+                            {t("packsNotLegalAdvice")}
+                          </span>
+                        </Show>
+                      </>
+                    )}
+                  </Show>
+                  <Show when={!skill.pack && skill.plugin}>
+                    {(plugin) => (
+                      <small class="extension-source">
+                        {t("skillsPlugin", {
+                          name: [plugin().displayName || plugin().name, plugin().version]
+                            .filter(Boolean)
+                            .join(" v"),
+                        })}
+                      </small>
+                    )}
+                  </Show>
+                  <Show when={(skill.linkedFiles ?? 0) > 0}>
+                    <small>{t("skillsLinkedFiles", { count: String(skill.linkedFiles) })}</small>
+                  </Show>
+                  <Show when={(skill.unresolvedLinks ?? []).length > 0}>
+                    <small class="extension-warning">
+                      {t("skillsUnresolved", {
+                        paths: (skill.unresolvedLinks ?? [])
+                          .map((path) => path.split("/").pop())
+                          .join(", "),
+                      })}
+                    </small>
+                  </Show>
                   <AssignButton kind="skill" id={`custom:${skill.id}`} name={skill.name} />
                   <Show when={skill.reviewNeeded}>
                     <small class="extension-review" role="note">
@@ -238,6 +286,7 @@ export function SkillsSettings() {
           </For>
         </ul>
       </Show>
+      <McpRecommendations skills={skills()} />
       <p class="settings-meta">{t("skillsTrustNote")}</p>
     </div>
   );

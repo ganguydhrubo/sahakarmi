@@ -11,6 +11,7 @@ import { mcpHi } from "./i18n-mcp";
 import { memoryHi } from "./i18n-memory";
 import { onboardingHi } from "./i18n-onboarding";
 import { securityHi } from "./i18n-security";
+import { skillPacksHi } from "./i18n-skill-packs";
 import { storageHi } from "./i18n-storage";
 import { workspaceHi } from "./i18n-workspace-hi";
 
@@ -307,5 +308,6 @@ export const hi: Dictionary = {
   ...engineHi,
   ...assignHi,
   ...mcpHi,
+  ...skillPacksHi,
   ...onboardingHi,
 };
