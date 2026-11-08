@@ -165,8 +165,30 @@ describe("DesktopControlService while acting", () => {
     await service.handleDynamicTool(call("move", { x: 1, y: 1 }), "claude");
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify.mock.calls[0]?.[1]).toContain("Asha is using your desktop");
-    now += 10 * 60_000;
+    now += 31 * 60_000;
     await service.handleDynamicTool(call("move", { x: 1, y: 1 }), "claude");
+    expect(notify).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not repeat the line during one long task or its follow-up turns", async () => {
+    let now = 1_000;
+    const { service, notify } = setup({ now: () => now });
+    await service.handleDynamicTool(call("move", { x: 1, y: 1 }), "claude");
+    // A slow upload, then the follow-up turns that check the screen after the reply.
+    for (const gap of [4 * 60_000, 10 * 60_000, 25 * 60_000]) {
+      now += gap;
+      await service.handleDynamicTool(
+        { ...call("move", { x: 1, y: 1 }), turnId: `turn-${gap}` },
+        "claude",
+      );
+    }
+    expect(notify).toHaveBeenCalledTimes(1);
+    // A different chat of the same coworker gets its own line.
+    now += 1_000;
+    await service.handleDynamicTool(
+      { ...call("move", { x: 1, y: 1 }), threadId: "thread-other" },
+      "claude",
+    );
     expect(notify).toHaveBeenCalledTimes(2);
   });
 

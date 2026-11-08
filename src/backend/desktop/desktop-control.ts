@@ -31,8 +31,12 @@ export interface DesktopControlDeps {
 
 /** Another coworker waits this long after the last desktop step before it may take over. */
 const EXCLUSIVE_MS = 20_000;
-/** A new "is using your desktop" line after this long without a desktop step. */
-const NOTICE_AGAIN_MS = 3 * 60_000;
+/**
+ * A chat gets one "is using your desktop" line, and another only after this long without a
+ * desktop step there. Three minutes repeated it during one long task (a slow upload, a model
+ * thinking) and after the coworker's last reply, when its follow-up turns checked the screen.
+ */
+const NOTICE_AGAIN_MS = 30 * 60_000;
 export const DESKTOP_APPROVAL_ACTION = "Use this PC's screen, mouse and keyboard in any app";
 const SCREENSHOT_TIMEOUT_MS = 30_000;
 const LAUNCH_TIMEOUT_MS = 45_000;
@@ -74,7 +78,9 @@ export class DesktopControlService {
 
   forgetBot(botId: string): void {
     this.#approved.delete(botId);
-    this.#lastStep.delete(botId);
+    for (const chat of this.#lastStep.keys()) {
+      if (chat.startsWith(`${botId}\n`)) this.#lastStep.delete(chat);
+    }
     this.#transforms.delete(botId);
     if (this.#holder?.botId === botId) this.#holder = null;
   }
@@ -106,14 +112,15 @@ export class DesktopControlService {
       );
     }
     this.#holder = { botId, at: now };
-    const last = this.#lastStep.get(botId);
+    const chat = `${botId}\n${params.threadId}`;
+    const last = this.#lastStep.get(chat);
     if (last === undefined || now - last > NOTICE_AGAIN_MS) {
       this.#deps.notify(
         botId,
         `${this.#deps.botName(botId)} is using your desktop: it can see the screen and use the mouse and keyboard. Stop its reply to take back control.`,
       );
     }
-    this.#lastStep.set(botId, now);
+    this.#lastStep.set(chat, now);
 
     try {
       return await this.#run(botId, call);
@@ -121,7 +128,7 @@ export class DesktopControlService {
       return text(error instanceof Error ? error.message : String(error), false);
     } finally {
       const end = this.#now();
-      this.#lastStep.set(botId, end);
+      this.#lastStep.set(chat, end);
       if (this.#holder?.botId === botId) this.#holder = { botId, at: end };
     }
   }

@@ -16,6 +16,9 @@ All notable changes to Sahkarmi are documented here. The project follows
   the owner to hand the browser back. A tab now lets go of a dead page at once and opens its
   address in a fresh page on its next use; a crashed page is reloaded the same way. Other tabs
   and coworkers are not affected.
+- "… is using your desktop" was posted again and again in one chat, even after the coworker's
+  last reply (every 3 minutes without a desktop step, and on each follow-up turn). A chat now
+  gets the line once, and again only after 30 minutes without desktop use there.
 
 ## [0.26.0] - 2026-11-08
 
