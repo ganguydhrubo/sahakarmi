@@ -26,6 +26,12 @@ const ORIGINAL_IDS = [
   "operations-planner",
 ];
 
+function template(id: string) {
+  const found = findAgentTemplate(id);
+  if (!found) throw new Error(`missing template ${id}`);
+  return found;
+}
+
 describe("agent catalogue", () => {
   it("keeps the twelve original agents with their ids", () => {
     for (const id of ORIGINAL_IDS) expect(findAgentTemplate(id)?.version).toBeGreaterThan(1);
@@ -88,7 +94,7 @@ describe("agent catalogue", () => {
   });
 
   it("finds agents by job function as well as by name", () => {
-    const text = agentSearchText(findAgentTemplate("gst-accountant")!);
+    const text = agentSearchText(template("gst-accountant"));
     expect(text).toContain("gstr-3b");
     expect(
       AGENT_CATALOG.filter((agent) => agentSearchText(agent).includes("seo")).length,
@@ -96,7 +102,7 @@ describe("agent catalogue", () => {
   });
 
   it("stamps a coworker with its template and a brief fingerprint", () => {
-    const agent = findAgentTemplate("software-engineering-team")!;
+    const agent = template("software-engineering-team");
     const coworker = coworkerFromTemplate(agent);
     expect(isBotTemplateRef(coworker.template)).toBe(true);
     expect(coworker.template.briefHash).toBe(briefHash(coworker.description));

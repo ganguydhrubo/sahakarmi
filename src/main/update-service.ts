@@ -532,6 +532,9 @@ export function reasonOf(error: unknown): string {
   ) {
     return "no internet connection";
   }
+  // GitHub's release download servers sometimes answer 502/503/504 for a while (seen 2026-11-08).
+  if (/\b50[0-4]\b|Gateway Time-?out|Bad Gateway|Service Unavailable/i.test(text))
+    return "GitHub's download server is not answering right now (a problem on GitHub's side), try again later";
   if (/ETIMEDOUT|ERR_TIMED_OUT|timeout/i.test(text)) return "the connection timed out";
   if (/ECONNRESET|ERR_CONNECTION|socket hang up/i.test(text))
     return "the connection was interrupted";

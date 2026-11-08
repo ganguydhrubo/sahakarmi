@@ -3,7 +3,13 @@ import { coworkerFromTemplate, findAgentTemplate } from "../../../shared/agent-c
 import type { BotProfile } from "../data";
 import { coworkerForTemplate, templateUpdate } from "./MarketplaceView";
 
-const agent = findAgentTemplate("gst-accountant")!;
+const agent = template("gst-accountant");
+
+function template(id: string) {
+  const found = findAgentTemplate(id);
+  if (!found) throw new Error(`missing template ${id}`);
+  return found;
+}
 
 function bot(overrides: Partial<BotProfile>): BotProfile {
   return {

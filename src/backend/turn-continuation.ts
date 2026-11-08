@@ -50,7 +50,7 @@ function sentences(line: string): string[] {
 /** The last line only asks whether to go on, such as "Shall I continue?". */
 export function asksToContinue(text: string): boolean {
   const last = lines(text).at(-1);
-  if (!last || !last.endsWith("?")) return false;
+  if (!last?.endsWith("?")) return false;
   const parts = sentences(last);
   const question = parts.at(-1) ?? "";
   if (!CONTINUE_QUESTION.test(question) || APPROVAL_WORDS.test(question)) return false;

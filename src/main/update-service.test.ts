@@ -420,6 +420,9 @@ describe("UpdateService", () => {
 
   it("explains known causes in plain words", () => {
     expect(reasonOf(new Error("net::ERR_INTERNET_DISCONNECTED"))).toBe("no internet connection");
+    expect(reasonOf(new Error("HttpError: 504 Gateway Time-out"))).toMatch(
+      /GitHub's download server/,
+    );
     expect(reasonOf(new Error("HttpError: 404 Cannot find latest.yml"))).toBe(
       "the update files were not found",
     );
