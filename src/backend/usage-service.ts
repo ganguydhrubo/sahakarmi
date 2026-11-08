@@ -7,6 +7,7 @@ import {
   type AgentProviderStatus,
   PROVIDER_LABELS,
   type ProviderUsageSummary,
+  providerFeatureId,
   type UsageAlert,
   type UsageByBot,
   type UsageDataLabel,
@@ -195,7 +196,12 @@ export class UsageService {
       return { date, provider: provider as AgentProviderId, botId, ...bucket };
     });
 
-    const summaries: ProviderUsageSummary[] = AGENT_PROVIDERS.map((provider) => {
+    // An engine behind a switched-off feature reports no status and gets no usage row.
+    const listed = AGENT_PROVIDERS.filter(
+      (provider) =>
+        !providerFeatureId(provider) || providers.some((candidate) => candidate.id === provider),
+    );
+    const summaries: ProviderUsageSummary[] = listed.map((provider) => {
       const own = entries.filter((entry) => entry.provider === provider);
       const sum = (since: string) =>
         own

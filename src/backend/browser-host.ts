@@ -21,6 +21,21 @@ import type {
   SocialPlatform,
 } from "../shared/ipc";
 import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
+import {
+  ActionMemory,
+  actionMemoryEnabled,
+  describeElementScript,
+  type ElementLocator,
+  findElementScript,
+  hideSecretsEnabled,
+  hideSecretsInReading,
+  isElementLocator,
+  isMissingElement,
+  locatorLabel,
+  recalledNotice,
+  sameLocator,
+  uniqueMatch,
+} from "./browser-guard";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import {
   pagesOverBudget,
@@ -504,6 +519,8 @@ export class BrowserHost implements CoworkerBrowser {
   #changePending = false;
   #persistTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #control = new BrowserControlTracker();
+  /** Settings > Features "remember clicked elements" (off by default); empty while off. */
+  readonly #actionMemory = new ActionMemory();
   readonly #reservedDownloadPaths = new Set<string>();
   #downloadAuthorizer: DownloadAuthorizer | null = null;
   #activeTabId: string | null = null;
@@ -1162,6 +1179,7 @@ export class BrowserHost implements CoworkerBrowser {
   async close(tabId: string): Promise<void> {
     const tab = this.#requireTab(tabId);
     this.#tabs.delete(tabId);
+    this.#actionMemory.forget(tabId);
     if (tab.view) {
       const view = tab.view;
       tab.view = null;
@@ -1267,12 +1285,34 @@ export class BrowserHost implements CoworkerBrowser {
     options?: BrowserActOptions,
   ): Promise<BrowserSnapshot | BrowserActStatus> {
     return this.#enqueue(tabId, async (tab) => {
-      if (revision !== ANY_REVISION && revision !== tab.revision) {
+      const remembering = actionMemoryEnabled() && rememberableRef(action) !== null;
+      const staleRevision = revision !== ANY_REVISION && revision !== tab.revision;
+      if (staleRevision && !remembering) {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
 
       const view = await this.#wakeLoaded(tab);
       const beforeUrl = currentTabUrl(tab);
+      // Settings > Features "remember clicked elements": describe the element before acting, or
+      // find the remembered one again when the page changed. Anything but exactly one match
+      // stops with the same error as before.
+      let recalled: string | undefined;
+      let locator: ElementLocator | null = null;
+      let target = action;
+      const requestedRef = rememberableRef(action);
+      if (remembering && requestedRef) {
+        const found = await this.#rememberedTarget(tab, view.webContents, requestedRef, beforeUrl);
+        if (!found && staleRevision) {
+          throw new Error("Stale browser references. Take a fresh snapshot before acting.");
+        }
+        if (found) {
+          locator = found.locator;
+          if (found.ref !== requestedRef) {
+            target = { ...action, ref: found.ref } as BrowserAction;
+            recalled = recalledNotice(found.locator);
+          }
+        }
+      }
       // A hidden page must be painted to take input, but never over the app: it is shown with
       // only its corner pixel inside the window while the coworker acts on it.
       const restore = view.getVisible() ? null : this.#showOutOfSight(view);
@@ -1283,7 +1323,7 @@ export class BrowserHost implements CoworkerBrowser {
       try {
         if (restore) await delay(250);
         notice = await withTimeout(
-          performAction(view.webContents, action),
+          performAction(view.webContents, target),
           10_000,
           "Browser action timed out.",
         );
@@ -1291,6 +1331,14 @@ export class BrowserHost implements CoworkerBrowser {
       } finally {
         restore?.();
       }
+      if (locator && requestedRef) {
+        this.#actionMemory.remember(tab.id, requestedRef, beforeUrl, locator);
+        const actedRef = rememberableRef(target);
+        if (actedRef && actedRef !== requestedRef) {
+          this.#actionMemory.remember(tab.id, actedRef, beforeUrl, locator);
+        }
+      }
+      if (recalled) notice = notice ? `${recalled} ${notice}` : recalled;
       const opened = await this.#openedTabsNotice(tab);
       if (opened) notice = notice ? `${notice} ${opened}` : opened;
       // Typing that submitted and loaded a new page left nothing unsaved behind.
@@ -1310,6 +1358,29 @@ export class BrowserHost implements CoworkerBrowser {
       const nextRevision = tab.revision + 1;
       const snapshot = await this.#readSnapshot(tab, nextRevision);
       return notice ? { ...snapshot, notice } : snapshot;
+    });
+  }
+
+  /**
+   * The element an action's reference stands for, with its description. A reference still on
+   * the page is used as it is (when its revision is current) or only if it still matches the
+   * remembered description exactly (when the page was read again since). A reference that is
+   * gone is replaced only when the remembered element is the single exact match on the same page.
+   */
+  #rememberedTarget(
+    tab: InternalTab,
+    contents: WebContents,
+    ref: string,
+    url: string,
+  ): Promise<{ ref: string; locator: ElementLocator } | null> {
+    return resolveRememberedTarget({
+      memory: this.#actionMemory,
+      tabId: tab.id,
+      revision: tab.revision,
+      ref,
+      url,
+      evaluate: (script) =>
+        withTimeout(contents.executeJavaScript(script, true), 5_000, "Browser action timed out."),
     });
   }
 
@@ -1719,10 +1790,15 @@ export class BrowserHost implements CoworkerBrowser {
   describeTarget(tabId: string, ref: string | null): { label: string; url: string } {
     const tab = this.#tabs.get(tabId);
     if (!tab) return { label: "", url: "" };
-    return {
-      label: ref ? (tab.labels.get(ref) ?? "") : "",
-      url: currentTabUrl(tab),
-    };
+    const url = currentTabUrl(tab);
+    let label = ref ? (tab.labels.get(ref) ?? "") : "";
+    // An older reference that "remember clicked elements" may use again is checked under the
+    // name of the element it would act on, so approvals see the real target.
+    if (ref && !tab.labels.has(ref) && actionMemoryEnabled()) {
+      const remembered = this.#actionMemory.recall(tab.id, ref, url);
+      if (remembered) label = locatorLabel(remembered);
+    }
+    return { label, url };
   }
 
   #syncAttachedView(): void {
@@ -2145,6 +2221,53 @@ export function fitSnapshot(snapshot: BrowserSnapshot, offset: number): FittedSn
   };
 }
 
+/** The reference of an action "remember clicked elements" covers: a click or typing into a field. */
+export function rememberableRef(action: BrowserAction): string | null {
+  if (action.type === "click") return action.ref;
+  if (action.type === "type" && typeof action.ref === "string") return action.ref;
+  return null;
+}
+
+/**
+ * The element an action's reference stands for, with its description. A reference still on
+ * the page is used as it is (when its revision is current) or only if it still matches the
+ * remembered description exactly (when the page was read again since). A reference that is
+ * gone is replaced only when the remembered element is the single exact match on the same
+ * page. Null: act as before (a stale reference is refused).
+ */
+export async function resolveRememberedTarget(input: {
+  memory: ActionMemory;
+  tabId: string;
+  revision: number;
+  ref: string;
+  url: string;
+  evaluate: (script: string) => Promise<unknown>;
+}): Promise<{ ref: string; locator: ElementLocator } | null> {
+  const { memory, tabId, ref, url, evaluate } = input;
+  const current = ref.startsWith(`${input.revision}:`);
+  const remembered = memory.recall(tabId, ref, url);
+  try {
+    const described = await evaluate(describeElementScript(ref));
+    if (isElementLocator(described)) {
+      if (current || (remembered && sameLocator(described, remembered))) {
+        return { ref, locator: described };
+      }
+      return null;
+    }
+    // Still on the page but hidden or nameless: never swapped for another element.
+    if (!isMissingElement(described) || !remembered) return null;
+    const found = uniqueMatch(await evaluate(findElementScript(remembered, ref)));
+    return found ? { ref: found, locator: remembered } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Settings > Features "hide secrets": what the coworker's AI reads has its secrets hidden. */
+function guardReading<T extends BrowserSnapshot | BrowserActStatus>(reading: T): T {
+  return hideSecretsEnabled() ? hideSecretsInReading(reading) : reading;
+}
+
 /** The tab a call names; some runtimes call it pageId. */
 function browserTabId(args: Record<string, unknown>): string {
   const pageId = args.pageId;
@@ -2194,7 +2317,7 @@ export async function runBrowserTool(
         return textResult({ tabs, activeTabId: shown ? browser.activeTabId : null });
       }
       case "snapshot": {
-        const snapshot = await browser.snapshot(browserTabId(args));
+        const snapshot = guardReading(await browser.snapshot(browserTabId(args)));
         return textResult(fitSnapshot(snapshot, textOffset(args.offset)));
       }
       case "act": {
@@ -2204,9 +2327,11 @@ export async function runBrowserTool(
         // without a ref (a key, a scroll) does not depend on it.
         const revision =
           typeof args.revision === "number" ? args.revision : revisionFromRef(action);
-        const result = await browser.act(tabId, revision, action, {
-          snapshot: args.snapshot === true,
-        });
+        const result = guardReading(
+          await browser.act(tabId, revision, action, {
+            snapshot: args.snapshot === true,
+          }),
+        );
         return textResult("elements" in result ? fitSnapshot(result, 0) : result);
       }
       case "screenshot": {

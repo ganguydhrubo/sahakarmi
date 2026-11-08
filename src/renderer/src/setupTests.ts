@@ -23,6 +23,7 @@ for (const id of [
   "goose",
   "vibe",
   "kiro",
+  "openmodel",
 ]) {
   // This file is typed for the browser; vitest itself runs on Node, where process exists.
   const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process
