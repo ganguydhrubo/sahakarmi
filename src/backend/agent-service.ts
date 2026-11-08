@@ -72,7 +72,11 @@ import {
 } from "../shared/ipc";
 import type { AccessSubject } from "../shared/resource-access";
 import { createAcpAgentClient, resolveAcpAgentCli } from "./acp-agents";
-import { FREE_LIMIT_REACHED_HINT, NEXT_FREE_MODEL_HINT } from "./acp-client";
+import {
+  FREE_LIMIT_REACHED_HINT,
+  MCP_SERVER_SKIPPED_HINT,
+  NEXT_FREE_MODEL_HINT,
+} from "./acp-client";
 import { createAntigravityClient, createOpenCodeClient } from "./acp-providers";
 import type { AgentClient, AgentProvider } from "./agent-client";
 import { AgentMemoryStore, MEMORY_PAGE_MAX, memoryCategory } from "./agent-memory-store";
@@ -454,6 +458,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #fallbackRetried = new Set<string>();
   /** Brief-fault retries already spent on a message, by the delivery now carrying it. */
   readonly #transientRetries = new Map<string, number>();
+  /** Messages already sent again after an MCP server was left out (one resend each). */
+  readonly #mcpSkipResent = new Set<string>();
   /** Coworkers whose queue waits while a re-send is being prepared (model switch, backoff). */
   readonly #heldDrains = new Set<string>();
   /** Coworkers with a queued message waiting for a free turn slot (the concurrent-turn cap). */
@@ -4000,13 +4006,41 @@ ${carryOver}`
         case "item/tool/requestUserInput":
           this.#surfacePrompt(client, request);
           return;
-        case "mcpServer/elicitation/request":
+        case "mcpServer/elicitation/request": {
+          // Codex asks before each tool call on the owner's MCP servers. It is decided like a
+          // Claude coworker's MCP tool call (same permission settings, same approval card);
+          // declining it every time made every owner MCP server unusable from Codex.
+          const toolCall = codexMcpToolApproval(request.params);
+          if (toolCall) {
+            const classified = classifyClaudeTool(
+              `mcp__${toolCall.server}__${toolCall.tool}`,
+              toolCall.input,
+            );
+            const verdict = await this.#authorize(
+              client.provider,
+              getString(request.params, "threadId"),
+              {
+                ...classified,
+                action: `Use the "${toolCall.tool}" tool of the ${toolCall.server} tool server`,
+              },
+            );
+            client.respond(
+              request.id,
+              verdict.allowed
+                ? { action: "accept", content: {}, _meta: null }
+                : { action: "decline", content: null, _meta: null },
+            );
+            return;
+          }
           client.respond(request.id, { action: "decline", content: null, _meta: null });
+          // The shape only (no values), so an unknown kind of request can be recognised later.
+          this.emit("log", `declined MCP elicitation: ${elicitationShape(request.params)}`);
           this.#emitError(
             "mcp_safety_handoff",
-            "A local plugin requested a security hand-off that Sahkarmi cannot auto-approve.",
+            "A tool server asked for extra details Sahkarmi cannot fill in, so that step was skipped. The coworker can try another way.",
           );
           return;
+        }
         case "currentTime/read":
           client.respond(request.id, { currentTimeAt: Math.floor(Date.now() / 1_000) });
           return;
@@ -5981,6 +6015,13 @@ ${carryOver}`
       } else if (isQuotaError(reason)) {
         if (!(await this.#rotateGeminiAccount(botId, delivery))) {
           await this.#fallBackToFreeModel(botId, delivery, "is at its usage limit");
+        }
+      } else if (reason.includes(MCP_SERVER_SKIPPED_HINT)) {
+        // An owner MCP server broke the turn; the agent left it out, so the same message goes
+        // again once (never twice: a second failure is a real one).
+        if (!this.#mcpSkipResent.has(delivery.delivery.id) && this.#canResend(delivery)) {
+          const nextId = await this.#resend(botId, delivery, { delayMs: 500 });
+          this.#mcpSkipResent.add(nextId);
         }
       } else if (isTransientError(reason)) {
         await this.#retryTransient(botId, turnId, delivery);
@@ -7989,4 +8030,34 @@ function pageWithoutQuery(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Codex's "Allow <server> to run tool <tool>?" request: an MCP elicitation whose _meta has
+ * codex_approval_kind "mcp_tool_call". Anything else is a real form from the server.
+ */
+export function codexMcpToolApproval(
+  params: unknown,
+): { server: string; tool: string; input: Record<string, unknown> } | null {
+  if (!isRecord(params)) return null;
+  const meta = isRecord(params._meta) ? params._meta : null;
+  if (meta?.codex_approval_kind !== "mcp_tool_call") return null;
+  const server = typeof params.serverName === "string" ? params.serverName : "";
+  const tool = typeof meta.tool_name === "string" ? meta.tool_name : "";
+  if (!server || !tool) return null;
+  return { server, tool, input: isRecord(meta.tool_params) ? meta.tool_params : {} };
+}
+
+/** Keys and the kind markers of an elicitation, never the values a user or server typed. */
+export function elicitationShape(params: unknown): string {
+  if (!isRecord(params)) return "not an object";
+  const meta = isRecord(params._meta) ? params._meta : null;
+  return JSON.stringify({
+    keys: Object.keys(params),
+    mode: typeof params.mode === "string" ? params.mode : null,
+    serverName: typeof params.serverName === "string" ? params.serverName : null,
+    metaKeys: meta ? Object.keys(meta) : null,
+    kind: meta && typeof meta.codex_approval_kind === "string" ? meta.codex_approval_kind : null,
+    message: typeof params.message === "string" ? params.message.slice(0, 120) : null,
+  });
 }
