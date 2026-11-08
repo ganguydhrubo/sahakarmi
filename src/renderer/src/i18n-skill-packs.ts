@@ -33,7 +33,6 @@ export const skillPacksEn = {
   creditsLicence: "Licence",
   creditsNotice: "NOTICE",
   creditsNoNotice: "This project publishes no NOTICE file.",
-  creditsUsedFor: "Used for",
   creditsOpen: "Open project page",
   "pack.small-business.title": "Small business pack",
   "pack.small-business.summary":
@@ -125,7 +124,6 @@ export const skillPacksHi: SkillPacksDictionary = {
   creditsLicence: "लाइसेंस",
   creditsNotice: "NOTICE",
   creditsNoNotice: "यह प्रोजेक्ट कोई NOTICE फ़ाइल नहीं देता।",
-  creditsUsedFor: "किसके लिए",
   creditsOpen: "प्रोजेक्ट पेज खोलें",
   "pack.small-business.title": "छोटा व्यापार पैक",
   "pack.small-business.summary":
@@ -213,7 +211,6 @@ export const skillPacksBn: SkillPacksDictionary = {
   creditsLicence: "লাইসেন্স",
   creditsNotice: "NOTICE",
   creditsNoNotice: "এই প্রকল্প কোনো NOTICE ফাইল প্রকাশ করে না।",
-  creditsUsedFor: "কীসের জন্য",
   creditsOpen: "প্রকল্পের পাতা খুলুন",
   "pack.small-business.title": "ছোট ব্যবসা প্যাক",
   "pack.small-business.summary":

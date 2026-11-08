@@ -24,9 +24,7 @@ export interface SkillPack {
   summary: string;
   /** Shown on the pack and on every skill from it. */
   notice?: SkillPackNotice;
-  /** Entry in open-source-credits.ts. */
-  creditId: string;
-  /** owner/repo, for downloading only. */
+  /** owner/repo, for downloading only; its credit is the entry with this repo's GitHub URL. */
   repo: string;
   /** Exact 40-character commit every download is pinned to. */
   commit: string;
@@ -40,7 +38,6 @@ export interface SkillPack {
 }
 
 const KWP = {
-  creditId: "business-plugins",
   repo: "anthropics/knowledge-work-plugins",
   commit: "e050c2ec856373787143d7057663a6ebd1277df3",
   licence: "Apache-2.0",
@@ -316,7 +313,6 @@ export const SKILL_PACKS: SkillPack[] = [
     title: "Documents & writing pack",
     summary:
       "Internal updates and newsletters, colour and font themes for documents, polished web page design, and follow-up questions that check a draft before you act on it.",
-    creditId: "document-skills",
     repo: "anthropics/skills",
     commit: "2c5958ecac7cee2b583967a2c4981d0f4a75c579",
     licence: "Apache-2.0",
@@ -345,7 +341,6 @@ export const SKILL_PACKS: SkillPack[] = [
     title: "Growth marketing pack",
     summary:
       "Copywriting, SEO, ads, landing-page conversion, pricing, launches, referrals, email and social: 51 marketing playbooks.",
-    creditId: "marketing-skills",
     repo: "coreyhaines31/marketingskills",
     commit: "96798cf38736ecdba015a1d2b0521b0c8f8f41dd",
     licence: "MIT",
@@ -413,7 +408,6 @@ export const SKILL_PACKS: SkillPack[] = [
     title: "Product playbooks pack",
     summary:
       "PRDs, user stories, OKRs, RICE scoring, launch checklists, positioning, journey maps, churn and cohort analysis.",
-    creditId: "product-skills",
     repo: "mohitagw15856/pm-claude-skills",
     commit: "0246bd45ee7bd6cef57ec6fcec9dd0062c301652",
     licence: "MIT",
@@ -457,7 +451,6 @@ export const SKILL_PACKS: SkillPack[] = [
     id: "design-ux",
     title: "Design & UX pack",
     summary: "Banners for social, ads and print, and HTML slide decks with charts.",
-    creditId: "design-skills",
     repo: "nextlevelbuilder/ui-ux-pro-max-skill",
     commit: "4f2dbb67e64969a9a30ab00742f2d55d66ddec2b",
     licence: "MIT",
@@ -477,7 +470,6 @@ export const SKILL_PACKS: SkillPack[] = [
     summary:
       "Read a contract, NDA, employment or SaaS agreement, flag one-sided terms and suggest edits to discuss with a lawyer.",
     notice: "legal",
-    creditId: "contract-skills",
     repo: "evolsb/claude-legal-skill",
     commit: "bca0d2e9d5ec81298ddfbfde78fa4f38fb4589b0",
     licence: "MIT",
@@ -491,7 +483,6 @@ export const SKILL_PACKS: SkillPack[] = [
     summary:
       "India's DPDP Act 2023 and GDPR: consent, records of processing, DPIAs, processor contracts, gap analysis and remediation plans.",
     notice: "legal",
-    creditId: "privacy-skills",
     repo: "mukul975/Privacy-Data-Protection-Skills",
     commit: "9b2ef9eae161c00a17241d42a388571321b33e9f",
     licence: "Apache-2.0",
@@ -534,7 +525,6 @@ export const SKILL_PACKS: SkillPack[] = [
     title: "HR handbook pack",
     summary:
       "Hiring, job descriptions, interviews, onboarding and exits, payroll, pay and benefits, policies, engagement and wellbeing.",
-    creditId: "hr-skills",
     repo: "tuanductran/hr-skills",
     commit: "8b379bdc8c1c896651b9bf2e67b69a14f307fb65",
     licence: "MIT",

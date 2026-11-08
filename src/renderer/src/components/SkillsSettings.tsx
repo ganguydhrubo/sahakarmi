@@ -81,19 +81,16 @@ export function SkillsSettings() {
           </button>
         </div>
       </label>
-      {/* With skill packs on, the packs replace the suggested repo (no upstream names shown). */}
-      <Show when={!featureOn("skill-packs")}>
-        <p class="settings-meta">
-          {t("skillsSuggested")}{" "}
-          <For each={SUGGESTED_REPOS}>
-            {(repo) => (
-              <button type="button" class="extension-link" onClick={() => void find(repo)}>
-                {repo.replace("https://github.com/", "")}
-              </button>
-            )}
-          </For>
-        </p>
-      </Show>
+      <p class="settings-meta">
+        {t("skillsSuggested")}{" "}
+        <For each={SUGGESTED_REPOS}>
+          {(repo) => (
+            <button type="button" class="extension-link" onClick={() => void find(repo)}>
+              {repo.replace("https://github.com/", "")}
+            </button>
+          )}
+        </For>
+      </p>
 
       <Show when={preview()}>
         {(found) => (

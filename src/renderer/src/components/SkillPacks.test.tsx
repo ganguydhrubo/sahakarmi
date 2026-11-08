@@ -104,7 +104,7 @@ describe("OpenSourceCredits", () => {
     const { openUrl } = stubApi();
     render(() => <OpenSourceCredits />);
     for (const credit of OPEN_SOURCE_CREDITS) {
-      expect(screen.getByText(credit.project)).toBeTruthy();
+      expect(screen.getByText(credit.name)).toBeTruthy();
       expect(screen.getByText(credit.url)).toBeTruthy();
       expect(
         screen.getAllByText(new RegExp(credit.copyright.replace(/[()[\].,]/g, "\\$&"))).length,
@@ -122,13 +122,11 @@ describe("OpenSourceCredits", () => {
       <OpenSourceCredits
         credits={[
           {
-            id: "preset",
-            project: "example/mcp-preset",
+            name: "example/mcp-preset",
             url: "https://example.org/preset",
             licence: "Apache-2.0",
             copyright: "Copyright 2026 Example",
             notice: "Example preset\nCopyright 2026 Example",
-            usedFor: "An MCP preset",
           },
         ]}
       />

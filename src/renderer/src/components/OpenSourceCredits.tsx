@@ -19,12 +19,9 @@ export function OpenSourceCredits(props: { credits?: OpenSourceCredit[] }) {
           {(credit) => (
             <li class="extension-item open-source-credit">
               <span class="extension-item-text">
-                <strong>{credit.project}</strong>
+                <strong>{credit.name}</strong>
                 <small>
                   {t("creditsLicence")}: {credit.licence} · {credit.copyright}
-                </small>
-                <small>
-                  {t("creditsUsedFor")}: {credit.usedFor}
                 </small>
                 <Show
                   when={credit.notice}

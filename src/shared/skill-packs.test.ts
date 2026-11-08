@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { ALLOWED_LICENCES, creditById, OPEN_SOURCE_CREDITS } from "./open-source-credits";
+import { ALLOWED_LICENCES, creditForRepo, OPEN_SOURCE_CREDITS } from "./open-source-credits";
 import {
   PACK_NOTICE_TEXT,
   packSkillPath,
@@ -25,7 +25,7 @@ describe("skill pack catalog", () => {
       expect(pack.commit).toMatch(/^[0-9a-f]{40}$/);
       expect(ALLOWED_LICENCES).toContain(pack.licence);
       expect(pack.repo).toMatch(/^[\w.-]+\/[\w.-]+$/);
-      const credit = creditById(pack.creditId);
+      const credit = creditForRepo(pack.repo);
       expect(credit, pack.id).toBeDefined();
       expect(credit?.licence).toBe(pack.licence);
       expect(pack.skills.length).toBeGreaterThan(0);
@@ -64,15 +64,15 @@ describe("skill pack catalog", () => {
 
 describe("open-source credits", () => {
   it("has a project URL, allowed licence and copyright line for every entry", () => {
-    const ids = new Set<string>();
+    const urls = new Set<string>();
     for (const credit of OPEN_SOURCE_CREDITS) {
-      expect(ids.has(credit.id)).toBe(false);
-      ids.add(credit.id);
+      expect(urls.has(credit.url)).toBe(false);
+      urls.add(credit.url);
+      expect(credit.name.length).toBeGreaterThan(0);
       expect(credit.url).toMatch(/^https:\/\//);
-      expect(ALLOWED_LICENCES).toContain(credit.licence);
+      expect(ALLOWED_LICENCES as readonly string[]).toContain(credit.licence);
       expect(credit.copyright).toMatch(/copyright/i);
-      expect(credit.notice === null || typeof credit.notice === "string").toBe(true);
-      expect(credit.usedFor.length).toBeGreaterThan(0);
+      expect(credit.notice === undefined || typeof credit.notice === "string").toBe(true);
     }
   });
 });
