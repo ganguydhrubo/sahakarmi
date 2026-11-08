@@ -210,6 +210,8 @@ export const IPC_CHANNELS = {
   mcpCancelInstall: "mcp:cancel-install",
   mcpSetShared: "mcp:set-shared",
   mcpAddAdapter: "mcp:add-adapter",
+  mcpConnectors: "mcp:connectors",
+  mcpAddConnector: "mcp:add-connector",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -2454,6 +2456,24 @@ export interface McpServerInput {
   heavy?: boolean;
 }
 
+/** Something a ready-made connector needs that is not on this PC (never installed for you). */
+export interface McpConnectorMissing {
+  requirement: "node" | "uv" | "git" | "chrome";
+  link: string;
+  minVersion?: number;
+  foundVersion?: number;
+}
+
+/** One ready-made connector as this PC sees it (feature "mcp-connector-gallery"). */
+export interface McpConnectorCheck {
+  id: string;
+  /** Everything it needs to start is here (the values the owner types aside). */
+  ready: boolean;
+  missing: McpConnectorMissing[];
+  /** The server name it was already added under, if any. */
+  addedAs: string | null;
+}
+
 export interface McpImportResult {
   servers: McpServerSummary[];
   added: string[];
@@ -2618,6 +2638,14 @@ export interface McpDesktopApi {
   setShared: (id: string, shared: boolean) => Promise<McpServerSummary[]>;
   /** Writes a small MCP adapter for a repo whose local web API coworkers should call. */
   addAdapter: (analysisId: string, name: string) => Promise<McpServerSummary[]>;
+  /** Ready-made connectors and what each still needs on this PC. Starts nothing. */
+  connectors: () => Promise<McpConnectorCheck[]>;
+  /** Adds one ready-made connector, switched off until its test passes. */
+  addConnector: (
+    id: string,
+    name: string,
+    values: Record<string, string>,
+  ) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */

@@ -1,15 +1,30 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import type {
+  McpConnectorCheck,
   McpEnvRequirement,
   McpRepoAnalysis,
   McpServerInput,
   McpServerStatus,
   McpServerSummary,
+  PermissionCategory,
 } from "../shared/ipc";
+import { connectorPreset } from "../shared/mcp-presets";
 import { type FetchLike, fetchRepoText, fetchRepoTree, parseGithubUrl } from "./github-repo";
 import { JsonFile } from "./json-file";
 import { argumentPaths, serverProblems } from "./mcp/checks";
+import {
+  type ConnectorContext,
+  chromeInstalled,
+  connectorChecks,
+  connectorIdOf,
+  connectorInput,
+  connectorSource,
+  connectorToolCategory,
+  nodeMajor,
+  splitToolName,
+  writeConnectorFiles,
+} from "./mcp/connectors";
 import { testServer } from "./mcp/handshake";
 import { placeholderHits } from "./mcp/placeholders";
 import { RepoAnalyzer } from "./mcp/resolve";
@@ -74,7 +89,8 @@ export type McpFeatureId =
   | "mcp-test-first"
   | "mcp-smart-import"
   | "mcp-guided-install"
-  | "mcp-shared-mode";
+  | "mcp-shared-mode"
+  | "mcp-connector-gallery";
 export type McpFeatureCheck = (id: McpFeatureId) => boolean;
 
 /** How long a test may take: a first run can download the whole package (npx -y, uvx). */
@@ -473,6 +489,63 @@ export class McpServerStore {
     );
     await this.#persist();
     return this.list();
+  }
+
+  /**
+   * Ready-made connectors: what each needs on this PC (a quick look, plus `node --version` when a
+   * connector needs a newer Node.js). Nothing is started or downloaded.
+   */
+  async connectorChecks(): Promise<McpConnectorCheck[]> {
+    if (!this.#feature("mcp-connector-gallery")) return [];
+    if (this.#feature("mcp-fresh-path")) await refreshFreshPath();
+    const env = this.#checkEnv();
+    const probe = {
+      has: (command: string) => lookupCommand(command, env).path !== null,
+      nodeMajor: await nodeMajor(env),
+      chrome: chromeInstalled(env),
+    };
+    return connectorChecks(
+      probe,
+      (id) => this.#servers.find((server) => connectorIdOf(server.source) === id)?.name ?? null,
+    );
+  }
+
+  /**
+   * Adds a ready-made connector through the same save as a manual add, always switched off, so it
+   * is tested before any coworker can start it. Its config file (if any) is written now.
+   */
+  async addConnector(
+    id: string,
+    name: string,
+    values: Record<string, string>,
+    context: ConnectorContext,
+  ): Promise<McpServerSummary[]> {
+    if (!this.#feature("mcp-connector-gallery")) {
+      throw new Error("Turn on Ready-made connectors in Settings › Features first.");
+    }
+    const preset = connectorPreset(id);
+    if (!preset) throw new Error("That connector is not in the list.");
+    const input = connectorInput(preset, values, context, name.trim() || preset.serverName);
+    if (this.#servers.some((server) => server.name.toLowerCase() === input.name.toLowerCase())) {
+      throw new Error(`There is already a server called "${input.name}".`);
+    }
+    await writeConnectorFiles(preset, context);
+    return this.save(input, connectorSource(preset.id));
+  }
+
+  /**
+   * A connector's own rule for one of its tools (`mcp__<server>__<tool>`), or null for every other
+   * server. Sensitive categories (messages, money, publishing) always ask.
+   */
+  connectorToolCategory(
+    toolName: string,
+    input: Record<string, unknown>,
+  ): { category: PermissionCategory; paths: string[] } | null {
+    const parts = splitToolName(toolName);
+    if (!parts) return null;
+    const server = this.#servers.find((entry) => entry.name === parts.server);
+    const preset = connectorPreset(connectorIdOf(server?.source) ?? "");
+    return preset ? connectorToolCategory(preset, parts.tool, input) : null;
   }
 
   async remove(id: string): Promise<McpServerSummary[]> {
