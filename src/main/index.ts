@@ -51,6 +51,7 @@ import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills, parseSkillMarkdown } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
 import { desktopControlSupported } from "../backend/desktop/desktop-tools";
+import { BudgetStore } from "../backend/budget-store";
 import { EngineSettingsStore } from "../backend/engine-settings";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
@@ -143,6 +144,7 @@ import {
   type RespondToPromptInput,
   type SaveBusinessTargetInput,
   type SendMessageInput,
+  type SetBudgetInput,
   type SetQueuePausedInput,
   SOCIAL_PLATFORMS,
   type SocialPlatform,
@@ -2248,6 +2250,16 @@ if (!hasSingleInstanceLock) {
       const features = new FeatureRegistry(app.getPath("userData"));
       mcpServers.setFeatureCheck((id) => features.isEnabled(id));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+      const budgets = new BudgetStore(app.getPath("userData"));
+      await budgets.initialize().catch((error) => {
+        appLog.write("error", "work limits unreadable; no limits", String(error));
+      });
+      service.configureSafety({
+        taintGuard: () => features.isEnabled("taint-guard"),
+        provenance: () => features.isEnabled("approval-provenance"),
+        budget: () => (features.isEnabled("budget-stop") ? budgets : null),
+      });
+      registerBudgetIpc(service, budgets);
       const engineSettings = new EngineSettingsStore(app.getPath("userData"));
       await engineSettings.initialize();
       service.configureEngineSettings(() => engineSettings.get());
@@ -2584,6 +2596,8 @@ if (!hasSingleInstanceLock) {
           checkpoints: () =>
             features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
           review: () => features.isEnabled("cross-model-review"),
+          stepBudget: () =>
+            features.isEnabled("budget-stop") ? budgets.teamRunSteps() : null,
           planner: (workspaceId) => {
             if (!features.isEnabled("team-run-ai-planning")) return null;
             const workspaces = service.listWorkspaces().workspaces;
@@ -3109,6 +3123,32 @@ function registerEngineIpc(
         recent: [],
       },
   );
+}
+
+/** Settings > Features > Work limits. */
+function registerBudgetIpc(service: AgentService, budgets: BudgetStore): void {
+  handleTrusted(IPC_CHANNELS.orchestratorGetBudgets, () => budgets.get());
+  handleTrusted(IPC_CHANNELS.orchestratorSetBudgets, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid work limits.");
+    const patch: SetBudgetInput = {};
+    if (input.coworkers !== undefined) {
+      if (!isObject(input.coworkers)) throw new Error("Invalid work limits.");
+      patch.coworkers = {};
+      for (const [botId, limit] of Object.entries(input.coworkers)) {
+        if (limit !== null && typeof limit !== "number") throw new Error("Invalid work limits.");
+        patch.coworkers[botId] = limit;
+      }
+    }
+    if (input.teamRunSteps !== undefined) {
+      if (input.teamRunSteps !== null && typeof input.teamRunSteps !== "number") {
+        throw new Error("Invalid work limits.");
+      }
+      patch.teamRunSteps = input.teamRunSteps;
+    }
+    const saved = await budgets.set(patch);
+    service.budgetsChanged();
+    return saved;
+  });
 }
 
 function parseSendMessage(value: unknown): SendMessageInput {

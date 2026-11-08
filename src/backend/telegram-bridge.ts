@@ -43,6 +43,8 @@ export interface TelegramAgent {
   sendMessage(input: {
     botId: string;
     text: string;
+    /** Sent from the owner's phone; only labels approval cards. */
+    remote?: boolean;
   }): Promise<{ deliveries: Array<{ id: string }> }>;
   readConversation(botId: string): Promise<ConversationSnapshot>;
   /** Calls the listener for every agent event; returns a function that stops it. */
@@ -654,7 +656,7 @@ export class TelegramBridge {
       await this.#save();
     }
     this.#following.set(coworker.id, Date.now() + PENDING_TTL_MS);
-    const receipt = await this.#agent.sendMessage({ botId: coworker.id, text });
+    const receipt = await this.#agent.sendMessage({ botId: coworker.id, text, remote: true });
     const deliveryId = receipt.deliveries[0]?.id;
     if (deliveryId) this.#pending.push({ botId: coworker.id, deliveryId, createdAt: Date.now() });
     this.#showTyping();
