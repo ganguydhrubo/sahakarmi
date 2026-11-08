@@ -14881,6 +14881,19 @@ fieldset.memory-filters {
   font-size: 14px;
 }
 
+.mcp-connectors > summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.mcp-connector-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 .mcp-card pre,
 .mcp-card code {
   white-space: pre-wrap;

@@ -4,6 +4,7 @@ import type { Dictionary } from "./i18n";
 import { apisHi } from "./i18n-apis";
 import { assignHi } from "./i18n-assign";
 import { backgroundHi } from "./i18n-background";
+import { connectorsHi } from "./i18n-connectors";
 import { engineHi } from "./i18n-engine";
 import { extensionsHi } from "./i18n-extensions-hi";
 import { marketplaceHi } from "./i18n-marketplace-hi";
@@ -307,5 +308,6 @@ export const hi: Dictionary = {
   ...engineHi,
   ...assignHi,
   ...mcpHi,
+  ...connectorsHi,
   ...onboardingHi,
 };
