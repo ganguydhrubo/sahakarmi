@@ -163,7 +163,7 @@ export const ACP_AGENT_SPECS: Record<AcpAgentProviderId, AcpAgentSpec> = {
       tip: "Sign in when Kiro asks, finish in the browser, then close the window.",
     },
   },
-  // Open-model engine (Settings > Features, off by default). The program's own source
+  // Open Interpreter (Settings > Features, off by default). The program's own source
   // (codex-rs/cli/src/main.rs, `Subcommand::Acp`) starts its ACP server with `acp`; its Windows
   // installer puts it in %LOCALAPPDATA%\Programs\Open Interpreter\bin. Its sessions start in
   // "workspace-write" mode, which asks (session/request_permission) before commands and edits.
@@ -187,6 +187,9 @@ export const ACP_AGENT_SPECS: Record<AcpAgentProviderId, AcpAgentSpec> = {
 /** The plain "not installed" message; it names the program only when the owner must install it. */
 export function notInstalledMessage(spec: AcpAgentSpec, label: string): string {
   if (!spec.installHint) return `${label} is not installed on this computer.`;
+  if (spec.installHint.program === label) {
+    return `${label} is a free program that is not installed on this computer. Install it yourself from ${spec.installHint.url}, then click Connect again.`;
+  }
   return `${label} needs the free program ${spec.installHint.program}, which is not installed on this computer. Install it yourself from ${spec.installHint.url}, then click Connect again.`;
 }
 

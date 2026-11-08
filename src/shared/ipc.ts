@@ -368,7 +368,7 @@ export const PROVIDER_LABELS: Record<AgentProviderId, string> = {
   goose: "Goose",
   vibe: "Mistral Vibe",
   kiro: "Kiro",
-  openmodel: "Open-model engine",
+  openmodel: "Open Interpreter",
 };
 export type AgentProviderState =
   | "not-started"

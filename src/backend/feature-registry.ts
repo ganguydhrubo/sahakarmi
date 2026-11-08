@@ -177,7 +177,7 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
   ),
   feature(
     "engine-open-model",
-    "Open-model engine",
+    "Open Interpreter engine",
     "Adds a free, open-source coding engine for open models. You install its program yourself (Connect shows where); every command and file edit it wants still asks Sahkarmi's approvals first. Off: the engine is not listed or started.",
     "providers",
     [{ type: "platform", platforms: ["win32"] }],

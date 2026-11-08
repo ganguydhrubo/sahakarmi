@@ -49,14 +49,15 @@ afterEach(async () => {
 const programName = process.platform === "win32" ? "interpreter.exe" : "interpreter";
 
 describe("open-model engine: registration", () => {
-  it("is an ACP engine with a neutral Sahkarmi name and its own default model", () => {
+  it("is an ACP engine under its real name, with its own default model", () => {
     expect(ACP_AGENT_PROVIDERS).toContain("openmodel");
-    expect(PROVIDER_LABELS.openmodel).toBe("Open-model engine");
+    expect(PROVIDER_LABELS.openmodel).toBe("Open Interpreter");
     const entry = PROVIDER_CATALOG.find((candidate) => candidate.id === "openmodel");
-    expect(entry?.name).toBe("Open-model engine");
+    expect(entry?.name).toBe("Open Interpreter");
     expect(entry?.kind).toBe("agent");
     // Only the install hint may name the program the owner installs.
-    expect(`${entry?.name} ${entry?.tagline}`).not.toMatch(/interpreter/i);
+    // Owner rule: engines show their real name and mark, like Claude, Codex and Cline.
+    expect(entry?.name).toBe("Open Interpreter");
     expect(DEFAULT_MODEL_FOR_PROVIDER.openmodel).toBe("openmodel:default");
     expect(isAgentModel("openmodel:default")).toBe(true);
     expect(providerForModel("openmodel:default")).toBe("openmodel");
@@ -77,7 +78,7 @@ describe("open-model engine: registration", () => {
     const definition = BUILT_IN_FEATURES.find((feature) => feature.id === "engine-open-model");
     expect(definition?.defaultEnabled).toBe(false);
     expect(definition?.canDisable).toBe(true);
-    expect(definition?.name).not.toMatch(/interpreter/i);
+    expect(definition?.name).toBe("Open Interpreter engine");
     const registry = new FeatureRegistry(root);
     await registry.initialize();
     expect(registry.isEnabled("engine-open-model")).toBe(false);
@@ -142,7 +143,7 @@ describe("open-model engine: finding the program", () => {
     process.env.SAHKARMI_OPENMODEL_PATH = join(root, "missing.exe");
     expect(await findAcpAgentExecutable(ACP_AGENT_SPECS.openmodel)).toBeNull();
     await expect(resolveAcpAgentCli("openmodel")).rejects.toThrow(
-      /Open-model engine needs the free program Open Interpreter.*Install it yourself from https:\/\/www\.openinterpreter\.com/,
+      /Open Interpreter is a free program that is not installed.*Install it yourself from https:\/\/www\.openinterpreter\.com/,
     );
   });
 

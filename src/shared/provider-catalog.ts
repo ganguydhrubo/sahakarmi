@@ -111,7 +111,7 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   // Shown only while its Settings > Features switch is on (see SWITCHED_PROVIDERS).
   agent(
     "openmodel",
-    "Open-model engine",
+    "Open Interpreter",
     "",
     "Free, open-source coding engine for open models with your own key",
     false,

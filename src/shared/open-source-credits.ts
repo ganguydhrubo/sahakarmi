@@ -19,7 +19,7 @@ export const OPEN_SOURCE_CREDITS: OpenSourceCredit[] = [
     name: "Open Interpreter",
     url: "https://github.com/openinterpreter/openinterpreter",
     licence: "Apache-2.0",
-    use: "The Open-model engine starts it, if you installed it, over the Agent Client Protocol. It is not bundled.",
+    use: "The Open Interpreter engine starts it, if you installed it, over the Agent Client Protocol. It is not bundled.",
   },
   {
     featureId: "browser-hide-secrets",
