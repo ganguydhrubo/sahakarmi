@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { type AgentModelId, modelWireId } from "../shared/ipc";
 import type { AgentProvider } from "./agent-client";
 import { inlineImage } from "./attachment-text";
-import { refreshFreshPath, withFreshPath } from "./mcp/windows-env";
+import { refreshFreshPathSoon, withFreshPath } from "./mcp/windows-env";
 import { acpMcpServers, readCustomMcpServers } from "./mcp-servers";
 import {
   type AccountReadResult,
@@ -254,7 +254,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     this.#child = child;
     this.#running = true;
     // Keeps the cached PATH current for the next start (registry read, off the start path).
-    if (process.platform === "win32") void refreshFreshPath().catch(() => undefined);
+    if (process.platform === "win32") refreshFreshPathSoon();
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.#onStdout(chunk));
     child.stderr.on("data", (chunk: Buffer) => {

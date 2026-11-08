@@ -114,6 +114,18 @@ export async function refreshFreshPath(
   return freshPath();
 }
 
+let lastBackgroundRefresh = 0;
+
+/**
+ * Background refresh for agent starts: at most once a minute, since each read starts PowerShell
+ * and agents can restart often.
+ */
+export function refreshFreshPathSoon(now = Date.now()): void {
+  if (now - lastBackgroundRefresh < 60_000) return;
+  lastBackgroundRefresh = now;
+  void refreshFreshPath().catch(() => undefined);
+}
+
 /** Folders of tools Sahkarmi downloaded (managed uv / Node), searched last. */
 export function setManagedToolDirectories(directories: string[]): void {
   extraDirectories = directories.filter(Boolean);
