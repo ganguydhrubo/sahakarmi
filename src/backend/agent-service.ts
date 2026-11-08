@@ -24,6 +24,7 @@ import type {
   DraftAttachment,
   GrantApprovalAuthorityInput,
   KnowledgeCitation,
+  PermissionCategory,
   PermissionPolicyState,
   PublishingAccount,
   QueuedMessageReceipt,
@@ -3865,6 +3866,19 @@ ${carryOver}`
     });
   }
 
+  /**
+   * A ready-made connector's tools carry their own category (reads, file edits, or an always-ask
+   * one for sends, posts and money). Every other tool server keeps its usual classification.
+   */
+  #withConnectorRule<T extends { category: PermissionCategory; paths: string[] }>(
+    toolName: string,
+    input: Record<string, unknown>,
+    classified: T,
+  ): T {
+    const rule = this.#mcpServers?.connectorToolCategory(toolName, input);
+    return rule ? { ...classified, category: rule.category, paths: rule.paths } : classified;
+  }
+
   /** `sahkarmi/permission`: raised by the Claude and ACP adapters before a tool call runs. */
   async #permissionFromAdapter(
     client: AgentClient,
@@ -3873,7 +3887,12 @@ ${carryOver}`
     const threadId = getString(params, "threadId");
     if (getString(params, "source") === "claude") {
       const input = getRecord(params, "input") ?? {};
-      const classified = classifyClaudeTool(getString(params, "toolName") ?? "", input);
+      const toolName = getString(params, "toolName") ?? "";
+      const classified = this.#withConnectorRule(
+        toolName,
+        input,
+        classifyClaudeTool(toolName, input),
+      );
       return this.#authorize(client.provider, threadId, classified);
     }
     const title = getString(params, "title") ?? "Tool call";
@@ -4053,9 +4072,11 @@ ${carryOver}`
           // declining it every time made every owner MCP server unusable from Codex.
           const toolCall = codexMcpToolApproval(request.params);
           if (toolCall) {
-            const classified = classifyClaudeTool(
-              `mcp__${toolCall.server}__${toolCall.tool}`,
+            const fullName = `mcp__${toolCall.server}__${toolCall.tool}`;
+            const classified = this.#withConnectorRule(
+              fullName,
               toolCall.input,
+              classifyClaudeTool(fullName, toolCall.input),
             );
             const verdict = await this.#authorize(
               client.provider,

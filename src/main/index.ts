@@ -357,7 +357,11 @@ function configureContentSecurityPolicy(): void {
   });
 }
 
-function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void {
+function registerExtensionsIpc(
+  skills: CustomSkills,
+  mcp: McpServerStore,
+  sharedRoot: string,
+): void {
   const text = (input: unknown, key: string) =>
     isObject(input) && typeof input[key] === "string" ? (input[key] as string) : "";
   handleTrusted(IPC_CHANNELS.customSkillsList, () => skills.list());
@@ -522,6 +526,23 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
         : null,
     ),
   );
+  // Ready-made connectors (feature "mcp-connector-gallery"): the list starts nothing; Add saves a
+  // server switched off, through the same save as a manual add.
+  handleTrusted(IPC_CHANNELS.mcpConnectors, () => mcp.connectorChecks());
+  handleTrusted(IPC_CHANNELS.mcpAddConnector, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid connector.");
+    const values = isObject(input.values) ? input.values : {};
+    return mcp.addConnector(
+      requireString(input.id, "id"),
+      typeof input.name === "string" ? input.name : "",
+      Object.fromEntries(
+        Object.entries(values).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+      { sharedRoot, connectorRoot: join(app.getPath("userData"), "mcp-connectors") },
+    );
+  });
 }
 
 /**
@@ -2204,7 +2225,7 @@ if (!hasSingleInstanceLock) {
         appLog.write("error", "MCP server list unreadable; starting with none", String(error));
       });
       service.setMcpServers(mcpServers);
-      registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
+      registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers, store.sharedRoot);
       // Who may use each app, skill and MCP server (web APIs keep their own access list).
       const assignments = new ResourceAssignmentStore(app.getPath("userData"));
       await assignments.initialize().catch((error) => {

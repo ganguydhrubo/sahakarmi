@@ -398,6 +398,9 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.mcpSetShared, { id, shared }),
     addAdapter: (analysisId: string, name: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.mcpAddAdapter, { analysisId, name }),
+    connectors: () => ipcRenderer.invoke(IPC_CHANNELS.mcpConnectors),
+    addConnector: (id: string, name: string, values: Record<string, string>) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpAddConnector, { id, name, values }),
   },
   workflow: {
     export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),

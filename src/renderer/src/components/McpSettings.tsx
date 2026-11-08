@@ -8,6 +8,7 @@ import type {
 } from "../../../shared/ipc";
 import { featureOn } from "../features";
 import { t } from "../i18n";
+import { McpConnectorGallery } from "./McpConnectorGallery";
 import { McpGithubConnect } from "./McpGithubConnect";
 import { McpInstallCard } from "./McpInstallCard";
 import { McpServerRow } from "./McpServerRow";
@@ -228,6 +229,18 @@ export function McpSettings() {
             </div>
           </div>
         )}
+      </Show>
+
+      <Show when={featureOn("mcp-connector-gallery")}>
+        <McpConnectorGallery
+          busy={busy()}
+          run={(action) => void run(action)}
+          onServers={(list, name) => {
+            setServers(list);
+            // Saved switched off; the owner presses Test server (nothing starts by itself).
+            setNotice(t("mcpcAddedNotice", { name }));
+          }}
+        />
       </Show>
 
       <McpGithubConnect

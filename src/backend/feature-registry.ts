@@ -330,6 +330,15 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     true,
   ),
   feature(
+    "mcp-connector-gallery",
+    "MCP servers: ready-made connectors",
+    "Shows a list of free, checked connectors (web pages, files, Git, time, code hosting, databases, email, Google Workspace, India GST lookups, Tally, documents, website debugging). Nothing is added, downloaded or started until you press Add; each one is saved switched off until its test passes. Off: the list is hidden.",
+    "labs",
+    [],
+    true,
+    false,
+  ),
+  feature(
     "marketplace",
     "Marketplace",
     "Add ready-made coworkers and install skills in one click.",

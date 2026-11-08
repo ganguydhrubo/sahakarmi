@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import { apisEn } from "./i18n-apis";
 import { assignEn } from "./i18n-assign";
 import { backgroundEn } from "./i18n-background";
+import { connectorsEn } from "./i18n-connectors";
 import { engineEn } from "./i18n-engine";
 import { extensionsEn } from "./i18n-extensions";
 import { marketplaceEn } from "./i18n-marketplace";
@@ -308,6 +309,7 @@ const en = {
   ...engineEn,
   ...assignEn,
   ...mcpEn,
+  ...connectorsEn,
   ...onboardingEn,
 };
 
