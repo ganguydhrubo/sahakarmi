@@ -91,15 +91,16 @@ export async function mountCrewScene(
     const width = host.clientWidth || 1;
     const height = host.clientHeight || 1;
     renderer.setSize(width, height, false);
-    for (const [index, robot] of robots.entries()) robot.root.position.set((index - 2) * 1.3, 0, 0);
+    for (const [index, robot] of robots.entries())
+      robot.root.position.set((index - 2) * 1.05, 0, 0);
     const aspect = width / height;
-    const halfHeight = Math.max(6.9 / 2 / aspect, 1.15);
+    const halfHeight = Math.max(5.5 / 2 / aspect, 0.62);
     camera.left = -halfHeight * aspect;
     camera.right = halfHeight * aspect;
     camera.top = halfHeight;
     camera.bottom = -halfHeight;
-    camera.position.set(4.6, 4.4, 7.2);
-    camera.lookAt(0, 0.55, 0);
+    camera.position.set(0, 2.4, 9);
+    camera.lookAt(0, 0.4, 0);
     camera.updateProjectionMatrix();
   }
 

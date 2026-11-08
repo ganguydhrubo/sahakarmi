@@ -31,7 +31,7 @@ export const CREW: readonly CrewMember[] = [
   {
     id: "startup",
     name: "Startup",
-    halo: "#3cc8ff",
+    halo: "#2aa8ff",
     idle: startupIdle,
     wave: startupWave,
     still: startupStill,
@@ -39,7 +39,7 @@ export const CREW: readonly CrewMember[] = [
   {
     id: "publisher",
     name: "Publisher",
-    halo: "#ff6fb1",
+    halo: "#ff3fa8",
     idle: publisherIdle,
     wave: publisherWave,
     still: publisherStill,
@@ -47,7 +47,7 @@ export const CREW: readonly CrewMember[] = [
   {
     id: "outreach",
     name: "Outreach",
-    halo: "#a86bff",
+    halo: "#7a3cff",
     idle: outreachIdle,
     wave: outreachWave,
     still: outreachStill,
@@ -55,7 +55,7 @@ export const CREW: readonly CrewMember[] = [
   {
     id: "mailer",
     name: "Mailer",
-    halo: "#ffb02e",
+    halo: "#ff8c00",
     idle: mailerIdle,
     wave: mailerWave,
     still: mailerStill,
@@ -63,7 +63,7 @@ export const CREW: readonly CrewMember[] = [
   {
     id: "whatsapp",
     name: "WhatsApp",
-    halo: "#36e27a",
+    halo: "#22e06a",
     idle: whatsappIdle,
     wave: whatsappWave,
     still: whatsappStill,

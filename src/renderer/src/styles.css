@@ -1194,18 +1194,22 @@ textarea {
    reduced motion. Full body in miniature, standing on a soft halo of its status colour. */
 .crew-avatar {
   position: relative;
+  overflow: hidden;
   background: radial-gradient(
-    circle at 50% 88%,
-    color-mix(in srgb, var(--crew-halo) 42%, transparent) 0 26%,
-    transparent 58%
+    circle at 50% 32%,
+    color-mix(in srgb, var(--crew-halo) 42%, #121722) 0%,
+    color-mix(in srgb, var(--crew-halo) 14%, #090b11) 78%
   );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--crew-halo) 45%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.25);
 }
 
 .crew-avatar img {
   position: absolute;
-  inset: -24%;
-  width: 148%;
-  height: 148%;
+  inset: -19%;
+  width: 138%;
+  height: 138%;
   object-fit: contain;
   pointer-events: none;
   user-select: none;

@@ -11,6 +11,7 @@ import {
   type BotSummary,
   type BranchOrigin,
   type CreateFolderInput,
+  type CrewAvatar,
   type DeleteWorkspaceInput,
   isAgentModel,
   isAvatarColor,
@@ -35,6 +36,8 @@ type StoredBot = BotSummary;
 interface StoredState {
   version: 2;
   examplesInitialized: boolean;
+  /** The default coworkers have been given their brand robot faces (once, never again). */
+  brandFacesApplied?: boolean;
   activeWorkspaceId: string;
   workspaces: WorkspaceSummary[];
   folders: SidebarFolder[];
@@ -52,6 +55,8 @@ interface DefaultCoworker {
   description: string;
   avatarShape: BotAvatarShape;
   avatarColor: BotAvatarColor;
+  /** The Sahkarmi brand robot this coworker wears by default. */
+  avatarModel?: CrewAvatar;
 }
 
 /** The starter team. Names and roles are editable; avatars are abstract shapes, never photos. */
@@ -64,6 +69,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
       "Always ready, never misses a single detail. Leads workflow coordination, multi-agent dispatch and deep check diagnostics across project files.",
     avatarShape: "blob",
     avatarColor: "orange",
+    avatarModel: "startup",
   },
   {
     id: "asha-accounts",
@@ -82,6 +88,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
       "Turning cold leads into handshake deals. Researches leads, drafts outreach and WhatsApp/email follow-ups, keeps the pipeline sheet current and prepares quotations. Asks for approval before contacting any customer.",
     avatarShape: "wedge",
     avatarColor: "blue",
+    avatarModel: "outreach",
   },
   {
     id: "meera-support",
@@ -91,6 +98,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
       "Turning customer frustrations into smiles in 12 languages. Triages customer queries, drafts polite replies, tracks tickets and escalates anything urgent. Asks for approval before sending replies to customers.",
     avatarShape: "pebble",
     avatarColor: "green",
+    avatarModel: "whatsapp",
   },
   {
     id: "arjun-research",
@@ -109,6 +117,7 @@ export const DEFAULT_COWORKERS: readonly DefaultCoworker[] = [
       "Words that captivate, campaigns that convert. Writes social posts, product descriptions, blogs and festival campaigns matching the brand voice. Asks for approval before publishing anything.",
     avatarShape: "cloud",
     avatarColor: "yellow",
+    avatarModel: "publisher",
   },
   {
     id: "dev-code",
@@ -196,11 +205,23 @@ export class BotStore {
         );
         record.avatarShape = coworker.avatarShape;
         record.avatarColor = coworker.avatarColor;
+        if (coworker.avatarModel) record.avatarModel = coworker.avatarModel;
         this.#state.bots.push(record);
         this.#newDefaultBotIds.add(record.id);
         await mkdir(record.workspacePath, { recursive: true, mode: 0o700 });
       }
       this.#state.examplesInitialized = true;
+    }
+    if (!this.#state.brandFacesApplied) {
+      // Existing default coworkers get their brand robot once; a face the owner already chose
+      // (a robot, or "Drawn shape" saved as null) is never changed.
+      for (const coworker of DEFAULT_COWORKERS) {
+        const bot = this.#state.bots.find((candidate) => candidate.id === coworker.id);
+        if (bot && coworker.avatarModel && bot.avatarModel === undefined) {
+          bot.avatarModel = coworker.avatarModel;
+        }
+      }
+      this.#state.brandFacesApplied = true;
     }
     await this.#persist();
   }
@@ -579,6 +600,7 @@ export class BotStore {
       return {
         version: 2,
         examplesInitialized: parsed.examplesInitialized,
+        ...(parsed.brandFacesApplied === true ? { brandFacesApplied: true } : {}),
         activeWorkspaceId,
         workspaces,
         folders,

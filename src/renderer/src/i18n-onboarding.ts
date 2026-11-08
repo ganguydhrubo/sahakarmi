@@ -6,10 +6,10 @@ export const onboardingEn = {
   crewPickShape: "Drawn shape",
   crewStageTitle: "Meet the crew",
   crewStageHint:
-    "Tap a robot to make it this coworker's face. It always moves a little and waves while it works.",
+    "Tap a robot to make it this coworker's face. It floats, blinks and bounces with joy while it works.",
   crewStageHide: "Hide the crew",
   crewStageShow: "Show the 3D crew",
-  crewStageWalk: "Walk",
+  crewStageWalk: "Fly",
   crewStageStop: "Stand still",
   crewStageChosen: "{name} is now this coworker's face.",
   helpTipCeo:
@@ -31,7 +31,7 @@ export const onboardingEn = {
   helpTipErrors:
     "When something fails, the message says in plain words what happened and what to do next, for example reconnect an app or try again later. Nothing technical is needed from you.",
   helpTipCrew:
-    "3D robots: open a coworker's Settings, tap its picture and choose a robot. It moves all the time and waves while the coworker is busy. In an empty chat, tap a robot on the crew stage to give it to that coworker.",
+    "3D robots: open a coworker's Settings, tap its picture and choose a robot. It floats and blinks, and bounces with joy while the coworker works. In an empty chat, tap a robot on the crew stage to give it to that coworker.",
   welcomeTitle: "Welcome to Sahkarmi",
   welcomeBody:
     "Your AI coworkers can help you work with information, use tools, and automate tasks.",
@@ -114,10 +114,10 @@ export const onboardingHi: typeof onboardingEn = {
   crewPickShape: "बनी हुई आकृति",
   crewStageTitle: "मिलिए टीम से",
   crewStageHint:
-    "किसी रोबोट पर टैप करें, वह इस सहकर्मी का चेहरा बन जाएगा। यह हमेशा हल्का हिलता है और काम करते समय हाथ हिलाता है।",
+    "किसी रोबोट पर टैप करें, वह इस सहकर्मी का चेहरा बन जाएगा। यह तैरता है, पलक झपकाता है और काम करते समय खुशी से उछलता है।",
   crewStageHide: "टीम छिपाएँ",
   crewStageShow: "3D टीम दिखाएँ",
-  crewStageWalk: "चलें",
+  crewStageWalk: "उड़ें",
   crewStageStop: "रुकें",
   crewStageChosen: "{name} अब इस सहकर्मी का चेहरा है।",
   helpTipCeo:
@@ -139,7 +139,7 @@ export const onboardingHi: typeof onboardingEn = {
   helpTipErrors:
     "कुछ गड़बड़ होने पर संदेश आसान शब्दों में बताता है क्या हुआ और आगे क्या करें, जैसे ऐप फिर से जोड़ें या थोड़ी देर बाद कोशिश करें। आपको कुछ तकनीकी नहीं करना होता।",
   helpTipCrew:
-    "3D रोबोट: किसी सहकर्मी की सेटिंग्स खोलें, उसकी तस्वीर पर टैप करें और एक रोबोट चुनें। यह हमेशा हल्का-हल्का हिलता है और सहकर्मी के व्यस्त होने पर हाथ हिलाता है। खाली चैट में क्रू स्टेज पर किसी रोबोट को टैप करके उसे उस सहकर्मी को दें।",
+    "3D रोबोट: किसी सहकर्मी की सेटिंग्स खोलें, उसकी तस्वीर पर टैप करें और एक रोबोट चुनें। यह तैरता और पलक झपकाता है, और सहकर्मी के काम करते समय खुशी से उछलता है। खाली चैट में क्रू स्टेज पर किसी रोबोट को टैप करके उसे उस सहकर्मी को दें।",
   welcomeTitle: "सहकर्मी में आपका स्वागत है",
   welcomeBody: "आपके AI सहकर्मी जानकारी पर काम करने, टूल इस्तेमाल करने और काम अपने-आप करने में मदद करते हैं।",
   welcomeNeedsProvider: "अपने AI सहकर्मी से काम शुरू करने के लिए कोई AI प्रदाता जोड़ें।",
@@ -218,10 +218,10 @@ export const onboardingBn: typeof onboardingEn = {
   crewPickShape: "আঁকা আকার",
   crewStageTitle: "টিমের সঙ্গে আলাপ করুন",
   crewStageHint:
-    "কোনও রোবটে ট্যাপ করুন, সেটি এই সহকর্মীর মুখ হবে। এটি সবসময় হালকা নড়ে আর কাজের সময় হাত নাড়ে।",
+    "কোনও রোবটে ট্যাপ করুন, সেটি এই সহকর্মীর মুখ হবে। এটি ভাসে, চোখ পিটপিট করে আর কাজের সময় আনন্দে লাফায়।",
   crewStageHide: "টিম লুকান",
   crewStageShow: "3D টিম দেখান",
-  crewStageWalk: "হাঁটুন",
+  crewStageWalk: "উড়ুন",
   crewStageStop: "থামুন",
   crewStageChosen: "{name} এখন এই সহকর্মীর মুখ।",
   helpTipCeo:
@@ -243,7 +243,7 @@ export const onboardingBn: typeof onboardingEn = {
   helpTipErrors:
     "কিছু ভুল হলে বার্তা সহজ ভাষায় বলে কী হয়েছে আর এরপর কী করবেন, যেমন অ্যাপ আবার যুক্ত করুন বা পরে চেষ্টা করুন। আপনাকে প্রযুক্তিগত কিছু করতে হয় না।",
   helpTipCrew:
-    "3D রোবট: কোনও সহকর্মীর সেটিংস খুলে তার ছবিতে ট্যাপ করুন আর একটি রোবট বেছে নিন। এটি সবসময় হালকা নড়ে আর সহকর্মী ব্যস্ত থাকলে হাত নাড়ে। খালি চ্যাটে ক্রু স্টেজে কোনও রোবটে ট্যাপ করে সেটি ওই সহকর্মীকে দিন।",
+    "3D রোবট: কোনও সহকর্মীর সেটিংস খুলে তার ছবিতে ট্যাপ করুন আর একটি রোবট বেছে নিন। এটি ভাসে আর চোখ পিটপিট করে, আর সহকর্মী কাজ করলে আনন্দে লাফায়। খালি চ্যাটে ক্রু স্টেজে কোনও রোবটে ট্যাপ করে সেটি ওই সহকর্মীকে দিন।",
   welcomeTitle: "সহকর্মীতে স্বাগতম",
   welcomeBody: "আপনার AI সহকর্মীরা তথ্য নিয়ে কাজ করতে, টুল ব্যবহার করতে আর কাজ নিজে থেকে করাতে সাহায্য করে।",
   welcomeNeedsProvider: "আপনার AI সহকর্মীকে দিয়ে কাজ শুরু করতে একটি AI প্রদানকারী যোগ করুন।",
