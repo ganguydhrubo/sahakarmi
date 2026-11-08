@@ -1,14 +1,48 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, posix } from "node:path";
-import type { CustomSkill, GithubSkillCandidate, GithubSkillPreview } from "../shared/ipc";
-import { type FetchLike, fetchRepoText, fetchRepoTree, parseGithubUrl } from "./github-repo";
+import type {
+  CustomSkill,
+  GithubSkillCandidate,
+  GithubSkillPreview,
+  McpRecommendation,
+  SkillPluginInfo,
+} from "../shared/ipc";
+import {
+  PACK_NOTICE_TEXT,
+  packSkillPath,
+  packSource,
+  type SkillPack,
+  skillPackById,
+} from "../shared/skill-packs";
+import {
+  type FetchLike,
+  fetchRepoText,
+  fetchRepoTree,
+  parseGithubUrl,
+  type RepoTree,
+} from "./github-repo";
 import { learnedSkillId } from "./skill-library";
+import {
+  bringLinkedFiles,
+  EXECUTABLE_FILE,
+  neutralBrandText,
+  parseMcpRecommendations,
+  parsePluginInfo,
+  pluginRootOf,
+} from "./skill-linked-files";
 
 const CUSTOM_FOLDER = "Custom";
 /** Written beside SKILL.md; only folders that carry it are ever listed or removed. */
 const SOURCE_FILE = ".sahkarmi-skill.json";
 export const MAX_CUSTOM_SKILLS = 100;
+/** Skills installed from Sahkarmi skill packs have their own, larger allowance. */
+export const MAX_PACK_SKILLS = 400;
+/** Feature switches (feature-registry.ts) for the plugin-aware importer and the pack catalog. */
+export const LINKED_FILES_FEATURE = "skill-linked-files";
+export const SKILL_PACKS_FEATURE = "skill-packs";
+const MAX_LINKED_FILES = 60;
+const LICENCE_FILE = /^(LICEN[CS]E|COPYING|NOTICE)(\.(md|txt))?$/i;
 const MAX_FILE_BYTES = 200_000;
 const MAX_SKILL_BYTES = 2_000_000;
 const MAX_FILES_PER_SKILL = 150;
@@ -24,6 +58,30 @@ interface SourceRecord {
   /** Set at import when the text looks risky; cleared once the owner has read it. */
   reviewNeeded?: boolean;
   risks?: string[];
+  /** Pack id, for skills from a Sahkarmi skill pack. */
+  pack?: string;
+  /** Where the files came from (repo@commit/folder); kept for the record, never shown. */
+  origin?: string;
+  linkedFiles?: number;
+  unresolvedLinks?: string[];
+  mcp?: McpRecommendation[];
+  plugin?: SkillPluginInfo;
+}
+
+interface WriteExtras {
+  pack?: string;
+  origin?: string;
+  linkedFiles?: number;
+  unresolvedLinks?: string[];
+  mcp?: McpRecommendation[];
+  plugin?: SkillPluginInfo;
+}
+
+interface TreeInstallOptions {
+  /** Pack installs: no scripts or programs at all, neutral names, the pack's source id. */
+  pack?: SkillPack;
+  /** Cache of downloaded texts for one install call (shared/ files are used by many skills). */
+  cache: Map<string, Promise<string>>;
 }
 
 /**
@@ -123,10 +181,20 @@ function safeRelative(path: string): string | null {
 export class CustomSkills {
   readonly #root: string;
   readonly #fetch: FetchLike;
+  readonly #feature: (id: string) => boolean;
 
-  constructor(sharedRoot: string, fetchImpl: FetchLike = fetch as unknown as FetchLike) {
+  /**
+   * `feature` answers the feature switches; without one (older callers, tests) the
+   * plugin-aware import and packs stay off, so behaviour is exactly as before.
+   */
+  constructor(
+    sharedRoot: string,
+    fetchImpl: FetchLike = fetch as unknown as FetchLike,
+    feature: (id: string) => boolean = () => false,
+  ) {
     this.#root = customRoot(sharedRoot);
     this.#fetch = fetchImpl;
+    this.#feature = feature;
   }
 
   async list(): Promise<CustomSkill[]> {
@@ -148,7 +216,9 @@ export class CustomSkills {
     const record = await this.#record(id);
     if (!record) return null;
     try {
-      const text = await readFile(join(this.#root, id, "SKILL.md"), "utf8");
+      const raw = await readFile(join(this.#root, id, "SKILL.md"), "utf8");
+      const notice = record.pack ? skillPackById(record.pack)?.notice : undefined;
+      const text = notice ? `[${PACK_NOTICE_TEXT[notice]}]\n\n${raw}` : raw;
       if (!record.reviewNeeded) return text;
       return `[${UNTRUSTED_SKILL_NOTE} Flagged: ${record.risks?.join("; ")}.]\n\n${text}`;
     } catch {
@@ -228,6 +298,13 @@ export class CustomSkills {
   /** Installs the chosen skill folders from a GitHub repo (text files only, size-capped). */
   async installGithub(url: string, paths: string[]): Promise<CustomSkill[]> {
     if (paths.length === 0) throw new Error("Pick at least one skill.");
+    if (this.#feature(LINKED_FILES_FEATURE)) {
+      // The whole repo's file list (same API call), so links outside the folder can be followed.
+      const tree = await fetchRepoTree({ ...parseGithubUrl(url), subPath: "" }, this.#fetch);
+      const cache = new Map<string, Promise<string>>();
+      for (const dir of paths) await this.#installFromTree(tree, dir, { cache });
+      return this.list();
+    }
     const tree = await fetchRepoTree(parseGithubUrl(url), this.#fetch);
     for (const dir of paths) {
       const skillPath = `${dir ? `${dir}/` : ""}SKILL.md`;
@@ -253,6 +330,129 @@ export class CustomSkills {
       );
     }
     return this.list();
+  }
+
+  /**
+   * Installs a Sahkarmi skill pack (or the named skills of it) at the pack's pinned commit:
+   * text files only, linked plugin files brought along, the usual risk scan.
+   */
+  async installPack(packId: string, skills?: string[]): Promise<CustomSkill[]> {
+    if (!this.#feature(SKILL_PACKS_FEATURE)) {
+      throw new Error("Skill packs are switched off in Settings > Features.");
+    }
+    const pack = skillPackById(packId);
+    if (!pack) throw new Error("That skill pack is not in this version of Sahkarmi.");
+    const chosen = skills && skills.length > 0 ? skills : pack.skills;
+    const unknown = chosen.filter((skill) => !pack.skills.includes(skill));
+    if (unknown.length > 0) throw new Error("That skill is not part of the pack.");
+    const [owner = "", repo = ""] = pack.repo.split("/");
+    const tree = await fetchRepoTree({ owner, repo, ref: pack.commit, subPath: "" }, this.#fetch);
+    const cache = new Map<string, Promise<string>>();
+    for (const skill of chosen) {
+      await this.#installFromTree(tree, packSkillPath(pack, skill), { pack, cache });
+    }
+    return this.list();
+  }
+
+  /** Plugin-aware install of one skill folder from an already listed repo. */
+  async #installFromTree(tree: RepoTree, dir: string, options: TreeInstallOptions): Promise<void> {
+    const prefix = dir ? `${dir}/` : "";
+    const pack = options.pack;
+    const skillFile = tree.files.find(
+      (file) => file.path.toLowerCase() === `${prefix}skill.md`.toLowerCase(),
+    );
+    if (!skillFile)
+      throw new Error(`No SKILL.md in ${pack ? "this pack" : dir || "the repo root"}.`);
+    let files = this.#skillFiles(tree.files, dir);
+    if (pack) files = files.filter((file) => !EXECUTABLE_FILE.test(file.path));
+    if (!files.some((file) => file.path === skillFile.path)) files.unshift(skillFile);
+    if (files.reduce((total, file) => total + file.size, 0) > MAX_SKILL_BYTES) {
+      throw new Error(`The skill in ${dir || "the repo root"} is too large to install.`);
+    }
+    const read = (path: string) => {
+      let pending = options.cache.get(path);
+      if (!pending) {
+        pending = fetchRepoText(tree, path, this.#fetch, MAX_FILE_BYTES);
+        options.cache.set(path, pending);
+        // A failed download is retried by the next skill that needs it.
+        pending.catch(() => options.cache.delete(path));
+      }
+      return pending;
+    };
+    const own = new Map<string, string>();
+    for (const file of files) {
+      if (!safeRelative(dir ? file.path.slice(prefix.length) : file.path)) continue;
+      own.set(file.path, await read(file.path));
+    }
+    const sizes = new Map(tree.files.map((file) => [file.path, file.size]));
+    const paths = new Set(sizes.keys());
+    const pluginRoot = pluginRootOf(paths, dir);
+    const linked = await bringLinkedFiles({
+      sizes,
+      skillDir: dir,
+      pluginRoot,
+      own,
+      read,
+      maxFiles: MAX_LINKED_FILES,
+      maxBytes: MAX_SKILL_BYTES,
+      maxFileBytes: MAX_FILE_BYTES,
+      isText: (path) => TEXT_FILE.test(path),
+    });
+    const contents = new Map<string, string>();
+    for (const [location, text] of linked.contents) {
+      const safe = safeRelative(location);
+      if (safe) contents.set(safe, text);
+    }
+    // Licence and NOTICE files stay with the skill, unchanged: its own, else the nearest above.
+    const hasLicence = [...contents.keys()].some((path) => LICENCE_FILE.test(path));
+    if (!hasLicence) {
+      for (let at = dir; ; at = at.includes("/") ? at.slice(0, at.lastIndexOf("/")) : "") {
+        const atPrefix = at ? `${at}/` : "";
+        const found = tree.files.filter(
+          (file) =>
+            file.path.startsWith(atPrefix) &&
+            !file.path.slice(atPrefix.length).includes("/") &&
+            LICENCE_FILE.test(file.path.slice(atPrefix.length)) &&
+            file.size <= MAX_FILE_BYTES,
+        );
+        for (const file of found) {
+          const name = file.path.slice(atPrefix.length);
+          if (!contents.has(name)) contents.set(name, await read(file.path));
+        }
+        if (found.length > 0 || !at) break;
+      }
+    }
+    let mcp: McpRecommendation[] = [];
+    let plugin: SkillPluginInfo | null = null;
+    if (pluginRoot !== null) {
+      const pluginPrefix = pluginRoot ? `${pluginRoot}/` : "";
+      if (paths.has(`${pluginPrefix}.mcp.json`)) {
+        mcp = parseMcpRecommendations(await read(`${pluginPrefix}.mcp.json`).catch(() => ""));
+      }
+      if (paths.has(`${pluginPrefix}.claude-plugin/plugin.json`)) {
+        plugin = parsePluginInfo(
+          await read(`${pluginPrefix}.claude-plugin/plugin.json`).catch(() => ""),
+        );
+      }
+    }
+    const parsed = parseSkillMarkdown(contents.get("SKILL.md") ?? "");
+    let name = parsed.name || dir.split("/").pop() || tree.repo;
+    let description = parsed.description;
+    if (pack) {
+      name = neutralBrandText(name) || dir.split("/").pop() || pack.id;
+      description = neutralBrandText(description);
+    }
+    const source = pack
+      ? packSource(pack.id, dir.slice(pack.base ? pack.base.length + 1 : 0))
+      : sourceOf(tree, dir);
+    await this.#write(name, description, source, contents, {
+      ...(pack ? { pack: pack.id } : {}),
+      origin: `github.com/${tree.owner}/${tree.repo}@${tree.ref}${dir ? `/${dir}` : ""}`,
+      linkedFiles: linked.linked.length,
+      ...(linked.unresolved.length ? { unresolvedLinks: linked.unresolved.slice(0, 20) } : {}),
+      ...(mcp.length ? { mcp } : {}),
+      ...(plugin && !pack ? { plugin } : {}),
+    });
   }
 
   async remove(id: string): Promise<CustomSkill[]> {
@@ -283,12 +483,18 @@ export class CustomSkills {
     description: string,
     source: string,
     contents: Map<string, string>,
+    extras: WriteExtras = {},
   ): Promise<void> {
     const existing = await this.list();
     const same = existing.find((skill) => skill.source === source && source !== "pasted");
     let id = same?.id ?? learnedSkillId(name);
     if (!same) {
-      if (existing.length >= MAX_CUSTOM_SKILLS) {
+      // Pack skills have their own allowance, so they never use up the owner's own 100.
+      const fromPacks = existing.filter((skill) => skill.pack).length;
+      if (extras.pack && fromPacks >= MAX_PACK_SKILLS) {
+        throw new Error(`You can install up to ${MAX_PACK_SKILLS} pack skills. Remove some first.`);
+      }
+      if (!extras.pack && existing.length - fromPacks >= MAX_CUSTOM_SKILLS) {
         throw new Error(`You can add up to ${MAX_CUSTOM_SKILLS} skills. Remove one first.`);
       }
       const taken = new Set(existing.map((skill) => skill.id));
@@ -308,6 +514,7 @@ export class CustomSkills {
       source,
       installedAt: new Date().toISOString(),
       ...(risks.length ? { reviewNeeded: true, risks } : {}),
+      ...extras,
     };
     await writeFile(join(folder, SOURCE_FILE), `${JSON.stringify(record, null, 2)}\n`, "utf8");
   }
@@ -327,6 +534,17 @@ export class CustomSkills {
         sharedPath: `Skills/${CUSTOM_FOLDER}/${id}/SKILL.md`,
         reviewNeeded: record.reviewNeeded === true,
         risks: Array.isArray(record.risks) ? record.risks.map(String).slice(0, 10) : [],
+        ...(typeof record.pack === "string" && record.pack ? { pack: record.pack } : {}),
+        ...(typeof record.linkedFiles === "number" ? { linkedFiles: record.linkedFiles } : {}),
+        ...(Array.isArray(record.unresolvedLinks) && record.unresolvedLinks.length
+          ? { unresolvedLinks: record.unresolvedLinks.map(String).slice(0, 20) }
+          : {}),
+        ...(Array.isArray(record.mcp) && record.mcp.length
+          ? { mcpRecommendations: record.mcp.slice(0, 40) }
+          : {}),
+        ...(record.plugin && typeof record.plugin.name === "string"
+          ? { plugin: record.plugin }
+          : {}),
       };
     } catch {
       return null;
@@ -351,22 +569,20 @@ export function customSkillLines(
   } catch {
     return [];
   }
-  return names
-    .sort()
-    .flatMap((id) => {
-      if (!allow(id)) return [];
-      try {
-        const record = JSON.parse(
-          readFileSync(join(root, id, SOURCE_FILE), "utf8"),
-        ) as SourceRecord;
-        const when = String(record.description || "").slice(0, 200);
-        const untrusted = record.reviewNeeded === true ? ` [${UNTRUSTED_SKILL_NOTE}]` : "";
-        return [
-          `${record.name || id}${when ? `: ${when}` : ""} (${CUSTOM_FOLDER}/${id}/SKILL.md)${untrusted}`,
-        ];
-      } catch {
-        return [];
-      }
-    })
-    .slice(0, limit);
+  const own: string[] = [];
+  const fromPacks: string[] = [];
+  for (const id of names.sort()) {
+    if (!allow(id)) continue;
+    try {
+      const record = JSON.parse(readFileSync(join(root, id, SOURCE_FILE), "utf8")) as SourceRecord;
+      const when = String(record.description || "").slice(0, 200);
+      const untrusted = record.reviewNeeded === true ? ` [${UNTRUSTED_SKILL_NOTE}]` : "";
+      const line = `${record.name || id}${when ? `: ${when}` : ""} (${CUSTOM_FOLDER}/${id}/SKILL.md)${untrusted}`;
+      // Skills the owner added themselves come first; pack skills never crowd them out.
+      (record.pack ? fromPacks : own).push(line);
+    } catch {
+      // Not a skill folder.
+    }
+  }
+  return [...own, ...fromPacks].slice(0, limit);
 }

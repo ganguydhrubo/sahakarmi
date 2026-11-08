@@ -365,6 +365,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.customSkillsInstallGithub, { url, paths }),
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsRemove, { id }),
     markReviewed: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsMarkReviewed, { id }),
+    installPack: (packId: string, skills?: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.customSkillsInstallPack, { packId, skills }),
   },
   mcp: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
