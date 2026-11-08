@@ -4,8 +4,9 @@ import type { PermissionCategory } from "./ipc";
  * Ready-made connectors (Settings › MCP servers, feature "mcp-connector-gallery", off by default).
  * Each entry only pre-fills the owner's normal "add a server" flow: nothing is added, started or
  * downloaded until the owner presses Add, and the added server is saved switched off until its
- * test passes. Titles and summaries are Sahkarmi's own words; upstream names, links and licences
- * live in `credits`, which only the Open-source credits list shows.
+ * test passes. Titles name the service a connector reaches (GitHub, Resend, Tally...), never the
+ * open-source project or its author; those, with links and licences, live in `credits`, which the
+ * Open-source credits list shows.
  *
  * Every launch is pinned (exact npm version, exact PyPI version, a git commit or a checked release)
  * so the first run downloads exactly what was reviewed here.
@@ -256,9 +257,9 @@ export const CONNECTOR_PRESETS: readonly ConnectorPreset[] = [
   },
   {
     id: "code-hosting",
-    title: "Code hosting",
-    summary: "Repositories, issues, pull requests and code search on your online code account.",
-    serverName: "code-hosting",
+    title: "GitHub",
+    summary: "Repositories, issues, pull requests and code search on your GitHub account.",
+    serverName: "github",
     runtime: "remote",
     transport: "http",
     command: "",
@@ -304,7 +305,7 @@ export const CONNECTOR_PRESETS: readonly ConnectorPreset[] = [
   },
   {
     id: "databases",
-    title: "Databases (read-only)",
+    title: "Databases (PostgreSQL, MySQL, SQL Server, SQLite)",
     summary:
       "Looks up tables and runs read-only SQL on PostgreSQL, MySQL, SQL Server, SQLite and more.",
     serverName: "databases",
@@ -375,9 +376,9 @@ export const CONNECTOR_PRESETS: readonly ConnectorPreset[] = [
   },
   {
     id: "email-sending",
-    title: "Email sending",
-    summary: "Sends email from your own domain and reads delivery status.",
-    serverName: "email-sending",
+    title: "Resend",
+    summary: "Sends email from your own domain through Resend and reads delivery status.",
+    serverName: "resend",
     runtime: "node",
     transport: "stdio",
     command: "npx",
@@ -430,7 +431,7 @@ export const CONNECTOR_PRESETS: readonly ConnectorPreset[] = [
   },
   {
     id: "google-workspace",
-    title: "Google Workspace",
+    title: "Google Workspace (Gmail, Drive, Docs, Sheets, Calendar)",
     summary: "Gmail, Drive, Calendar, Docs and Sheets on your own Google account.",
     serverName: "google-workspace",
     runtime: "python",
@@ -532,7 +533,7 @@ export const CONNECTOR_PRESETS: readonly ConnectorPreset[] = [
   },
   {
     id: "tally-accounts",
-    title: "Tally accounts",
+    title: "Tally (TallyPrime)",
     summary:
       "Reads the TallyPrime books on this PC: trial balance, ledgers, vouchers, GST registers, outstanding amounts and stock.",
     serverName: "tally",
@@ -639,10 +640,10 @@ export const CONNECTOR_PRESETS: readonly ConnectorPreset[] = [
   },
   {
     id: "website-debugging",
-    title: "Website debugging",
+    title: "Chrome DevTools",
     summary:
       "Opens your website in a separate, empty Chrome window to check errors, network calls, speed and layout.",
-    serverName: "website-debugging",
+    serverName: "chrome-devtools",
     runtime: "node",
     transport: "stdio",
     command: "npx",
@@ -698,6 +699,17 @@ export function connectorPreset(id: string): ConnectorPreset | undefined {
 }
 
 /** For the Open-source credits view: one line per connector, upstream names kept. */
+/** The connector logos (src/renderer/src/connector-marks.ts) come from this icon set. */
+export const CONNECTOR_LOGO_CREDITS: ConnectorCredits = {
+  project: "Simple Icons 16.35.0 (npm simple-icons@16.35.0, paths copied, not a dependency)",
+  url: "https://github.com/simple-icons/simple-icons",
+  licence: "CC0-1.0",
+  copyright: "Copyright: none (CC0 1.0 Universal); brand marks belong to their owners",
+};
+
 export function connectorCredits(): Array<ConnectorCredits & { connector: string }> {
-  return CONNECTOR_PRESETS.map((preset) => ({ connector: preset.title, ...preset.credits }));
+  return [
+    ...CONNECTOR_PRESETS.map((preset) => ({ connector: preset.title, ...preset.credits })),
+    { connector: "Connector logos", ...CONNECTOR_LOGO_CREDITS },
+  ];
 }

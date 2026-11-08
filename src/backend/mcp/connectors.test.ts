@@ -4,7 +4,14 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CONNECTOR_LICENCES, CONNECTOR_PRESETS, connectorPreset } from "../../shared/mcp-presets";
+import { CONNECTOR_MARKS } from "../../renderer/src/connector-marks";
+import {
+  CONNECTOR_LICENCES,
+  CONNECTOR_LOGO_CREDITS,
+  CONNECTOR_PRESETS,
+  connectorCredits,
+  connectorPreset,
+} from "../../shared/mcp-presets";
 import { FeatureRegistry } from "../feature-registry";
 import { McpServerStore } from "../mcp-servers";
 import { isSensitive } from "../permission-policy";
@@ -128,15 +135,26 @@ describe("connector list", () => {
     }
   });
 
-  it("shows only Sahkarmi wording on cards (upstream names stay in credits and setup steps)", () => {
+  it("names the service on cards, never the open-source project or its author", () => {
     const upstream =
-      /modelcontextprotocol|anthropic|bytebase|dbhub|resend|wilsdon|india.?stack|complyeaze|bridge|markitdown|microsoft|devtools|github|copilot|tallyprime solutions/i;
+      /modelcontextprotocol|bytebase|dbhub|rehan1020|wilsdon|india.?stack|complyeaze|bridge|markitdown|microsoft|workspace-mcp|resend-mcp|github-mcp/i;
     for (const entry of CONNECTOR_PRESETS) {
       const card = [entry.id, entry.title, entry.serverName, entry.summary, ...entry.safety].join(
         " ",
       );
       expect(card, entry.id).not.toMatch(upstream);
     }
+    expect(connectorPreset("code-hosting")?.title).toBe("GitHub");
+    expect(connectorPreset("tally-accounts")?.title).toBe("Tally (TallyPrime)");
+    expect(connectorPreset("website-debugging")?.title).toBe("Chrome DevTools");
+  });
+
+  it("has a logo for every connector, and credits the icon set", () => {
+    for (const entry of CONNECTOR_PRESETS) {
+      expect(CONNECTOR_MARKS[entry.id]?.path, entry.id).toMatch(/^M/);
+    }
+    expect(CONNECTOR_LOGO_CREDITS.licence).toBe("CC0-1.0");
+    expect(connectorCredits().at(-1)?.project).toMatch(/Simple Icons 16\.35\.0/);
   });
 
   it("is off by default and never starts anything on app launch", async () => {

@@ -14887,6 +14887,12 @@ fieldset.memory-filters {
   margin-bottom: 8px;
 }
 
+.mcp-connector-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .mcp-connector-field {
   display: flex;
   flex-direction: column;

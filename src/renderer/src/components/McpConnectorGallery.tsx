@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import type { McpConnectorCheck, McpConnectorMissing, McpServerSummary } from "../../../shared/ipc";
 import { CONNECTOR_PRESETS, type ConnectorPreset } from "../../../shared/mcp-presets";
+import { CONNECTOR_MARKS } from "../connector-marks";
 import { t } from "../i18n";
 
 /** The pinned version in plain form (no package names on cards). */
@@ -35,6 +36,22 @@ function missingText(entry: McpConnectorMissing): string {
     case "chrome":
       return t("mcpcNeedsChrome");
   }
+}
+
+/** The service's own logo (or a plain icon), drawn like the AI engines' logos. */
+function ConnectorLogo(props: { id: string }) {
+  const mark = () => CONNECTOR_MARKS[props.id];
+  return (
+    <Show when={mark()}>
+      {(brand) => (
+        <span class="provider-logo" style={{ "--provider-logo-size": "18px" }} aria-hidden="true">
+          <svg viewBox="0 0 24 24" width={18} height={18} role="presentation">
+            <path d={brand().path} fill={brand().color ?? "currentColor"} />
+          </svg>
+        </span>
+      )}
+    </Show>
+  );
 }
 
 interface Props {
@@ -103,7 +120,10 @@ export function McpConnectorGallery(props: Props) {
             const missing = () => check()?.missing ?? [];
             return (
               <li class="mcp-card">
-                <h4>{preset.title}</h4>
+                <h4 class="mcp-connector-title">
+                  <ConnectorLogo id={preset.id} />
+                  {preset.title}
+                </h4>
                 <p class="settings-meta">{preset.summary}</p>
                 <small class="settings-meta">
                   {t(
