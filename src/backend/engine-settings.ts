@@ -1,8 +1,10 @@
+import { totalmem } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_ENGINE_SETTINGS,
   ENGINE_SETTINGS_LIMITS,
   type EngineSettings,
+  MIN_MEMORY_LIMIT_MB,
 } from "../shared/ipc";
 import { JsonFile } from "./json-file";
 import { isRecord } from "./protocol";
@@ -29,7 +31,29 @@ export function normaliseEngineSettings(
       ENGINE_SETTINGS_LIMITS.watchdogMinutes,
       base.watchdogMinutes,
     ),
+    memoryLimitMb: memoryLimit(input.memoryLimitMb, base.memoryLimitMb),
+    memoryWarnPercent: clamp(
+      input.memoryWarnPercent,
+      ENGINE_SETTINGS_LIMITS.memoryWarnPercent,
+      base.memoryWarnPercent ?? DEFAULT_ENGINE_SETTINGS.memoryWarnPercent,
+    ),
+    maxStepsPerTurn: clamp(
+      input.maxStepsPerTurn,
+      ENGINE_SETTINGS_LIMITS.maxStepsPerTurn,
+      base.maxStepsPerTurn ?? DEFAULT_ENGINE_SETTINGS.maxStepsPerTurn,
+    ),
   };
+}
+
+/** 0 (Automatic), or between 1 GB and the PC's installed RAM. */
+function memoryLimit(value: unknown, fallback: number | undefined): number {
+  const base = fallback ?? DEFAULT_ENGINE_SETTINGS.memoryLimitMb;
+  if (typeof value !== "number" || !Number.isFinite(value)) return base;
+  if (value <= 0) return 0;
+  const ramMb = Math.floor(totalmem() / (1024 * 1024));
+  return Math.round(
+    Math.min(Math.max(value, MIN_MEMORY_LIMIT_MB), Math.max(ramMb, MIN_MEMORY_LIMIT_MB)),
+  );
 }
 
 function isStored(value: unknown): value is EngineSettings {

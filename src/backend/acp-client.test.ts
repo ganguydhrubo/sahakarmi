@@ -584,6 +584,40 @@ describe.sequential("ACP providers (bundled OpenCode)", { timeout: 15_000 }, () 
     expect((await readLog()).filter((entry) => entry.method === "session/new").length).toBe(news);
   });
 
+  it("keeps working without an MCP server that breaks the session, and says so in the chat", async () => {
+    const client = createOpenCodeClient(
+      { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
+      join(root, "transcripts"),
+    );
+    const notices: unknown[] = [];
+    client.on("notification", (notification) => {
+      if (notification.method === "sahkarmi/notice") notices.push(notification.params);
+    });
+    client.start();
+    try {
+      const opened = await client.request<{ thread: { id: string } }>("thread/start", {
+        cwd: root,
+        customMcpServers: [
+          { name: "broken-mcp", transport: "stdio", command: "node", args: [], env: {} },
+        ],
+      });
+      expect(opened.thread.id).toBeTruthy();
+      const newSessions = (await readLog()).filter((entry) => entry.method === "session/new");
+      // First with the owner's server (refused), then again without it.
+      expect(newSessions.length).toBeGreaterThanOrEqual(2);
+      void client
+        .request("turn/start", {
+          threadId: opened.thread.id,
+          input: [{ type: "text", text: "hello" }],
+        })
+        .catch(() => undefined);
+      await waitFor(() => notices.length > 0);
+      expect(JSON.stringify(notices[0])).toContain("broken-mcp");
+    } finally {
+      await client.stop();
+    }
+  });
+
   it("drops the tool routes of an agent's sessions when it stops", async () => {
     const client = createOpenCodeClient(
       { executable: process.env.SAHKARMI_OPENCODE_PATH ?? "", version: "1.19.3", bundled: true },
@@ -956,6 +990,7 @@ async function handle(message) {
     return write({ id, result: {} });
   }
   if (method === "session/new") {
+    if (params.mcpServers.some((server) => server.name === "broken-mcp")) return write({ id, error: { code: -32603, message: "mcp server broken-mcp failed to start" } });
     mcp = params.mcpServers.find((server) => server.name === "sahkarmi") ?? null;
     const newId = "ses_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
     fs.appendFileSync(process.env.SAHKARMI_FAKE_ACP_LOG + ".sessions", newId + String.fromCharCode(10));

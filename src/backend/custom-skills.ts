@@ -339,7 +339,11 @@ function sourceOf(tree: { owner: string; repo: string }, dir: string): string {
 }
 
 /** "Name: when to use (Custom/<id>/SKILL.md)" lines for coworker instructions, read at thread start. */
-export function customSkillLines(sharedRoot: string, limit = 40): string[] {
+export function customSkillLines(
+  sharedRoot: string,
+  limit = 40,
+  allow: (id: string) => boolean = () => true,
+): string[] {
   const root = customRoot(sharedRoot);
   let names: string[];
   try {
@@ -350,6 +354,7 @@ export function customSkillLines(sharedRoot: string, limit = 40): string[] {
   return names
     .sort()
     .flatMap((id) => {
+      if (!allow(id)) return [];
       try {
         const record = JSON.parse(
           readFileSync(join(root, id, SOURCE_FILE), "utf8"),

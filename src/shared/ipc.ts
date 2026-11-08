@@ -1,3 +1,4 @@
+import type { ResourceAccess, ResourceKind } from "./resource-access";
 export const IPC_CHANNELS = {
   setTheme: "app:set-theme",
   getAppInfo: "app:get-info",
@@ -155,6 +156,9 @@ export const IPC_CHANNELS = {
   orchestratorGetEngineSettings: "orchestrator:get-engine-settings",
   orchestratorSetEngineSettings: "orchestrator:set-engine-settings",
   orchestratorPerformance: "orchestrator:performance",
+  orchestratorResourceStatus: "orchestrator:resource-status",
+  assignmentsOverview: "assignments:overview",
+  assignmentsSet: "assignments:set",
   agentRerunInterrupted: "agent:rerun-interrupted",
   agentDismissInterrupted: "agent:dismiss-interrupted",
   memoryList: "memory:list",
@@ -2037,6 +2041,8 @@ export interface OrchestratorDesktopApi {
   getEngineSettings: () => Promise<EngineSettings>;
   setEngineSettings: (input: Partial<EngineSettings>) => Promise<EngineSettings>;
   performance: () => Promise<PerformanceSummary>;
+  /** Live memory use, the owner's limit and a recommendation (Settings > Features). */
+  resourceStatus: () => Promise<ResourceStatus>;
 }
 
 /** How hard the agent engine may work this PC. Owner-editable in Settings > Features. */
@@ -2045,11 +2051,23 @@ export interface EngineSettings {
   maxConcurrentTurns: number;
   /** A turn with no sign of life (no text, no tool) this long is stopped (5-240 minutes). */
   watchdogMinutes: number;
+  /**
+   * The most memory (MB) Sahkarmi and the coworker programs it starts may use together. 0 is
+   * Automatic: no app limit, only the PC's own free memory is watched (the old behaviour).
+   */
+  memoryLimitMb: number;
+  /** Warn and start saving memory when use reaches this share of the limit (50-95 %). */
+  memoryWarnPercent: number;
+  /** The most steps (tool calls) one Claude turn may take before it pauses (50-1000). */
+  maxStepsPerTurn: number;
 }
 
 export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   maxConcurrentTurns: 3,
   watchdogMinutes: 45,
+  memoryLimitMb: 0,
+  memoryWarnPercent: 80,
+  maxStepsPerTurn: 200,
 };
 
 export const ENGINE_SETTINGS_LIMITS = {
@@ -2057,7 +2075,55 @@ export const ENGINE_SETTINGS_LIMITS = {
   // coworker's own process waits for free memory instead of being stopped by this number.
   maxConcurrentTurns: { min: 1, max: 64 },
   watchdogMinutes: { min: 5, max: 240 },
+  // 0 (Automatic) or 1 GB up to the PC's RAM; the store also caps it at the installed RAM.
+  memoryLimitMb: { min: 0, max: 1_048_576 },
+  memoryWarnPercent: { min: 50, max: 95 },
+  maxStepsPerTurn: { min: 50, max: 1000 },
 } as const;
+
+/** The smallest memory limit the owner can set; below it the app itself does not fit. */
+export const MIN_MEMORY_LIMIT_MB = 1024;
+
+/** Where Sahkarmi's memory goes right now, grouped by the program that uses it. */
+export interface ResourceUsageGroup {
+  kind: "app" | "claude" | "codex" | "antigravity" | "opencode" | "gemini" | "tools";
+  label: string;
+  mb: number;
+  processes: number;
+}
+
+export type ResourceLevel = "ok" | "warn" | "over";
+
+export interface ResourceRecommendation {
+  /** The limit Sahkarmi suggests for this PC, in MB. */
+  limitMb: number;
+  /** Claude coworkers that fit side by side under the suggested limit. */
+  claudeCoworkers: number;
+  reason: string;
+}
+
+/** Settings > Features memory view: measured, never estimated, except the forecast. */
+export interface ResourceStatus {
+  totalMb: number;
+  freeMb: number;
+  /** The PC as a whole: "ok", "low" or "critical" free memory. */
+  systemPressure: "ok" | "low" | "critical";
+  /** Sahkarmi plus every program it started; null until the first measurement. */
+  appUsedMb: number | null;
+  groups: ResourceUsageGroup[];
+  limitMb: number;
+  warnPercent: number;
+  /** "warn" from the warning share of the limit, "over" at or above the limit. */
+  level: ResourceLevel;
+  /** Growth over the last few minutes (MB per minute); null with too few readings. */
+  trendMbPerMin: number | null;
+  /** At this growth, minutes until the limit is reached; null when not growing or no limit. */
+  minutesToLimit: number | null;
+  recommendation: ResourceRecommendation;
+  /** Ready-made limits that fit this PC, in MB. */
+  presetsMb: number[];
+  sampledAt: string | null;
+}
 
 /** One finished coworker turn, recorded on this PC only (never sent anywhere). */
 export interface RunEvent {
@@ -2131,6 +2197,7 @@ export interface SahkarmiDesktopApi {
   knowledge: KnowledgeDesktopApi;
   composio: ComposioDesktopApi;
   apis: ApiIntegrationsDesktopApi;
+  assignments: AssignmentsDesktopApi;
   telegram: TelegramDesktopApi;
   customSkills: CustomSkillsDesktopApi;
   mcp: McpDesktopApi;
@@ -2558,6 +2625,8 @@ export interface ComposioStatus {
   planName: string;
   catalogueSize: number;
   catalogueError: string | null;
+  /** The last connection check failed; apps show their last known state meanwhile. */
+  connectionsError?: string | null;
 }
 
 export interface ComposioConnectionInitiateResult {
@@ -2671,6 +2740,8 @@ export interface ApiAccess {
   ceo: boolean;
   botIds: string[];
   workspaceIds: string[];
+  /** Engines (e.g. "claude", "antigravity"): every coworker running on one. */
+  providers?: string[];
 }
 
 export interface ApiActivityEntry {
@@ -2729,6 +2800,29 @@ export interface ApiIntegrationPatch {
   /** A full example request URL (with real values), or a path on the base address. */
   example?: string;
   auth?: ApiAuth;
+}
+
+/**
+ * One resource coworkers can use, as Settings > Assignments shows it: is it connected, who did
+ * the owner give it to, and can anyone actually use it now (and if not, why).
+ */
+export interface ResourceOverviewItem {
+  kind: ResourceKind;
+  /** The id assignments use: API id, app slug, "market:<id>"/"custom:<id>"/"learned:<id>", MCP id. */
+  id: string;
+  name: string;
+  connected: boolean;
+  /** Who may use it; "everyone" for anything the owner never limited. */
+  access: ResourceAccess;
+  available: boolean;
+  /** Plain words: why it is not available, or a caveat (e.g. "last known state"). */
+  note: string | null;
+}
+
+export interface AssignmentsDesktopApi {
+  overview: () => Promise<ResourceOverviewItem[]>;
+  /** Saves who may use one resource; null gives it back to everyone. */
+  set: (kind: ResourceKind, id: string, access: ResourceAccess | null) => Promise<void>;
 }
 
 export interface ApiIntegrationsDesktopApi {

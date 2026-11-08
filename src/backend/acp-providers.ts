@@ -1,4 +1,5 @@
-import { access, readFile } from "node:fs/promises";
+import { statSync, writeFileSync } from "node:fs";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentModelId } from "../shared/ipc";
@@ -111,6 +112,7 @@ export function createAntigravityClient(
   const harnessExecutable =
     process.platform === "win32" ? "localharness_external.exe" : "localharness_external";
   const harnessPath = join(cli.executable, "..", harnessExecutable);
+  repairEmptyMcpConfig(geminiHome ?? join(homedir(), ".gemini"));
   return new AcpAgentClient({
     provider: "antigravity",
     label: "Google Antigravity",
@@ -133,6 +135,23 @@ export function createAntigravityClient(
     // stops, so the model list is read once per server instead of on every refresh.
     reuseModelCatalog: true,
   });
+}
+
+/**
+ * Antigravity also reads its own global MCP list at <GEMINI_HOME>/config/mcp_config.json. An
+ * empty (0 byte) file there is not valid JSON, and every session logged an MCP parse error for
+ * it. Only an empty file is touched: it becomes an empty list. Anything with content is the
+ * owner's and stays exactly as it is.
+ */
+export function repairEmptyMcpConfig(geminiHome: string): boolean {
+  const file = join(geminiHome, "config", "mcp_config.json");
+  try {
+    if (statSync(file).size !== 0) return false;
+    writeFileSync(file, JSON.stringify({ mcpServers: {} }, null, 2), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function antigravityModelValue(
@@ -190,5 +209,74 @@ export async function readAntigravityAccount(
   } catch {
     // Sahkarmi has not noted the account yet (signed in before 0.6.0, or an API key).
   }
+  if (!email && hasToken) {
+    email = await lookupAntigravityEmail(acpHome);
+    if (email) {
+      await writeFile(
+        join(acpHome, ANTIGRAVITY_ACCOUNT_FILE),
+        JSON.stringify({ email, ...(tier ? { tier } : {}) }),
+        "utf8",
+      ).catch(() => undefined);
+    }
+  }
   return { account: { type: "antigravity", email, tier }, requiresOpenaiAuth: false };
+}
+
+type EmailFetch = (url: string, init: RequestInit) => Promise<Response>;
+let emailFetch: EmailFetch = (url, init) => fetch(url, init);
+/** Tests stand in for Google. */
+export function setAntigravityEmailFetch(next: EmailFetch | null): void {
+  emailFetch = next ?? ((url, init) => fetch(url, init));
+}
+const emailLookups = new Map<string, { at: number; email: Promise<string | null> }>();
+const EMAIL_RETRY_MS = 10 * 60_000;
+
+/**
+ * Google's sign-in for Antigravity has the userinfo.email scope but keeps no email on disk, so
+ * every account read "Google account 1, 2, 3". Asks Google once with the account's own token
+ * (a fresh access token, then userinfo) and Sahkarmi notes the answer. Only Google's own token
+ * address is ever called; a failure is tried again after 10 minutes at most.
+ */
+function lookupAntigravityEmail(acpHome: string): Promise<string | null> {
+  const known = emailLookups.get(acpHome);
+  if (known && Date.now() - known.at < EMAIL_RETRY_MS) return known.email;
+  const email = fetchAntigravityEmail(acpHome).catch(() => null);
+  emailLookups.set(acpHome, { at: Date.now(), email });
+  return email;
+}
+
+async function fetchAntigravityEmail(acpHome: string): Promise<string | null> {
+  const token: unknown = JSON.parse(await readFile(join(acpHome, "acp_token.json"), "utf8"));
+  if (!isRecord(token)) return null;
+  const { refresh_token: refresh, client_id: clientId, client_secret: secret } = token;
+  const tokenUri = typeof token.token_uri === "string" ? token.token_uri : "";
+  if (typeof refresh !== "string" || typeof clientId !== "string") return null;
+  if (!/^https:\/\/oauth2\.googleapis\.com\/token$/.test(tokenUri)) return null;
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refresh,
+    client_id: clientId,
+    ...(typeof secret === "string" ? { client_secret: secret } : {}),
+  });
+  const granted = await emailFetch(tokenUri, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!granted.ok) return null;
+  const grant: unknown = await granted.json();
+  const accessToken =
+    isRecord(grant) && typeof grant.access_token === "string" ? grant.access_token : "";
+  if (!accessToken) return null;
+  const info = await emailFetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    method: "GET",
+    headers: { authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!info.ok) return null;
+  const user: unknown = await info.json();
+  return isRecord(user) && typeof user.email === "string" && user.email.includes("@")
+    ? user.email
+    : null;
 }

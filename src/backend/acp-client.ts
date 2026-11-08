@@ -113,6 +113,8 @@ interface ActiveTurn {
 interface AcpSession {
   threadId: string;
   acpSessionId: string;
+  /** Said once in the coworker's chat at its next turn (e.g. an MCP server that was left out). */
+  pendingNotice?: string | null;
   cwd: string;
   instructions: string;
   instructionsSent: boolean;
@@ -179,6 +181,8 @@ const MAX_MCP_ROUTES = 64;
 const TRANSCRIPT_COMPACT_BYTES = 4 * 1024 * 1024;
 
 export class AcpAgentClient extends EventEmitter<ClientEvents> {
+  /** A session open that carries the owner's MCP servers gives up after this long. */
+  static SESSION_OPEN_MS = 120_000;
   readonly provider: AgentProvider;
   readonly #config: AcpAgentConfig;
   readonly #pending = new Map<number, Pending>();
@@ -539,8 +543,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     mcpToken: string,
     route: McpRoute,
   ): Promise<AcpSession> {
-    const mcpServers = [
-      ...(await this.#mcpServersFor(mcpToken, route)),
+    const ownServers = await this.#mcpServersFor(mcpToken, route);
+    const ownerServers = [
       ...acpMcpServers(
         // A stdio server would inherit this agent's key from its environment; hide it.
         readCustomMcpServers(params).map((server) =>
@@ -552,6 +556,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           this.#agentCapabilities.mcpCapabilities.http === true,
       ),
     ];
+    let mcpServers = [...ownServers, ...ownerServers];
+    let skippedNotice: string | null = null;
+    // With the owner's MCP servers a session open gets a time limit: a server that never starts
+    // must not leave the coworker "starting" for ever.
+    const openTimeout = ownerServers.length > 0 ? AcpAgentClient.SESSION_OPEN_MS : undefined;
 
     let result: Record<string, unknown> | null = null;
     const aliases =
@@ -561,7 +570,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     let acpSessionId = (existingThreadId && aliases?.get(existingThreadId)) || existingThreadId;
     if (acpSessionId && this.#agentCapabilities.loadSession === true) {
       try {
-        result = await this.#call("session/load", { sessionId: acpSessionId, cwd, mcpServers });
+        result = await this.#call(
+          "session/load",
+          { sessionId: acpSessionId, cwd, mcpServers },
+          openTimeout,
+        );
       } catch (error) {
         this.emit(
           "diagnostic",
@@ -571,9 +584,30 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     }
     if (!result) {
       try {
-        result = await this.#call<Record<string, unknown>>("session/new", { cwd, mcpServers });
+        result = await this.#call<Record<string, unknown>>(
+          "session/new",
+          { cwd, mcpServers },
+          openTimeout,
+        );
       } catch (error) {
         if (
+          ownerServers.length > 0 &&
+          !(error instanceof Error && /authentication required/i.test(error.message))
+        ) {
+          // One of the owner's MCP servers broke the session: the coworker works without them
+          // (its own Sahkarmi tools stay) instead of failing, and the chat says which and why.
+          const names = ownerServers
+            .map((server) => (isRecord(server) ? String(server.name ?? "") : ""))
+            .filter(Boolean)
+            .join(", ");
+          this.emit(
+            "diagnostic",
+            `${this.#config.label}: session failed with MCP servers (${names}); retrying without them (${String(error)})`,
+          );
+          mcpServers = ownServers;
+          skippedNotice = `${this.#config.label} could not start with your MCP servers (${names}), so this chat runs without them for now. Check them with "Test server" in Settings > MCP Servers. The problem was: ${errorMessage(error)}`;
+          result = await this.#call<Record<string, unknown>>("session/new", { cwd, mcpServers });
+        } else if (
           error instanceof Error &&
           error.message.includes("Authentication required") &&
           this.#config.authenticate
@@ -598,6 +632,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const session: AcpSession = {
       threadId,
       acpSessionId: acpSessionId as string,
+      pendingNotice: skippedNotice,
       cwd,
       instructions: getString(params, "developerInstructions") ?? "",
       instructionsSent: false,
@@ -692,6 +727,13 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const session = this.#requireSession(requiredString(params, "threadId"));
     if (session.activeTurn)
       throw new Error(`The ${this.#config.label} session already has an active turn.`);
+    if (session.pendingNotice) {
+      this.emit("notification", {
+        method: "sahkarmi/notice",
+        params: { threadId: session.threadId, code: "mcp_skipped", message: session.pendingNotice },
+      });
+      session.pendingNotice = null;
+    }
     await this.#awaitStaleStream(session);
     await this.#applyModel(session, getString(params, "model"));
     if (
@@ -1104,6 +1146,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   async #ensureMcpServer(): Promise<number> {
     if (this.#mcpPort !== null) return this.#mcpPort;
     const server = createServer((request, response) => void this.#handleMcpHttp(request, response));
+    // The agent's HTTP client reuses connections longer than Node's 5 s default: a socket Node
+    // closed while the agent reused it failed a tool call ("forcibly closed by the remote host").
+    server.keepAliveTimeout = 120_000;
+    server.headersTimeout = 125_000;
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", () => resolve());

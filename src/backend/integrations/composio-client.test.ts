@@ -600,6 +600,40 @@ describe("ComposioClient", () => {
     expect(result.error).toBe("Composio did not answer within 45 s.");
   });
 
+  it("keeps showing connected apps when one connection check fails, and says so", async () => {
+    const fake = fakeComposio({
+      connections: [{ id: "ca_gh", status: "ACTIVE", toolkit: { slug: "github" } }],
+    });
+    let offline = false;
+    const fetchImpl = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (offline && url.pathname.endsWith("/connected_accounts")) {
+        return Promise.reject(new Error("network down"));
+      }
+      return fake.fetchImpl(input, init);
+    }) as typeof fetch;
+    const composio = client(fake, { fetchImpl });
+    await composio.setApiKey("key_1234567890", { verify: false });
+    expect((await composio.listApps(true)).find((app) => app.id === "github")?.isConnected).toBe(
+      true,
+    );
+    offline = true;
+    const again = await composio.listApps(true);
+    expect(again.find((app) => app.id === "github")?.isConnected).toBe(true);
+    expect((await composio.getStatus()).connectionsError).toMatch(/network down/);
+  });
+
+  it("gives coworkers only the apps their filter allows", async () => {
+    const fake = fakeComposio({
+      connections: [{ id: "ca_gh", status: "ACTIVE", toolkit: { slug: "github" } }],
+    });
+    const composio = client(fake);
+    await composio.setApiKey("key_1234567890", { verify: false });
+    expect((await composio.getDynamicTools()).length).toBeGreaterThan(0);
+    expect(await composio.getDynamicTools((slug) => slug !== "github")).toEqual([]);
+    expect(composio.toolkitOf("GITHUB_GET_AN_ISSUE")).toBe("github");
+  });
+
   it("runs at most four requests at a time", async () => {
     let inFlight = 0;
     let peak = 0;

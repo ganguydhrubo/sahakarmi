@@ -20,6 +20,7 @@ import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
 import { ApiIntegrationsPanel } from "./ApiIntegrationsPanel";
 import { AppsPanel } from "./AppsPanel";
+import { AssignButton } from "./AssignAccess";
 
 type Tab = "agents" | "apps" | "apis" | "skills";
 type Filter = "all" | "featured" | "added" | AgentCategory;
@@ -519,6 +520,9 @@ export function MarketplaceView(props: {
                         </button>
                       </div>
                       <p>{skill.summary}</p>
+                      <Show when={isInstalled()}>
+                        <AssignButton kind="skill" id={`market:${skill.id}`} name={skill.name} />
+                      </Show>
                     </li>
                   );
                 }}

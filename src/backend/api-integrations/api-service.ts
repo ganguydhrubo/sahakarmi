@@ -93,6 +93,8 @@ export interface ApiSecrets {
 export interface ApiCoworker {
   id: string;
   workspaceId: string | null;
+  /** The engine it runs on (e.g. "claude"), for access given to every coworker of an engine. */
+  provider?: string | null;
 }
 
 export interface ApiIntegrationServiceOptions {
@@ -750,6 +752,7 @@ export class ApiIntegrationService {
     if (access.everyone) return true;
     if (access.botIds.includes(bot.id)) return true;
     if (bot.workspaceId && access.workspaceIds.includes(bot.workspaceId)) return true;
+    if (bot.provider && access.providers?.includes(bot.provider)) return true;
     return access.ceo && this.#options.ceoOf(bot.workspaceId) === bot.id;
   }
 

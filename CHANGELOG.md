@@ -5,6 +5,54 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-08
+
+0.25.1 was never published, so its two fixes ship here too.
+
+### Added
+
+- Memory limit (Settings > Features): choose how much RAM Sahkarmi and the coworker programs it
+  starts may use together: Automatic, a ready-made size (2, 3, 4, 6, 8, 12 GB… up to what this
+  PC has) or any amount in half-GB steps. Sahkarmi measures its real use (every program it
+  started, grouped as Claude, Codex, Antigravity, OpenCode, tools), shows it live with where the
+  memory goes, forecasts when the limit would be reached at the present growth, and suggests a
+  limit for this PC. Near the limit it closes idle coworker programs and makes background work
+  wait; work already running is never stopped for memory. Automatic keeps the old behaviour.
+- Warning threshold for the memory limit, and "Most steps in one Claude turn" (50-1000, was a
+  fixed 200).
+- Assign APIs, connected apps, skills and MCP servers to whole AI engines (every Claude,
+  Codex, Antigravity… coworker), single coworkers, whole workspaces or each workspace's CEO.
+  The same "Assign" picker is on Marketplace > APIs, Apps and Skills and on Settings > Skills
+  and MCP Servers. Anything never assigned stays available to everyone, as before.
+- Settings > Assignments: every API, connected app, skill and MCP server in one list, with
+  whether it is connected, who it is assigned to, and whether coworkers can use it right now
+  (and if not, why).
+- Antigravity accounts show their email address instead of "Google account 1, 2, 3".
+
+### Fixed
+
+- "This PC is short of free memory, so this message waits" no longer interrupts a coworker that
+  is already working: a Claude coworker whose program is open never waits, Sahkarmi first
+  closes idle Claude programs before making anyone wait, and the note disappears as soon as the
+  work starts. The thresholds now fit 16 GB PCs (3 GB free is fine).
+- Antigravity keeps working when an MCP server cannot start: the chat opens without that server
+  and says which one and why, instead of failing or waiting for ever. An empty Antigravity MCP
+  config file (0 bytes) no longer causes an error on every session, and Sahkarmi's own tools no
+  longer drop with "connection forcibly closed".
+- Connected apps no longer flip to "Connect" when one check with Composio fails; the last known
+  state is kept and Settings > Assignments says the check failed. A newly connected or removed
+  app reaches idle coworkers at their next message instead of only in a new chat.
+- A turn about to be stopped for showing no progress is announced at three quarters of the time
+  limit first.
+- From 0.25.1: Claude coworkers can use the apps you connect in Marketplace > Apps, and a
+  message you type never waits for free memory.
+
+### Changed
+
+- When memory is short, idle Claude programs close after one minute instead of ten, and a chat
+  stops trying automatic compaction after two failures in a row (ideas from the upstream
+  project's latest releases, written fresh for Sahkarmi).
+
 ## [0.25.1] - 2026-11-07
 
 ### Fixed

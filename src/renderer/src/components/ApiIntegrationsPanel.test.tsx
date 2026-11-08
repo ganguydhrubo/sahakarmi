@@ -253,6 +253,7 @@ describe("ApiIntegrationsPanel", () => {
         ceo: true,
         botIds: ["bot_b"],
         workspaceIds: ["ws_1"],
+        providers: [],
       }),
     );
     expect(await screen.findByText("Saved.")).toBeVisible();

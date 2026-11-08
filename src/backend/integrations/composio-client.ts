@@ -130,6 +130,12 @@ export class ComposioClient {
   #catalogueError: string | null = null;
   #connections: CacheEntry<ComposioConnection[]> | null = null;
   #connectionsLoad: Promise<ComposioConnection[]> | null = null;
+  /**
+   * The last list Composio returned. A failed check (offline, a timeout, a paused circuit) uses
+   * it instead of nothing, so connected apps never flip to "Connect" because of one bad request.
+   */
+  #lastGoodConnections: ComposioConnection[] | null = null;
+  #connectionsError: string | null = null;
   readonly #tools = new Map<string, CacheEntry<ComposioToolRecord[]>>();
   readonly #toolsLoad = new Map<string, Promise<ComposioToolRecord[]>>();
   readonly #toolToolkit = new Map<string, string>();
@@ -165,6 +171,8 @@ export class ComposioClient {
   resetCaches(): void {
     this.#catalogue = null;
     this.#connections = null;
+    this.#lastGoodConnections = null;
+    this.#connectionsError = null;
     this.#tools.clear();
     this.#toolToolkit.clear();
     this.#toolNames.clear();
@@ -256,6 +264,7 @@ export class ComposioClient {
       monthlyQuota: HOBBY_PLAN_TOOL_CALLS,
       planName: HOBBY_PLAN_NAME,
       catalogueError: this.#catalogueError,
+      connectionsError: this.#connectionsError,
     };
     if (!key) {
       return {
@@ -383,6 +392,8 @@ export class ComposioClient {
       { key, timeoutMs: METADATA_TIMEOUT_MS, retries: 1 },
     );
     this.#connections = null;
+    this.#lastGoodConnections =
+      this.#lastGoodConnections?.filter((connection) => connection.id !== connectionId) ?? null;
     this.#tools.clear();
     return res.ok || res.status === 404;
   }
@@ -390,12 +401,19 @@ export class ComposioClient {
   // ----- Tools for coworkers -----------------------------------------------------------------
 
   /** The important tools of every connected toolkit, with Composio's real input schemas. */
-  async getDynamicTools(): Promise<ComposioDynamicTool[]> {
+  /**
+   * The tools of every connected app, or only of the apps `allowed` says yes to (the owner's
+   * assignments: an app given to some coworkers only reaches those coworkers).
+   */
+  async getDynamicTools(
+    allowed?: (toolkitSlug: string) => boolean,
+  ): Promise<ComposioDynamicTool[]> {
     const key = await this.getApiKey();
     if (!key) return [];
     const active = activeConnections(await this.#connectionsGet(key));
     const tools: ComposioDynamicTool[] = [];
     for (const slug of active.keys()) {
+      if (allowed && !allowed(slug)) continue;
       if (tools.length >= MAX_TOOLS_TOTAL) break;
       let records: ComposioToolRecord[];
       try {
@@ -409,6 +427,12 @@ export class ComposioClient {
       }
     }
     return tools;
+  }
+
+  /** The app (toolkit slug) a tool belongs to, or null when it cannot be told. */
+  toolkitOf(toolSlug: string): string | null {
+    const slug = toolSlug.toUpperCase().replace(/-/g, "_");
+    return this.#toolToolkit.get(slug) ?? this.#guessToolkit(slug) ?? null;
   }
 
   /** Human words for an approval card: which toolkit, which tool. Best effort, never throws. */
@@ -582,7 +606,14 @@ export class ComposioClient {
     this.#connectionsLoad = this.#fetchConnections(key)
       .then((items) => {
         this.#connections = { at: this.#now(), value: items };
+        this.#lastGoodConnections = items;
+        this.#connectionsError = null;
         return items;
+      })
+      .catch((error: unknown) => {
+        this.#connectionsError = error instanceof Error ? error.message : String(error);
+        if (this.#lastGoodConnections) return this.#lastGoodConnections;
+        throw error;
       })
       .finally(() => {
         this.#connectionsLoad = null;

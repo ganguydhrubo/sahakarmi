@@ -48,6 +48,7 @@ import {
   SEARCH_PAST_CHATS_DESCRIPTION,
 } from "./learning-tools";
 import { claudeMcpServers, type McpServerWire, readCustomMcpServers } from "./mcp-servers";
+import { readMemory } from "./memory-pressure";
 import { readCachedCatalog, writeCachedCatalog } from "./model-catalog";
 import {
   type AppServerNotification,
@@ -152,6 +153,8 @@ export interface ClaudeClientOptions {
   keepRuntime?: (threadId: string) => boolean;
   /** Settings > Features: close idle Claude processes. */
   idleClose?: () => boolean;
+  /** Settings > Features: the most steps one turn may take (default CLAUDE_MAX_TURNS). */
+  maxTurns?: () => number;
   /** Whether a saved session can be resumed from `cwd` (default: its transcript is on disk). */
   canResume?: (threadId: string, cwd: string) => Promise<boolean>;
 }
@@ -161,6 +164,8 @@ type QueryFactory = (params: Parameters<typeof query>[0]) => Query;
 export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   /** A Claude process (~450 MB) with no turn for this long closes; the next message reopens it. */
   static IDLE_CLOSE_MS = 10 * 60_000;
+  /** Under memory pressure, idle processes close once unused this long. */
+  static MEMORY_CLOSE_MIN_IDLE_MS = 60_000;
   /** At most this many Claude processes stay open; the least recently used idle one closes. */
   static MAX_LIVE_RUNTIMES = 3;
   static IDLE_CHECK_MS = 60_000;
@@ -195,6 +200,41 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return this.#running;
   }
 
+  #maxTurns(): number {
+    return this.#options.maxTurns?.() ?? CLAUDE_MAX_TURNS;
+  }
+
+  /**
+   * Memory is short (the PC's, or the owner's limit for Sahkarmi): closes every idle Claude
+   * process now instead of after 10 minutes. Sessions stay on disk and resume on the next
+   * message. Returns the closed thread ids.
+   */
+  closeIdleRuntimesNow(now = Date.now()): string[] {
+    if (this.#options.idleClose && !this.#options.idleClose()) return [];
+    const closed: string[] = [];
+    for (const runtime of [...this.#threads.values()]) {
+      // A chat used a moment ago is likely to get the next message: closing it would only
+      // make that reply slower.
+      if (now - runtime.lastUsedAt < ClaudeAgentClient.MEMORY_CLOSE_MIN_IDLE_MS) continue;
+      if (!this.#canClose(runtime)) continue;
+      this.#park(runtime, "memory is short");
+      closed.push(runtime.id);
+    }
+    return closed;
+  }
+
+  /**
+   * The owner changed which tools this coworker gets: an idle process closes now so the next
+   * message reopens it (same session, full context) with the new tools. A working one is left
+   * alone; it picks the change up the next time it closes.
+   */
+  refreshRuntime(threadId: string): boolean {
+    const runtime = this.#threads.get(threadId);
+    if (!runtime || !this.#canClose(runtime)) return false;
+    this.#park(runtime, "its tools changed");
+    return true;
+  }
+
   /** Claude processes open right now (one per open conversation). */
   get liveRuntimes(): number {
     return this.#threads.size;
@@ -224,10 +264,15 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
   closeIdleRuntimes(now = Date.now()): string[] {
     if (this.#options.idleClose && !this.#options.idleClose()) return [];
     const closed: string[] = [];
+    // Short of memory (the PC's, or the owner's limit): an idle process closes after a minute.
+    const short = readMemory().pressure !== "ok";
+    const idleFor = short
+      ? ClaudeAgentClient.MEMORY_CLOSE_MIN_IDLE_MS
+      : ClaudeAgentClient.IDLE_CLOSE_MS;
     for (const runtime of [...this.#threads.values()]) {
-      if (now - runtime.lastUsedAt < ClaudeAgentClient.IDLE_CLOSE_MS) continue;
+      if (now - runtime.lastUsedAt < idleFor) continue;
       if (!this.#canClose(runtime)) continue;
-      this.#park(runtime, "idle for 10 minutes");
+      this.#park(runtime, short ? "memory is short" : "idle for 10 minutes");
       closed.push(runtime.id);
     }
     return closed;
@@ -529,7 +574,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         permissionMode: "default",
         includePartialMessages: true,
         // A runaway tool loop stops here instead of running all night on the owner's plan.
-        maxTurns: CLAUDE_MAX_TURNS,
+        maxTurns: this.#maxTurns(),
         additionalDirectories: config.additionalDirectories,
         canUseTool,
         mcpServers,
@@ -870,7 +915,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         : "failed";
     const error =
       message.subtype === "error_max_turns"
-        ? `Stopped after ${CLAUDE_MAX_TURNS} steps in one turn, so a loop cannot run forever. Ask the coworker to continue if the work is not finished.`
+        ? `Stopped after ${this.#maxTurns()} steps in one turn, so a loop cannot run forever. Ask the coworker to continue if the work is not finished, or raise "Most steps in one Claude turn" in Settings > Features.`
         : "errors" in message
           ? message.errors.join("\n")
           : null;

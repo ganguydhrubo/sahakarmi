@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { apisEn } from "./i18n-apis";
+import { assignEn } from "./i18n-assign";
 import { backgroundEn } from "./i18n-background";
 import { engineEn } from "./i18n-engine";
 import { extensionsEn } from "./i18n-extensions";
@@ -305,6 +306,7 @@ const en = {
   ...securityEn,
   ...apisEn,
   ...engineEn,
+  ...assignEn,
   ...mcpEn,
   ...onboardingEn,
 };

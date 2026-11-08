@@ -288,6 +288,7 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     setEngineSettings: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetEngineSettings, input),
     performance: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPerformance),
+    resourceStatus: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResourceStatus),
   },
   knowledge: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),
@@ -317,6 +318,11 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     list: (input) => ipcRenderer.invoke(IPC_CHANNELS.memoryList, input),
     save: (entry) => ipcRenderer.invoke(IPC_CHANNELS.memorySave, entry),
     delete: (id, workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, { id, workspaceId }),
+  },
+  assignments: {
+    overview: () => ipcRenderer.invoke(IPC_CHANNELS.assignmentsOverview),
+    set: (kind, id, access) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsSet, { kind, id, access }),
   },
   composio: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.composioGetStatus),

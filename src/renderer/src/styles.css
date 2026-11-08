@@ -14602,6 +14602,108 @@ fieldset.memory-filters {
   grid-column: 1 / -1;
 }
 
+/* Settings > Features: the owner's memory limit. */
+.memory-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--surface-3);
+  padding-top: 10px;
+}
+
+.memory-limit h4 {
+  margin: 0;
+}
+
+.memory-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.memory-presets button {
+  border: 1px solid var(--surface-4);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.memory-presets button[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+
+.memory-meter {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.memory-meter span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  transition: width 0.3s ease;
+}
+
+.memory-status[data-level="warn"] .memory-meter span {
+  background: var(--warning);
+}
+
+.memory-status[data-level="over"] .memory-meter span {
+  background: var(--danger);
+}
+
+.memory-meter i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-secondary);
+}
+
+.memory-line {
+  margin: 4px 0 0;
+}
+
+.memory-alert {
+  color: var(--warning);
+}
+
+.memory-suggest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.memory-suggest span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.memory-groups ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-groups li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
 /* Team runs: owner's check command, honest verdicts, performance. */
 .orch-check {
   display: flex;
@@ -14771,4 +14873,86 @@ fieldset.memory-filters {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Assign an API, app, skill or MCP server to coworkers; Settings > Assignments overview. */
+.assign-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.assign-inline .assign-access {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.assignments {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.assignments-group {
+  width: 100%;
+}
+
+.assignments-group h3 {
+  margin: 8px 0 6px;
+}
+
+.assignments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assignments-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.assignments-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.assignments-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assignments-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.assignments-badge[data-ok="true"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.assignments-note {
+  color: var(--warning);
 }

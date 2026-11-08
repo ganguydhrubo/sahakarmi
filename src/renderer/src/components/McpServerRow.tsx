@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import type {
   BotSummary,
   McpDiagnosisCode,
@@ -7,6 +7,7 @@ import type {
   McpServerSummary,
 } from "../../../shared/ipc";
 import { type MessageKey, t } from "../i18n";
+import { AssignButton } from "./AssignAccess";
 
 const DIAGNOSIS: Record<McpDiagnosisCode, MessageKey> = {
   "command-not-found": "mcpxDiag_commandNotFound",
@@ -79,9 +80,7 @@ interface Props {
 }
 
 export function McpServerRow(props: Props) {
-  const [choosing, setChoosing] = createSignal(false);
   const status = () => props.server.status;
-  const scope = () => props.server.coworkerIds;
   const fixButton = (action: McpFixAction | undefined) => (
     <Show when={action && props.fixes.has(action)}>
       <button type="button" disabled={props.busy} onClick={() => action && props.onFix(action)}>
@@ -89,11 +88,6 @@ export function McpServerRow(props: Props) {
       </button>
     </Show>
   );
-  const toggleBot = (id: string, on: boolean) => {
-    const current = scope() ?? props.bots.map((bot) => bot.id);
-    const next = on ? [...new Set([...current, id])] : current.filter((entry) => entry !== id);
-    props.onCoworkers(next.length === props.bots.length ? null : next);
-  };
 
   return (
     <li class="extension-item mcp-server-item">
@@ -206,39 +200,7 @@ export function McpServerRow(props: Props) {
             {t("mcpxShared")}
           </label>
         </Show>
-        <small class="settings-meta">
-          {t("mcpxCoworkers")}:{" "}
-          <button type="button" class="link-button" onClick={() => setChoosing(!choosing())}>
-            {scope() === null || scope() === undefined
-              ? t("mcpxAllCoworkers")
-              : t("mcpxSomeCoworkers", { count: String(scope()?.length ?? 0) })}
-          </button>
-        </small>
-        <Show when={choosing()}>
-          <fieldset class="mcp-coworkers">
-            <legend>{t("mcpxChooseCoworkers")}</legend>
-            <label>
-              <input
-                type="checkbox"
-                checked={scope() === null || scope() === undefined}
-                onChange={(event) => props.onCoworkers(event.currentTarget.checked ? null : [])}
-              />{" "}
-              {t("mcpxAllCoworkers")}
-            </label>
-            <For each={props.bots}>
-              {(bot) => (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={scope() === null || scope() === undefined || scope()?.includes(bot.id)}
-                    onChange={(event) => toggleBot(bot.id, event.currentTarget.checked)}
-                  />{" "}
-                  {bot.name}
-                </label>
-              )}
-            </For>
-          </fieldset>
-        </Show>
+        <AssignButton kind="mcp" id={props.server.id} name={props.server.name} />
       </span>
       <button type="button" disabled={props.busy} onClick={props.onTest}>
         {t("mcpxTest")}

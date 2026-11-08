@@ -10,6 +10,26 @@ export interface WhatsNewFeature {
 
 /** One entry per release that is worth a dialog; versions without one show nothing. */
 const RELEASE_FEATURES: Record<string, WhatsNewFeature[]> = {
+  "0.26.0": [
+    {
+      icon: "🧠",
+      badge: "New",
+      title: "You choose how much memory Sahkarmi uses",
+      desc: "Settings > Features > Memory limit: pick 4 GB, 8 GB or any size. Live use, a forecast and a suggestion for this PC. Running work is never stopped.",
+    },
+    {
+      icon: "🎯",
+      badge: "New",
+      title: "Assign tools to who should use them",
+      desc: "Give APIs, apps, skills and MCP servers to a coworker, a workspace, the CEO or every coworker on an AI engine. See it all in Settings > Assignments.",
+    },
+    {
+      icon: "🛠️",
+      badge: "Fixed",
+      title: 'Fewer "short of memory" waits, steadier apps and Antigravity',
+      desc: "A working coworker is never held for memory. Antigravity runs even when an MCP server fails, and shows each account's email. Connected apps stay connected.",
+    },
+  ],
   "0.25.1": [
     {
       icon: "🔌",

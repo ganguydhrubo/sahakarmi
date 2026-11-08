@@ -272,9 +272,9 @@ export class McpServerStore {
    * Enabled servers for a runtime, read when a coworker's chat starts. With `botId`, only the
    * servers that coworker may use (MCP-12). A server still holding a template value is left out.
    */
-  enabled(botId?: string): McpServerWire[] {
+  enabled(botId?: string, allow: (serverId: string) => boolean = () => true): McpServerWire[] {
     return this.#servers
-      .filter((server) => server.enabled)
+      .filter((server) => server.enabled && allow(server.id))
       .filter(
         (server) =>
           botId === undefined ||

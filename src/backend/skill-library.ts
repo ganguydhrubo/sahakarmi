@@ -276,7 +276,11 @@ function looksSecret(text: string): boolean {
 }
 
 /** Learned skill names for a coworker's instructions, read synchronously at thread start. */
-export function learnedSkillNames(sharedRoot: string, limit = 30): string[] {
+export function learnedSkillNames(
+  sharedRoot: string,
+  limit = 30,
+  allow: (id: string) => boolean = () => true,
+): string[] {
   const root = learnedRoot(sharedRoot);
   let names: string[];
   try {
@@ -288,6 +292,7 @@ export function learnedSkillNames(sharedRoot: string, limit = 30): string[] {
     .filter((name) => name.endsWith(".md"))
     .flatMap((name) => {
       const id = name.slice(0, -3);
+      if (!allow(id)) return [];
       try {
         const skill = parseLearned(id, readFileSync(join(root, name), "utf8"));
         return skill ? [`${skill.name} (${LEARNED_FOLDER}/${name})`] : [];
@@ -299,7 +304,10 @@ export function learnedSkillNames(sharedRoot: string, limit = 30): string[] {
 }
 
 /** Names of installed skills, read synchronously when a coworker thread starts. */
-export function installedSkillNames(sharedRoot: string): string[] {
+export function installedSkillNames(
+  sharedRoot: string,
+  allow: (id: string) => boolean = () => true,
+): string[] {
   const root = join(sharedRoot, "Skills");
   let names: string[];
   try {
@@ -308,7 +316,7 @@ export function installedSkillNames(sharedRoot: string): string[] {
     return [];
   }
   return MARKETPLACE_SKILLS.filter((skill) => {
-    if (!names.includes(`${skill.id}.md`)) return false;
+    if (!names.includes(`${skill.id}.md`) || !allow(skill.id)) return false;
     try {
       return readFileSync(join(root, `${skill.id}.md`), "utf8").startsWith(marker(skill.id));
     } catch {
