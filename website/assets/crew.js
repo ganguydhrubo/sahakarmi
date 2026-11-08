@@ -63,22 +63,16 @@ async function start() {
     const w = stage.clientWidth;
     const h = stage.clientHeight;
     renderer.setSize(w, h, false);
-    const narrow = w < 640;
-    const spots = narrow
-      ? [[-1.3, -1.4], [0, -1.4], [1.3, -1.4], [-0.7, 1.15], [0.7, 1.15]]
-      : [[-2.6, 0], [-1.3, 0], [0, 0], [1.3, 0], [2.6, 0]];
-    crew.forEach((c, i) => c.root.position.set(spots[i][0], 0, spots[i][1]));
-    const span = narrow ? 4.3 : 6.9;
+    // The brand faces stand in one straight row, seen from the front.
+    crew.forEach((c, i) => c.root.position.set((i - 2) * 1.05, 0, 0));
     const aspect = w / h;
-    const halfW = span / 2;
-    const halfH = Math.max(halfW / aspect, 1.15);
+    const halfH = Math.max(5.5 / 2 / aspect, 0.62);
     camera.left = -halfH * aspect;
     camera.right = halfH * aspect;
     camera.top = halfH;
     camera.bottom = -halfH;
-    if (narrow) camera.position.set(0, 6.2, 8.2);
-    else camera.position.set(4.6, 4.4, 7.2);
-    camera.lookAt(0, narrow ? 0.2 : 0.55, 0);
+    camera.position.set(0, 2.4, 9);
+    camera.lookAt(0, 0.4, 0);
     camera.updateProjectionMatrix();
   }
 

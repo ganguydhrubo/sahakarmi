@@ -379,7 +379,7 @@
     .crew-stage img { object-fit: cover; }
     .crew-stage.is-live img { display: none; }
     .crew-stage canvas { cursor: pointer; }
-    @media (max-width: 639px) { .crew-stage { aspect-ratio: 1 / 1; min-height: 0; } }
+    @media (max-width: 639px) { .crew-stage { aspect-ratio: 16 / 9; min-height: 0; } }
     .crew-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; list-style: none; padding: 0; }
     .crew-chip { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card); color: var(--text); font: inherit; cursor: pointer; text-align: left; min-height: 44px; }
     .crew-chip:hover { border-color: var(--c); }
@@ -1271,21 +1271,21 @@
         <div class="section-head reveal">
           <p class="eyebrow" data-i18n="crewEyebrow">Meet the crew</p>
           <h2 id="crew-h" data-i18n="crewH2">Five coworker buddies, always on duty.</h2>
-          <p class="lead" data-i18n="crewLead">Tap a coworker to say hello. Each one is a real 3D character with its own walk, wave and glow.</p>
+          <p class="lead" data-i18n="crewLead">Tap a coworker to say hello. Each one is a real 3D character that floats, blinks and bounces with joy.</p>
         </div>
         <div class="crew-stage" id="crew-stage">
-          <img src="/assets/3d/crew-poster.webp" width="1200" height="676" loading="lazy" decoding="async" alt="Five Sahkarmi 3D coworker robots on glowing pedestals: Startup, Publisher, Outreach, Mailer and WhatsApp">
+          <img src="/assets/3d/crew-poster.webp" width="1200" height="513" loading="lazy" decoding="async" alt="The five Sahkarmi brand faces, floating robot heads on glowing pedestals: Startup, Publisher, Outreach, Mailer and WhatsApp">
         </div>
         <ul class="crew-chips">
-          <li><button type="button" class="crew-chip" data-crew="startup" style="--c:#3cc8ff"><i></i><b>Startup</b><span data-i18n="crewStartupP">Plans your launch and builds the first version.</span></button></li>
-          <li><button type="button" class="crew-chip" data-crew="publisher" style="--c:#ff6fb1"><i></i><b>Publisher</b><span data-i18n="crewPublisherP">Writes posts and publishes them after you approve.</span></button></li>
-          <li><button type="button" class="crew-chip" data-crew="outreach" style="--c:#a86bff"><i></i><b>Outreach</b><span data-i18n="crewOutreachP">Finds leads and sends friendly first messages.</span></button></li>
-          <li><button type="button" class="crew-chip" data-crew="mailer" style="--c:#ffb02e"><i></i><b>Mailer</b><span data-i18n="crewMailerP">Drafts and sends your emails and follow-ups.</span></button></li>
-          <li><button type="button" class="crew-chip" data-crew="whatsapp" style="--c:#36e27a"><i></i><b>WhatsApp</b><span data-i18n="crewWhatsappP">Answers customer chats on WhatsApp.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="startup" style="--c:#2aa8ff"><i></i><b>Startup</b><span data-i18n="crewStartupP">Plans your launch and builds the first version.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="publisher" style="--c:#ff3fa8"><i></i><b>Publisher</b><span data-i18n="crewPublisherP">Writes posts and publishes them after you approve.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="outreach" style="--c:#7a3cff"><i></i><b>Outreach</b><span data-i18n="crewOutreachP">Finds leads and sends friendly first messages.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="mailer" style="--c:#ff8c00"><i></i><b>Mailer</b><span data-i18n="crewMailerP">Drafts and sends your emails and follow-ups.</span></button></li>
+          <li><button type="button" class="crew-chip" data-crew="whatsapp" style="--c:#22e06a"><i></i><b>WhatsApp</b><span data-i18n="crewWhatsappP">Answers customer chats on WhatsApp.</span></button></li>
         </ul>
         <div class="crew-bar">
-          <span data-i18n="crewHint">Tip: tap any robot in the picture to make it wave.</span>
-          <button type="button" class="btn btn-secondary btn-small crew-walk" id="crew-walk" aria-pressed="false"><span data-i18n="crewWalk">Walk / hover</span></button>
+          <span data-i18n="crewHint">Tip: tap any robot in the picture to make it bounce.</span>
+          <button type="button" class="btn btn-secondary btn-small crew-walk" id="crew-walk" aria-pressed="false"><span data-i18n="crewWalk">Fly</span></button>
         </div>
       </div>
     </section>
@@ -1817,9 +1817,9 @@
         kabirP: "Security: reviews risky requests and keeps an eye on permissions.",
         crewEyebrow: "Meet the crew",
         crewH2: "Five coworker buddies, always on duty.",
-        crewLead: "Tap a coworker to say hello. Each one is a real 3D character with its own walk, wave and glow.",
-        crewHint: "Tip: tap any robot in the picture to make it wave.",
-        crewWalk: "Walk / hover",
+        crewLead: "Tap a coworker to say hello. Each one is a real 3D character that floats, blinks and bounces with joy.",
+        crewHint: "Tip: tap any robot in the picture to make it bounce.",
+        crewWalk: "Fly",
         crewStartupP: "Plans your launch and builds the first version.",
         crewPublisherP: "Writes posts and publishes them after you approve.",
         crewOutreachP: "Finds leads and sends friendly first messages.",
@@ -2237,9 +2237,9 @@
         kabirP: "सिक्योरिटी: जोखिम वाले अनुरोधों की जाँच और अनुमतियों पर नज़र.",
         crewEyebrow: "मिलिए टीम से",
         crewH2: "पाँच सहकर्मी साथी, हमेशा काम पर.",
-        crewLead: "किसी सहकर्मी पर टैप करके हैलो कहें. हर एक असली 3D किरदार है, अपनी चाल, हाथ हिलाने और चमक के साथ.",
-        crewHint: "सुझाव: तस्वीर में किसी भी रोबोट पर टैप करें, वह हाथ हिलाएगा.",
-        crewWalk: "चलें / उड़ें",
+        crewLead: "किसी सहकर्मी पर टैप करके हैलो कहें. हर एक असली 3D किरदार है, जो तैरता है, पलक झपकाता है और खुशी से उछलता है.",
+        crewHint: "सुझाव: तस्वीर में किसी भी रोबोट पर टैप करें, वह खुशी से उछलेगा.",
+        crewWalk: "उड़ें",
         crewStartupP: "आपके लॉन्च की योजना बनाता है और पहला वर्शन तैयार करता है.",
         crewPublisherP: "पोस्ट लिखता है और आपकी मंज़ूरी के बाद प्रकाशित करता है.",
         crewOutreachP: "लीड ढूँढता है और दोस्ताना पहले संदेश भेजता है.",
