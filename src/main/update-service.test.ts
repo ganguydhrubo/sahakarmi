@@ -418,6 +418,54 @@ describe("UpdateService", () => {
     expect(service.getStatus().message).not.toContain("network details");
   });
 
+  it("keeps a background check's passing GitHub or network problem off the screen and tries again soon", async () => {
+    vi.useFakeTimers();
+    const updater = new FakeUpdater();
+    // Like electron-updater: an "error" event, and the check rejects too.
+    const gatewayTimeout = async () => {
+      const error = new Error("HttpError: 504 \n<h1>504 Gateway Time-out</h1>");
+      updater.emit("error", error);
+      throw error;
+    };
+    updater.checkForUpdates
+      .mockImplementationOnce(gatewayTimeout)
+      .mockImplementationOnce(async () => {
+        updater.emit("update-not-available", { version: "0.1.0" });
+        return null;
+      })
+      .mockImplementationOnce(gatewayTimeout);
+    const service = new UpdateService(updater as unknown as AppUpdater, {
+      currentVersion: "0.1.0",
+      enabled: true,
+      initialCheckDelayMs: 10,
+    });
+    const phases: string[] = [];
+    service.on("status", (status) => phases.push(status.phase));
+    service.start(true);
+    try {
+      // The check at start meets GitHub's 504: no "Could not update" card, the screen stays as it was.
+      await vi.advanceTimersByTimeAsync(10);
+      expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+      expect(phases).not.toContain("error");
+      expect(service.getStatus()).toMatchObject({ phase: "idle", message: null });
+
+      // It tries again by itself after two minutes, not fifteen.
+      await vi.advanceTimersByTimeAsync(2 * 60 * 1_000);
+      expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(service.getStatus().phase).toBe("up-to-date");
+
+      // A check the owner clicked still says what went wrong.
+      await service.checkForUpdates();
+      expect(service.getStatus()).toMatchObject({
+        phase: "error",
+        message: expect.stringContaining("GitHub's download server is not answering"),
+      });
+    } finally {
+      service.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it("explains known causes in plain words", () => {
     expect(reasonOf(new Error("net::ERR_INTERNET_DISCONNECTED"))).toBe("no internet connection");
     expect(reasonOf(new Error("HttpError: 504 Gateway Time-out"))).toMatch(
