@@ -43,25 +43,71 @@ export type CenterView =
   | "activity"
   | "settings";
 
+/** Rail groups, top to bottom; a thin divider separates each group. */
+type RailGroup = "work" | "knowledge" | "automate" | "business" | "app";
+
 const RAIL_ITEMS: Array<{
   view: Exclude<CenterView, "coworker">;
   label: MessageKey;
   feature: string | null;
+  group: RailGroup;
   icon: () => JSX.Element;
 }> = [
-  { view: "tasks", label: "navTasks", feature: null, icon: TasksIcon },
-  { view: "orchestrator", label: "navOrchestrator", feature: null, icon: OrchestratorIcon },
-  { view: "memory", label: "navMemory", feature: null, icon: MemoryIcon },
-  { view: "knowledge", label: "navKnowledge", feature: "knowledge-base", icon: KnowledgeIcon },
-  { view: "files", label: "sharedFiles", feature: "shared-files", icon: FilesIcon },
-  { view: "approvals", label: "approvals", feature: null, icon: ApprovalsIcon },
-  { view: "schedules", label: "navSchedules", feature: "schedules", icon: ScheduleIcon },
-  { view: "routines", label: "navRoutines", feature: "schedules", icon: RoutineIcon },
-  { view: "usage", label: "navUsage", feature: "model-usage", icon: UsageIcon },
-  { view: "business", label: "navBusiness", feature: "business-targets", icon: BusinessIcon },
-  { view: "marketplace", label: "navMarketplace", feature: "marketplace", icon: MarketplaceIcon },
-  { view: "activity", label: "navActivity", feature: null, icon: ActivityIcon },
-  { view: "settings", label: "settings", feature: null, icon: SettingsIcon },
+  { view: "tasks", label: "navTasks", feature: null, group: "work", icon: TasksIcon },
+  {
+    view: "orchestrator",
+    label: "navOrchestrator",
+    feature: null,
+    group: "work",
+    icon: OrchestratorIcon,
+  },
+  { view: "approvals", label: "approvals", feature: null, group: "work", icon: ApprovalsIcon },
+  { view: "activity", label: "navActivity", feature: null, group: "work", icon: ActivityIcon },
+  { view: "memory", label: "navMemory", feature: null, group: "knowledge", icon: MemoryIcon },
+  {
+    view: "knowledge",
+    label: "navKnowledge",
+    feature: "knowledge-base",
+    group: "knowledge",
+    icon: KnowledgeIcon,
+  },
+  {
+    view: "files",
+    label: "sharedFiles",
+    feature: "shared-files",
+    group: "knowledge",
+    icon: FilesIcon,
+  },
+  {
+    view: "schedules",
+    label: "navSchedules",
+    feature: "schedules",
+    group: "automate",
+    icon: ScheduleIcon,
+  },
+  {
+    view: "routines",
+    label: "navRoutines",
+    feature: "schedules",
+    group: "automate",
+    icon: RoutineIcon,
+  },
+  { view: "usage", label: "navUsage", feature: "model-usage", group: "business", icon: UsageIcon },
+  {
+    view: "business",
+    label: "navBusiness",
+    feature: "business-targets",
+    group: "business",
+    icon: BusinessIcon,
+  },
+  {
+    view: "marketplace",
+    label: "navMarketplace",
+    feature: "marketplace",
+    group: "business",
+    icon: MarketplaceIcon,
+  },
+  { view: "settings", label: "settings", feature: null, group: "app", icon: SettingsIcon },
 ];
 
 interface SidebarProps {
@@ -1418,6 +1464,15 @@ export function AppNavigation(props: {
   helpOpen?: boolean;
   onToggleHelp?: () => void;
 }) {
+  const railItems = () =>
+    RAIL_ITEMS.filter(
+      (item) =>
+        item.view !== "settings" &&
+        (item.feature === null ||
+          featureOn(item.feature) ||
+          (item.feature === "business-targets" && featureOn("integrations"))),
+    );
+
   return (
     <nav class="app-icon-rail" aria-label="Sahkarmi">
       <button
@@ -1432,34 +1487,31 @@ export function AppNavigation(props: {
         <LogoMark size={28} />
       </button>
       <div class="app-rail-links">
-        <For
-          each={RAIL_ITEMS.filter(
-            (item) =>
-              item.view !== "settings" &&
-              (item.feature === null ||
-                featureOn(item.feature) ||
-                (item.feature === "business-targets" && featureOn("integrations"))),
-          )}
-        >
-          {(item) => (
-            <button
-              type="button"
-              class="rail-nav-item app-rail-button"
-              classList={{ "rail-nav-active": props.view === item.view }}
-              data-tour={item.view}
-              aria-label={t(item.label)}
-              title={t(item.label)}
-              aria-current={props.view === item.view ? "page" : undefined}
-              onClick={() => props.onSelectView(item.view)}
-            >
-              {item.icon()}
-              <Show when={item.view === "approvals" && props.pendingApprovals > 0}>
-                <span class="rail-badge">
-                  {props.pendingApprovals}
-                  <span class="sr-only"> {t("pending")}</span>
-                </span>
+        <For each={railItems()}>
+          {(item, index) => (
+            <>
+              <Show when={index() > 0 && railItems()[index() - 1]?.group !== item.group}>
+                <span class="app-rail-divider" aria-hidden="true" />
               </Show>
-            </button>
+              <button
+                type="button"
+                class="rail-nav-item app-rail-button"
+                classList={{ "rail-nav-active": props.view === item.view }}
+                data-tour={item.view}
+                aria-label={t(item.label)}
+                title={t(item.label)}
+                aria-current={props.view === item.view ? "page" : undefined}
+                onClick={() => props.onSelectView(item.view)}
+              >
+                {item.icon()}
+                <Show when={item.view === "approvals" && props.pendingApprovals > 0}>
+                  <span class="rail-badge">
+                    {props.pendingApprovals}
+                    <span class="sr-only"> {t("pending")}</span>
+                  </span>
+                </Show>
+              </button>
+            </>
           )}
         </For>
       </div>

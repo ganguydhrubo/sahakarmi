@@ -2,7 +2,7 @@
 .schedule-calendar {
   margin: 0 0 20px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   overflow: hidden;
 }
@@ -10,17 +10,17 @@
 .calendar-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border-bottom: 1px solid var(--border);
 }
 
 .calendar-nav,
 .calendar-modes {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
   margin: 0;
   padding: 0;
@@ -30,10 +30,10 @@
 .calendar-nav button,
 .calendar-modes button {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
-  padding: 4px 10px;
+  padding: 4px 12px;
 }
 
 .calendar-modes .calendar-mode-active {
@@ -42,7 +42,7 @@
 }
 
 .calendar-title {
-  margin-left: 6px;
+  margin-left: 8px;
 }
 
 .calendar-grid {
@@ -58,7 +58,7 @@
 
 .calendar-grid > .calendar-day {
   min-height: 96px;
-  padding: 6px;
+  padding: 8px;
   background: var(--surface);
 }
 
@@ -83,7 +83,7 @@
 
 .calendar-day ul {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -92,8 +92,8 @@
 .calendar-entry {
   display: grid;
   gap: 1px;
-  padding: 3px 5px;
-  border-radius: 6px;
+  padding: 4px 4px;
+  border-radius: var(--radius-xs);
   border-left: 3px solid var(--accent);
   background: var(--surface-2);
   font-size: 0.78em;
@@ -150,7 +150,7 @@
 
 .upcoming-runs ul {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -158,7 +158,7 @@
 
 .upcoming-runs li {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
 }
 
@@ -187,7 +187,7 @@
 
 .routine-list {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -195,12 +195,12 @@
 
 .routine-list-item {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: inherit;
   text-align: left;
@@ -259,7 +259,7 @@
 .routine-details {
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 
@@ -278,12 +278,12 @@
 .routine-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .routine-diagram {
   display: grid;
-  gap: 18px;
+  gap: 20px;
   margin: 16px 0;
   padding: 0;
   list-style: none;
@@ -292,11 +292,11 @@
 .routine-node {
   position: relative;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   max-width: 560px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--surface-2);
 }
 
@@ -328,7 +328,7 @@
 
 .routine-node-head {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
 }
 
@@ -350,7 +350,7 @@
 
 .routine-history {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -358,7 +358,7 @@
 
 .routine-history li {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
 }
 
@@ -378,12 +378,12 @@
 
 .routine-field legend {
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .routine-step-editor {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -392,11 +392,11 @@
 .routine-step-editor li {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 10px;
+  gap: 12px;
   align-items: start;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 
 .routine-step-number {
@@ -412,7 +412,7 @@
 .routine-step-fields,
 .routine-step-tools {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .routine-step-fields label {
@@ -466,7 +466,7 @@
   width: min(420px, 100%);
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text-primary);
   font: inherit;
@@ -496,7 +496,7 @@
   margin: 0 auto 28px;
   max-width: 560px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 .routine-canvas .routine-diagram {
   max-width: 560px;
@@ -505,7 +505,7 @@
 }
 .routine-canvas .routine-node {
   max-width: none;
-  padding: 18px;
+  padding: 20px;
   background: var(--surface-1);
   box-shadow: 0 5px 18px rgb(var(--shade-rgb) / 0.06);
 }
@@ -518,17 +518,17 @@
 .routine-inspector {
   min-height: 0;
   overflow-y: auto;
-  padding: 22px 18px;
+  padding: 24px 20px;
   border-left: 1px solid var(--border);
   background: var(--surface-2);
 }
 .routine-inspector .routine-details-head {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 .routine-inspector .routine-details-head h2 {
-  font-size: 18px;
+  font-size: var(--fs-xl);
   line-height: 1.35;
 }
 .routine-inspector .routine-actions {
@@ -536,11 +536,11 @@
 }
 .routine-inspector .routine-history {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 .routine-inspector > h3 {
-  margin-top: 26px;
-  font-size: 13px;
+  margin-top: 28px;
+  font-size: var(--fs-sm);
   color: var(--text-secondary);
 }
 .routines-view .routine-editor {
@@ -580,18 +580,18 @@
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--primary-rgb) / 0.12);
   color: var(--primary);
   flex: none;
 }
 
 .routine-state-pill {
-  padding: 2px 10px;
+  padding: 2px 12px;
   border-radius: 999px;
   background: rgb(46 157 91 / 0.14);
   color: #1f7a45;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   font-weight: 600;
 }
 
@@ -603,7 +603,7 @@
 /* "When a file is added" trigger: the chosen folder and its picker. */
 .routine-folder-trigger {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin-top: 8px;
 }
 
@@ -613,5 +613,5 @@
 
 .routine-folder-path {
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--fs-xs);
 }
