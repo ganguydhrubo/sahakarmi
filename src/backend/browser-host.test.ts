@@ -305,6 +305,8 @@ describe("a page that ended by itself", () => {
   it("is not read again, so one closed page never breaks the tab list", () => {
     expect(livePage({ webContents: page(true) })).toBeNull();
     expect(livePage(null)).toBeNull();
+    // A page that closed itself (window.close) leaves its view with no page at all.
+    expect(livePage({ webContents: undefined as unknown as ReturnType<typeof page> })).toBeNull();
     expect(livePage({ webContents: page(false) })?.getTitle()).toBe("YouTube");
   });
 });

@@ -842,7 +842,7 @@ export class BrowserHost implements CoworkerBrowser {
   awakePageCount(botId?: string): number {
     let count = 0;
     for (const tab of this.#tabs.values()) {
-      if (!tab.view || tab.view.webContents.isDestroyed()) continue;
+      if (!livePage(tab.view)) continue;
       if (botId === undefined || tab.ownerBotId === botId) count += 1;
     }
     return count;
@@ -952,7 +952,7 @@ export class BrowserHost implements CoworkerBrowser {
     tab.stale = false;
     tab.ownerTouched = false;
     this.#unmountView(view);
-    if (!view.webContents.isDestroyed()) view.webContents.close();
+    livePage(view)?.close();
   }
 
   /**
@@ -961,7 +961,9 @@ export class BrowserHost implements CoworkerBrowser {
    */
   #dropDeadPage(tab: InternalTab): boolean {
     const view = tab.view;
-    if (!view?.webContents.isDestroyed()) return false;
+    // A page that closed itself (window.close) or was closed from outside leaves its view with
+    // no page at all, not a destroyed one: reading it threw, and the tab never opened again.
+    if (!view || livePage(view)) return false;
     tab.view = null;
     tab.revision += 1;
     tab.stale = false;
@@ -992,7 +994,7 @@ export class BrowserHost implements CoworkerBrowser {
       awake += 1;
       if (this.#visible && this.#attachedView === view) continue;
       if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) continue;
-      if (view.webContents.isCurrentlyAudible()) continue;
+      if (livePage(view)?.isCurrentlyAudible()) continue;
       if (now - tab.lastUsed < BrowserHost.IDLE_SLEEP_MS) {
         candidates.push(tab);
         continue;
@@ -1021,7 +1023,7 @@ export class BrowserHost implements CoworkerBrowser {
     if (!view) return false;
     if (this.#visible && this.#attachedView === view) return true;
     if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) return true;
-    return !view.webContents.isDestroyed() && view.webContents.isCurrentlyAudible();
+    return livePage(view)?.isCurrentlyAudible() ?? false;
   }
 
   /**
@@ -1179,7 +1181,7 @@ export class BrowserHost implements CoworkerBrowser {
       const view = tab.view;
       tab.view = null;
       this.#unmountView(view);
-      if (!view.webContents.isDestroyed()) view.webContents.close();
+      livePage(view)?.close();
     }
 
     if (this.#activeTabId === tabId) {
@@ -1483,7 +1485,7 @@ export class BrowserHost implements CoworkerBrowser {
       for (const tab of this.#tabs.values()) {
         if (!tab.view) continue;
         this.#unmountView(tab.view);
-        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
+        livePage(tab.view)?.close();
         tab.view = null;
       }
       this.#tabs.clear();
