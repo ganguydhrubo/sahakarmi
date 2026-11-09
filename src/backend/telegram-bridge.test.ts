@@ -7,6 +7,7 @@ import type {
   ConversationMessage,
   ConversationSnapshot,
   DecideApprovalInput,
+  SecureInputRequest,
 } from "../shared/ipc";
 import { ApprovalStore } from "./approval-store";
 import { SecretCodec } from "./secret-store";
@@ -25,8 +26,16 @@ const STRANGER = { id: 99, type: "private", first_name: "Someone" };
 function fakeTelegram(options: { failSend?: () => boolean } = {}) {
   const inbox: Array<{
     update_id: number;
-    message: { text: string; chat: typeof OWNER; from?: { id: number; is_bot?: boolean } };
+    message: {
+      message_id: number;
+      reply_to_message?: { message_id: number };
+      text: string;
+      chat: typeof OWNER;
+      from?: { id: number; is_bot?: boolean };
+    };
   }> = [];
+  const deleted: number[] = [];
+  let nextOwnMessage = 9000;
   const sent: Array<{ chat_id: number; text: string; reply_markup?: unknown }> = [];
   const edits: Array<{ message_id: number; text: string }> = [];
   const answered: string[] = [];
@@ -49,6 +58,10 @@ function fakeTelegram(options: { failSend?: () => boolean } = {}) {
       return reply({ message_id: nextMessage });
     }
     if (method === "sendChatAction") return reply(true);
+    if (method === "deleteMessage") {
+      deleted.push(body.message_id);
+      return reply(true);
+    }
     if (method === "answerCallbackQuery") {
       answered.push(body.callback_query_id);
       return reply(true);
@@ -76,6 +89,7 @@ function fakeTelegram(options: { failSend?: () => boolean } = {}) {
     sent,
     edits,
     answered,
+    deleted,
     /** A tap on an inline button. */
     tap(chat: typeof OWNER, data: string, as?: { id: number }) {
       const id = nextId++;
@@ -90,8 +104,24 @@ function fakeTelegram(options: { failSend?: () => boolean } = {}) {
       } as never);
     },
     /** A real Telegram message always names its sender; `as` spoofs a different one. */
-    say(chat: typeof OWNER, text: string, as?: { id: number; is_bot?: boolean }) {
-      inbox.push({ update_id: nextId++, message: { text, chat, from: as ?? { id: chat.id } } });
+    say(
+      chat: typeof OWNER,
+      text: string,
+      as?: { id: number; is_bot?: boolean },
+      replyTo?: number,
+    ): number {
+      const messageId = nextOwnMessage++;
+      inbox.push({
+        update_id: nextId++,
+        message: {
+          message_id: messageId,
+          ...(replyTo === undefined ? {} : { reply_to_message: { message_id: replyTo } }),
+          text,
+          chat,
+          from: as ?? { id: chat.id },
+        },
+      });
+      return messageId;
     },
   };
 }
@@ -234,14 +264,22 @@ afterEach(async () => {
 });
 
 async function connected(
-  options: { approvals?: boolean; ownerUserId?: number; failSend?: () => boolean } = {},
+  options: {
+    approvals?: boolean;
+    ownerUserId?: number;
+    failSend?: () => boolean;
+    agent?: Partial<TelegramAgent>;
+  } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "sahkarmi-telegram-"));
   const telegram = fakeTelegram({ failSend: options.failSend });
   const store = new ApprovalStore(dir);
   await store.initialize();
   const harness = approvalHarness(store);
-  const coworkers = fakeAgent(options.approvals === false ? {} : harness.methods);
+  const coworkers = fakeAgent({
+    ...(options.approvals === false ? {} : harness.methods),
+    ...options.agent,
+  });
   const bridge = new TelegramBridge({
     userDataPath: dir,
     agent: coworkers.agent,
@@ -764,5 +802,257 @@ describe("TelegramBridge", () => {
     const chunks = telegramChunks(text);
     expect(chunks).toEqual(["a".repeat(3000), "b".repeat(3000)]);
     expect(telegramChunks("x".repeat(9000)).every((chunk) => chunk.length <= 4096)).toBe(true);
+  });
+});
+
+/** The desktop's secure cards, as AgentService keeps them. */
+function secureCards() {
+  let open: SecureInputRequest[] = [];
+  const submitted: Array<{ id: string; value: string }> = [];
+  const dismissed: string[] = [];
+  const takenOver: string[] = [];
+  let emit: (event: AgentEvent) => void = () => {};
+  const close = (id: string) => {
+    open = open.filter((request) => request.id !== id);
+    emit({ type: "secure-inputs-changed", requests: open });
+  };
+  return {
+    submitted,
+    dismissed,
+    takenOver,
+    bind(next: (event: AgentEvent) => void) {
+      emit = next;
+    },
+    ask(kind: SecureInputRequest["kind"], id = `req-${open.length + 1}`) {
+      open = [
+        ...open,
+        {
+          id,
+          botId: "bot-a",
+          kind,
+          label: kind === "username" ? "Gmail email" : kind,
+          origin: "https://accounts.google.com",
+          tabId: "tab-1",
+          createdAt: new Date(Date.now() + 1_000).toISOString(),
+        },
+      ];
+      emit({ type: "secure-inputs-changed", requests: open });
+    },
+    close,
+    methods: {
+      listSecureInputs: () => open,
+      submitSecureInput: async (id: string, value: string) => {
+        submitted.push({ id, value });
+        close(id);
+      },
+      dismissSecureInput: async (id: string) => {
+        dismissed.push(id);
+        close(id);
+      },
+      takeOverSecureInput: (id: string) => {
+        takenOver.push(id);
+        close(id);
+      },
+    } satisfies Partial<TelegramAgent>,
+  };
+}
+
+async function pairedWithCards() {
+  const cards = secureCards();
+  const context = await paired({ agent: cards.methods });
+  cards.bind((event) => context.coworkers.emit(event));
+  return { ...context, cards };
+}
+
+/** The message (and its id) the bridge sent asking for a secure value. */
+async function askedFor(telegram: ReturnType<typeof fakeTelegram>, noun: string, before: number) {
+  await until(() => telegram.sent.slice(before).some((item) => item.text.includes(`your ${noun}`)));
+  const index = telegram.sent.findIndex(
+    (item, at) => at >= before && item.text.includes(`your ${noun}`),
+  );
+  // The fake numbers sent messages from 501 in order.
+  return { message: telegram.sent[index], messageId: 501 + index };
+}
+
+describe("Telegram: codes, login IDs and passwords a coworker asks for", () => {
+  it("asks for an OTP, types the reply into the page and deletes the owner's message", async () => {
+    const { telegram, cards, coworkers } = await pairedWithCards();
+    const before = telegram.sent.length;
+    cards.ask("otp");
+    const { message, messageId } = await askedFor(telegram, "OTP", before);
+    expect(message?.text).toContain("Asha needs your OTP for accounts.google.com");
+    expect(message?.reply_markup).toMatchObject({ force_reply: true });
+    const reply = telegram.say(OWNER, "482913", undefined, messageId);
+    await until(() => cards.submitted.length === 1);
+    expect(cards.submitted).toEqual([{ id: "req-1", value: "482913" }]);
+    await until(() => telegram.deleted.includes(reply));
+    await until(() => telegram.sent.some((item) => item.text.startsWith("Typed into")));
+    // The code never goes to the coworker and is never echoed back.
+    expect(coworkers.asked).toEqual([]);
+    expect(telegram.sent.some((item) => item.text.includes("482913"))).toBe(false);
+    // The request message gives way once it is answered.
+    await until(() => telegram.edits.some((edit) => edit.message_id === messageId));
+  });
+
+  it("answers a login ID sent without replying when it is the only request open", async () => {
+    const { telegram, cards } = await pairedWithCards();
+    const before = telegram.sent.length;
+    cards.ask("username");
+    await askedFor(telegram, "login ID", before);
+    telegram.say(OWNER, "owner@example.com");
+    await until(() => cards.submitted.length === 1);
+    expect(cards.submitted[0]?.value).toBe("owner@example.com");
+  });
+
+  it("keeps a chat sentence out of the page while a request is open", async () => {
+    const { telegram, cards, coworkers } = await pairedWithCards();
+    const before = telegram.sent.length;
+    cards.ask("otp");
+    await askedFor(telegram, "OTP", before);
+    telegram.say(OWNER, "what is the status of the report?");
+    await until(() => coworkers.asked.length === 1);
+    expect(coworkers.asked[0]?.text).toBe("what is the status of the report?");
+    expect(cards.submitted).toEqual([]);
+  });
+
+  it("refuses passwords from Telegram until the owner allows them", async () => {
+    const { telegram, cards, bridge } = await pairedWithCards();
+    expect(bridge.status().allowPasswords).toBe(false);
+    let before = telegram.sent.length;
+    cards.ask("password", "pw-1");
+    const first = await askedFor(telegram, "password", before);
+    expect(first.message?.text).toContain("typed only on your computer");
+    expect(first.message?.reply_markup).toBeUndefined();
+    before = telegram.sent.length;
+    const reply = telegram.say(OWNER, "hunter2", undefined, first.messageId);
+    await until(() => telegram.sent.length > before);
+    expect(telegram.sent.at(-1)?.text).toContain("Not used");
+    expect(telegram.deleted).toContain(reply);
+    expect(cards.submitted).toEqual([]);
+    cards.close("pw-1");
+
+    await bridge.setAllowPasswords(true);
+    expect(bridge.status().allowPasswords).toBe(true);
+    before = telegram.sent.length;
+    cards.ask("password", "pw-2");
+    const second = await askedFor(telegram, "password", before);
+    expect(second.message?.reply_markup).toMatchObject({ force_reply: true });
+    telegram.say(OWNER, "hunter2", undefined, second.messageId);
+    await until(() => cards.submitted.length === 1);
+    expect(cards.submitted).toEqual([{ id: "pw-2", value: "hunter2" }]);
+    expect(telegram.sent.some((item) => item.text.includes("hunter2"))).toBe(false);
+  });
+
+  it("only the paired owner's reply is typed", async () => {
+    const { telegram, cards } = await pairedWithCards();
+    const before = telegram.sent.length;
+    cards.ask("otp");
+    const { messageId } = await askedFor(telegram, "OTP", before);
+    const spoofed = telegram.say(OWNER, "111111", { id: STRANGER.id }, messageId);
+    await until(() =>
+      telegram.sent.some((item) => item.text.startsWith("Only the Telegram account")),
+    );
+    expect(cards.submitted).toEqual([]);
+    expect(telegram.deleted).toContain(spoofed);
+  });
+
+  it("/skip says no and /pc hands the page to the owner at the computer", async () => {
+    const { telegram, cards, coworkers } = await pairedWithCards();
+    let before = telegram.sent.length;
+    cards.ask("otp", "a");
+    await askedFor(telegram, "OTP", before);
+    telegram.say(OWNER, "/skip");
+    await until(() => cards.dismissed.length === 1);
+    expect(cards.dismissed).toEqual(["a"]);
+
+    before = telegram.sent.length;
+    cards.ask("otp", "b");
+    await askedFor(telegram, "OTP", before);
+    telegram.say(OWNER, "/pc");
+    await until(() => cards.takenOver.length === 1);
+    // The take-over that follows was the owner's own choice: no "needs you" notice for it.
+    const sentBefore = telegram.sent.length;
+    coworkers.emit({
+      type: "browser-takeover-changed",
+      state: {
+        humanInControl: true,
+        requests: [
+          {
+            id: "t-own",
+            botId: "bot-a",
+            reason: "OTP on https://accounts.google.com",
+            createdAt: new Date(Date.now() + 1_000).toISOString(),
+          },
+        ],
+      },
+    });
+    // A coworker's own take-over request (a human check) is announced.
+    coworkers.emit({
+      type: "browser-takeover-changed",
+      state: {
+        humanInControl: false,
+        requests: [
+          {
+            id: "t-captcha",
+            botId: "bot-b",
+            reason: "CAPTCHA on the booking page",
+            createdAt: new Date(Date.now() + 1_000).toISOString(),
+          },
+        ],
+      },
+    });
+    await until(() =>
+      telegram.sent.some((item) => item.text.includes("needs you at your computer")),
+    );
+    const notices = telegram.sent
+      .slice(sentBefore)
+      .filter((item) => item.text.includes("needs you"));
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.text).toContain("1xl reporting needs you at your computer: CAPTCHA");
+  });
+});
+
+describe("Telegram: picking a coworker", () => {
+  it("/coworkers shows a button per coworker; a tap switches who gets the next message", async () => {
+    const { telegram, coworkers, bridge } = await paired();
+    const before = telegram.sent.length;
+    telegram.say(OWNER, "/coworkers");
+    await until(() => telegram.sent.length > before);
+    const picker = telegram.sent.at(-1);
+    expect(picker?.text).toContain("Tap a coworker");
+    expect(picker?.reply_markup).toMatchObject({
+      inline_keyboard: [
+        [
+          { text: "✓ Asha", callback_data: "use:bot-a" },
+          { text: "1xl reporting", callback_data: "use:bot-b" },
+        ],
+      ],
+    });
+    telegram.tap(OWNER, "use:bot-b");
+    await until(() =>
+      telegram.sent.some((item) => item.text.startsWith("Now talking to 1xl reporting")),
+    );
+    expect(bridge.status().coworkerId).toBe("bot-b");
+    telegram.say(OWNER, "send me today's numbers");
+    await until(() => coworkers.asked.length === 1);
+    expect(coworkers.asked[0]).toMatchObject({ botId: "bot-b", text: "send me today's numbers" });
+  });
+});
+
+describe("Telegram: the password switch", () => {
+  it("is off by default and kept across a restart once turned on", async () => {
+    const { dir, telegram, bridge } = await connected();
+    expect(bridge.status().allowPasswords).toBe(false);
+    await bridge.setAllowPasswords(true);
+    await bridge.stop();
+    const again = new TelegramBridge({
+      userDataPath: dir,
+      agent: fakeAgent().agent,
+      fetch: telegram.fetcher,
+    });
+    bridges.push(again);
+    await again.initialize();
+    expect(again.status().allowPasswords).toBe(true);
+    expect(JSON.parse(readFileSync(join(dir, "telegram.json"), "utf8")).allowPasswords).toBe(true);
   });
 });

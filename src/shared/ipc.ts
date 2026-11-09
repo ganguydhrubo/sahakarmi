@@ -187,6 +187,7 @@ export const IPC_CHANNELS = {
   telegramSetToken: "telegram:set-token",
   telegramSetCoworker: "telegram:set-coworker",
   telegramUnpair: "telegram:unpair",
+  telegramSetAllowPasswords: "telegram:set-allow-passwords",
   customSkillsList: "custom-skills:list",
   customSkillsAdd: "custom-skills:add",
   customSkillsPreviewGithub: "custom-skills:preview-github",
@@ -1314,7 +1315,8 @@ export interface BrowserTakeoverState {
   requests: BrowserTakeoverRequest[];
 }
 
-export type SecureInputKind = "password" | "otp" | "pin" | "other";
+/** "username": a login ID (user name, email or phone number) the coworker does not know. */
+export type SecureInputKind = "password" | "otp" | "pin" | "username" | "other";
 
 /** A coworker asked the owner to type a password or OTP into a page field it cannot fill itself. */
 export interface SecureInputRequest {
@@ -2813,6 +2815,8 @@ export interface TelegramStatus {
   ownerIdVerified?: boolean;
   /** True when approvals may be decided from Telegram at all. */
   approvalsEnabled?: boolean;
+  /** Passwords and PINs a coworker asks for may be answered from Telegram (off by default). */
+  allowPasswords?: boolean;
 }
 
 export interface TelegramDesktopApi {
@@ -2820,6 +2824,7 @@ export interface TelegramDesktopApi {
   setToken: (token: string) => Promise<TelegramStatus>;
   setCoworker: (botId: string) => Promise<TelegramStatus>;
   unpair: () => Promise<TelegramStatus>;
+  setAllowPasswords: (allow: boolean) => Promise<TelegramStatus>;
 }
 
 export interface ComposioDesktopApi {

@@ -114,6 +114,7 @@ export const bn: Dictionary = {
   secureTitlePassword: "আপনার পাসওয়ার্ড দিন",
   secureTitleOtp: "OTP দিন",
   secureTitlePin: "আপনার PIN দিন",
+  secureTitleUsername: "আপনার লগইন আইডি দিন",
   secureTitleOther: "তথ্যটি দিন",
   secureSubmitOnce: "শুধু একবার {origin}-এ পাঠানো হবে",
   secureSignInPage: "সাইন-ইন পেজ",

@@ -1874,7 +1874,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         // Same origin only; the field is found again if the site redrew its form.
         await this.#browser.fillSecureField(request.tabId, {
           ref: pending.ref,
-          kind: request.kind,
+          // A login ID goes only into the exact field the coworker pointed at.
+          kind: request.kind === "username" ? "other" : request.kind,
           origin: request.origin,
           text: value.slice(0, 1_000),
           submit: pending.submit,
@@ -1970,7 +1971,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       };
     }
     const kind: SecureInputKind =
-      args.kind === "password" || args.kind === "otp" || args.kind === "pin" ? args.kind : "other";
+      args.kind === "password" ||
+      args.kind === "otp" ||
+      args.kind === "pin" ||
+      args.kind === "username"
+        ? args.kind
+        : "other";
     const label =
       typeof args.label === "string" && args.label.trim()
         ? args.label.trim().slice(0, 80)
@@ -7448,6 +7454,7 @@ function secureInputOrigin(url: string): string | null {
 function secureInputNoun(kind: SecureInputKind): string {
   if (kind === "otp") return "OTP";
   if (kind === "pin") return "PIN";
+  if (kind === "username") return "login ID";
   return kind === "password" ? "password" : "value";
 }
 
@@ -7614,14 +7621,14 @@ const SAHKARMI_DYNAMIC_TOOLS = {
       type: "function",
       name: "request_secure_input",
       description:
-        "Ask the owner to type a password, OTP or PIN into one field of the current page through a secure card in their chat. Take a snapshot first and pass that snapshot's tabId, revision and the field's ref. The value goes straight into the page; you never see it. Returns immediately; you are messaged when it is filled.",
+        "Ask the owner to type a password, OTP, PIN or login ID (kind username: a user name, email or phone number you do not know) into one field of the current page through a secure card in their chat or on their phone. Take a snapshot first and pass that snapshot's tabId, revision and the field's ref. The value goes straight into the page; you never see it. Returns immediately; you are messaged when it is filled.",
       inputSchema: {
         type: "object",
         properties: {
           tabId: { type: "string", minLength: 1 },
           revision: { type: "integer" },
           ref: { type: "string", minLength: 1 },
-          kind: { type: "string", enum: ["password", "otp", "pin", "other"] },
+          kind: { type: "string", enum: ["password", "otp", "pin", "username", "other"] },
           label: { type: "string", maxLength: 80 },
           submit: { type: "boolean", description: "Press Enter after filling the field." },
         },
@@ -7955,7 +7962,7 @@ function developerInstructions(
     "Approvals are mandatory: call sahkarmi.request_approval and then STOP before any payment or money movement, sending a message/email/WhatsApp to a customer or vendor, publishing content, submitting a government, tax, bank or marketplace form, deleting data, or sharing personal data. Write the request in everyday English for someone who cannot see your work: what you will do, why, which company or website, what happens if approved, and what gets shared. Never work around a rejection.",
     `To attach a local file to a web page (a photo for a post, a document for a form), use ${SAHKARMI_BROWSER_NAMESPACE}.act with type "upload", the ref of the page's Upload / Add photo / Attach button or file input, and the file's full path in paths. Do not ask the owner to take over just to pick a file.`,
     `To fill Google Sheets or another grid, select the cell (click it, or type its address in the Name box with submit), then use ${SAHKARMI_BROWSER_NAMESPACE}.act with type "paste" and tab-separated rows in text, or type "type" without ref (a tab moves to the next cell, a new line to the next row). Take a screenshot to check it landed. Do not ask the owner to take over just to type or paste.`,
-    "Never type passwords, OTPs or card details yourself. When a page asks for a password, OTP or PIN, take a snapshot and call sahkarmi.request_secure_input with that field's ref, then end your turn. For CAPTCHA, payment pages or anything else only a human should do, call sahkarmi.request_browser_takeover with a short reason and end your turn.",
+    "Never type passwords, OTPs or card details yourself. When a page asks for a password, OTP, PIN or a login ID you do not know, take a snapshot and call sahkarmi.request_secure_input with that field's ref, then end your turn. For CAPTCHA, payment pages or anything else only a human should do, call sahkarmi.request_browser_takeover with a short reason and end your turn.",
     ...teamInstructions(bot, ceo),
     "Use sahkarmi.list_agents to discover other coworkers and sahkarmi.send_message to send them asynchronous messages or local files. Always set replyToMessageId when answering a coworker. Replies are never forwarded automatically.",
     "For work with three or more steps, call sahkarmi.update_plan first with the steps, then again as each step starts and finishes, so the owner sees your progress.",

@@ -6,6 +6,7 @@ const TITLES: Record<SecureInputKind, MessageKey> = {
   password: "secureTitlePassword",
   otp: "secureTitleOtp",
   pin: "secureTitlePin",
+  username: "secureTitleUsername",
   other: "secureTitleOther",
 };
 

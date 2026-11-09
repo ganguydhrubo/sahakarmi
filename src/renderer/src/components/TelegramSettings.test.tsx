@@ -34,6 +34,7 @@ function mockTelegram(first: TelegramStatus) {
     setToken: vi.fn(async (token: string) => (token ? WAITING : OFF)),
     setCoworker: vi.fn(async (botId: string) => ({ ...first, coworkerId: botId })),
     unpair: vi.fn(async () => WAITING),
+    setAllowPasswords: vi.fn(async (allow: boolean) => ({ ...first, allowPasswords: allow })),
   };
   Object.defineProperty(window, "sahkarmi", {
     value: { telegram, openUrl: vi.fn(async () => undefined) },
@@ -79,5 +80,17 @@ describe("TelegramSettings", () => {
     await waitFor(() => expect(unpair.disabled).toBe(false));
     fireEvent.click(unpair);
     expect(telegram.unpair).toHaveBeenCalled();
+  });
+
+  it("turns passwords from Telegram on with its switch, off by default", async () => {
+    const telegram = mockTelegram({ ...WAITING, allowPasswords: false });
+    render(() => <TelegramSettings bots={BOTS} />);
+    const toggle = (await screen.findByLabelText(
+      "Allow passwords from Telegram",
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    await waitFor(() => expect(toggle.disabled).toBe(false));
+    fireEvent.click(toggle);
+    await waitFor(() => expect(telegram.setAllowPasswords).toHaveBeenCalledWith(true));
   });
 });

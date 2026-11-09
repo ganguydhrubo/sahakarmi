@@ -114,6 +114,7 @@ const en = {
   secureTitlePassword: "Enter your password",
   secureTitleOtp: "Enter the OTP",
   secureTitlePin: "Enter your PIN",
+  secureTitleUsername: "Enter your login ID",
   secureTitleOther: "Enter the value",
   secureSubmitOnce: "Submit once to {origin}",
   secureSignInPage: "Sign-in page",

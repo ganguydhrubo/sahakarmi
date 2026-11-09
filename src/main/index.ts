@@ -689,6 +689,9 @@ function registerTelegramIpc(telegram: TelegramBridge): void {
     telegram.setCoworker(requireString(isObject(input) ? input.botId : null, "botId")),
   );
   handleTrusted(IPC_CHANNELS.telegramUnpair, () => telegram.unpair());
+  handleTrusted(IPC_CHANNELS.telegramSetAllowPasswords, (input: unknown) =>
+    telegram.setAllowPasswords(isObject(input) && input.allow === true),
+  );
 }
 
 function registerIpcHandlers(
@@ -2690,6 +2693,11 @@ if (!hasSingleInstanceLock) {
           },
           workspaceName: (workspaceId) =>
             store.workspaces().workspaces.find((space) => space.id === workspaceId)?.name ?? null,
+          // The same calls as the secure card in the app: the value goes into the page only.
+          listSecureInputs: () => service.listSecureInputs(),
+          submitSecureInput: (id, value) => service.submitSecureInput(id, value),
+          dismissSecureInput: (id) => service.dismissSecureInput(id),
+          takeOverSecureInput: (id) => service.takeOverSecureInput(id),
         },
         log: (level, message, detail) => appLog.write(level, message, detail),
         // Secure configuration. Nothing is written to source control and the token is never
