@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_MODEL_FOR_PROVIDER,
   isAgentModel,
@@ -12,7 +15,61 @@ import {
   openCodeModelValue,
   probeOpenCodeFreeLimit,
   readAntigravityAccount,
+  setAntigravityEmailFetch,
 } from "./acp-providers";
+
+describe("Google account emails for Gemini", () => {
+  const homes: string[] = [];
+  afterEach(async () => {
+    setAntigravityEmailFetch(null);
+    await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
+  });
+
+  /** A signed-in home whose token was saved by some Antigravity version, and a stand-in Google. */
+  async function signedIn(token: Record<string, unknown>) {
+    const home = await mkdtemp(join(tmpdir(), "sahkarmi-email-"));
+    homes.push(home);
+    const acp = join(home, ".gemini", "antigravity-acp");
+    await mkdir(acp, { recursive: true });
+    await writeFile(join(acp, "acp_token.json"), JSON.stringify(token));
+    const called: string[] = [];
+    setAntigravityEmailFetch(async (url) => {
+      called.push(url);
+      return url.endsWith("/token")
+        ? Response.json({ access_token: "fresh" })
+        : Response.json({ email: "owner@example.com" });
+    });
+    return { home, acp, called };
+  }
+
+  const base = { refresh_token: "r", client_id: "c", client_secret: "s" };
+
+  it.each([
+    ["no token address", base],
+    ["Google's older token address", { ...base, token_uri: "https://accounts.google.com/o/oauth2/token" }],
+    ["the usual token address", { ...base, token_uri: "https://oauth2.googleapis.com/token" }],
+  ])("shows the email when the sign-in saved %s", async (_label, token) => {
+    const { home, acp, called } = await signedIn(token);
+    const read = await readAntigravityAccount(home, {});
+    expect(read.account?.email).toBe("owner@example.com");
+    // Only Google's own token service and its user-info address are asked.
+    expect(called).toEqual([
+      "https://oauth2.googleapis.com/token",
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+    ]);
+    // Noted, so the next read needs no network.
+    expect(JSON.parse(await readFile(join(acp, "sahkarmi-account.json"), "utf8")).email).toBe(
+      "owner@example.com",
+    );
+  });
+
+  it("never sends the token to an address that is not Google's", async () => {
+    const { home, called } = await signedIn({ ...base, token_uri: "https://evil.example/token" });
+    const read = await readAntigravityAccount(home, {});
+    expect(read.account?.email).toBeNull();
+    expect(called).toEqual([]);
+  });
+});
 
 describe("acp-providers", () => {
   it("maps antigravity models correctly", () => {
