@@ -101,7 +101,6 @@ export function StorageView() {
 
   return (
     <section class="settings-card storage-view">
-      <h2>{t("setStorage")}</h2>
       <p class="settings-meta">{t("storageIntro")}</p>
       <div class="settings-buttons">
         <button type="button" disabled={busy()} onClick={() => void measure()}>

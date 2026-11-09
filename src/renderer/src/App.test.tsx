@@ -578,7 +578,7 @@ describe("Sahkarmi connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "AI & models" }));
     const antigravity = (
       await screen.findByText("Gemini (Antigravity)", { selector: "strong" })
     ).closest("li");
@@ -634,7 +634,7 @@ describe("Sahkarmi connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
 
     await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await fireEvent.click(await screen.findByRole("tab", { name: "AI and models" }));
+    await fireEvent.click(await screen.findByRole("tab", { name: "AI & models" }));
     await fireEvent.click(
       await screen.findByRole("button", { name: "Choose the default provider for new coworkers" }),
     );

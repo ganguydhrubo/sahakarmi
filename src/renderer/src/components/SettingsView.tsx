@@ -52,21 +52,44 @@ type SettingsSection =
   | "storage"
   | "about";
 
-const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
-  { id: "general", label: "setGeneral" },
-  { id: "ai", label: "setAi" },
-  { id: "permissions", label: "setPermissions" },
-  { id: "skills", label: "setSkills" },
-  { id: "mcp", label: "setMcp" },
-  { id: "assignments", label: "assignmentsTitle" },
-  { id: "voice", label: "setVoice" },
-  { id: "telegram", label: "setTelegram" },
-  { id: "features", label: "setFeatures" },
-  { id: "updates", label: "updates" },
-  { id: "data", label: "dataPrivacy" },
-  { id: "storage", label: "setStorage" },
-  { id: "about", label: "about" },
+interface SectionItem {
+  id: SettingsSection;
+  label: MessageKey;
+  description: MessageKey;
+}
+
+/** Settings sections, grouped the way people look for them: their own setup, the team, the app. */
+const SECTION_GROUPS: Array<{ label: MessageKey; items: SectionItem[] }> = [
+  {
+    label: "setGroupPersonal",
+    items: [
+      { id: "general", label: "setGeneral", description: "setDescGeneral" },
+      { id: "voice", label: "setVoice", description: "setDescVoice" },
+      { id: "telegram", label: "setTelegram", description: "setDescTelegram" },
+    ],
+  },
+  {
+    label: "setGroupCoworkers",
+    items: [
+      { id: "ai", label: "setAi", description: "setDescAi" },
+      { id: "permissions", label: "setPermissions", description: "setDescPermissions" },
+      { id: "skills", label: "setSkills", description: "setDescSkills" },
+      { id: "mcp", label: "setMcp", description: "setDescMcp" },
+      { id: "assignments", label: "assignmentsTitle", description: "setDescAssignments" },
+    ],
+  },
+  {
+    label: "setGroupApp",
+    items: [
+      { id: "features", label: "setFeatures", description: "setDescFeatures" },
+      { id: "updates", label: "updates", description: "setDescUpdates" },
+      { id: "data", label: "dataPrivacy", description: "setDescData" },
+      { id: "storage", label: "setStorage", description: "setDescStorage" },
+      { id: "about", label: "about", description: "setDescAbout" },
+    ],
+  },
 ];
+const SECTIONS: SectionItem[] = SECTION_GROUPS.flatMap((group) => group.items);
 const SECTION_KEY = SETTINGS_SECTION_KEY;
 
 function storedSection(): SettingsSection {
@@ -119,17 +142,69 @@ export function SettingsView(props: SettingsViewProps) {
     }
   }
 
-  const panel = (id: SettingsSection, content: () => JSX.Element) => (
-    <Show when={section() === id}>
-      <div
-        class="settings-panel"
-        role="tabpanel"
-        id={`settings-${id}`}
-        aria-labelledby={`settings-tab-${id}`}
-      >
-        {content()}
+  const panel = (id: SettingsSection, content: () => JSX.Element) => {
+    const item = SECTIONS.find((entry) => entry.id === id);
+    return (
+      <Show when={section() === id}>
+        <div
+          class="settings-panel"
+          role="tabpanel"
+          id={`settings-${id}`}
+          aria-labelledby={`settings-tab-${id}`}
+        >
+          <Show when={item}>
+            {(entry) => (
+              <header class="settings-panel-header">
+                <h2>{t(entry().label)}</h2>
+                <p>{t(entry().description)}</p>
+              </header>
+            )}
+          </Show>
+          {content()}
+        </div>
+      </Show>
+    );
+  };
+
+  const segmented = <T extends string>(
+    label: MessageKey,
+    options: Array<{ value: T; label: MessageKey }>,
+    current: () => T,
+    choose: (value: T) => void,
+  ) => (
+    <fieldset class="segmented">
+      <legend class="sr-only">{t(label)}</legend>
+      <For each={options}>
+        {(option) => (
+          <button
+            type="button"
+            aria-pressed={current() === option.value}
+            classList={{ "segmented-active": current() === option.value }}
+            onClick={() => choose(option.value)}
+          >
+            {t(option.label)}
+          </button>
+        )}
+      </For>
+    </fieldset>
+  );
+
+  /** One setting: its name and help on the left, the control on the right (or below it). */
+  const row = (
+    label: MessageKey,
+    hint: MessageKey | null,
+    control: JSX.Element | null,
+    stacked = false,
+  ) => (
+    <div class="settings-row" classList={{ "settings-row-stacked": stacked }}>
+      <div class="settings-row-text">
+        <h3>{t(label)}</h3>
+        <Show when={hint}>{(key) => <p class="settings-meta">{t(key())}</p>}</Show>
       </div>
-    </Show>
+      <Show when={control}>
+        <div class="settings-row-control">{control}</div>
+      </Show>
+    </div>
   );
 
   function run(action: () => Promise<unknown>) {
@@ -151,96 +226,84 @@ export function SettingsView(props: SettingsViewProps) {
           aria-orientation="vertical"
           aria-label={t("settings")}
         >
-          <For each={SECTIONS}>
-            {(item) => (
-              <button
-                type="button"
-                role="tab"
-                id={`settings-tab-${item.id}`}
-                aria-selected={section() === item.id}
-                aria-controls={`settings-${item.id}`}
-                classList={{ "settings-nav-active": section() === item.id }}
-                onClick={() => select(item.id)}
-              >
-                {t(item.label)}
-              </button>
+          <For each={SECTION_GROUPS}>
+            {(group) => (
+              <div class="settings-nav-group" role="presentation">
+                <span class="settings-nav-label" aria-hidden="true">
+                  {t(group.label)}
+                </span>
+                <For each={group.items}>
+                  {(item) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      id={`settings-tab-${item.id}`}
+                      aria-selected={section() === item.id}
+                      aria-controls={`settings-${item.id}`}
+                      classList={{ "settings-nav-active": section() === item.id }}
+                      onClick={() => select(item.id)}
+                    >
+                      {t(item.label)}
+                    </button>
+                  )}
+                </For>
+              </div>
             )}
           </For>
         </div>
         <div class="settings-content">
           {panel("general", () => (
-            <section class="settings-card">
-              <h2>{t("appearance")}</h2>
-              <ThemeSelector />
-              <h2>{t("activityStyleTitle")}</h2>
-              <fieldset class="segmented">
-                <legend class="sr-only">{t("activityStyleTitle")}</legend>
-                <For each={ACTIVITY_STYLES}>
-                  {(option) => (
-                    <button
-                      type="button"
-                      aria-pressed={activityStyle() === option.value}
-                      classList={{ "segmented-active": activityStyle() === option.value }}
-                      onClick={() => setActivityStyle(option.value)}
-                    >
-                      {t(option.label)}
-                    </button>
-                  )}
-                </For>
-              </fieldset>
-              <p class="settings-meta">{t("activityStyleHint")}</p>
-              <h2>{t("languageLabel")}</h2>
-              <fieldset class="segmented">
-                <legend class="sr-only">{t("languageLabel")}</legend>
-                <For each={LANGUAGE_OPTIONS}>
-                  {(option) => (
-                    <button
-                      type="button"
-                      lang={option.code}
-                      aria-pressed={language() === option.code}
-                      classList={{ "segmented-active": language() === option.code }}
-                      onClick={() => setLanguage(option.code)}
-                    >
-                      {option.label}
-                    </button>
-                  )}
-                </For>
-              </fieldset>
-              <h2>{t("uiSizeLabel")}</h2>
-              <fieldset class="segmented">
-                <legend class="sr-only">{t("uiSizeLabel")}</legend>
-                <For each={UI_SIZES}>
-                  {(option) => (
-                    <button
-                      type="button"
-                      aria-pressed={uiSize() === option.value}
-                      classList={{ "segmented-active": uiSize() === option.value }}
-                      onClick={() => setUiSize(option.value)}
-                    >
-                      {t(option.label)}
-                    </button>
-                  )}
-                </For>
-              </fieldset>
-              <h2>{t("sendKeyLabel")}</h2>
-              <fieldset class="segmented">
-                <legend class="sr-only">{t("sendKeyLabel")}</legend>
-                <For each={SEND_KEYS}>
-                  {(option) => (
-                    <button
-                      type="button"
-                      aria-pressed={sendKey() === option.value}
-                      classList={{ "segmented-active": sendKey() === option.value }}
-                      onClick={() => setSendKey(option.value)}
-                    >
-                      {t(option.label)}
-                    </button>
-                  )}
-                </For>
-              </fieldset>
-              <h2>{t("shortcutsLabel")}</h2>
-              <p class="settings-meta">{t("shortcutsHint")}</p>
-            </section>
+            <>
+              <section class="settings-card">
+                <h2>{t("setCardLook")}</h2>
+                {row("appearance", "themeHint", <ThemeSelector />, true)}
+                {row(
+                  "uiSizeLabel",
+                  "uiSizeHint",
+                  segmented("uiSizeLabel", UI_SIZES, uiSize, setUiSize),
+                )}
+              </section>
+              <section class="settings-card">
+                <h2>{t("setCardLanguage")}</h2>
+                {row(
+                  "languageLabel",
+                  "languageHint",
+                  <fieldset class="segmented segmented-wrap">
+                    <legend class="sr-only">{t("languageLabel")}</legend>
+                    <For each={LANGUAGE_OPTIONS}>
+                      {(option) => (
+                        <button
+                          type="button"
+                          lang={option.code}
+                          aria-pressed={language() === option.code}
+                          classList={{ "segmented-active": language() === option.code }}
+                          onClick={() => setLanguage(option.code)}
+                        >
+                          {option.label}
+                        </button>
+                      )}
+                    </For>
+                  </fieldset>,
+                  true,
+                )}
+                {row(
+                  "activityStyleTitle",
+                  "activityStyleHint",
+                  segmented("activityStyleTitle", ACTIVITY_STYLES, activityStyle, setActivityStyle),
+                  true,
+                )}
+              </section>
+              <section class="settings-card">
+                <h2>{t("setCardKeyboard")}</h2>
+                {row(
+                  "sendKeyLabel",
+                  null,
+                  segmented("sendKeyLabel", SEND_KEYS, sendKey, setSendKey),
+                  true,
+                )}
+                {row("shortcutsLabel", "shortcutsHint", null)}
+              </section>
+            </>
           ))}
 
           {panel("ai", () => (
@@ -274,14 +337,12 @@ export function SettingsView(props: SettingsViewProps) {
 
           {panel("permissions", () => (
             <section class="settings-card">
-              <h2>{t("setPermissions")}</h2>
               <PermissionsSettings bots={props.bots} />
             </section>
           ))}
 
           {panel("voice", () => (
             <section class="settings-card">
-              <h2>{t("setVoice")}</h2>
               <VoiceSettings />
               <h3>{t("voiceNotesTitle")}</h3>
               <p>{t("voiceSettingsNotes")}</p>
@@ -295,42 +356,36 @@ export function SettingsView(props: SettingsViewProps) {
 
           {panel("skills", () => (
             <section class="settings-card">
-              <h2>{t("setSkills")}</h2>
               <SkillsSettings />
             </section>
           ))}
 
           {panel("mcp", () => (
             <section class="settings-card">
-              <h2>{t("setMcp")}</h2>
               <McpSettings />
             </section>
           ))}
 
           {panel("assignments", () => (
             <section class="settings-card">
-              <h2>{t("assignmentsTitle")}</h2>
               <AssignmentsSettings />
             </section>
           ))}
 
           {panel("telegram", () => (
             <section class="settings-card">
-              <h2>{t("setTelegram")}</h2>
               <TelegramSettings bots={props.bots} />
             </section>
           ))}
 
           {panel("features", () => (
             <section class="settings-card">
-              <h2>{t("setFeatures")}</h2>
               <FeaturesSettings />
             </section>
           ))}
 
           {panel("updates", () => (
             <section class="settings-card">
-              <h2>{t("updates")}</h2>
               <Show
                 when={props.updateStatus.phase !== "unsupported"}
                 fallback={<p class="settings-meta">{props.updateStatus.message}</p>}
@@ -344,7 +399,6 @@ export function SettingsView(props: SettingsViewProps) {
 
           {panel("data", () => (
             <section class="settings-card">
-              <h2>{t("dataPrivacy")}</h2>
               <p class="settings-meta">{t("dataStoredLocally")}</p>
               <div class="settings-buttons">
                 <button

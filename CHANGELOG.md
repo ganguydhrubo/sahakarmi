@@ -5,6 +5,30 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-09
+
+### Changed
+
+- A calmer, more even look across the whole app. Theme colours and every feature stay the
+  same.
+- One type scale everywhere: ten text sizes and four weights instead of about forty sizes and
+  twelve weights, so headings, labels, body text and helper text are always clearly apart.
+- One spacing grid (8 px, 4 px for tight controls) and four corner sizes, so padding, gaps and
+  corners line up from screen to screen.
+- Settings are grouped into Personal, Coworkers & AI and App. Each page opens with a title and
+  one line on what it is for. General is split into Look & feel, Language & tone and Keyboard
+  cards, with each setting's name and help text next to its control.
+- The left icon bar is grouped (work, knowledge, automation, business) with thin dividers.
+- Buttons, fields and choice trays share one height, hover and selected look; the theme picker
+  now matches the other choices.
+- Clearer labels: "AI & models", "Theme", "Send key", "Status line style", "AI providers".
+
+### Fixed
+
+- The pinned coworkers strip no longer shows a scrollbar when five coworkers are pinned.
+- "Use suggestion" no longer wraps onto two lines, and the custom memory limit field shows its
+  full "Automatic" hint.
+
 ## [0.28.0] - 2026-11-09
 
 ### Added

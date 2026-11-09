@@ -160,7 +160,6 @@ function UsageCountSwitch() {
 export function AboutCard(props: { version: string | null }) {
   return (
     <section class="settings-card settings-about about-card">
-      <h2>{t("about")}</h2>
       <div class="about-hero about-rise" style="--rise: 0">
         <span class="about-glow" aria-hidden="true" />
         <LogoMark size={52} />
