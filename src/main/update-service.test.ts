@@ -437,6 +437,7 @@ describe("UpdateService", () => {
     const service = new UpdateService(updater as unknown as AppUpdater, {
       currentVersion: "0.1.0",
       enabled: true,
+      beforeInstall: vi.fn(async () => undefined),
       initialCheckDelayMs: 10,
     });
     const phases: string[] = [];
