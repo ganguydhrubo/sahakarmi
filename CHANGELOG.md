@@ -5,6 +5,23 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-09
+
+### Added
+
+- Telegram: when a coworker needs an OTP, a login ID (user name, email or phone) or a password
+  to sign in somewhere, your Telegram chat asks too. Reply with it: it is typed straight into
+  that page, your message is deleted from the chat at once, and the coworker never sees it.
+  Only the Telegram account you paired can answer. /skip says no; /pc lets you type it on the
+  computer yourself.
+- Passwords and PINs from Telegram only when you turn on Settings > Telegram > Allow passwords
+  from Telegram (off by default). OTPs and login IDs always work.
+- Telegram tells you when a coworker needs you at the computer, for example for a "verify you
+  are human" check or a payment page.
+- Telegram: /coworkers shows a button for each coworker; one tap and your next message goes to
+  them.
+- Coworkers can ask for a login ID on the secure card, not only a password, OTP or PIN.
+
 ## [0.27.0] - 2026-11-09
 
 Every new part is behind its own switch in Settings > Features. The ones that are on by default
