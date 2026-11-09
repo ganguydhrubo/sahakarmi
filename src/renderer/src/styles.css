@@ -8710,7 +8710,9 @@ fieldset.cadence-kinds {
 .center-view
 button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
   [role="tab"]
-):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(.theme-option) {
+):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(
+  .theme-option
+) {
   border: 1px solid var(--sahkarmi-line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
@@ -15358,7 +15360,9 @@ h3 {
 .center-view
 button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
   [role="tab"]
-):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(.theme-option) {
+):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(
+  .theme-option
+) {
   min-height: 32px;
   font-weight: 500;
   transition:
@@ -15368,22 +15372,27 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
 }
 
 .center-view
-button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
-  [role="tab"]
-):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(.theme-option):not(:disabled):hover {
+  button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
+    [role="tab"]
+  ):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(
+    .theme-option
+  ):not(:disabled):hover {
   border-color: rgb(var(--ink-rgb) / 0.26);
   background: var(--surface-2);
 }
 
 .center-view
-button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
-  [role="tab"]
-):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(.theme-option):not(:disabled):active {
+  button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-copy):not(
+    [role="tab"]
+  ):not(.marketplace-filter):not(.link-button):not(.about-btn):not(.segmented button):not(
+    .theme-option
+  ):not(:disabled):active {
   background: var(--surface-3);
 }
 
 .center-view select,
-.center-view input:not([type="checkbox"]):not([type="file"]):not([type="radio"]):not([type="range"]) {
+.center-view
+  input:not([type="checkbox"]):not([type="file"]):not([type="radio"]):not([type="range"]) {
   min-height: 32px;
   font-size: var(--fs-sm);
   transition: border-color var(--dur-fast) var(--ease-out);
@@ -15555,10 +15564,6 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
   line-height: var(--lh-snug);
 }
 
-.settings-card > h2 + .settings-row {
-  margin-top: var(--space-1);
-}
-
 .settings-row {
   display: grid;
   width: 100%;
@@ -15651,6 +15656,7 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
 }
 
 .settings-card > h2 + .settings-row {
+  margin-top: var(--space-1);
   border-top: 0;
   padding-top: 0;
 }

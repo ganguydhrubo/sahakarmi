@@ -54,17 +54,59 @@ const RAIL_ITEMS: Array<{
   icon: () => JSX.Element;
 }> = [
   { view: "tasks", label: "navTasks", feature: null, group: "work", icon: TasksIcon },
-  { view: "orchestrator", label: "navOrchestrator", feature: null, group: "work", icon: OrchestratorIcon },
+  {
+    view: "orchestrator",
+    label: "navOrchestrator",
+    feature: null,
+    group: "work",
+    icon: OrchestratorIcon,
+  },
   { view: "approvals", label: "approvals", feature: null, group: "work", icon: ApprovalsIcon },
   { view: "activity", label: "navActivity", feature: null, group: "work", icon: ActivityIcon },
   { view: "memory", label: "navMemory", feature: null, group: "knowledge", icon: MemoryIcon },
-  { view: "knowledge", label: "navKnowledge", feature: "knowledge-base", group: "knowledge", icon: KnowledgeIcon },
-  { view: "files", label: "sharedFiles", feature: "shared-files", group: "knowledge", icon: FilesIcon },
-  { view: "schedules", label: "navSchedules", feature: "schedules", group: "automate", icon: ScheduleIcon },
-  { view: "routines", label: "navRoutines", feature: "schedules", group: "automate", icon: RoutineIcon },
+  {
+    view: "knowledge",
+    label: "navKnowledge",
+    feature: "knowledge-base",
+    group: "knowledge",
+    icon: KnowledgeIcon,
+  },
+  {
+    view: "files",
+    label: "sharedFiles",
+    feature: "shared-files",
+    group: "knowledge",
+    icon: FilesIcon,
+  },
+  {
+    view: "schedules",
+    label: "navSchedules",
+    feature: "schedules",
+    group: "automate",
+    icon: ScheduleIcon,
+  },
+  {
+    view: "routines",
+    label: "navRoutines",
+    feature: "schedules",
+    group: "automate",
+    icon: RoutineIcon,
+  },
   { view: "usage", label: "navUsage", feature: "model-usage", group: "business", icon: UsageIcon },
-  { view: "business", label: "navBusiness", feature: "business-targets", group: "business", icon: BusinessIcon },
-  { view: "marketplace", label: "navMarketplace", feature: "marketplace", group: "business", icon: MarketplaceIcon },
+  {
+    view: "business",
+    label: "navBusiness",
+    feature: "business-targets",
+    group: "business",
+    icon: BusinessIcon,
+  },
+  {
+    view: "marketplace",
+    label: "navMarketplace",
+    feature: "marketplace",
+    group: "business",
+    icon: MarketplaceIcon,
+  },
   { view: "settings", label: "settings", feature: null, group: "app", icon: SettingsIcon },
 ];
 
@@ -1452,22 +1494,22 @@ export function AppNavigation(props: {
                 <span class="app-rail-divider" aria-hidden="true" />
               </Show>
               <button
-              type="button"
-              class="rail-nav-item app-rail-button"
-              classList={{ "rail-nav-active": props.view === item.view }}
-              data-tour={item.view}
-              aria-label={t(item.label)}
-              title={t(item.label)}
-              aria-current={props.view === item.view ? "page" : undefined}
-              onClick={() => props.onSelectView(item.view)}
-            >
-              {item.icon()}
-              <Show when={item.view === "approvals" && props.pendingApprovals > 0}>
-                <span class="rail-badge">
-                  {props.pendingApprovals}
-                  <span class="sr-only"> {t("pending")}</span>
-                </span>
-              </Show>
+                type="button"
+                class="rail-nav-item app-rail-button"
+                classList={{ "rail-nav-active": props.view === item.view }}
+                data-tour={item.view}
+                aria-label={t(item.label)}
+                title={t(item.label)}
+                aria-current={props.view === item.view ? "page" : undefined}
+                onClick={() => props.onSelectView(item.view)}
+              >
+                {item.icon()}
+                <Show when={item.view === "approvals" && props.pendingApprovals > 0}>
+                  <span class="rail-badge">
+                    {props.pendingApprovals}
+                    <span class="sr-only"> {t("pending")}</span>
+                  </span>
+                </Show>
               </button>
             </>
           )}
