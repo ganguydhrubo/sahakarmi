@@ -695,6 +695,15 @@ export class MailboxStore {
     return delivery ? this.#context(delivery) : null;
   }
 
+  /** This coworker's deliveries hidden because the same message was sent again. */
+  retriedDeliveryIds(botId: string): Set<string> {
+    const ids = new Set<string>();
+    for (const delivery of this.#state.deliveries) {
+      if (delivery.recipientBotId === botId && delivery.retried) ids.add(delivery.id);
+    }
+    return ids;
+  }
+
   startingDeliveryForBot(botId: string): DeliveryContext | null {
     const delivery = this.#state.deliveries.find(
       (candidate) =>

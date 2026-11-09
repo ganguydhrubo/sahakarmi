@@ -5907,6 +5907,16 @@ ${carryOver}`
   /** Brings the coworker's mailbox messages into its chat; true when anything changed. */
   #syncMailboxMessages(snapshot: ConversationSnapshot): boolean {
     let changed = false;
+    // A message sent again (next Google account, free model, retry) shows once: the failed copy
+    // already on screen goes, or the chat showed both until it was next read from the AI.
+    const retried = this.#mailbox.retriedDeliveryIds(snapshot.botId);
+    if (retried.size > 0) {
+      const kept = snapshot.messages.filter((message) => !retried.has(message.id));
+      if (kept.length !== snapshot.messages.length) {
+        snapshot.messages.splice(0, snapshot.messages.length, ...kept);
+        changed = true;
+      }
+    }
     const indexes = new Map(snapshot.messages.map((message, index) => [message.id, index]));
     for (const mailboxMessage of this.#mailbox.conversationMessages(snapshot.botId)) {
       const index = indexes.get(mailboxMessage.id);

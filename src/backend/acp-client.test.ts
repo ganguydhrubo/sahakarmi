@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_MODEL_FOR_PROVIDER } from "../shared/ipc";
+import { type ConversationSnapshot, DEFAULT_MODEL_FOR_PROVIDER } from "../shared/ipc";
 import { MCP_SERVER_SKIPPED_HINT, readModelOptions, stripLeakedToolCalls } from "./acp-client";
 import { createOpenCodeClient, openCodeModelValue, readAntigravityAccount } from "./acp-providers";
 import { AgentService } from "./agent-service";
@@ -822,6 +822,10 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
     service.setGeminiAccounts(accounts);
     const events: Array<{ type: string; code?: string; message?: string }> = [];
     service.on("event", (event) => events.push(event as { type: string; code?: string }));
+    const conversations: ConversationSnapshot[] = [];
+    service.on("event", (event) => {
+      if (event.type === "conversation") conversations.push(structuredClone(event.snapshot));
+    });
     await service.initialize();
     await service.updateBot({ botId: "meera-support", model: "antigravity-default" });
     await service.sendMessage({ botId: "meera-support", text: "hit quota, then Namaste" });
@@ -844,6 +848,14 @@ describe.sequential("Gemini start-up, accounts and idle sleep", { timeout: 30_00
       (message) => message.author === "user",
     );
     expect(userMessages.map((message) => message.text)).toEqual(["hit quota, then Namaste"]);
+    // Every chat update the window got showed the message once, also the one sent while the
+    // failed copy was swapped for the new one (the window kept both until the chat was re-read).
+    const shownTwice = conversations.filter(
+      (snapshot) =>
+        snapshot.botId === "meera-support" &&
+        snapshot.messages.filter((message) => message.author === "user").length > 1,
+    );
+    expect(shownTwice).toHaveLength(0);
   });
 
   it("stops an unused Gemini server, still shows the chat, and wakes it when needed", async () => {
