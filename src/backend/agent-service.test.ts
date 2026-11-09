@@ -3381,6 +3381,12 @@ const turns = new Map(persistTurns && fs.existsSync(turnsFile) ? JSON.parse(fs.r
 turnCounter = turns.size;
 const heldThreadReads = [];
 let archivedThread = process.env.SAHKARMI_FAKE_ARCHIVED_THREAD === "1";
+// Like Codex, an engine started again after a crash never reuses a turn id: a reused "turn-1"
+// completed the crashed turn's delivery instead of the new one, leaving the new one running.
+const turnPrefix =
+  process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE && fs.existsSync(process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE)
+    ? "turn-" + process.pid + "-"
+    : "turn-";
 const write = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -3427,7 +3433,7 @@ process.stdin.on("data", (chunk) => {
         else respond();
       }
       if (message.method === "turn/start") {
-        const turnId = "turn-" + (++turnCounter);
+        const turnId = turnPrefix + (++turnCounter);
         turns.set(turnId, { id: turnId, status: "inProgress", items: [] });
         const respondToStart = () => write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
         const startResponseDelay = Number(process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY || 0);
