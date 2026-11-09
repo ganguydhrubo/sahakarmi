@@ -4,13 +4,16 @@ import type { Dictionary } from "./i18n";
 import { apisBn } from "./i18n-apis";
 import { assignBn } from "./i18n-assign";
 import { backgroundBn } from "./i18n-background";
+import { connectorsBn } from "./i18n-connectors";
 import { engineBn } from "./i18n-engine";
 import { extensionsBn } from "./i18n-extensions-bn";
 import { marketplaceBn } from "./i18n-marketplace-bn";
 import { mcpBn } from "./i18n-mcp";
 import { memoryBn } from "./i18n-memory";
 import { onboardingBn } from "./i18n-onboarding";
+import { safetyBn } from "./i18n-safety";
 import { securityBn } from "./i18n-security";
+import { skillPacksBn } from "./i18n-skill-packs";
 import { storageBn } from "./i18n-storage";
 import { workspaceBn } from "./i18n-workspace-bn";
 
@@ -304,7 +307,10 @@ export const bn: Dictionary = {
   ...securityBn,
   ...apisBn,
   ...engineBn,
+  ...safetyBn,
   ...assignBn,
   ...mcpBn,
+  ...connectorsBn,
+  ...skillPacksBn,
   ...onboardingBn,
 };

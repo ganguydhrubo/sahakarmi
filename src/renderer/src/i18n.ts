@@ -2,13 +2,16 @@ import { createSignal } from "solid-js";
 import { apisEn } from "./i18n-apis";
 import { assignEn } from "./i18n-assign";
 import { backgroundEn } from "./i18n-background";
+import { connectorsEn } from "./i18n-connectors";
 import { engineEn } from "./i18n-engine";
 import { extensionsEn } from "./i18n-extensions";
 import { marketplaceEn } from "./i18n-marketplace";
 import { mcpEn } from "./i18n-mcp";
 import { memoryEn } from "./i18n-memory";
 import { onboardingEn } from "./i18n-onboarding";
+import { safetyEn } from "./i18n-safety";
 import { securityEn } from "./i18n-security";
+import { skillPacksEn } from "./i18n-skill-packs";
 import { storageEn } from "./i18n-storage";
 import { workspaceEn } from "./i18n-workspace";
 import { type LanguageCode, language } from "./preferences";
@@ -306,8 +309,11 @@ const en = {
   ...securityEn,
   ...apisEn,
   ...engineEn,
+  ...safetyEn,
   ...assignEn,
   ...mcpEn,
+  ...connectorsEn,
+  ...skillPacksEn,
   ...onboardingEn,
 };
 

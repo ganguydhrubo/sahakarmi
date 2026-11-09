@@ -5,11 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ACP_AGENT_PROVIDERS,
   type AgentEvent,
+  ACP_AGENT_PROVIDERS as ALL_ACP_AGENT_PROVIDERS,
   type ConversationSnapshot,
   DEFAULT_ENGINE_SETTINGS,
+  providerFeatureId,
 } from "../shared/ipc";
+
+/** The ACP engines offered with every Settings > Features switch at its default. */
+const ACP_AGENT_PROVIDERS = ALL_ACP_AGENT_PROVIDERS.filter((id) => !providerFeatureId(id));
+
 import {
   AgentService,
   isNoisyDiagnostic,
@@ -26,6 +31,7 @@ import {
 import { ApprovalStore } from "./approval-store";
 import { BotStore } from "./bot-store";
 import type { BrowserHost, DownloadRequest } from "./browser-host";
+import { BudgetStore } from "./budget-store";
 import { CustomSkills } from "./custom-skills";
 import { KnowledgeService } from "./knowledge/knowledge-service";
 import { MailboxStore } from "./mailbox-store";
@@ -65,6 +71,9 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_REFUSE_STEER;
   delete process.env.SAHKARMI_FAKE_TOOL_CALL;
   delete process.env.SAHKARMI_FAKE_SERVER_REQUEST;
+  delete process.env.SAHKARMI_FAKE_SERVER_REQUEST_DELAY;
+  delete process.env.SAHKARMI_FAKE_SERVER_REQUEST_AGAIN;
+  delete process.env.SAHKARMI_FAKE_SERVER_REQUEST_AGAIN_DELAY;
   delete process.env.SAHKARMI_FAKE_TOOL_ITEM;
   delete process.env.SAHKARMI_FAKE_SECOND_DELTA;
   delete process.env.SAHKARMI_FAKE_PLAN;
@@ -83,6 +92,7 @@ afterEach(async () => {
   delete process.env.SAHKARMI_FAKE_RETRY;
   delete process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY;
   delete process.env.SAHKARMI_FAKE_EXIT_ON_TURN;
+  delete process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE;
   delete process.env.SAHKARMI_FAKE_FAIL_TURNS;
   delete process.env.SAHKARMI_FAKE_FAIL_MESSAGE;
   // Windows may briefly retain handles after the child process and atomic writes close.
@@ -573,6 +583,169 @@ describe.sequential("AgentService", () => {
     await service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" });
     await waitFor(() => browserCalls === 1);
     expect(permissions.audit()[0]).toMatchObject({ category: "payments", decision: "approved" });
+  });
+
+  describe("untrusted-content rule (taint-guard)", () => {
+    const shell = (itemId: string, command: string) =>
+      JSON.stringify({
+        method: "item/commandExecution/requestApproval",
+        params: { itemId, command },
+      });
+
+    async function taintedService(options: {
+      readPage: boolean;
+      guard: boolean;
+      provenance?: boolean;
+    }): Promise<{ permissions: PermissionService; reply: (id: string) => Promise<unknown> }> {
+      if (options.readPage) {
+        process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
+          namespace: "sahkarmi_browser",
+          tool: "snapshot",
+          arguments: { tabId: "tab-1" },
+        });
+      }
+      // Commands arrive after the page was read, as they do from a real model.
+      process.env.SAHKARMI_FAKE_SERVER_REQUEST = shell("cmd-1", "npm install left-pad");
+      process.env.SAHKARMI_FAKE_SERVER_REQUEST_DELAY = "150";
+      process.env.SAHKARMI_FAKE_SERVER_REQUEST_AGAIN = shell("cmd-2", "npm run build");
+      const { store, mailbox } = stores();
+      const browser = {
+        ...fakeBrowser(),
+        listTabs: () => [{ id: "tab-1", url: "https://www.example-shop.in/offers" }],
+      } as unknown as BrowserHost;
+      const permissions = new PermissionService(join(root, "user-data"));
+      await permissions.initialize();
+      // The owner trusts this coworker with commands: nothing would normally ask.
+      await permissions.setAutoMode(true);
+      service = new AgentService(
+        store,
+        mailbox,
+        browser,
+        null,
+        30_000,
+        "codex",
+        new ApprovalStore(join(root, "user-data")),
+        permissions,
+      );
+      service.configureSafety({
+        taintGuard: () => options.guard,
+        provenance: () => options.provenance ?? true,
+      });
+      await service.initialize();
+      await service.sendMessage({ botId: "arjun-research", text: "Check the offers page" });
+      const reply = async (id: string) => {
+        await waitFor(async () => (await protocolMessages()).some((m) => m.id === id));
+        return (await protocolMessages()).find((m) => m.id === id)?.result;
+      };
+      return { permissions, reply };
+    }
+
+    it("a normal turn without outside content gets no extra question", async () => {
+      const { reply } = await taintedService({ readPage: false, guard: true });
+      expect(await reply("agent-server-custom")).toEqual({ decision: "accept" });
+      expect(await reply("agent-server-again")).toEqual({ decision: "accept" });
+      expect(service?.listApprovals()).toHaveLength(0);
+    });
+
+    it("after reading a web page, asks exactly once per turn and the answer covers the rest", async () => {
+      const { reply } = await taintedService({ readPage: true, guard: true });
+      await waitFor(() => service?.listApprovals().length === 1);
+      const [approval] = service?.listApprovals() ?? [];
+      expect(approval).toMatchObject({
+        kind: "permission",
+        permissionCategory: "shell",
+        provenance: { kind: "web", label: "example-shop.in" },
+      });
+      expect(approval?.details).toContain("example-shop.in");
+      // The second command waits for the same answer instead of opening a second card.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(service?.listApprovals()).toHaveLength(1);
+      await service?.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" });
+      expect(await reply("agent-server-custom")).toEqual({ decision: "accept" });
+      expect(await reply("agent-server-again")).toEqual({ decision: "accept" });
+      expect(service?.listApprovals()).toHaveLength(1);
+    });
+
+    it("a no covers the rest of the turn without asking again", async () => {
+      const { reply } = await taintedService({ readPage: true, guard: true });
+      await waitFor(() => service?.listApprovals().length === 1);
+      const [approval] = service?.listApprovals() ?? [];
+      await service?.decideApproval({ approvalId: approval?.id ?? "", decision: "rejected" });
+      expect(await reply("agent-server-custom")).toEqual({ decision: "decline" });
+      expect(await reply("agent-server-again")).toEqual({ decision: "decline" });
+      expect(service?.listApprovals()).toHaveLength(1);
+    });
+
+    it("switched off: the same turn runs exactly as in 0.26.1, with no question", async () => {
+      const { reply } = await taintedService({ readPage: true, guard: false });
+      expect(await reply("agent-tool-custom")).toMatchObject({ success: true });
+      expect(await reply("agent-server-custom")).toEqual({ decision: "accept" });
+      expect(await reply("agent-server-again")).toEqual({ decision: "accept" });
+      expect(service?.listApprovals()).toHaveLength(0);
+    });
+
+    it("provenance switched off leaves the card as before", async () => {
+      await taintedService({ readPage: true, guard: true, provenance: false });
+      await waitFor(() => service?.listApprovals().length === 1);
+      expect(service?.listApprovals()[0]?.provenance).toBeUndefined();
+    });
+  });
+
+  it("a 10-reply daily limit stops the coworker after reply 10, with a notice", async () => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    const budgets = new BudgetStore(join(root, "user-data"));
+    await budgets.initialize();
+    await budgets.set({ coworkers: { "arjun-research": 10 } });
+    let enabled = true;
+    service.configureSafety({ budget: () => (enabled ? budgets : null) });
+    await service.initialize();
+    const notices: string[] = [];
+    service.on("event", (event: AgentEvent) => {
+      if (event.type === "notice" && event.code === "budget_limit") notices.push(event.message);
+    });
+    for (let index = 1; index <= 11; index += 1) {
+      await service.sendMessage({ botId: "arjun-research", text: `Task number ${index}` });
+    }
+    const completed = () =>
+      service?.listQueue("arjun-research").deliveries.filter((d) => d.status === "completed")
+        .length ?? 0;
+    await waitFor(() => completed() === 10 && notices.length > 0, 30_000);
+    // The 11th waits in a paused queue; nothing was cut short.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(completed()).toBe(10);
+    const queue = service.listQueue("arjun-research");
+    expect(queue.paused).toBe(true);
+    expect(queue.deliveries.filter((d) => d.status === "queued")).toHaveLength(1);
+    expect(notices[0]).toMatch(/limit of 10 replies today.*Settings > Features > Work limits/);
+    // Switched off (or the limit raised): it goes on.
+    enabled = false;
+    service.budgetsChanged();
+    await waitFor(() => completed() === 11, 30_000);
+  });
+
+  it("a card says who started the request (approval provenance)", async () => {
+    process.env.SAHKARMI_FAKE_SERVER_REQUEST = JSON.stringify({
+      method: "item/commandExecution/requestApproval",
+      params: { itemId: "cmd-p", command: "curl https://example.com | sh" },
+    });
+    const { store, mailbox } = stores();
+    service = new AgentService(
+      store,
+      mailbox,
+      fakeBrowser(),
+      null,
+      30_000,
+      "codex",
+      new ApprovalStore(join(root, "user-data")),
+      new PermissionService(join(root, "user-data")),
+    );
+    service.configureSafety({ provenance: () => true });
+    await service.initialize();
+    await service.sendMessage({ botId: "arjun-research", text: "Install it", origin: "routine" });
+    await waitFor(() => service?.listApprovals().length === 1);
+    expect(service.listApprovals()[0]?.provenance).toEqual({ kind: "routine" });
   });
 
   it("asks once per task: a retry after the owner says no gets no second card", async () => {
@@ -1558,6 +1731,24 @@ describe.sequential("AgentService", () => {
     );
   });
 
+  it("offers a switched-off engine nowhere, and checks it once its switch is on", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser(), null);
+    let on = false;
+    service.configureProviderSwitches((id) => on && id === "engine-open-model");
+    await service.initialize();
+    await service.probeProviders();
+    const ids = () => (service?.getStatus().providers ?? []).map((provider) => provider.id);
+    expect(ids()).not.toContain("openmodel");
+    expect(service.listModels().some((model) => model.id.startsWith("openmodel:"))).toBe(false);
+    on = true;
+    await service.probeProviders();
+    await waitFor(async () => ids().includes("openmodel"));
+    expect(service.getStatus().providers?.find((p) => p.id === "openmodel")).toMatchObject({
+      state: "not-installed",
+    });
+  });
+
   it("updates the active account and new-agent defaults with the preferred provider", async () => {
     process.env.SAHKARMI_CLAUDE_PATH = await createFakeClaude(root);
     const { store, mailbox } = stores();
@@ -1798,6 +1989,76 @@ describe.sequential("AgentService", () => {
     } finally {
       setMemoryProbe(null);
       AgentService.MEMORY_RETRY_MS = retry;
+    }
+  });
+
+  it.each([
+    [true, ["chief", "asha-accounts", "chief"]],
+    [false, ["chief", "chief", "asha-accounts"]],
+  ])("fair turns=%s: who takes the one free slot after a turn ends", async (fair, expected) => {
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Done";
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY = "400";
+    const { store, mailbox } = stores();
+    await store.initialize();
+    await mailbox.initialize();
+    await store.getOrCreate("chief");
+    await store.getOrCreate("asha-accounts");
+    for (const text of ["Long job, part one", "Long job, part two"]) {
+      await mailbox.enqueue({ sender: { kind: "user" }, recipientBotIds: ["chief"], text });
+    }
+    service = new AgentService(store, mailbox, fakeBrowser());
+    service.configureEngineSettings(() => ({ ...DEFAULT_ENGINE_SETTINGS, maxConcurrentTurns: 1 }));
+    service.configureFairTurns(() => fair);
+    const started: string[] = [];
+    service.on("event", (event) => {
+      if (event.type === "turn-started") started.push(event.botId);
+    });
+    await service.initialize();
+    await waitFor(() => started.length === 1);
+    // A short task arrives while the chief works through its own queue.
+    await service.sendMessage({ botId: "asha-accounts", text: "Quick question" });
+    await waitFor(() => started.length === 3, 15_000);
+    expect(started).toEqual(expected);
+  });
+
+  it("Auto concurrency: as many coworkers as free memory fits, read again at each start", async () => {
+    const { store, mailbox } = stores();
+    service = new AgentService(store, mailbox, fakeBrowser());
+    let settings = { ...DEFAULT_ENGINE_SETTINGS, concurrencyMode: "auto" as const };
+    service.configureEngineSettings(() => settings);
+    const events: AgentEvent[] = [];
+    service.on("event", (event) => events.push(event));
+    await service.initialize();
+    const MB = 1024 ** 2;
+    // 1536 MB kept free + 2 x 150 MB: two coworkers on the shared engine fit.
+    let free = 1_836 * MB;
+    setMemoryProbe({ free: () => free, total: () => 16 * 1024 * MB });
+    try {
+      await service.sendMessage({ botId: "chief", text: "One" });
+      await service.sendMessage({ botId: "asha-accounts", text: "Two" });
+      await waitFor(
+        () =>
+          service?.listQueue("chief").deliveries[0]?.status === "running" &&
+          service?.listQueue("asha-accounts").deliveries[0]?.status === "running",
+      );
+      await service.sendMessage({ botId: "sales-outbound", text: "Three" });
+      await waitFor(() =>
+        events.some(
+          (event) =>
+            event.type === "notice" &&
+            event.code === "waiting_for_turn_slot" &&
+            event.botId === "sales-outbound" &&
+            /free memory fits/.test(event.message),
+        ),
+      );
+      expect(service.listQueue("sales-outbound").deliveries[0]?.status).toBe("queued");
+      // More memory free: the next decision lets it start.
+      free = 8 * 1024 * MB;
+      settings = { ...settings };
+      service.configureEngineSettings(() => settings);
+      await waitFor(() => service?.listQueue("sales-outbound").deliveries[0]?.status === "running");
+    } finally {
+      setMemoryProbe(null);
     }
   });
 
@@ -2529,7 +2790,11 @@ describe.sequential("AgentService", () => {
   }, 20_000);
 
   it("starts queued messages after restart when provider process exits mid-turn", async () => {
+    // The first engine exits on its first turn; the restarted one answers. Set up front: changing
+    // the environment after the exit raced the restart, which could start with the old settings.
     process.env.SAHKARMI_FAKE_EXIT_ON_TURN = "1";
+    process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE = join(root, "fake-exit-once");
+    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Answer after restart";
     process.env.SAHKARMI_FAKE_REFUSE_STEER = "1";
     const { store, mailbox } = stores();
     service = new AgentService(store, mailbox, fakeBrowser());
@@ -2547,8 +2812,6 @@ describe.sequential("AgentService", () => {
     await waitFor(() =>
       events.some((event) => event.type === "error" && event.code === "codex_exited"),
     );
-    delete process.env.SAHKARMI_FAKE_EXIT_ON_TURN;
-    process.env.SAHKARMI_FAKE_AUTO_COMPLETE = "Answer after restart";
 
     // Coworker's activeTurnId must be cleared so it is not stuck busy
     const snapshot = await service.readConversation("chief");
@@ -3038,10 +3301,17 @@ describe("AgentService team, authority and accounts", () => {
   });
 });
 
-function planEvents(target: AgentService): ConversationSnapshot[] {
-  const seen: ConversationSnapshot[] = [];
+function planEvents(
+  target: AgentService,
+): Array<Pick<ConversationSnapshot, "plan" | "activeTurnId" | "messages">> {
+  const seen: Array<Pick<ConversationSnapshot, "plan" | "activeTurnId" | "messages">> = [];
   target.on("event", (event: AgentEvent) => {
     if (event.type === "conversation" && event.snapshot.plan) seen.push(event.snapshot);
+    // With one-message updates on, a plan change goes out on its own, not in a full snapshot;
+    // watching only full snapshots made this pass or fail on timing alone.
+    if (event.type === "message-upsert" && "plan" in event && event.plan) {
+      seen.push({ plan: event.plan, activeTurnId: event.activeTurnId, messages: [] });
+    }
   });
   return seen;
 }
@@ -3075,9 +3345,10 @@ async function protocolMessages(): Promise<Array<Record<string, unknown>>> {
 
 async function waitFor(
   check: () => boolean | undefined | Promise<boolean | undefined>,
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 ): Promise<void> {
-  // Generous: the suite runs test files in parallel, so CI machines can be slow.
+  // Generous: the suite runs test files in parallel, so a busy PC or CI runner can take well
+  // over 10 s to start a fake server. A wait that succeeds returns at once, so this costs nothing.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await check()) return;
@@ -3110,6 +3381,12 @@ const turns = new Map(persistTurns && fs.existsSync(turnsFile) ? JSON.parse(fs.r
 turnCounter = turns.size;
 const heldThreadReads = [];
 let archivedThread = process.env.SAHKARMI_FAKE_ARCHIVED_THREAD === "1";
+// Like Codex, an engine started again after a crash never reuses a turn id: a reused "turn-1"
+// completed the crashed turn's delivery instead of the new one, leaving the new one running.
+const turnPrefix =
+  process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE && fs.existsSync(process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE)
+    ? "turn-" + process.pid + "-"
+    : "turn-";
 const write = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -3156,7 +3433,7 @@ process.stdin.on("data", (chunk) => {
         else respond();
       }
       if (message.method === "turn/start") {
-        const turnId = "turn-" + (++turnCounter);
+        const turnId = turnPrefix + (++turnCounter);
         turns.set(turnId, { id: turnId, status: "inProgress", items: [] });
         const respondToStart = () => write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
         const startResponseDelay = Number(process.env.SAHKARMI_FAKE_TURN_START_RESPONSE_DELAY || 0);
@@ -3183,7 +3460,12 @@ process.stdin.on("data", (chunk) => {
         if (process.env.SAHKARMI_FAKE_SERVER_REQUEST && turnCounter === 1) {
           const request = JSON.parse(process.env.SAHKARMI_FAKE_SERVER_REQUEST);
           if (request.item) write({ method: "item/started", params: { threadId: message.params.threadId, turnId, item: request.item } });
-          setTimeout(() => write({ id: "agent-server-custom", method: request.method, params: { threadId: message.params.threadId, turnId, ...request.params } }), 30);
+          const requestDelay = Number(process.env.SAHKARMI_FAKE_SERVER_REQUEST_DELAY || 30);
+          setTimeout(() => write({ id: "agent-server-custom", method: request.method, params: { threadId: message.params.threadId, turnId, ...request.params } }), requestDelay);
+          if (process.env.SAHKARMI_FAKE_SERVER_REQUEST_AGAIN) {
+            const again = JSON.parse(process.env.SAHKARMI_FAKE_SERVER_REQUEST_AGAIN);
+            setTimeout(() => write({ id: "agent-server-again", method: again.method, params: { threadId: message.params.threadId, turnId, ...again.params } }), Number(process.env.SAHKARMI_FAKE_SERVER_REQUEST_AGAIN_DELAY || requestDelay + 20));
+          }
         }
         if (process.env.SAHKARMI_FAKE_TOOL_ITEM && turnCounter === 1) {
           const item = JSON.parse(process.env.SAHKARMI_FAKE_TOOL_ITEM);
@@ -3199,7 +3481,10 @@ process.stdin.on("data", (chunk) => {
           setTimeout(() => write({ id: "agent-tool-1", method: "item/tool/call", params: { threadId: message.params.threadId, turnId, callId: "call-1", namespace: "sahkarmi", tool: "send_message", arguments: { recipientBotIds: ["sales-outbound", "inbox-manager"], text: "Please prepare your reports.", paths: JSON.parse(process.env.SAHKARMI_FAKE_AGENT_TOOL_PATHS || "[]") } } }), 30);
         }
         const completeDelay = Number(process.env.SAHKARMI_FAKE_AUTO_COMPLETE_DELAY || 20);
-        if (process.env.SAHKARMI_FAKE_AUTO_COMPLETE) {
+        // With an exit-once file, only the first process exits (a restarted one carries on).
+        const exitOnce = process.env.SAHKARMI_FAKE_EXIT_ONCE_FILE;
+        const exiting = process.env.SAHKARMI_FAKE_EXIT_ON_TURN === String(turnCounter) && !(exitOnce && fs.existsSync(exitOnce));
+        if (process.env.SAHKARMI_FAKE_AUTO_COMPLETE && !exiting) {
           setTimeout(() => {
             const text = process.env.SAHKARMI_FAKE_AUTO_COMPLETE;
             const item = { type: "agentMessage", id: "message-" + turnId, text, phase: "final_answer" };
@@ -3221,7 +3506,8 @@ process.stdin.on("data", (chunk) => {
             write({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: turnId, status: "failed" } } });
           }, 20);
         }
-        if (process.env.SAHKARMI_FAKE_EXIT_ON_TURN === String(turnCounter)) {
+        if (exiting) {
+          if (exitOnce) fs.writeFileSync(exitOnce, "exited");
           setTimeout(() => {
             process.exit(1);
           }, 30);

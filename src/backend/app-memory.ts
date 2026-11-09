@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { availableParallelism } from "node:os";
 import type {
   ResourceLevel,
   ResourceRecommendation,
@@ -14,6 +15,8 @@ export interface ProcessRow {
   ppid: number;
   name: string;
   bytes: number;
+  /** Processor time used so far (kernel + user, in 100 ns units); from the detail query only. */
+  cpuTicks?: number;
 }
 
 export type ProcessLister = () => Promise<ProcessRow[]>;
@@ -42,16 +45,86 @@ export const windowsProcessLister: ProcessLister = () =>
     );
   });
 
+/**
+ * The same query with each process's processor time too (for the detail meter). Used only while
+ * the "live-meter-detail" feature is on; the plain query above stays as it was.
+ */
+export const windowsProcessDetailLister: ProcessLister = () =>
+  new Promise((resolve) => {
+    execFile(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        'Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,Name,WorkingSetSize,KernelModeTime,UserModeTime | ForEach-Object { "$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)|$($_.WorkingSetSize)|$($_.KernelModeTime)|$($_.UserModeTime)" }',
+      ],
+      { windowsHide: true, timeout: 15_000, maxBuffer: 4 * MB },
+      (error, stdout) => {
+        if (error) return resolve([]);
+        resolve(parseProcessRows(stdout));
+      },
+    );
+  });
+
 export function parseProcessRows(text: string): ProcessRow[] {
   const rows: ProcessRow[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const [pid, ppid, name, bytes] = line.trim().split("|");
-    const row = { pid: Number(pid), ppid: Number(ppid), name: name ?? "", bytes: Number(bytes) };
+    const [pid, ppid, name, bytes, kernel, user] = line.trim().split("|");
+    const row: ProcessRow = {
+      pid: Number(pid),
+      ppid: Number(ppid),
+      name: name ?? "",
+      bytes: Number(bytes),
+    };
     if (Number.isFinite(row.pid) && Number.isFinite(row.ppid) && Number.isFinite(row.bytes)) {
+      if (kernel && user) {
+        const ticks = Number(kernel) + Number(user);
+        if (Number.isFinite(ticks)) row.cpuTicks = ticks;
+      }
       if (row.name) rows.push(row);
     }
   }
   return rows;
+}
+
+/** Processor time of Sahkarmi's whole tree (rooted at `rootPid`); null without CPU columns. */
+export function treeCpuTicks(rows: ProcessRow[], rootPid: number): number | null {
+  const children = new Map<number, ProcessRow[]>();
+  for (const row of rows) {
+    if (row.pid === row.ppid) continue;
+    const list = children.get(row.ppid);
+    if (list) list.push(row);
+    else children.set(row.ppid, [row]);
+  }
+  const root = rows.find((row) => row.pid === rootPid);
+  if (!root || root.cpuTicks === undefined) return null;
+  let total = 0;
+  const seen = new Set<number>();
+  const stack = [root];
+  while (stack.length > 0) {
+    const row = stack.pop();
+    if (!row || seen.has(row.pid)) continue;
+    seen.add(row.pid);
+    total += row.cpuTicks ?? 0;
+    stack.push(...(children.get(row.pid) ?? []));
+  }
+  return total;
+}
+
+/**
+ * Share of the whole PC's processor (all cores) used between two readings, 0-100. Processes that
+ * ended in between take their time with them, so a drop reads as 0, never below.
+ */
+export function cpuPercentBetween(
+  previous: { at: number; ticks: number },
+  next: { at: number; ticks: number },
+  cores: number,
+): number | null {
+  const wallMs = next.at - previous.at;
+  if (!(wallMs > 0) || !(cores > 0)) return null;
+  const used = Math.max(0, next.ticks - previous.ticks) / 10_000; // 100 ns ticks -> ms
+  return Math.min(100, Math.max(0, Math.round((used / (wallMs * cores)) * 100)));
 }
 
 const GROUP_LABELS: Record<ResourceUsageGroup["kind"], string> = {
@@ -110,6 +183,14 @@ export function groupTree(rows: ProcessRow[], rootPid: number): ResourceUsageGro
     .sort((left, right) => right.mb - left.mb);
 }
 
+function safeCores(): number {
+  try {
+    return Math.max(1, availableParallelism());
+  } catch {
+    return 1;
+  }
+}
+
 /** Measured base of the app with no coworker working (window, renderer, GPU, helpers). */
 export const APP_BASE_MB = 1_200;
 
@@ -140,7 +221,10 @@ export function presets(totalMb: number): number[] {
 export interface AppMemoryOptions {
   rootPid: number;
   lister?: ProcessLister;
+  /** The query with processor time, used while the detail meter is on. */
+  detailLister?: ProcessLister;
   now?: () => number;
+  cores?: number;
 }
 
 /**
@@ -156,7 +240,16 @@ export class AppMemoryMonitor {
 
   readonly #rootPid: number;
   readonly #lister: ProcessLister;
+  readonly #detailLister: ProcessLister;
   readonly #now: () => number;
+  readonly #cores: number;
+  /** Detail meter (processor and awake pages): off keeps the plain memory meter. */
+  #detail: () => boolean = () => false;
+  #awakePages: () => number | null = () => null;
+  #cpuReading: { at: number; ticks: number } | null = null;
+  #cpuPercent: number | null = null;
+  /** While the detail meter is on: a cheap free-memory look that starts sampling under pressure. */
+  #pressureWatch: ReturnType<typeof setInterval> | null = null;
   #history: { at: number; mb: number }[] = [];
   #groups: ResourceUsageGroup[] = [];
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -172,7 +265,33 @@ export class AppMemoryMonitor {
   constructor(options: AppMemoryOptions) {
     this.#rootPid = options.rootPid;
     this.#lister = options.lister ?? windowsProcessLister;
+    this.#detailLister = options.detailLister ?? options.lister ?? windowsProcessDetailLister;
     this.#now = options.now ?? Date.now;
+    this.#cores = options.cores ?? safeCores();
+  }
+
+  /**
+   * The detail meter: processor use and awake browser pages next to the memory reading. While on,
+   * it also samples when the PC runs short of memory (a free-memory look every SAMPLE_MS; the
+   * process list itself still runs only while needed).
+   */
+  configureDetail(enabled: () => boolean, awakePages: () => number | null): void {
+    this.#detail = enabled;
+    this.#awakePages = awakePages;
+    if (this.#pressureWatch) clearInterval(this.#pressureWatch);
+    this.#pressureWatch = setInterval(() => {
+      try {
+        if (this.#detail()) this.#retime();
+      } catch {
+        // The plain meter keeps working.
+      }
+    }, AppMemoryMonitor.SAMPLE_MS);
+    this.#pressureWatch.unref?.();
+  }
+
+  /** Latest processor use (% of the PC), or null before two detail readings. */
+  get cpuPercent(): number | null {
+    return this.#cpuPercent;
   }
 
   configure(limit: () => { limitMb: number; warnPercent: number }): void {
@@ -196,9 +315,11 @@ export class AppMemoryMonitor {
 
   /** One fresh measurement now (shared when one is already running). */
   sample(): Promise<void> {
-    this.#sampling ??= this.#lister()
+    const detail = this.#detailOn();
+    this.#sampling ??= (detail ? this.#detailLister : this.#lister)()
       .then((rows) => {
         if (rows.length === 0) return;
+        if (detail) this.#noteCpu(rows);
         this.#groups = groupTree(rows, this.#rootPid);
         const mb = this.#groups.reduce((sum, group) => sum + group.mb, 0);
         this.#history.push({ at: this.#now(), mb });
@@ -272,12 +393,60 @@ export class AppMemoryMonitor {
       recommendation: recommend(reading.totalMb, used),
       presetsMb: presets(reading.totalMb),
       sampledAt: sampledAt ? new Date(sampledAt).toISOString() : null,
+      ...(this.#detailOn() ? { cpuPercent: this.#cpuPercent, awakePages: this.#pagesAwake() } : {}),
     };
   }
 
   stop(): void {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
+  }
+
+  /** Stops every timer, the free-memory look too (app quit, tests). */
+  dispose(): void {
+    this.stop();
+    if (this.#pressureWatch) clearInterval(this.#pressureWatch);
+    this.#pressureWatch = null;
+  }
+
+  #detailOn(): boolean {
+    try {
+      return this.#detail();
+    } catch {
+      return false;
+    }
+  }
+
+  #pagesAwake(): number | null {
+    try {
+      const count = this.#awakePages();
+      return typeof count === "number" && Number.isFinite(count) ? count : null;
+    } catch {
+      return null;
+    }
+  }
+
+  #noteCpu(rows: ProcessRow[]): void {
+    const ticks = treeCpuTicks(rows, this.#rootPid);
+    if (ticks === null) return;
+    const next = { at: this.#now(), ticks };
+    if (this.#cpuReading) {
+      const percent = cpuPercentBetween(this.#cpuReading, next, this.#cores);
+      if (percent !== null) this.#cpuPercent = percent;
+    }
+    this.#cpuReading = next;
+  }
+
+  /** Sampling is needed: a limit is set, Settings looked lately, or (detail) memory is short. */
+  #needed(): boolean {
+    if (this.#limit().limitMb > 0) return true;
+    if (this.#now() - this.#viewedAt < AppMemoryMonitor.VIEW_KEEPALIVE_MS) return true;
+    if (!this.#detailOn()) return false;
+    try {
+      return readMemory().pressure !== "ok";
+    } catch {
+      return false;
+    }
   }
 
   #updateLevel(): void {
@@ -299,19 +468,16 @@ export class AppMemoryMonitor {
 
   /** Samples on a timer only while a limit is set or the Settings view is open. */
   #retime(): void {
-    const needed =
-      this.#limit().limitMb > 0 ||
-      this.#now() - this.#viewedAt < AppMemoryMonitor.VIEW_KEEPALIVE_MS;
+    const needed = this.#needed();
     if (needed && !this.#timer) {
       void this.sample();
       this.#timer = setInterval(() => {
-        const stillNeeded =
-          this.#limit().limitMb > 0 ||
-          this.#now() - this.#viewedAt < AppMemoryMonitor.VIEW_KEEPALIVE_MS;
+        const stillNeeded = this.#needed();
         if (!stillNeeded) {
           this.stop();
           this.#history = [];
           this.#level = "ok";
+          this.#cpuReading = null;
           return;
         }
         void this.sample();

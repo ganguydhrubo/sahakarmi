@@ -77,6 +77,8 @@ interface UpdateServiceOptions {
 }
 
 const DEFAULT_CHECK_INTERVAL = 15 * 60 * 1_000;
+/** A check the owner did not ask for that hit a passing problem tries again this soon. */
+const QUIET_RETRY_MS = 2 * 60 * 1_000;
 /** After this many Restart clicks that changed nothing, the update is handed to the browser. */
 const MANUAL_AFTER_FAILURES = 2;
 const UNSUPPORTED_MESSAGE = "Updates are available in installed desktop builds.";
@@ -115,6 +117,8 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   #downloadedFile: string | null = null;
   /** Install silently when the owner quits (Sahkarmi's helper, not electron-updater's). */
   #installOnQuit = false;
+  /** A background check is running: a passing network problem is not shown as an error. */
+  #quietCheck = false;
 
   constructor(updater: UpdateAdapter, options: UpdateServiceOptions) {
     super();
@@ -210,8 +214,9 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         this.#failInstall(error);
         return;
       }
-      // downloadUpdate also rejects; its catch owns recovery during a transfer.
-      if (!this.#downloadTask && !this.#stopped) this.#setError(error);
+      // downloadUpdate also rejects; its catch owns recovery during a transfer. A background
+      // check also rejects, and its catch decides whether the owner needs to see it.
+      if (!this.#downloadTask && !this.#stopped && !this.#quietCheck) this.#setError(error);
     });
 
     if (scheduleChecks && this.#options.enabled) {
@@ -225,10 +230,15 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
 
   async checkOnWake(): Promise<void> {
     if (this.#status.checkedAt && Date.now() - Date.parse(this.#status.checkedAt) < 60_000) return;
-    await this.checkForUpdates();
+    await this.checkForUpdates({ quiet: true });
   }
 
-  async checkForUpdates(): Promise<UpdateStatus> {
+  /**
+   * `quiet`: a check the owner did not ask for (at start, on a timer, after sleep). When GitHub
+   * or the connection has a passing problem, the screen stays as it was and the check runs again
+   * in a few minutes, instead of an orange "Could not update" card at nearly every start.
+   */
+  async checkForUpdates(options: { quiet?: boolean } = {}): Promise<UpdateStatus> {
     if (!this.#options.enabled || this.#stopped) return this.getStatus();
     if (
       this.#status.phase === "checking" ||
@@ -238,6 +248,10 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     ) {
       return this.getStatus();
     }
+    const before = this.getStatus();
+    const quiet = options.quiet === true;
+    let nextCheckMs = this.#options.checkIntervalMs;
+    this.#quietCheck = quiet;
     this.#setStatus({ phase: "checking", progress: null, message: null });
     try {
       const result = await this.#updater.checkForUpdates();
@@ -257,9 +271,16 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         );
       }
     } catch (error) {
-      this.#setError(error);
+      if (quiet && isPassingProblem(error)) {
+        const { phase, availableVersion, progress, message } = before;
+        this.#setStatus({ phase, availableVersion, progress, message });
+        nextCheckMs = Math.min(QUIET_RETRY_MS, this.#options.checkIntervalMs);
+      } else {
+        this.#setError(error);
+      }
     } finally {
-      this.#scheduleCheck(this.#options.checkIntervalMs);
+      this.#quietCheck = false;
+      this.#scheduleCheck(nextCheckMs);
     }
     if (
       this.#status.phase === "available" &&
@@ -505,7 +526,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   #scheduleCheck(delayMs: number): void {
     if (this.#stopped) return;
     if (this.#checkTimer) clearTimeout(this.#checkTimer);
-    this.#checkTimer = setTimeout(() => void this.checkForUpdates(), delayMs);
+    this.#checkTimer = setTimeout(() => void this.checkForUpdates({ quiet: true }), delayMs);
     this.#checkTimer.unref?.();
   }
 
@@ -545,6 +566,18 @@ export function reasonOf(error: unknown): string {
     return "this build is not signed for automatic updates";
   if (/sha512 checksum mismatch/i.test(text)) return "the downloaded file was damaged";
   return "unexpected error (details are in Export diagnostics)";
+}
+
+/** No internet, a slow or broken connection, or GitHub busy: worth trying again by itself. */
+function isPassingProblem(error: unknown): boolean {
+  const reason = reasonOf(error);
+  return (
+    reason === "no internet connection" ||
+    reason.startsWith("GitHub's download server is not answering") ||
+    reason === "the connection timed out" ||
+    reason === "the connection was interrupted" ||
+    reason.startsWith("GitHub is limiting requests")
+  );
 }
 
 function clampProgress(value: number): number {

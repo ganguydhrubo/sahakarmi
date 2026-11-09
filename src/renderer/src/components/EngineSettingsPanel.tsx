@@ -69,12 +69,24 @@ export function EngineSettingsPanel() {
               min={ENGINE_SETTINGS_LIMITS.maxConcurrentTurns.min}
               max={ENGINE_SETTINGS_LIMITS.maxConcurrentTurns.max}
               value={current().maxConcurrentTurns}
+              disabled={current().concurrencyMode === "auto"}
               onChange={(event) => {
                 const value = numberFrom(event);
                 if (value !== null) void save({ maxConcurrentTurns: value });
               }}
             />
             <small class="settings-meta">{t("engineMaxTurnsHint")}</small>
+          </label>
+          <label class="engine-setting engine-setting-toggle">
+            <input
+              type="checkbox"
+              checked={current().concurrencyMode === "auto"}
+              onChange={(event) =>
+                void save({ concurrencyMode: event.currentTarget.checked ? "auto" : "fixed" })
+              }
+            />
+            <span>{t("engineAutoTurnsLabel")}</span>
+            <small class="settings-meta">{t("engineAutoTurnsHint")}</small>
           </label>
           <label class="engine-setting">
             <span>{t("engineWatchdogLabel")}</span>
@@ -223,6 +235,20 @@ function MemoryLimit(props: {
                     })}
               </Show>
             </p>
+            <Show when={status().cpuPercent != null || status().awakePages != null}>
+              <p class="memory-line">
+                {[
+                  status().cpuPercent != null
+                    ? t("meterCpu", { percent: String(status().cpuPercent) })
+                    : null,
+                  status().awakePages != null
+                    ? t("meterPages", { count: String(status().awakePages) })
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </Show>
             <Show when={status().systemPressure !== "ok"}>
               <p class="memory-line memory-alert">{t("memoryPcLow")}</p>
             </Show>

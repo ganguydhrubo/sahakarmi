@@ -108,6 +108,15 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     true,
     "https://kiro.dev",
   ),
+  // Shown only while its Settings > Features switch is on (see SWITCHED_PROVIDERS).
+  agent(
+    "openmodel",
+    "Open Interpreter",
+    "",
+    "Free, open-source coding engine for open models with your own key",
+    false,
+    "https://www.openinterpreter.com/docs/terminal/install",
+  ),
 ];
 
 function agent(

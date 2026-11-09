@@ -5,6 +5,53 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-09
+
+Every new part is behind its own switch in Settings > Features. The ones that are on by default
+change nothing until they are needed, so an upgraded install works as 0.26.1 did.
+
+### Added
+
+- Ask once after outside content (on): once a reply has read a web page, a web search, an app,
+  a connector or a file outside the coworker's folders, its first command, outgoing message or
+  key-file read is asked on the normal approval card, even in auto mode. One question per reply;
+  the answer covers the rest of it. Work without outside content gets no new question.
+- Approval cards say where a request came from: you, your phone, a routine, a schedule, a team
+  run, another coworker by name, the app itself, or the page, app or file the coworker read.
+- Work limits (Settings > Features > Work limits): replies a day for each coworker and steps per
+  team run. Nothing is limited until you set a number. At the limit the coworker or run pauses
+  with a notice saying where to raise it; a running reply is never cut short.
+- Auto concurrency: how many coworkers work at once follows the PC's free memory. Fair turns:
+  messages you typed go first, then whoever waited longest. Both off by default.
+- Processor use and awake browser pages under the memory meter. Optional per-coworker page
+  budget (two awake pages each) and a site crash guard (a site that crashes three times in ten
+  minutes stays asleep for coworkers).
+- Leftover coworker programs from a crashed start are found and closed (off by default; only
+  Sahkarmi's own programs).
+- Skill packs: eighteen ready skill packs pinned to exact versions with checked licences, skill
+  import that brings a plugin's linked files along, and suggested connections that are added
+  only after you confirm.
+- Ready-made connectors list (off by default) with each service's name and logo, pinned
+  versions and per-tool permission rules.
+- Open Interpreter as an engine (off by default), using your own install.
+- Built-in browser: keys and tokens on a page are hidden from the AI (on), and clicked elements
+  can be remembered (off).
+- Settings > About lists the open-source projects Sahkarmi uses and their licences.
+
+### Fixed
+
+- The orange "Could not update. Please try again." card came up at start whenever GitHub was
+  briefly slow or down. A check you did not ask for (at start, on its timer, after sleep) now
+  stays quiet on a passing problem (no internet, timeout, dropped connection, GitHub busy) and
+  tries again after 2 minutes. Check for updates still tells you the reason.
+- Gemini showed "Google account 1, 2" instead of each account's email when the sign-in had been
+  saved in an older format. Every format now shows the email; the sign-in is only ever sent to
+  Google's own address.
+- A message sent again (Gemini moving to the next Google account, or a retry on a free model)
+  showed twice in the open chat.
+- A browser tab whose page closed itself, as sign-in pop-ups do, could not be shown or used by
+  its coworker again.
+
 ## [0.26.1] - 2026-11-08
 
 ### Fixed

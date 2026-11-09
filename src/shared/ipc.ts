@@ -159,6 +159,8 @@ export const IPC_CHANNELS = {
   orchestratorSetEngineSettings: "orchestrator:set-engine-settings",
   orchestratorPerformance: "orchestrator:performance",
   orchestratorResourceStatus: "orchestrator:resource-status",
+  orchestratorGetBudgets: "orchestrator:get-budgets",
+  orchestratorSetBudgets: "orchestrator:set-budgets",
   assignmentsOverview: "assignments:overview",
   assignmentsSet: "assignments:set",
   agentRerunInterrupted: "agent:rerun-interrupted",
@@ -191,6 +193,7 @@ export const IPC_CHANNELS = {
   customSkillsInstallGithub: "custom-skills:install-github",
   customSkillsRemove: "custom-skills:remove",
   customSkillsMarkReviewed: "custom-skills:mark-reviewed",
+  customSkillsInstallPack: "custom-skills:install-pack",
   mcpList: "mcp:list",
   mcpSave: "mcp:save",
   mcpImportJson: "mcp:import-json",
@@ -210,6 +213,8 @@ export const IPC_CHANNELS = {
   mcpCancelInstall: "mcp:cancel-install",
   mcpSetShared: "mcp:set-shared",
   mcpAddAdapter: "mcp:add-adapter",
+  mcpConnectors: "mcp:connectors",
+  mcpAddConnector: "mcp:add-connector",
   workflowExport: "workflow:export",
   workflowReadImport: "workflow:read-import",
   voiceGetState: "voice:get-state",
@@ -317,6 +322,7 @@ export const ACP_AGENT_PROVIDERS = [
   "goose",
   "vibe",
   "kiro",
+  "openmodel",
 ] as const;
 export type AcpAgentProviderId = (typeof ACP_AGENT_PROVIDERS)[number];
 
@@ -328,6 +334,19 @@ export const AGENT_PROVIDERS = [
   ...ACP_AGENT_PROVIDERS,
 ] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
+
+/**
+ * Engines that ship switched off: each is listed, probed and offered only while its Settings >
+ * Features switch is on. Off, Sahkarmi behaves exactly as if the engine did not exist.
+ */
+export const SWITCHED_PROVIDERS: Partial<Record<AgentProviderId, string>> = {
+  openmodel: "engine-open-model",
+};
+
+/** The feature switch an engine needs, or null for engines that are always offered. */
+export function providerFeatureId(provider: AgentProviderId): string | null {
+  return SWITCHED_PROVIDERS[provider] ?? null;
+}
 
 export function isAcpAgentProvider(value: unknown): value is AcpAgentProviderId {
   return typeof value === "string" && ACP_AGENT_PROVIDERS.includes(value as AcpAgentProviderId);
@@ -354,6 +373,7 @@ export const PROVIDER_LABELS: Record<AgentProviderId, string> = {
   goose: "Goose",
   vibe: "Mistral Vibe",
   kiro: "Kiro",
+  openmodel: "Open Interpreter",
 };
 export type AgentProviderState =
   | "not-started"
@@ -963,6 +983,27 @@ export interface ApprovalRequest {
   notifiedAt?: string | null;
   /** Why the Telegram notification could not be delivered, if it failed. */
   deliveryError?: string | null;
+  /** Where the request came from ("approval-provenance"). Absent on older requests. */
+  provenance?: ApprovalProvenance;
+}
+
+/**
+ * "Where this request came from" on an approval card. `label` is data (a coworker's name, a
+ * site's domain, an app's name), never instructions; the card words it by `kind`.
+ */
+export interface ApprovalProvenance {
+  kind:
+    | "owner"
+    | "remote"
+    | "routine"
+    | "schedule"
+    | "team-run"
+    | "coworker"
+    | "system"
+    | "web"
+    | "app"
+    | "file";
+  label?: string;
 }
 
 /** Operations the permission engine distinguishes. Order is the Settings display order. */
@@ -1472,6 +1513,8 @@ export interface SendMessageInput {
   steer?: boolean;
   /** Set by the app (never the renderer) for messages it sends on the owner's behalf. */
   origin?: MessageOrigin;
+  /** Set by the app (never the renderer): the owner sent this from their phone. Labels only. */
+  remote?: boolean;
 }
 
 export interface SetMessageReactionInput {
@@ -2053,15 +2096,39 @@ export interface OrchestratorDesktopApi {
   cancelRun: (runId: string) => Promise<OrchestratorRun | null>;
   getEngineSettings: () => Promise<EngineSettings>;
   setEngineSettings: (input: Partial<EngineSettings>) => Promise<EngineSettings>;
+  /** Work limits (Settings > Features). Optional: older preloads do not have them. */
+  getBudgets?: () => Promise<BudgetSettings>;
+  setBudgets?: (input: SetBudgetInput) => Promise<BudgetSettings>;
   performance: () => Promise<PerformanceSummary>;
   /** Live memory use, the owner's limit and a recommendation (Settings > Features). */
   resourceStatus: () => Promise<ResourceStatus>;
+}
+
+/** Work limits ("budget-stop"). A missing entry or null means no limit. */
+export interface BudgetSettings {
+  /** Coworker id → replies it may start in one day. */
+  coworkers: Record<string, number>;
+  /** Steps (task messages) one team run may send. */
+  teamRunSteps: number | null;
+  /** Replies started today by coworkers that have a limit. */
+  usedToday: Record<string, number>;
+}
+
+export interface SetBudgetInput {
+  /** Coworker id → new limit, or null to remove it. */
+  coworkers?: Record<string, number | null>;
+  teamRunSteps?: number | null;
 }
 
 /** How hard the agent engine may work this PC. Owner-editable in Settings > Features. */
 export interface EngineSettings {
   /** Coworker turns that may run at the same time (1-8). */
   maxConcurrentTurns: number;
+  /**
+   * "fixed" (default): maxConcurrentTurns is the cap. "auto": the cap follows the PC's free
+   * memory at each start (1-64), and maxConcurrentTurns is kept for when the owner switches back.
+   */
+  concurrencyMode?: ConcurrencyMode;
   /** A turn with no sign of life (no text, no tool) this long is stopped (5-240 minutes). */
   watchdogMinutes: number;
   /**
@@ -2075,8 +2142,11 @@ export interface EngineSettings {
   maxStepsPerTurn: number;
 }
 
+export type ConcurrencyMode = "fixed" | "auto";
+
 export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   maxConcurrentTurns: 3,
+  concurrencyMode: "fixed",
   watchdogMinutes: 45,
   memoryLimitMb: 0,
   memoryWarnPercent: 80,
@@ -2136,6 +2206,10 @@ export interface ResourceStatus {
   /** Ready-made limits that fit this PC, in MB. */
   presetsMb: number[];
   sampledAt: string | null;
+  /** Processor use of Sahkarmi and its programs (% of the whole PC); with the detail meter only. */
+  cpuPercent?: number | null;
+  /** Browser pages awake right now; with the detail meter only. */
+  awakePages?: number | null;
 }
 
 /** One finished coworker turn, recorded on this PC only (never sent anywhere). */
@@ -2295,6 +2369,36 @@ export interface CustomSkill {
   reviewNeeded?: boolean;
   /** What was flagged, in plain English. */
   risks?: string[];
+  /** Installed from a Sahkarmi skill pack: its id (see shared/skill-packs.ts). */
+  pack?: string;
+  /** Files from the rest of its plugin or repo that were brought along (links rewritten). */
+  linkedFiles?: number;
+  /** Files it mentions that could not be brought along (binary, too large, a script). */
+  unresolvedLinks?: string[];
+  /** MCP servers its plugin's .mcp.json suggests. Recommendations only: never connected. */
+  mcpRecommendations?: McpRecommendation[];
+  /** From the plugin's .claude-plugin/plugin.json, when it has one. */
+  plugin?: SkillPluginInfo;
+}
+
+/** An MCP server a skill's plugin suggests. No secrets: only the names of settings it needs. */
+export interface McpRecommendation {
+  name: string;
+  transport: "http" | "stdio";
+  url?: string;
+  command?: string;
+  args?: string[];
+  /** Names of environment settings it expects (values are never kept). */
+  envKeys: string[];
+  /** Names of HTTP headers it expects (values are never kept). */
+  headerKeys: string[];
+}
+
+export interface SkillPluginInfo {
+  name: string;
+  displayName?: string;
+  version?: string;
+  description?: string;
 }
 
 /** One skill folder (with a SKILL.md) found in a GitHub repo. */
@@ -2325,6 +2429,8 @@ export interface CustomSkillsDesktopApi {
   remove: (id: string) => Promise<CustomSkill[]>;
   /** The owner has read a flagged skill and trusts it. */
   markReviewed: (id: string) => Promise<CustomSkill[]>;
+  /** Installs a whole skill pack, or the named skills of it, at the pack's pinned commit. */
+  installPack?: (packId: string, skills?: string[]) => Promise<CustomSkill[]>;
 }
 
 /** What the owner can press to fix an MCP server problem. */
@@ -2452,6 +2558,24 @@ export interface McpServerInput {
   requiredEnv?: McpEnvRequirement[];
   /** Imports heavy libraries (video, speech, ML): Settings suggests shared mode. */
   heavy?: boolean;
+}
+
+/** Something a ready-made connector needs that is not on this PC (never installed for you). */
+export interface McpConnectorMissing {
+  requirement: "node" | "uv" | "git" | "chrome";
+  link: string;
+  minVersion?: number;
+  foundVersion?: number;
+}
+
+/** One ready-made connector as this PC sees it (feature "mcp-connector-gallery"). */
+export interface McpConnectorCheck {
+  id: string;
+  /** Everything it needs to start is here (the values the owner types aside). */
+  ready: boolean;
+  missing: McpConnectorMissing[];
+  /** The server name it was already added under, if any. */
+  addedAs: string | null;
 }
 
 export interface McpImportResult {
@@ -2618,6 +2742,14 @@ export interface McpDesktopApi {
   setShared: (id: string, shared: boolean) => Promise<McpServerSummary[]>;
   /** Writes a small MCP adapter for a repo whose local web API coworkers should call. */
   addAdapter: (analysisId: string, name: string) => Promise<McpServerSummary[]>;
+  /** Ready-made connectors and what each still needs on this PC. Starts nothing. */
+  connectors: () => Promise<McpConnectorCheck[]>;
+  /** Adds one ready-made connector, switched off until its test passes. */
+  addConnector: (
+    id: string,
+    name: string,
+    values: Record<string, string>,
+  ) => Promise<McpServerSummary[]>;
 }
 
 /** One app (a Composio toolkit) as shown on the Marketplace's Apps tab. */

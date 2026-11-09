@@ -34,8 +34,10 @@ import { ApprovalStore } from "../backend/approval-store";
 import { isUnderRoots, localAttachmentPath, mimeTypeFor } from "../backend/attachment-text";
 import { BotStore } from "../backend/bot-store";
 import { createCoworkerBrowser } from "../backend/browser-factory";
+import { configureBrowserGuards } from "../backend/browser-guard";
 import type { CoworkerBrowser } from "../backend/browser-host";
 import { browserPagesFromAudit } from "../backend/browser-state";
+import { BudgetStore } from "../backend/budget-store";
 import { BusinessStore } from "../backend/business-store";
 import {
   resolveClaudeCli,
@@ -56,6 +58,7 @@ import { COMPOSIO_SECRET, ComposioClient } from "../backend/integrations/composi
 import { onCorruptFileRecovered } from "../backend/json-file";
 import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
 import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
+import { closeLeftoverEngines, SAHKARMI_LAUNCH_MARKERS } from "../backend/leftover-processes";
 import { MailboxStore } from "../backend/mailbox-store";
 import {
   genericApiSpec,
@@ -141,6 +144,7 @@ import {
   type RespondToPromptInput,
   type SaveBusinessTargetInput,
   type SendMessageInput,
+  type SetBudgetInput,
   type SetQueuePausedInput,
   SOCIAL_PLATFORMS,
   type SocialPlatform,
@@ -355,7 +359,11 @@ function configureContentSecurityPolicy(): void {
   });
 }
 
-function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void {
+function registerExtensionsIpc(
+  skills: CustomSkills,
+  mcp: McpServerStore,
+  sharedRoot: string,
+): void {
   const text = (input: unknown, key: string) =>
     isObject(input) && typeof input[key] === "string" ? (input[key] as string) : "";
   handleTrusted(IPC_CHANNELS.customSkillsList, () => skills.list());
@@ -378,6 +386,14 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
   );
   handleTrusted(IPC_CHANNELS.customSkillsMarkReviewed, (input: unknown) =>
     skills.markReviewed(requireString(isObject(input) ? input.id : null, "id")),
+  );
+  handleTrusted(IPC_CHANNELS.customSkillsInstallPack, (input: unknown) =>
+    skills.installPack(
+      requireString(isObject(input) ? input.packId : null, "packId"),
+      isObject(input) && Array.isArray(input.skills)
+        ? input.skills.filter((skill): skill is string => typeof skill === "string").slice(0, 100)
+        : undefined,
+    ),
   );
   // Guided installs (audit §11.6): plans are built here and run only after the owner approves.
   const installer = new McpInstaller(app.getPath("userData"), {
@@ -520,6 +536,23 @@ function registerExtensionsIpc(skills: CustomSkills, mcp: McpServerStore): void 
         : null,
     ),
   );
+  // Ready-made connectors (feature "mcp-connector-gallery"): the list starts nothing; Add saves a
+  // server switched off, through the same save as a manual add.
+  handleTrusted(IPC_CHANNELS.mcpConnectors, () => mcp.connectorChecks());
+  handleTrusted(IPC_CHANNELS.mcpAddConnector, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid connector.");
+    const values = isObject(input.values) ? input.values : {};
+    return mcp.addConnector(
+      requireString(input.id, "id"),
+      typeof input.name === "string" ? input.name : "",
+      Object.fromEntries(
+        Object.entries(values).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+      { sharedRoot, connectorRoot: join(app.getPath("userData"), "mcp-connectors") },
+    );
+  });
 }
 
 /**
@@ -2202,7 +2235,18 @@ if (!hasSingleInstanceLock) {
         appLog.write("error", "MCP server list unreadable; starting with none", String(error));
       });
       service.setMcpServers(mcpServers);
-      registerExtensionsIpc(new CustomSkills(store.sharedRoot), mcpServers);
+      registerExtensionsIpc(
+        new CustomSkills(store.sharedRoot, undefined, (id) => {
+          // The feature registry is created a few lines below; until then, the switches are off.
+          try {
+            return features.isEnabled(id);
+          } catch {
+            return false;
+          }
+        }),
+        mcpServers,
+        store.sharedRoot,
+      );
       // Who may use each app, skill and MCP server (web APIs keep their own access list).
       const assignments = new ResourceAssignmentStore(app.getPath("userData"));
       await assignments.initialize().catch((error) => {
@@ -2225,6 +2269,16 @@ if (!hasSingleInstanceLock) {
       const features = new FeatureRegistry(app.getPath("userData"));
       mcpServers.setFeatureCheck((id) => features.isEnabled(id));
       service.configureContinuation(() => features.isEnabled("auto-continue"));
+      const budgets = new BudgetStore(app.getPath("userData"));
+      await budgets.initialize().catch((error) => {
+        appLog.write("error", "work limits unreadable; no limits", String(error));
+      });
+      service.configureSafety({
+        taintGuard: () => features.isEnabled("taint-guard"),
+        provenance: () => features.isEnabled("approval-provenance"),
+        budget: () => (features.isEnabled("budget-stop") ? budgets : null),
+      });
+      registerBudgetIpc(service, budgets);
       const engineSettings = new EngineSettingsStore(app.getPath("userData"));
       await engineSettings.initialize();
       service.configureEngineSettings(() => engineSettings.get());
@@ -2243,6 +2297,17 @@ if (!hasSingleInstanceLock) {
           : null;
       });
       service.configureMemoryMonitor(appMemory);
+      // Phase 2 resource guards, each behind its own switch in Settings > Features.
+      appMemory.configureDetail(
+        () => features.isEnabled("live-meter-detail"),
+        () => browserHost?.awakePageCount?.() ?? null,
+      );
+      service.configureFairTurns(() => features.isEnabled("fair-turns"));
+      service.configureAwakePages((botId) => browserHost?.awakePageCount?.(botId) ?? 0);
+      browserHost?.configureGuards?.({
+        pageBudget: () => features.isEnabled("page-budget"),
+        crashGuard: () => features.isEnabled("page-crash-guard"),
+      });
       let runEvents: RunEventStore | null = null;
       try {
         runEvents = new RunEventStore(join(app.getPath("userData"), "run-events.sqlite"));
@@ -2257,6 +2322,11 @@ if (!hasSingleInstanceLock) {
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
       service.configureLazyProviderStart(() => features.isEnabled("lean-runtime"));
+      service.configureProviderSwitches((id) => features.isEnabled(id));
+      configureBrowserGuards({
+        hideSecrets: () => features.isEnabled("browser-hide-secrets"),
+        actionMemory: () => features.isEnabled("browser-action-memory"),
+      });
       service.configureClaudeIdleClose(() => features.isEnabled("lean-runtime"));
       service.configureDeltaUpdates(() => features.isEnabled("chat-delta-updates"));
       // Knowledge Bases run in a utility process (indexing never blocks the window); the host
@@ -2285,6 +2355,23 @@ if (!hasSingleInstanceLock) {
       await features.initialize().catch((error) => {
         appLog.write("error", "feature settings unreadable; using defaults", String(error));
       });
+      // Coworker programs a crashed or force-closed run left behind (off unless switched on).
+      if (process.platform === "win32" && features.isEnabled("leftover-cleanup")) {
+        const startedAt = Date.now() - Math.round(process.uptime() * 1000);
+        void windowShown.then(() =>
+          closeLeftoverEngines({
+            selfPid: process.pid,
+            startedAt,
+            ownFolders: [
+              process.resourcesPath,
+              join(app.getPath("userData"), "tools"),
+              join(app.getPath("userData"), "runtime"),
+            ].filter((folder): folder is string => typeof folder === "string" && folder.length > 0),
+            markers: SAHKARMI_LAUNCH_MARKERS,
+            log: (message) => appLog.write("info", "leftover cleanup", message),
+          }),
+        );
+      }
       const business = new BusinessStore(app.getPath("userData"));
       await business.initialize();
       const schedules = new ScheduleStore(app.getPath("userData"));
@@ -2528,6 +2615,7 @@ if (!hasSingleInstanceLock) {
           checkpoints: () =>
             features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
           review: () => features.isEnabled("cross-model-review"),
+          stepBudget: () => (features.isEnabled("budget-stop") ? budgets.teamRunSteps() : null),
           planner: (workspaceId) => {
             if (!features.isEnabled("team-run-ai-planning")) return null;
             const workspaces = service.listWorkspaces().workspaces;
@@ -3053,6 +3141,32 @@ function registerEngineIpc(
         recent: [],
       },
   );
+}
+
+/** Settings > Features > Work limits. */
+function registerBudgetIpc(service: AgentService, budgets: BudgetStore): void {
+  handleTrusted(IPC_CHANNELS.orchestratorGetBudgets, () => budgets.get());
+  handleTrusted(IPC_CHANNELS.orchestratorSetBudgets, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid work limits.");
+    const patch: SetBudgetInput = {};
+    if (input.coworkers !== undefined) {
+      if (!isObject(input.coworkers)) throw new Error("Invalid work limits.");
+      patch.coworkers = {};
+      for (const [botId, limit] of Object.entries(input.coworkers)) {
+        if (limit !== null && typeof limit !== "number") throw new Error("Invalid work limits.");
+        patch.coworkers[botId] = limit;
+      }
+    }
+    if (input.teamRunSteps !== undefined) {
+      if (input.teamRunSteps !== null && typeof input.teamRunSteps !== "number") {
+        throw new Error("Invalid work limits.");
+      }
+      patch.teamRunSteps = input.teamRunSteps;
+    }
+    const saved = await budgets.set(patch);
+    service.budgetsChanged();
+    return saved;
+  });
 }
 
 function parseSendMessage(value: unknown): SendMessageInput {

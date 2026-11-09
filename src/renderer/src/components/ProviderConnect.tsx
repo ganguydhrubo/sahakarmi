@@ -1,9 +1,10 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import type {
-  AgentProviderId,
-  AgentProviderStatus,
-  AgentStatus,
-  ProviderSetupState,
+import {
+  type AgentProviderId,
+  type AgentProviderStatus,
+  type AgentStatus,
+  type ProviderSetupState,
+  providerFeatureId,
 } from "../../../shared/ipc";
 import { PROVIDER_CATALOG, type ProviderCatalogEntry } from "../../../shared/provider-catalog";
 import { t } from "../i18n";
@@ -67,13 +68,18 @@ export function ProviderConnect(props: { agentStatus: AgentStatus }) {
   const found = (id: AgentProviderId) => status(id)?.state === "sign-in-required";
 
   const groups = createMemo(() => {
-    const ready = PROVIDER_CATALOG.filter((entry) => connected(entry.id));
-    const onComputer = PROVIDER_CATALOG.filter(
+    // An engine behind a Settings > Features switch is listed only while the app reports it,
+    // which it does only while that switch is on.
+    const catalog = PROVIDER_CATALOG.filter(
+      (entry) => !providerFeatureId(entry.id) || status(entry.id) !== undefined,
+    );
+    const ready = catalog.filter((entry) => connected(entry.id));
+    const onComputer = catalog.filter(
       (entry) => !connected(entry.id) && found(entry.id) && entry.kind === "agent",
     );
-    const others = PROVIDER_CATALOG.filter(
-      (entry) => !ready.includes(entry) && !onComputer.includes(entry),
-    ).sort((left, right) => Number(right.free) - Number(left.free));
+    const others = catalog
+      .filter((entry) => !ready.includes(entry) && !onComputer.includes(entry))
+      .sort((left, right) => Number(right.free) - Number(left.free));
     return { ready, onComputer, others };
   });
 

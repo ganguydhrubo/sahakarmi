@@ -50,6 +50,38 @@ describe("ApprovalCard in the chat", () => {
   });
 });
 
+describe("where a request came from", () => {
+  const card = (value: ApprovalRequest) =>
+    render(() => (
+      <ul>
+        <ApprovalCard
+          approval={value}
+          bot={undefined}
+          onDecide={async () => undefined}
+          onOpenCoworker={() => undefined}
+        />
+      </ul>
+    ));
+
+  it("names the web page the coworker read, after the title", () => {
+    card({ ...approval, provenance: { kind: "web", label: "example-shop.in" } });
+    expect(screen.getByText("Where this request came from:")).toBeInTheDocument();
+    expect(screen.getByText(/A web page it read \(example-shop\.in\)/)).toBeInTheDocument();
+  });
+
+  it("names another coworker and the owner's phone", () => {
+    card({ ...approval, provenance: { kind: "coworker", label: "Asha" } });
+    expect(screen.getByText(/Another coworker \(Asha\)/)).toBeInTheDocument();
+    card({ ...approval, id: "approval-3", provenance: { kind: "remote" } });
+    expect(screen.getByText(/You asked, from your phone/)).toBeInTheDocument();
+  });
+
+  it("shows nothing for older requests without it", () => {
+    card(approval);
+    expect(screen.queryByText("Where this request came from:")).toBeNull();
+  });
+});
+
 describe("the approval list stays still", () => {
   const second = { ...approval, id: "approval-2", title: "Send invoice" };
   /** What the app receives on every event: the same requests, freshly copied. */

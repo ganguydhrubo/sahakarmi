@@ -34,6 +34,11 @@ export interface AcpAgentSpec {
   signIn: { kind: "command"; args: string[] } | { kind: "window"; args: string[]; tip: string };
   /** Environment variables that hold an API key, the first one is the one Sahkarmi sets. */
   apiKeyEnv?: string[];
+  /**
+   * For a program the owner installs themselves (Sahkarmi never installs it): its own name and
+   * where to get it, shown only in the "not installed" message.
+   */
+  installHint?: { program: string; url: string };
 }
 
 export const ACP_AGENT_SPECS: Record<AcpAgentProviderId, AcpAgentSpec> = {
@@ -158,7 +163,35 @@ export const ACP_AGENT_SPECS: Record<AcpAgentProviderId, AcpAgentSpec> = {
       tip: "Sign in when Kiro asks, finish in the browser, then close the window.",
     },
   },
+  // Open Interpreter (Settings > Features, off by default). The program's own source
+  // (codex-rs/cli/src/main.rs, `Subcommand::Acp`) starts its ACP server with `acp`; its Windows
+  // installer puts it in %LOCALAPPDATA%\Programs\Open Interpreter\bin. Its sessions start in
+  // "workspace-write" mode, which asks (session/request_permission) before commands and edits.
+  // Sahkarmi never installs it: the owner does, from the link in the "not installed" message.
+  openmodel: {
+    id: "openmodel",
+    commands: ["interpreter"],
+    args: ["acp"],
+    signIn: {
+      kind: "window",
+      args: [],
+      tip: "Type /model in the window, choose your model provider and key, then close it.",
+    },
+    installHint: {
+      program: "Open Interpreter",
+      url: "https://www.openinterpreter.com/docs/terminal/install",
+    },
+  },
 };
+
+/** The plain "not installed" message; it names the program only when the owner must install it. */
+export function notInstalledMessage(spec: AcpAgentSpec, label: string): string {
+  if (!spec.installHint) return `${label} is not installed on this computer.`;
+  if (spec.installHint.program === label) {
+    return `${label} is a free program that is not installed on this computer. Install it yourself from ${spec.installHint.url}, then click Connect again.`;
+  }
+  return `${label} needs the free program ${spec.installHint.program}, which is not installed on this computer. Install it yourself from ${spec.installHint.url}, then click Connect again.`;
+}
 
 /** Mistral Vibe signs in through its main program, not the ACP one. */
 export function signInCommandFor(spec: AcpAgentSpec, executable: string): string {
@@ -166,7 +199,7 @@ export function signInCommandFor(spec: AcpAgentSpec, executable: string): string
 }
 
 /** Folders npm, uv and the vendors' installers put programs in, besides PATH. */
-function extraSearchFolders(home = homedir()): string[] {
+export function extraSearchFolders(home = homedir()): string[] {
   if (process.platform !== "win32") {
     return [join(home, ".local", "bin"), "/usr/local/bin", "/opt/homebrew/bin"];
   }
@@ -179,6 +212,7 @@ function extraSearchFolders(home = homedir()): string[] {
     join(localAppData, "Programs", "goose"),
     join(home, ".grok", "bin"),
     join(home, ".kimi", "bin"),
+    join(localAppData, "Programs", "Open Interpreter", "bin"),
   ];
 }
 
@@ -240,7 +274,7 @@ export async function resolveAcpAgentCli(id: AcpAgentProviderId): Promise<AcpCli
   const spec = ACP_AGENT_SPECS[id];
   const executable = await findAcpAgentExecutable(spec);
   if (!executable) {
-    throw new CodexCliError(`${PROVIDER_LABELS[id]} is not installed on this computer.`, "missing");
+    throw new CodexCliError(notInstalledMessage(spec, PROVIDER_LABELS[id]), "missing");
   }
   let version = "installed";
   try {

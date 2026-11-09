@@ -14,6 +14,7 @@ import type {
   AgentStatus,
   ApprovalAuthorityGrant,
   ApprovalCategory,
+  ApprovalProvenance,
   ApprovalRequest,
   AttachmentDataInput,
   BotSummary,
@@ -24,6 +25,7 @@ import type {
   DraftAttachment,
   GrantApprovalAuthorityInput,
   KnowledgeCitation,
+  PermissionCategory,
   PermissionPolicyState,
   PublishingAccount,
   QueuedMessageReceipt,
@@ -64,6 +66,7 @@ import {
   type MessageSearchHit,
   modelWireId,
   PROVIDER_LABELS,
+  providerFeatureId,
   providerForModel,
   type QueueDelivery,
   type SaveInstructionsInput,
@@ -122,6 +125,7 @@ import {
   joinThreadHistory,
   toolShape,
 } from "./codex-tool-refresh";
+import { autoTurnLimit, fairOrder } from "./concurrency";
 import {
   branchName,
   branchPromptLines,
@@ -182,7 +186,7 @@ import {
   insideAny,
   type PermissionRequest,
 } from "./permission-policy";
-import type { PermissionService } from "./permission-service";
+import { DEFERRED_APPROVAL_REASON, type PermissionService } from "./permission-service";
 import {
   type AccountRateLimitResult,
   type AccountRateLimitsReadResult,
@@ -209,6 +213,14 @@ import {
 import type { ResourceAssignmentStore } from "./resource-assignments";
 import type { NewRunEvent } from "./run-events";
 import { installedSkillNames, LearnedSkills, learnedSkillNames } from "./skill-library";
+import {
+  describeSource,
+  isTaintGuarded,
+  provenanceOfSource,
+  TaintGuard,
+  type TaintSource,
+  webSource,
+} from "./taint-guard";
 import {
   decideRefusal,
   deciderFor,
@@ -423,6 +435,19 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   >();
   /** Task approvals: one "yes" covers the same kind of step on the same site for this task. */
   readonly #taskGrants = new Map<string, number>();
+  /** Untrusted-content rule: per-turn taint and its one question (taint-guard.ts). */
+  readonly #taint = new TaintGuard();
+  /** Task grants the owner gave on a card that already said the coworker read outside content. */
+  readonly #taintAwareGrants = new Set<string>();
+  #taintGuardEnabled: () => boolean = () => false;
+  #provenanceEnabled: () => boolean = () => false;
+  #budget: () => CoworkerBudget | null = () => null;
+  /** Coworkers stopped by a work limit, and those whose queue the limit paused. */
+  readonly #budgetHeld = new Set<string>();
+  readonly #budgetPaused = new Set<string>();
+  readonly #budgetNoticeAt = new Map<string, number>();
+  /** Messages the owner sent from their phone, so a card can say so. Bounded; memory only. */
+  readonly #remoteMessageIds = new Set<string>();
   /**
    * Task refusals: the owner said "no" to this exact step for this task, so a retry (the
    * coworker's own, or an automatic re-send after a failure) is refused without a new card.
@@ -464,6 +489,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #heldDrains = new Set<string>();
   /** Coworkers with a queued message waiting for a free turn slot (the concurrent-turn cap). */
   readonly #waitingForSlot = new Set<string>();
+  /** Fair turns (Settings > Features): waiting coworkers take free slots in round-robin order. */
+  #fairTurns: () => boolean = () => false;
+  /** When each coworker last finished (or started) a turn, for the fair-turns order. */
+  readonly #lastServedAt = new Map<string, number>();
+  /** Awake browser pages a coworker holds; Auto concurrency counts their memory. */
+  #awakePagesFor: (botId: string) => number = () => 0;
   /** Looks again for free memory while a coworker waits for it (no turn may end meanwhile). */
   #memoryRetryTimer: ReturnType<typeof setTimeout> | null = null;
   #runEvents: ((event: NewRunEvent) => void) | null = null;
@@ -574,6 +605,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #probedProviders = new Set<AgentProvider>();
   /** Settings > Features: start only the AIs coworkers use (on by default). */
   #lazyProviderStart: () => boolean = () => true;
+  /** Settings > Features: engines that ship switched off are only offered while switched on. */
+  #featureOn: (featureId: string) => boolean = () => false;
   #claudeIdleClose: () => boolean = () => true;
   #assignments: ResourceAssignmentStore | null = null;
   /** Turns already warned that the watchdog is close (one warning per turn). */
@@ -800,12 +833,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       host,
       level: () => this.#permissions?.get().levels.desktop_control ?? "ask",
       authorize: ({ provider, threadId, action, reason, category }) =>
-        this.#authorize(provider, threadId, {
-          category: category ?? "desktop_control",
-          paths: [],
-          action,
-          reason,
-        }),
+        this.#authorize(
+          provider,
+          threadId,
+          {
+            category: category ?? "desktop_control",
+            paths: [],
+            action,
+            reason,
+          },
+          { command: category === "shell" },
+        ),
       notify: (botId, message) =>
         this.#emit({ type: "notice", botId, code: "desktop_control", message }),
       botName: (botId) => this.#store.list().find((bot) => bot.id === botId)?.name ?? "A coworker",
@@ -909,7 +947,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         ACP_AGENT_PROVIDERS.map((provider) => [provider, () => resolveAcpAgentCli(provider)]),
       ) as Record<AcpAgentProviderId, () => Promise<AcpCliInfo>>),
     };
-    for (const provider of this.#lazyProviderStart() ? this.#wantedProviders() : AGENT_PROVIDERS) {
+    for (const provider of this.#lazyProviderStart()
+      ? this.#wantedProviders()
+      : this.#offeredProviders()) {
       if (this.#stopping) return;
       // Busy only matters for a running provider (a restart would cut its turns). One that is
       // not connected, e.g. signed out, has no turns: it was skipped whenever any coworker was
@@ -1500,12 +1540,132 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /** Which workspace and turn an approval belongs to, so a remote decision names the right one. */
-  #approvalContext(botId: string): { workspaceId?: string; taskId: string | null } {
+  #approvalContext(botId: string): {
+    workspaceId?: string;
+    taskId: string | null;
+    provenance?: ApprovalProvenance;
+  } {
     const bot = this.#store.list().find((candidate) => candidate.id === botId);
+    const provenance = this.#turnProvenance(botId);
     return {
       workspaceId: bot?.workspaceId,
       taskId: this.#snapshots.get(botId)?.activeTurnId ?? null,
+      ...(provenance ? { provenance } : {}),
     };
+  }
+
+  /** "Where this request came from" for a paused tool call: outside content first. */
+  #provenanceFor(request: PermissionRequest): ApprovalProvenance | null {
+    if (!request.botId) return null;
+    try {
+      if (!this.#provenanceEnabled()) return null;
+      if (request.taint) {
+        const turnId = this.#snapshots.get(request.botId)?.activeTurnId ?? null;
+        const source = this.#taint.source(request.botId, turnId);
+        if (source) return provenanceOfSource(source);
+      }
+      return this.#turnProvenance(request.botId);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Who started the turn this coworker is in now, from the message that started it. */
+  #turnProvenance(botId: string): ApprovalProvenance | null {
+    try {
+      if (!this.#provenanceEnabled()) return null;
+      const turnId = this.#snapshots.get(botId)?.activeTurnId;
+      const delivery = turnId ? this.#mailbox.findDeliveryByTurn(turnId)?.delivery : null;
+      if (!delivery) return null;
+      if (delivery.sender.kind === "bot") {
+        const senderId = delivery.sender.botId;
+        const name = this.#store.list().find((bot) => bot.id === senderId)?.name;
+        return name ? { kind: "coworker", label: name } : { kind: "coworker" };
+      }
+      switch (delivery.origin) {
+        case "routine":
+        case "schedule":
+        case "team-run":
+        case "system":
+          return { kind: delivery.origin };
+        default:
+          return this.#remoteMessageIds.has(delivery.messageId)
+            ? { kind: "remote" }
+            : { kind: "owner" };
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Phase 1 safety switches (Settings > Features). Not configured (tests, embedders): all off,
+   * which is exactly the behaviour before they existed.
+   */
+  configureSafety(options: {
+    taintGuard?: () => boolean;
+    provenance?: () => boolean;
+    /** Work limits: null (or the switch off) means none, as before. */
+    budget?: () => CoworkerBudget | null;
+  }): void {
+    if (options.taintGuard) this.#taintGuardEnabled = options.taintGuard;
+    if (options.provenance) this.#provenanceEnabled = options.provenance;
+    if (options.budget) this.#budget = options.budget;
+  }
+
+  /** Limits changed: coworkers held by a limit may go on if it was raised or removed. */
+  budgetsChanged(): void {
+    for (const botId of [...this.#budgetHeld]) {
+      this.#budgetHeld.delete(botId);
+      if (this.#budgetPaused.delete(botId)) {
+        void this.setQueuePaused(botId, false).catch(() => undefined);
+      } else {
+        this.#scheduleDrain(botId);
+      }
+    }
+  }
+
+  /**
+   * The coworker reached its daily reply limit: it stops before the next reply (a running one is
+   * never cut short), its queue pauses and the chat says why and how to raise the limit.
+   * Any error inside falls back to no limit.
+   */
+  #budgetHold(botId: string): boolean {
+    try {
+      const budget = this.#budget();
+      const hit = budget?.coworkerLimitReached(botId);
+      if (!hit) return false;
+      this.#budgetHeld.add(botId);
+      if (!this.#mailbox.listQueue(botId).paused) {
+        this.#budgetPaused.add(botId);
+        void this.#mailbox
+          .setPaused(botId, true)
+          .then(() => this.#emitQueue(botId))
+          .catch(() => undefined);
+      }
+      const now = Date.now();
+      if (now - (this.#budgetNoticeAt.get(botId) ?? 0) >= 60_000) {
+        this.#budgetNoticeAt.set(botId, now);
+        const name = this.#store.list().find((bot) => bot.id === botId)?.name ?? "This coworker";
+        this.#emit({
+          type: "notice",
+          botId,
+          code: "budget_limit",
+          message: `${name} reached its limit of ${hit.limit} replies today, so it paused before the next one. Waiting messages stay in its queue. To go on, raise or clear the limit in Settings > Features > Work limits; it also resets tomorrow.`,
+        });
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  #recordBudgetTurn(botId: string): void {
+    try {
+      this.#budget()?.recordTurn(botId);
+    } catch {
+      // Counting is best effort; a failure never stops a reply.
+    }
   }
 
   /**
@@ -2057,21 +2217,45 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
     }
     const lazy = this.#lazyProviderStart();
-    const wanted = lazy ? this.#wantedProviders() : AGENT_PROVIDERS;
+    const wanted = lazy ? this.#wantedProviders() : this.#offeredProviders();
     await this.#connect("starting", wanted);
     if (lazy && this.#clients.size === 0 && !this.#stopping) {
       // None of the AIs the team uses is installed or signed in: look for any AI that is, so a
       // fresh install still lands on the first one available (the bundled free model).
-      for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
-      const rest = AGENT_PROVIDERS.filter((provider) => !wanted.includes(provider));
+      const offered = this.#offeredProviders();
+      for (const provider of offered) this.#probedProviders.add(provider);
+      const rest = offered.filter((provider) => !wanted.includes(provider));
       if (rest.length) await this.#connect("starting", rest);
     }
     this.#modelRefresh.start();
   }
 
+  /** Lets the app switch fair turns on (Settings > Features). */
+  configureFairTurns(enabled: () => boolean): void {
+    this.#fairTurns = enabled;
+  }
+
+  /** How many awake browser pages a coworker holds (for the Auto turn cap). */
+  configureAwakePages(count: (botId: string) => number): void {
+    this.#awakePagesFor = count;
+  }
+
   /** Lets the app switch lazy AI start off (Settings > Features). */
   configureLazyProviderStart(enabled: () => boolean): void {
     this.#lazyProviderStart = enabled;
+  }
+
+  /** Settings > Features: engines behind a switch (SWITCHED_PROVIDERS) are offered only while on. */
+  configureProviderSwitches(isEnabled: (featureId: string) => boolean): void {
+    this.#featureOn = isEnabled;
+  }
+
+  /** Every provider this build offers right now: switched-off engines are left out entirely. */
+  #offeredProviders(): AgentProvider[] {
+    return AGENT_PROVIDERS.filter((provider) => {
+      const featureId = providerFeatureId(provider);
+      return !featureId || this.#featureOn(featureId);
+    });
   }
 
   /** Lets the app switch closing idle Claude processes off (Settings > Features). */
@@ -2106,7 +2290,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    */
   #wantedProviders(): AgentProvider[] {
     const used = new Set(this.#store.list().map(providerForBot));
-    return AGENT_PROVIDERS.filter(
+    return this.#offeredProviders().filter(
       (provider) =>
         provider === this.#preferredProvider ||
         used.has(provider) ||
@@ -2122,14 +2306,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    */
   async probeProviders(): Promise<void> {
     if (!this.#initialized || this.#stopping) return;
-    const unchecked = AGENT_PROVIDERS.filter(
+    const offered = this.#offeredProviders();
+    const unchecked = offered.filter(
       (provider) =>
         !this.#probedProviders.has(provider) &&
         !this.#clients.has(provider) &&
         !this.#providerStarts.has(provider) &&
         !this.#dormantClients.has(provider),
     );
-    for (const provider of AGENT_PROVIDERS) this.#probedProviders.add(provider);
+    for (const provider of offered) this.#probedProviders.add(provider);
     const fresh = unchecked.filter((provider) =>
       [null, "not-started"].includes(this.#providerState(provider)),
     );
@@ -2363,6 +2548,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     const delivery = this.#mailbox.getDelivery(receipt.deliveries[0].id);
     if (!delivery) throw new Error("Unable to create queued message.");
+    if (input.remote === true) {
+      this.#remoteMessageIds.add(receipt.messageId);
+      if (this.#remoteMessageIds.size > 500) {
+        const oldest = this.#remoteMessageIds.values().next().value;
+        if (oldest !== undefined) this.#remoteMessageIds.delete(oldest);
+      }
+    }
     const snapshot = this.#ensureSnapshot(bot.id, bot.threadId);
     this.#syncMailboxMessages(snapshot);
     await this.#store.updatePreview(
@@ -2810,8 +3002,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   async #connect(
     phase: "starting" | "restarting",
-    requestedProviders: readonly AgentProvider[],
+    requested: readonly AgentProvider[],
   ): Promise<void> {
+    // An engine whose Settings > Features switch is off is never started or listed.
+    const offered = this.#offeredProviders();
+    const requestedProviders = requested.filter((provider) => offered.includes(provider));
     const hadClients = this.#clients.size > 0;
     // Deliveries that a previous process, or a provider that went away, left unresolved. Only
     // these are settled at the end; anything that starts while the providers come up is live.
@@ -3628,6 +3823,7 @@ ${carryOver}`
     provider: string,
     threadId: string | null,
     request: Omit<PermissionRequest, "botId" | "provider">,
+    options: { command?: boolean } = {},
   ): Promise<{ allowed: boolean; reason: string }> {
     const botId = threadId ? (this.#threadToBot.get(threadId) ?? null) : null;
     const colleague = botId ? this.#colleagueFolderIn(botId, request.paths, request.action) : null;
@@ -3638,10 +3834,69 @@ ${carryOver}`
       };
     }
     if (!this.#permissions) return { allowed: true, reason: "No permission policy configured." };
-    return this.#permissions.authorize(
-      { ...request, botId, provider },
-      this.#workspaceRoots(botId),
-    );
+    const full: PermissionRequest = { ...request, botId, provider };
+    const roots = this.#workspaceRoots(botId);
+    const guarded = botId ? await this.#taintGate(full, roots, options.command === true) : null;
+    if (guarded) return guarded;
+    const verdict = await this.#permissions.authorize(full, roots);
+    // Reading a file outside the coworker's folders brings outside content into this turn.
+    if (verdict.allowed && botId && request.category === "file_read" && request.paths.length) {
+      const outside = request.paths.find((path) => !insideAny(path, roots));
+      if (outside) this.#markTaint(botId, { kind: "file", label: basename(outside) });
+    }
+    return verdict;
+  }
+
+  /**
+   * The untrusted-content rule. Null: decide exactly as before. Otherwise the answer for this
+   * request: the one question of this turn, or the owner's earlier answer in this turn.
+   * Any error inside falls back to the normal decision.
+   */
+  async #taintGate(
+    request: PermissionRequest,
+    roots: string[],
+    command: boolean,
+  ): Promise<{ allowed: boolean; reason: string } | null> {
+    const permissions = this.#permissions;
+    const botId = request.botId;
+    if (!permissions || !botId) return null;
+    try {
+      if (!this.#taintGuardEnabled() || !isTaintGuarded(request, command)) return null;
+      const turnId = this.#snapshots.get(botId)?.activeTurnId ?? null;
+      if (!this.#taint.source(botId, turnId)) return null;
+      // A "deny" setting stays a plain refusal and does not use up the turn's question.
+      if (permissions.evaluate(request, roots).effective === "deny") return null;
+      const first: { verdict: { allowed: boolean; reason: string } | null } = { verdict: null };
+      const gate = await this.#taint.gate(botId, turnId, async (source) => {
+        const verdict = await permissions.authorize(
+          { ...request, taint: { source: describeSource(source) } },
+          roots,
+        );
+        first.verdict = verdict;
+        if (verdict.allowed) return "approved";
+        return verdict.reason === DEFERRED_APPROVAL_REASON ? "deferred" : "declined";
+      });
+      if (!gate) return null;
+      if (gate.asked && first.verdict) return first.verdict;
+      if (gate.outcome === "deferred") return { allowed: false, reason: DEFERRED_APPROVAL_REASON };
+      return {
+        allowed: false,
+        reason: `The owner did not approve a step after you read ${describeSource(gate.source)} in this task, so commands, outgoing messages and key files stay off until the owner's next message. Tell the owner what you wanted to do.`,
+      };
+    } catch (error) {
+      this.emit("log", `taint guard skipped: ${String(error)}`);
+      return null;
+    }
+  }
+
+  /** This coworker's current turn read outside content. Never throws. */
+  #markTaint(botId: string, source: TaintSource): void {
+    try {
+      if (!this.#taintGuardEnabled()) return;
+      this.#taint.mark(botId, this.#snapshots.get(botId)?.activeTurnId ?? null, source);
+    } catch {
+      // The rule is a safety net; a failure here must never break the coworker's turn.
+    }
   }
 
   /**
@@ -3684,7 +3939,11 @@ ${carryOver}`
     // page redraw do not each ask again. A new instruction from the owner is a new task.
     // Payments and account changes still ask every time.
     const grantKey = taskGrantKey(request, this.#ownerAsked(request.botId));
-    if (grantKey) {
+    // After outside content, a task "yes" counts only if the owner gave it on a card that said
+    // so; otherwise this turn's one question is asked.
+    const grantUsable =
+      !request.taint || (grantKey !== null && this.#taintAwareGrants.has(grantKey));
+    if (grantKey && grantUsable) {
       const until = this.#taskGrants.get(grantKey);
       if (until !== undefined && until > Date.now()) return "approved";
       if (until !== undefined) this.#taskGrants.delete(grantKey);
@@ -3705,6 +3964,13 @@ ${carryOver}`
       const outcome = await answer;
       if (outcome === "approved" && grantKey) {
         this.#taskGrants.set(grantKey, Date.now() + TASK_GRANT_MS);
+        if (request.taint) {
+          this.#taintAwareGrants.add(grantKey);
+          if (this.#taintAwareGrants.size > MAX_TASK_DECLINES) {
+            const oldest = this.#taintAwareGrants.values().next().value;
+            if (oldest !== undefined) this.#taintAwareGrants.delete(oldest);
+          }
+        }
       }
       if (outcome === "rejected") this.#rememberDecline(refusal);
       return outcome;
@@ -3779,17 +4045,24 @@ ${carryOver}`
       },
       this.#ownerAsked(request.botId),
     );
+    const taintNote = request.taint
+      ? `\n\n${bot?.name ?? "Your coworker"} read ${request.taint.source} in this task. Content from outside can carry instructions you never gave, so Sahkarmi checks with you once. Approving covers the rest of this reply.`
+      : "";
+    const provenance = this.#provenanceFor(request);
     const approval = await this.#approvals.create({
       botId: request.botId,
       title: wording.title,
-      details: grantKey
-        ? `${wording.details}\n\nApproving covers this kind of step on this site for the task you gave (up to ${TASK_GRANT_MS / 3_600_000} hours), so you are not asked again for each click. A new instruction asks again.`
-        : wording.details,
+      details: `${
+        grantKey
+          ? `${wording.details}\n\nApproving covers this kind of step on this site for the task you gave (up to ${TASK_GRANT_MS / 3_600_000} hours), so you are not asked again for each click. A new instruction asks again.`
+          : wording.details
+      }${taintNote}`,
       technical: `${wording.technical}\nProvider: ${request.provider}`,
       category: approvalCategoryFor(request.category),
       kind: "permission",
       permissionCategory: request.category,
       ...this.#approvalContext(request.botId),
+      ...(provenance ? { provenance } : {}),
       // The tool call is parked on the same timeout, so the deadline shown to the owner in
       // Telegram is the real one.
       expiresAt: new Date(Date.now() + permissionTimeoutMs).toISOString(),
@@ -3825,6 +4098,19 @@ ${carryOver}`
     });
   }
 
+  /**
+   * A ready-made connector's tools carry their own category (reads, file edits, or an always-ask
+   * one for sends, posts and money). Every other tool server keeps its usual classification.
+   */
+  #withConnectorRule<T extends { category: PermissionCategory; paths: string[] }>(
+    toolName: string,
+    input: Record<string, unknown>,
+    classified: T,
+  ): T {
+    const rule = this.#mcpServers?.connectorToolCategory(toolName, input);
+    return rule ? { ...classified, category: rule.category, paths: rule.paths } : classified;
+  }
+
   /** `sahkarmi/permission`: raised by the Claude and ACP adapters before a tool call runs. */
   async #permissionFromAdapter(
     client: AgentClient,
@@ -3833,8 +4119,29 @@ ${carryOver}`
     const threadId = getString(params, "threadId");
     if (getString(params, "source") === "claude") {
       const input = getRecord(params, "input") ?? {};
-      const classified = classifyClaudeTool(getString(params, "toolName") ?? "", input);
-      return this.#authorize(client.provider, threadId, classified);
+      const toolName = getString(params, "toolName") ?? "";
+      const classified = this.#withConnectorRule(
+        toolName,
+        input,
+        classifyClaudeTool(toolName, input),
+      );
+      const verdict = await this.#authorize(client.provider, threadId, classified, {
+        command: CLAUDE_COMMAND_TOOLS.has(toolName),
+      });
+      const botId = threadId ? this.#threadToBot.get(threadId) : undefined;
+      if (verdict.allowed && botId) {
+        if (toolName === "WebFetch" || toolName === "WebSearch") {
+          const url = getString(input, "url");
+          this.#markTaint(
+            botId,
+            url ? webSource(url) : { kind: "web", label: "web search results" },
+          );
+        } else if (toolName.startsWith("mcp__")) {
+          // The owner's own tool servers (Sahkarmi's own tools never reach this check).
+          this.#markTaint(botId, { kind: "app", label: mcpServerLabel(toolName) });
+        }
+      }
+      return verdict;
     }
     const title = getString(params, "title") ?? "Tool call";
     const paths =
@@ -3844,11 +4151,18 @@ ${carryOver}`
     const rawInput = isRecord(params) ? params.rawInput : null;
     const category = classifyAcpTool(getString(params, "kind"), title, paths, rawInput);
     const command = getString(rawInput, "command");
-    return this.#authorize(client.provider, threadId, {
-      category,
-      paths,
-      action: command ?? title,
-    });
+    const kind = getString(params, "kind");
+    const verdict = await this.#authorize(
+      client.provider,
+      threadId,
+      { category, paths, action: command ?? title },
+      { command: kind === "execute" },
+    );
+    const botId = threadId ? this.#threadToBot.get(threadId) : undefined;
+    if (verdict.allowed && botId && kind === "fetch") {
+      this.#markTaint(botId, webSource(getString(rawInput, "url")));
+    }
+    return verdict;
   }
 
   async #handleServerRequest(client: AgentClient, request: AppServerRequest): Promise<void> {
@@ -3868,6 +4182,7 @@ ${carryOver}`
               action: command || getString(request.params, "reason") || "Run a command",
               reason: getString(request.params, "reason") ?? undefined,
             },
+            { command: true },
           );
           client.respond(request.id, { decision: verdict.allowed ? "accept" : "decline" });
           return;
@@ -3894,6 +4209,7 @@ ${carryOver}`
             client.provider,
             getString(request.params, "conversationId"),
             { category: classifyCommand(command), paths: [], action: command || "Run a command" },
+            { command: true },
           );
           client.respond(request.id, { decision: verdict.allowed ? "approved" : "denied" });
           return;
@@ -3950,6 +4266,10 @@ ${carryOver}`
               });
               return;
             }
+            // The page's text, its elements or a picture of it enter the turn from here on.
+            if (BROWSER_READ_TOOLS.has(request.params.tool)) {
+              this.#markTaint(callerBotId, webSource(this.#browserTabUrl(request.params)));
+            }
             client.respond(request.id, await this.#browser.handleDynamicTool(browserParams));
             return;
           }
@@ -3989,6 +4309,9 @@ ${carryOver}`
                     request.params.arguments,
                   )
                 : { success: false, text: "No web APIs are connected." };
+            if (senderBotId && result.success && request.params.tool !== "list_apis") {
+              this.#markTaint(senderBotId, { kind: "app", label: "a connected web service" });
+            }
             client.respond(request.id, {
               success: result.success,
               contentItems: [{ type: "inputText", text: capToolText(result.text) }],
@@ -3996,10 +4319,13 @@ ${carryOver}`
             return;
           }
           if (request.params.namespace === "composio") {
-            client.respond(
-              request.id,
-              capContentItems(await this.#handleComposioTool(request.params)),
-            );
+            const appResult = await this.#handleComposioTool(request.params);
+            const appBotId = this.#threadToBot.get(request.params.threadId);
+            if (appBotId && appResult.success) {
+              const app = this.#composioClient?.toolkitOf(request.params.tool) ?? null;
+              this.#markTaint(appBotId, { kind: "app", label: app ?? "a connected app" });
+            }
+            client.respond(request.id, capContentItems(appResult));
             return;
           }
           throw new Error(`Unsupported dynamic tool namespace: ${request.params.namespace}`);
@@ -4013,9 +4339,11 @@ ${carryOver}`
           // declining it every time made every owner MCP server unusable from Codex.
           const toolCall = codexMcpToolApproval(request.params);
           if (toolCall) {
-            const classified = classifyClaudeTool(
-              `mcp__${toolCall.server}__${toolCall.tool}`,
+            const fullName = `mcp__${toolCall.server}__${toolCall.tool}`;
+            const classified = this.#withConnectorRule(
+              fullName,
               toolCall.input,
+              classifyClaudeTool(fullName, toolCall.input),
             );
             const verdict = await this.#authorize(
               client.provider,
@@ -4025,6 +4353,13 @@ ${carryOver}`
                 action: `Use the "${toolCall.tool}" tool of the ${toolCall.server} tool server`,
               },
             );
+            const mcpBotId = this.#threadToBot.get(getString(request.params, "threadId") ?? "");
+            if (verdict.allowed && mcpBotId) {
+              this.#markTaint(mcpBotId, {
+                kind: "app",
+                label: `the ${toolCall.server} tool server`,
+              });
+            }
             client.respond(
               request.id,
               verdict.allowed
@@ -4060,6 +4395,20 @@ ${carryOver}`
         }
       }
       this.#emitError("server_request_failed", error);
+    }
+  }
+
+  /** The address of the coworker's tab a browser call reads, when known. */
+  #browserTabUrl(params: DynamicToolCallParams): string | null {
+    try {
+      const args = isRecord(params.arguments) ? params.arguments : {};
+      const tabId = getString(args, "tabId") ?? getString(args, "pageId");
+      const tab = tabId
+        ? this.#browser.listTabs().find((candidate) => candidate.id === tabId)
+        : null;
+      return tab?.url ?? null;
+    } catch {
+      return null;
     }
   }
 
@@ -4931,6 +5280,7 @@ ${carryOver}`
       if (snapshot?.activeTurnId) return;
       const context = this.#mailbox.nextQueued(botId);
       if (!context) return;
+      if (this.#budgetHold(botId)) return;
       const bot = this.#store.list().find((candidate) => candidate.id === botId);
       // A provider waiting for a sign-in: the message stays queued and starts after the owner
       // signs in (the next provider check or message brings the provider back).
@@ -4955,12 +5305,14 @@ ${carryOver}`
         return;
       }
       this.#waitingForSlot.delete(botId);
+      this.#lastServedAt.set(botId, Date.now());
       attempted = true;
       if (bot?.threadId && this.#reserveContextCompaction(botId, bot.threadId)) {
         await this.#requestContextCompaction(botId, bot.threadId);
         return;
       }
       await this.#restoreOwnRuntime(botId, context);
+      this.#recordBudgetTurn(botId);
       await this.#startDelivery(context);
     } finally {
       this.#drainingBots.delete(botId);
@@ -4997,7 +5349,7 @@ ${carryOver}`
   ): "free" | "busy" | "memory" {
     const busy = this.#busyBotIds();
     busy.delete(botId);
-    if (busy.size >= this.#engineSettings().maxConcurrentTurns) return "busy";
+    if (busy.size >= this.#turnLimit(botId, bot)) return "busy";
     if (busy.size === 0) return "free";
     const fromOwner =
       delivery.sender.kind === "user" && (!delivery.origin || delivery.origin === "owner");
@@ -5014,6 +5366,25 @@ ${carryOver}`
     // Adaptive: close idle Claude processes, then look again before making anyone wait.
     if (client.closeIdleRuntimesNow().length > 0 && hasRoomFor(HEAVY_RUNTIME_MB)) return "free";
     return "memory";
+  }
+
+  /**
+   * The cap on turns at once. Fixed (the default): the owner's number. Auto: what the PC's free
+   * memory fits for this coworker's kind and its awake pages, read fresh at each decision. Any
+   * failure falls back to the owner's number.
+   */
+  #turnLimit(botId: string, bot: BotSummary | undefined): number {
+    const settings = this.#engineSettings();
+    if (settings.concurrencyMode !== "auto") return settings.maxConcurrentTurns;
+    try {
+      return autoTurnLimit({
+        freeMb: readMemory().freeMb,
+        kind: bot && providerForBot(bot) === "claude" ? "heavy" : "shared",
+        awakePages: this.#awakePagesFor(botId),
+      });
+    } catch {
+      return settings.maxConcurrentTurns;
+    }
   }
 
   /**
@@ -5048,7 +5419,8 @@ ${carryOver}`
     if (reason === "memory") this.#scheduleMemoryRetry();
     if (this.#waitingForSlot.has(botId)) return;
     this.#waitingForSlot.add(botId);
-    const limit = this.#engineSettings().maxConcurrentTurns;
+    const auto = this.#engineSettings().concurrencyMode === "auto";
+    const limit = auto ? this.#busyBotIds().size : this.#engineSettings().maxConcurrentTurns;
     this.#emit({
       type: "notice",
       botId,
@@ -5058,7 +5430,9 @@ ${carryOver}`
           ? this.#engineSettings().memoryLimitMb > 0
             ? "This background message waits for memory: Sahkarmi is near the memory limit you set. It starts by itself as soon as memory frees up. You can raise the limit in Settings > Features."
             : "This background message waits for free memory on this PC and starts by itself as soon as memory frees up. Closing other apps helps."
-          : `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
+          : auto
+            ? `${limit} coworkers are already working, as many as this PC's free memory fits right now, so this message waits its turn and starts as soon as one finishes. You can set a fixed number in Settings > Features.`
+            : `${limit} coworkers are already working, so this message waits its turn and starts as soon as one finishes. You can change the limit in Settings > Features.`,
     });
   }
 
@@ -5077,14 +5451,37 @@ ${carryOver}`
     return Date.now() - at < GEMINI_QUOTA_WINDOW_MS;
   }
 
-  /** A turn ended: coworkers waiting for a slot get their chance, oldest first. */
+  /**
+   * A turn ended: coworkers waiting for a slot get their chance, oldest first. With fair turns,
+   * owner-typed messages first, then the coworker served least recently (round-robin).
+   */
   #drainWaitingForSlot(): void {
-    for (const botId of [...this.#waitingForSlot]) {
+    for (const botId of this.#waitingOrder()) {
       if (!this.#mailbox.nextQueued(botId)) {
         this.#waitingForSlot.delete(botId);
         continue;
       }
       this.#scheduleDrain(botId);
+    }
+  }
+
+  /** Waiting coworkers in the order they get a free slot. */
+  #waitingOrder(): string[] {
+    const arrival = [...this.#waitingForSlot];
+    if (!this.#fairTurns()) return arrival;
+    try {
+      return fairOrder(
+        arrival.map((botId) => {
+          const next = this.#mailbox.nextQueued(botId)?.delivery;
+          return {
+            botId,
+            fromOwner: next?.sender.kind === "user" && (!next.origin || next.origin === "owner"),
+            lastServedAt: this.#lastServedAt.get(botId),
+          };
+        }),
+      );
+    } catch {
+      return arrival;
     }
   }
 
@@ -5387,7 +5784,7 @@ ${carryOver}`
       }),
     );
     if (this.#stopping) return;
-    this.#models = AGENT_PROVIDERS.flatMap(
+    this.#models = this.#offeredProviders().flatMap(
       (provider) =>
         this.#providerCatalogs.get(provider) ??
         FALLBACK_MODELS.filter((model) => providerForModel(model.id) === provider),
@@ -5510,6 +5907,16 @@ ${carryOver}`
   /** Brings the coworker's mailbox messages into its chat; true when anything changed. */
   #syncMailboxMessages(snapshot: ConversationSnapshot): boolean {
     let changed = false;
+    // A message sent again (next Google account, free model, retry) shows once: the failed copy
+    // already on screen goes, or the chat showed both until it was next read from the AI.
+    const retried = this.#mailbox.retriedDeliveryIds(snapshot.botId);
+    if (retried.size > 0) {
+      const kept = snapshot.messages.filter((message) => !retried.has(message.id));
+      if (kept.length !== snapshot.messages.length) {
+        snapshot.messages.splice(0, snapshot.messages.length, ...kept);
+        changed = true;
+      }
+    }
     const indexes = new Map(snapshot.messages.map((message, index) => [message.id, index]));
     for (const mailboxMessage of this.#mailbox.conversationMessages(snapshot.botId)) {
       const index = indexes.get(mailboxMessage.id);
@@ -5751,6 +6158,10 @@ ${carryOver}`
             this.#markContextCompacted(threadId);
           }
           return;
+        }
+        // The runtime's own web search brings search results into the turn.
+        if (item.type === "webSearch" && notification.method === "item/completed") {
+          this.#markTaint(botId, { kind: "web", label: "web search results" });
         }
         this.#applyItem(
           botId,
@@ -6054,7 +6465,14 @@ ${carryOver}`
       );
     }
     if (shouldCompact) await this.#requestContextCompaction(botId, threadId);
-    else this.#scheduleDrain(botId);
+    else if (this.#fairTurns()) {
+      // Fair turns: the coworker that just finished goes behind those already waiting, so one
+      // busy coworker cannot keep a slot to itself.
+      this.#lastServedAt.set(botId, Date.now());
+      this.#drainWaitingForSlot();
+      this.#scheduleDrain(botId);
+      return;
+    } else this.#scheduleDrain(botId);
     this.#drainWaitingForSlot();
   }
 
@@ -7948,6 +8366,23 @@ const MAX_TASK_DECLINES = 500;
 export function declineKey(key: string, ownerInstruction: string | null): string {
   return `${key}
 ${ownerInstruction ?? ""}`;
+}
+
+/** The part of BudgetStore the service uses (work limits, "budget-stop"). */
+export interface CoworkerBudget {
+  coworkerLimitReached(botId: string): { limit: number; used: number } | null;
+  recordTurn(botId: string): void;
+}
+
+/** Claude tools that run a command (taint-guard: "commands"). MCP tools are not commands. */
+const CLAUDE_COMMAND_TOOLS = new Set(["Bash", "BashOutput", "KillShell"]);
+/** Browser tools whose result carries the page's content into the turn. */
+const BROWSER_READ_TOOLS = new Set(["snapshot", "act", "screenshot"]);
+
+/** "mcp__notes__search" → "the notes tool server". */
+function mcpServerLabel(toolName: string): string {
+  const server = toolName.split("__")[1]?.trim();
+  return server ? `the ${server.slice(0, 60)} tool server` : "a tool server";
 }
 
 /** Steps that one approval may cover for a whole task; money and account changes never are. */

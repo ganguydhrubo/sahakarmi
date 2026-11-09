@@ -293,6 +293,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetEngineSettings, input),
     performance: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorPerformance),
     resourceStatus: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorResourceStatus),
+    getBudgets: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetBudgets),
+    setBudgets: (input) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetBudgets, input),
   },
   knowledge: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),
@@ -365,6 +367,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.customSkillsInstallGithub, { url, paths }),
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsRemove, { id }),
     markReviewed: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsMarkReviewed, { id }),
+    installPack: (packId: string, skills?: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.customSkillsInstallPack, { packId, skills }),
   },
   mcp: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
@@ -398,6 +402,9 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.mcpSetShared, { id, shared }),
     addAdapter: (analysisId: string, name: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.mcpAddAdapter, { analysisId, name }),
+    connectors: () => ipcRenderer.invoke(IPC_CHANNELS.mcpConnectors),
+    addConnector: (id: string, name: string, values: Record<string, string>) =>
+      ipcRenderer.invoke(IPC_CHANNELS.mcpAddConnector, { id, name, values }),
   },
   workflow: {
     export: (source, format) => ipcRenderer.invoke(IPC_CHANNELS.workflowExport, { source, format }),

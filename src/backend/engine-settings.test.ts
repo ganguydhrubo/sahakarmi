@@ -8,6 +8,7 @@ import { DEFAULT_ENGINE_SETTINGS } from "../shared/ipc";
 import { EngineSettingsStore, normaliseEngineSettings } from "./engine-settings";
 
 const MEMORY_DEFAULTS = {
+  concurrencyMode: "fixed",
   memoryLimitMb: DEFAULT_ENGINE_SETTINGS.memoryLimitMb,
   memoryWarnPercent: DEFAULT_ENGINE_SETTINGS.memoryWarnPercent,
   maxStepsPerTurn: DEFAULT_ENGINE_SETTINGS.maxStepsPerTurn,
@@ -56,5 +57,20 @@ describe("engine settings", () => {
     );
     expect(normaliseEngineSettings({ memoryWarnPercent: 10 }).memoryWarnPercent).toBe(50);
     expect(normaliseEngineSettings({ maxStepsPerTurn: 5 }).maxStepsPerTurn).toBe(50);
+  });
+
+  it("keeps the turn cap fixed unless Auto is chosen, and keeps the number for later", () => {
+    expect(normaliseEngineSettings({}).concurrencyMode).toBe("fixed");
+    const auto = normaliseEngineSettings({ concurrencyMode: "auto", maxConcurrentTurns: 5 });
+    expect(auto).toMatchObject({ concurrencyMode: "auto", maxConcurrentTurns: 5 });
+    // A later change of another setting keeps Auto; an unknown value keeps what was there.
+    expect(normaliseEngineSettings({ watchdogMinutes: 30 }, auto).concurrencyMode).toBe("auto");
+    expect(normaliseEngineSettings({ concurrencyMode: "turbo" }, auto).concurrencyMode).toBe(
+      "auto",
+    );
+    expect(normaliseEngineSettings({ concurrencyMode: "fixed" }, auto)).toMatchObject({
+      concurrencyMode: "fixed",
+      maxConcurrentTurns: 5,
+    });
   });
 });

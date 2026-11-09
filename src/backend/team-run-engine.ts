@@ -55,6 +55,21 @@ export interface TeamRunEngineOptions {
   checkpoints?: "sqlite" | "json";
   /** Flag cross-model-review: a coworker on another AI model reviews each finished task. */
   review?: () => boolean;
+  /** Work limit ("budget-stop"): most task messages one run may send; null means no limit. */
+  stepBudget?: () => number | null;
+}
+
+/** Thrown inside a task to pause the run at its step limit; never reaches the owner as an error. */
+class StepBudgetReached extends Error {}
+
+/** Task messages this run has sent so far, over every task and attempt. */
+function stepsSent(run: OrchestratorRun): number {
+  let steps = 0;
+  for (const task of run.tasks) {
+    const sent = task.inputs?.attemptDeliveries;
+    if (sent && typeof sent === "object") steps += Object.keys(sent).length;
+  }
+  return steps;
 }
 
 /** Reply format a reviewer is asked for; anything else counts as no clear verdict. */
@@ -218,6 +233,7 @@ export class TeamRunEngine {
   readonly #stepTimeoutMs: number;
   readonly #retryGraceMs: number | undefined;
   readonly #review: () => boolean;
+  readonly #stepBudget: () => number | null;
   readonly #saver: RunCheckpointSaver;
   /** Older JSON checkpoints imported and orphans removed; every graph call waits for it. */
   readonly #ready: Promise<void>;
@@ -240,6 +256,7 @@ export class TeamRunEngine {
     this.#stepTimeoutMs = options.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
     this.#retryGraceMs = options.retryGraceMs;
     this.#review = options.review ?? (() => false);
+    this.#stepBudget = options.stepBudget ?? (() => null);
     const sqlite =
       options.checkpoints === "json" ? null : new SqliteCheckpointSaver(options.checkpointDir);
     this.#saver = sqlite ?? new TeamRunCheckpointSaver(options.checkpointDir);
@@ -500,6 +517,16 @@ export class TeamRunEngine {
     }
   }
 
+  /** Any error reading the limit means no limit, as before. */
+  #safeStepBudget(): number | null {
+    try {
+      const limit = this.#stepBudget();
+      return typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? limit : null;
+    } catch {
+      return null;
+    }
+  }
+
   async #save(run: OrchestratorRun): Promise<void> {
     const saved = await this.#store.saveRun(run);
     this.#emit({ type: "orchestrator-run-updated", run: saved });
@@ -538,6 +565,18 @@ export class TeamRunEngine {
     const sent = (task.inputs.attemptDeliveries as Record<string, string> | undefined) ?? {};
     let deliveryId = sent[String(attempt)] ?? null;
     if (!deliveryId) {
+      // Work limit: stop before the next step, never in the middle of one.
+      const limit = this.#safeStepBudget();
+      if (limit !== null && stepsSent(run) >= limit) {
+        this.#emit({
+          type: "notice",
+          botId,
+          code: "budget_limit",
+          message: `The team run "${run.objective.slice(0, 80)}" reached its limit of ${limit} steps, so it paused before the next one. Nothing is lost. To go on, raise or clear the limit in Settings > Features > Work limits, then press Resume on the run.`,
+        });
+        this.#active.get(run.id)?.abort();
+        throw new StepBudgetReached("The team run reached its step limit.");
+      }
       if (task.status !== "running") {
         task.status = "running";
         await this.#store.updateTask(run.id, task);

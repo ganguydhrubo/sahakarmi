@@ -19,6 +19,11 @@ import { AdaptiveOrchestrator } from "./adaptive-orchestrator";
 import { OrchestratorStore } from "./orchestrator-store";
 import { TeamRunCheckpointSaver } from "./team-run-checkpoints";
 import type { TeamRunAgentPort } from "./team-run-engine";
+// Loaded here, not first by the orchestrator's lazy import: on a busy machine, loading them that
+// way inside the test runner made runs stall or fail on resume now and then (2 in 10 file runs
+// under load; 0 in 20 loaded up front). The app bundles this code, so it is not affected.
+import "./team-run-engine";
+import "./team-run-planner";
 
 let root: string;
 const cleanups: Array<() => Promise<void>> = [];
@@ -490,6 +495,66 @@ describe("team runs on the durable engine", () => {
     // The same attempt again, not a "repair" attempt: pausing is not a failure.
     expect(agent.sent[1]?.text).not.toContain("attempt 2");
     expect(done.tasks[0]?.attemptCount).toBe(1);
+  });
+
+  it("a step limit pauses the run before the next step, with a notice; Resume after raising it", async () => {
+    const agent = new FakeAgent(BOTS);
+    const store = new OrchestratorStore(root);
+    await store.initialize();
+    let limit: number | null = 2;
+    const orchestrator = new AdaptiveOrchestrator(store, {
+      port: agent,
+      retryGraceMs: 30,
+      planner: () => null,
+      stepBudget: () => limit,
+    });
+    cleanups.push(() => orchestrator.dispose());
+    const notices: string[] = [];
+    orchestrator.onEvent((event) => {
+      if (event.type === "notice" && event.code === "budget_limit") notices.push(event.message);
+    });
+    const run = await orchestrator.startRun(
+      { objective: "Launch the Diwali campaign end-to-end", forcedStrategy: "multi-agent" },
+      root,
+      agent.bots,
+    );
+    expect(run.tasks).toHaveLength(3);
+    const paused = await runStatus(orchestrator, run.id, "paused");
+    expect(agent.sent).toHaveLength(2);
+    expect(paused.tasks.filter((task) => task.status === "completed")).toHaveLength(2);
+    // Not started, not failed: the third task waits.
+    expect(paused.tasks[2]?.status).toBe("pending");
+    expect(paused.error ?? null).toBeNull();
+    expect(notices[0]).toMatch(/limit of 2 steps.*Settings > Features > Work limits/);
+    limit = null;
+    // The run settles its paused step a moment after it reports "paused"; a Resume pressed in
+    // that instant is ignored (as for any pause), so press it again until it takes.
+    await until(async () => {
+      const current = await orchestrator.getRun(run.id);
+      if (current?.status === "paused") await orchestrator.resumeRun(run.id, root);
+      return current?.status === "completed" ? current : null;
+    });
+    expect(agent.sent).toHaveLength(3);
+  });
+
+  it("without a step limit a run is unchanged", async () => {
+    const agent = new FakeAgent(BOTS);
+    const store = new OrchestratorStore(root);
+    await store.initialize();
+    const orchestrator = new AdaptiveOrchestrator(store, {
+      port: agent,
+      retryGraceMs: 30,
+      planner: () => null,
+      stepBudget: () => null,
+    });
+    cleanups.push(() => orchestrator.dispose());
+    const run = await orchestrator.startRun(
+      { objective: "Launch the Diwali campaign end-to-end", forcedStrategy: "multi-agent" },
+      root,
+      agent.bots,
+    );
+    await runStatus(orchestrator, run.id, "completed");
+    expect(agent.sent).toHaveLength(3);
   });
 
   it("an approval decided after a restart wakes the run", async () => {

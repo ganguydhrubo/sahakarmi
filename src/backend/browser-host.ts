@@ -21,6 +21,22 @@ import type {
   SocialPlatform,
 } from "../shared/ipc";
 import { ACT_DESCRIPTION, SCREENSHOT_DESCRIPTION, SNAPSHOT_DESCRIPTION } from "./browser-act";
+import {
+  ActionMemory,
+  actionMemoryEnabled,
+  describeElementScript,
+  type ElementLocator,
+  findElementScript,
+  hideSecretsEnabled,
+  hideSecretsInReading,
+  isElementLocator,
+  isMissingElement,
+  locatorLabel,
+  recalledNotice,
+  sameLocator,
+  uniqueMatch,
+} from "./browser-guard";
+import { pagesOverBudget, restingSiteMessage, SiteCrashGuard, siteOfPage } from "./browser-guards";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
 import { readMemory } from "./memory-pressure";
@@ -498,6 +514,8 @@ export class BrowserHost implements CoworkerBrowser {
   #changePending = false;
   #persistTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #control = new BrowserControlTracker();
+  /** Settings > Features "remember clicked elements" (off by default); empty while off. */
+  readonly #actionMemory = new ActionMemory();
   readonly #reservedDownloadPaths = new Set<string>();
   #downloadAuthorizer: DownloadAuthorizer | null = null;
   #activeTabId: string | null = null;
@@ -514,6 +532,10 @@ export class BrowserHost implements CoworkerBrowser {
   readonly #sleepTimer: ReturnType<typeof setInterval>;
   #pressureTimer: ReturnType<typeof setTimeout> | null = null;
   #destroyed = false;
+  /** Feature switches (Settings > Features); both off keep the old behaviour exactly. */
+  #pageBudgetOn: () => boolean = () => false;
+  #crashGuardOn: () => boolean = () => false;
+  readonly #crashGuard = new SiteCrashGuard();
 
   constructor(window: BrowserWindow, downloadsRoot: string, statePath: string) {
     this.#window = window;
@@ -816,6 +838,30 @@ export class BrowserHost implements CoworkerBrowser {
     return [...this.#tabs.values()].filter((tab) => tab.view).length;
   }
 
+  /** Awake pages, all of them or one coworker's (the live meter and the Auto turn cap). */
+  awakePageCount(botId?: string): number {
+    let count = 0;
+    for (const tab of this.#tabs.values()) {
+      if (!livePage(tab.view)) continue;
+      if (botId === undefined || tab.ownerBotId === botId) count += 1;
+    }
+    return count;
+  }
+
+  /** The per-coworker page budget and the crash guard, each behind its own feature switch. */
+  configureGuards(options: { pageBudget?: () => boolean; crashGuard?: () => boolean }): void {
+    if (options.pageBudget) this.#pageBudgetOn = options.pageBudget;
+    if (options.crashGuard) this.#crashGuardOn = options.crashGuard;
+  }
+
+  #guardOn(check: () => boolean): boolean {
+    try {
+      return check();
+    } catch {
+      return false;
+    }
+  }
+
   /** Gives a sleeping tab its live page again; the page starts loading its saved address. */
   #wake(tab: InternalTab): WebContentsView {
     this.#dropDeadPage(tab);
@@ -861,6 +907,11 @@ export class BrowserHost implements CoworkerBrowser {
 
   /** Like #wake, and waits for a page that has only just started to finish its first load. */
   async #wakeLoaded(tab: InternalTab): Promise<WebContentsView> {
+    // A site whose page keeps crashing is not woken for a coworker; it is told why instead.
+    if (!livePage(tab.view) && this.#guardOn(this.#crashGuardOn)) {
+      const site = siteOfPage(tab.requestedUrl);
+      if (this.#crashGuard.isResting(site, Date.now())) throw new Error(restingSiteMessage(site));
+    }
     const view = this.#wake(tab);
     const contents = view.webContents;
     // A hidden page's timers are slowed down; a coworker's call runs it at full speed until it ends.
@@ -901,7 +952,7 @@ export class BrowserHost implements CoworkerBrowser {
     tab.stale = false;
     tab.ownerTouched = false;
     this.#unmountView(view);
-    if (!view.webContents.isDestroyed()) view.webContents.close();
+    livePage(view)?.close();
   }
 
   /**
@@ -910,7 +961,9 @@ export class BrowserHost implements CoworkerBrowser {
    */
   #dropDeadPage(tab: InternalTab): boolean {
     const view = tab.view;
-    if (!view || !view.webContents.isDestroyed()) return false;
+    // A page that closed itself (window.close) or was closed from outside leaves its view with
+    // no page at all, not a destroyed one: reading it threw, and the tab never opened again.
+    if (!view || livePage(view)) return false;
     tab.view = null;
     tab.revision += 1;
     tab.stale = false;
@@ -931,7 +984,7 @@ export class BrowserHost implements CoworkerBrowser {
     const idleFloor =
       pressure === "ok" ? BrowserHost.AWAKE_LIMIT_IDLE_MS : BrowserHost.PRESSURE_IDLE_MS;
     if (pressure !== "ok") this.#schedulePressureCheck();
-    let slept = false;
+    let slept = this.#keepPageBudget(now);
     const candidates: InternalTab[] = [];
     let awake = 0;
     for (const tab of this.#tabs.values()) {
@@ -941,7 +994,7 @@ export class BrowserHost implements CoworkerBrowser {
       awake += 1;
       if (this.#visible && this.#attachedView === view) continue;
       if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) continue;
-      if (view.webContents.isCurrentlyAudible()) continue;
+      if (livePage(view)?.isCurrentlyAudible()) continue;
       if (now - tab.lastUsed < BrowserHost.IDLE_SLEEP_MS) {
         candidates.push(tab);
         continue;
@@ -962,6 +1015,45 @@ export class BrowserHost implements CoworkerBrowser {
       this.#emitChanged();
       this.#schedulePersist();
     }
+  }
+
+  /** A page that must stay awake: on screen, in use, with unsaved typing, or playing sound. */
+  #mustStayAwake(tab: InternalTab): boolean {
+    const view = tab.view;
+    if (!view) return false;
+    if (this.#visible && this.#attachedView === view) return true;
+    if (tab.busy > 0 || tab.ownerTyped || tab.coworkerTyped) return true;
+    return livePage(view)?.isCurrentlyAudible() ?? false;
+  }
+
+  /**
+   * Page budget (feature switch): each coworker keeps at most two awake pages; its least recently
+   * used extra page sleeps. Any failure leaves the pages as they are. True when one slept.
+   */
+  #keepPageBudget(now: number): boolean {
+    if (!this.#guardOn(this.#pageBudgetOn)) return false;
+    let slept = false;
+    try {
+      const awake = [...this.#tabs.values()].filter((tab) => livePage(tab.view));
+      const over = pagesOverBudget(
+        awake.map((tab) => ({
+          id: tab.id,
+          ownerBotId: tab.ownerBotId,
+          lastUsed: tab.lastUsed,
+          protected: this.#mustStayAwake(tab),
+        })),
+        now,
+      );
+      for (const id of over) {
+        const tab = this.#tabs.get(id);
+        if (!tab?.view || this.#mustStayAwake(tab)) continue;
+        this.#sleep(tab);
+        slept = true;
+      }
+    } catch {
+      // The page budget is an extra; the normal sleep rules still run.
+    }
+    return slept;
   }
 
   /**
@@ -1084,11 +1176,12 @@ export class BrowserHost implements CoworkerBrowser {
   async close(tabId: string): Promise<void> {
     const tab = this.#requireTab(tabId);
     this.#tabs.delete(tabId);
+    this.#actionMemory.forget(tabId);
     if (tab.view) {
       const view = tab.view;
       tab.view = null;
       this.#unmountView(view);
-      if (!view.webContents.isDestroyed()) view.webContents.close();
+      livePage(view)?.close();
     }
 
     if (this.#activeTabId === tabId) {
@@ -1189,12 +1282,34 @@ export class BrowserHost implements CoworkerBrowser {
     options?: BrowserActOptions,
   ): Promise<BrowserSnapshot | BrowserActStatus> {
     return this.#enqueue(tabId, async (tab) => {
-      if (revision !== ANY_REVISION && revision !== tab.revision) {
+      const remembering = actionMemoryEnabled() && rememberableRef(action) !== null;
+      const staleRevision = revision !== ANY_REVISION && revision !== tab.revision;
+      if (staleRevision && !remembering) {
         throw new Error("Stale browser references. Take a fresh snapshot before acting.");
       }
 
       const view = await this.#wakeLoaded(tab);
       const beforeUrl = currentTabUrl(tab);
+      // Settings > Features "remember clicked elements": describe the element before acting, or
+      // find the remembered one again when the page changed. Anything but exactly one match
+      // stops with the same error as before.
+      let recalled: string | undefined;
+      let locator: ElementLocator | null = null;
+      let target = action;
+      const requestedRef = rememberableRef(action);
+      if (remembering && requestedRef) {
+        const found = await this.#rememberedTarget(tab, view.webContents, requestedRef, beforeUrl);
+        if (!found && staleRevision) {
+          throw new Error("Stale browser references. Take a fresh snapshot before acting.");
+        }
+        if (found) {
+          locator = found.locator;
+          if (found.ref !== requestedRef) {
+            target = { ...action, ref: found.ref } as BrowserAction;
+            recalled = recalledNotice(found.locator);
+          }
+        }
+      }
       // A hidden page must be painted to take input, but never over the app: it is shown with
       // only its corner pixel inside the window while the coworker acts on it.
       const restore = view.getVisible() ? null : this.#showOutOfSight(view);
@@ -1205,7 +1320,7 @@ export class BrowserHost implements CoworkerBrowser {
       try {
         if (restore) await delay(250);
         notice = await withTimeout(
-          performAction(view.webContents, action),
+          performAction(view.webContents, target),
           10_000,
           "Browser action timed out.",
         );
@@ -1213,6 +1328,14 @@ export class BrowserHost implements CoworkerBrowser {
       } finally {
         restore?.();
       }
+      if (locator && requestedRef) {
+        this.#actionMemory.remember(tab.id, requestedRef, beforeUrl, locator);
+        const actedRef = rememberableRef(target);
+        if (actedRef && actedRef !== requestedRef) {
+          this.#actionMemory.remember(tab.id, actedRef, beforeUrl, locator);
+        }
+      }
+      if (recalled) notice = notice ? `${recalled} ${notice}` : recalled;
       const opened = await this.#openedTabsNotice(tab);
       if (opened) notice = notice ? `${notice} ${opened}` : opened;
       // Typing that submitted and loaded a new page left nothing unsaved behind.
@@ -1232,6 +1355,29 @@ export class BrowserHost implements CoworkerBrowser {
       const nextRevision = tab.revision + 1;
       const snapshot = await this.#readSnapshot(tab, nextRevision);
       return notice ? { ...snapshot, notice } : snapshot;
+    });
+  }
+
+  /**
+   * The element an action's reference stands for, with its description. A reference still on
+   * the page is used as it is (when its revision is current) or only if it still matches the
+   * remembered description exactly (when the page was read again since). A reference that is
+   * gone is replaced only when the remembered element is the single exact match on the same page.
+   */
+  #rememberedTarget(
+    tab: InternalTab,
+    contents: WebContents,
+    ref: string,
+    url: string,
+  ): Promise<{ ref: string; locator: ElementLocator } | null> {
+    return resolveRememberedTarget({
+      memory: this.#actionMemory,
+      tabId: tab.id,
+      revision: tab.revision,
+      ref,
+      url,
+      evaluate: (script) =>
+        withTimeout(contents.executeJavaScript(script, true), 5_000, "Browser action timed out."),
     });
   }
 
@@ -1339,7 +1485,7 @@ export class BrowserHost implements CoworkerBrowser {
       for (const tab of this.#tabs.values()) {
         if (!tab.view) continue;
         this.#unmountView(tab.view);
-        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
+        livePage(tab.view)?.close();
         tab.view = null;
       }
       this.#tabs.clear();
@@ -1462,12 +1608,19 @@ export class BrowserHost implements CoworkerBrowser {
     // the address again in a fresh page.
     contents.once("render-process-gone", () => {
       if (!current() || this.#destroyed) return;
+      if (this.#guardOn(this.#crashGuardOn)) {
+        this.#crashGuard.noteCrash(siteOfPage(currentTabUrl(tab)), Date.now());
+      }
       this.#sleep(tab);
       this.#syncAttachedView();
       this.#emitChanged();
     });
     contents.on("did-start-loading", changed);
     contents.on("did-stop-loading", changed);
+    contents.on("did-finish-load", () => {
+      if (!current() || !this.#guardOn(this.#crashGuardOn)) return;
+      this.#crashGuard.noteLoaded(siteOfPage(currentTabUrl(tab)), Date.now());
+    });
     contents.on("page-title-updated", (_event, title) => {
       if (current()) tab.title = title;
       changed();
@@ -1634,10 +1787,15 @@ export class BrowserHost implements CoworkerBrowser {
   describeTarget(tabId: string, ref: string | null): { label: string; url: string } {
     const tab = this.#tabs.get(tabId);
     if (!tab) return { label: "", url: "" };
-    return {
-      label: ref ? (tab.labels.get(ref) ?? "") : "",
-      url: currentTabUrl(tab),
-    };
+    const url = currentTabUrl(tab);
+    let label = ref ? (tab.labels.get(ref) ?? "") : "";
+    // An older reference that "remember clicked elements" may use again is checked under the
+    // name of the element it would act on, so approvals see the real target.
+    if (ref && !tab.labels.has(ref) && actionMemoryEnabled()) {
+      const remembered = this.#actionMemory.recall(tab.id, ref, url);
+      if (remembered) label = locatorLabel(remembered);
+    }
+    return { label, url };
   }
 
   #syncAttachedView(): void {
@@ -1659,6 +1817,10 @@ export class BrowserHost implements CoworkerBrowser {
       return;
     }
 
+    // The owner opened this tab on screen: a resting site may be used again.
+    if (!livePage(tab.view) && this.#guardOn(this.#crashGuardOn)) {
+      this.#crashGuard.noteSuccess(siteOfPage(tab.requestedUrl));
+    }
     const view = this.#wake(tab);
     if (this.#attachedView !== view) {
       this.#attachedView?.setVisible(false);
@@ -1866,6 +2028,10 @@ export interface CoworkerBrowser extends BrowserToolTarget {
   releaseBot?(botId: string): Promise<void>;
   /** The app window was minimised/hidden (true) or shown (false); hidden pages are quietened. */
   setWindowHidden?(hidden: boolean): void;
+  /** Awake pages, all or one coworker's (the built-in browser). */
+  awakePageCount?(botId?: string): number;
+  /** Page budget and crash guard switches (the built-in browser). */
+  configureGuards?(options: { pageBudget?: () => boolean; crashGuard?: () => boolean }): void;
   /** Types the owner's secret into the sign-in field, found again if the page redrew it. */
   fillSecureField?(tabId: string, input: SecureFillInput): Promise<void>;
   onChanged(listener: (...args: BrowserHostEvents["changed"]) => void): () => void;
@@ -2052,6 +2218,53 @@ export function fitSnapshot(snapshot: BrowserSnapshot, offset: number): FittedSn
   };
 }
 
+/** The reference of an action "remember clicked elements" covers: a click or typing into a field. */
+export function rememberableRef(action: BrowserAction): string | null {
+  if (action.type === "click") return action.ref;
+  if (action.type === "type" && typeof action.ref === "string") return action.ref;
+  return null;
+}
+
+/**
+ * The element an action's reference stands for, with its description. A reference still on
+ * the page is used as it is (when its revision is current) or only if it still matches the
+ * remembered description exactly (when the page was read again since). A reference that is
+ * gone is replaced only when the remembered element is the single exact match on the same
+ * page. Null: act as before (a stale reference is refused).
+ */
+export async function resolveRememberedTarget(input: {
+  memory: ActionMemory;
+  tabId: string;
+  revision: number;
+  ref: string;
+  url: string;
+  evaluate: (script: string) => Promise<unknown>;
+}): Promise<{ ref: string; locator: ElementLocator } | null> {
+  const { memory, tabId, ref, url, evaluate } = input;
+  const current = ref.startsWith(`${input.revision}:`);
+  const remembered = memory.recall(tabId, ref, url);
+  try {
+    const described = await evaluate(describeElementScript(ref));
+    if (isElementLocator(described)) {
+      if (current || (remembered && sameLocator(described, remembered))) {
+        return { ref, locator: described };
+      }
+      return null;
+    }
+    // Still on the page but hidden or nameless: never swapped for another element.
+    if (!isMissingElement(described) || !remembered) return null;
+    const found = uniqueMatch(await evaluate(findElementScript(remembered, ref)));
+    return found ? { ref: found, locator: remembered } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Settings > Features "hide secrets": what the coworker's AI reads has its secrets hidden. */
+function guardReading<T extends BrowserSnapshot | BrowserActStatus>(reading: T): T {
+  return hideSecretsEnabled() ? hideSecretsInReading(reading) : reading;
+}
+
 /** The tab a call names; some runtimes call it pageId. */
 function browserTabId(args: Record<string, unknown>): string {
   const pageId = args.pageId;
@@ -2101,7 +2314,7 @@ export async function runBrowserTool(
         return textResult({ tabs, activeTabId: shown ? browser.activeTabId : null });
       }
       case "snapshot": {
-        const snapshot = await browser.snapshot(browserTabId(args));
+        const snapshot = guardReading(await browser.snapshot(browserTabId(args)));
         return textResult(fitSnapshot(snapshot, textOffset(args.offset)));
       }
       case "act": {
@@ -2111,9 +2324,11 @@ export async function runBrowserTool(
         // without a ref (a key, a scroll) does not depend on it.
         const revision =
           typeof args.revision === "number" ? args.revision : revisionFromRef(action);
-        const result = await browser.act(tabId, revision, action, {
-          snapshot: args.snapshot === true,
-        });
+        const result = guardReading(
+          await browser.act(tabId, revision, action, {
+            snapshot: args.snapshot === true,
+          }),
+        );
         return textResult("elements" in result ? fitSnapshot(result, 0) : result);
       }
       case "screenshot": {

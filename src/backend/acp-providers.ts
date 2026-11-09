@@ -229,6 +229,11 @@ export function setAntigravityEmailFetch(next: EmailFetch | null): void {
   emailFetch = next ?? ((url, init) => fetch(url, init));
 }
 const emailLookups = new Map<string, { at: number; email: Promise<string | null> }>();
+const GOOGLE_TOKEN_URIS = new Set([
+  "https://oauth2.googleapis.com/token",
+  "https://accounts.google.com/o/oauth2/token",
+  "https://www.googleapis.com/oauth2/v4/token",
+]);
 const EMAIL_RETRY_MS = 10 * 60_000;
 
 /**
@@ -249,9 +254,12 @@ async function fetchAntigravityEmail(acpHome: string): Promise<string | null> {
   const token: unknown = JSON.parse(await readFile(join(acpHome, "acp_token.json"), "utf8"));
   if (!isRecord(token)) return null;
   const { refresh_token: refresh, client_id: clientId, client_secret: secret } = token;
-  const tokenUri = typeof token.token_uri === "string" ? token.token_uri : "";
   if (typeof refresh !== "string" || typeof clientId !== "string") return null;
-  if (!/^https:\/\/oauth2\.googleapis\.com\/token$/.test(tokenUri)) return null;
+  // Some sign-ins save no token address, or Google's older one: both mean Google's token
+  // service. Any other address is never sent the token.
+  const saved = typeof token.token_uri === "string" ? token.token_uri.trim() : "";
+  if (saved && !GOOGLE_TOKEN_URIS.has(saved)) return null;
+  const tokenUri = "https://oauth2.googleapis.com/token";
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refresh,

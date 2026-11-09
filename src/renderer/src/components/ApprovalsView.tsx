@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, onMount, Show } from "solid-js";
-import type { ApprovalCategory, ApprovalRequest } from "../../../shared/ipc";
+import type { ApprovalCategory, ApprovalProvenance, ApprovalRequest } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
@@ -17,6 +17,36 @@ interface ApprovalsViewProps {
   bots: BotProfile[];
   onDecide: (approvalId: string, decision: "approved" | "rejected", note: string) => Promise<void>;
   onOpenCoworker: (botId: string) => void;
+}
+
+/** "Where this request came from", in the owner's language. Labels are shown as plain text. */
+export function provenanceText(provenance: ApprovalProvenance | undefined): string | null {
+  if (!provenance) return null;
+  const name = provenance.label ?? "";
+  switch (provenance.kind) {
+    case "owner":
+      return t("provenanceOwner");
+    case "remote":
+      return t("provenanceRemote");
+    case "routine":
+      return t("provenanceRoutine");
+    case "schedule":
+      return t("provenanceSchedule");
+    case "team-run":
+      return t("provenanceTeamRun");
+    case "coworker":
+      return name ? t("provenanceCoworkerNamed", { name }) : t("provenanceCoworker");
+    case "system":
+      return t("provenanceSystem");
+    case "web":
+      return t("provenanceWeb", { name: name || "?" });
+    case "app":
+      return t("provenanceApp", { name: name || "?" });
+    case "file":
+      return t("provenanceFile", { name: name || "?" });
+    default:
+      return null;
+  }
 }
 
 export function ApprovalsView(props: ApprovalsViewProps) {
@@ -161,6 +191,13 @@ export function ApprovalCard(props: {
       </h3>
       <Show when={props.approval.details}>
         <p class="approval-details">{props.approval.details}</p>
+      </Show>
+      <Show when={provenanceText(props.approval.provenance)}>
+        {(text) => (
+          <p class="approval-provenance">
+            <span>{t("provenanceLabel")}</span> {text()}
+          </p>
+        )}
       </Show>
       <Show when={pending() && props.approval.routedToBotId}>
         <p class="approval-routed">{t("approvalRouted")}</p>
