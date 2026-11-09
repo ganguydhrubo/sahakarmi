@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   AgentEvent,
   ApprovalRequest,
@@ -19,34 +19,14 @@ import { AdaptiveOrchestrator } from "./adaptive-orchestrator";
 import { OrchestratorStore } from "./orchestrator-store";
 import { TeamRunCheckpointSaver } from "./team-run-checkpoints";
 import type { TeamRunAgentPort } from "./team-run-engine";
+// Loaded here, not first by the orchestrator's lazy import: on a busy machine, loading them that
+// way inside the test runner made runs stall or fail on resume now and then (2 in 10 file runs
+// under load; 0 in 20 loaded up front). The app bundles this code, so it is not affected.
+import "./team-run-engine";
+import "./team-run-planner";
 
 let root: string;
 const cleanups: Array<() => Promise<void>> = [];
-
-// The engine (LangGraph) loads on the first team run. The test runner prepares that code on
-// first use, which on a busy machine took longer than one test's 15 s wait, so the first test
-// or two failed. One small run first, outside every test's own wait.
-beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), "sahkarmi-team-run-warm-"));
-  try {
-    const agent = new FakeAgent(BOTS);
-    const { orchestrator } = await build(agent);
-    const run = await orchestrator.startRun(
-      { objective: "Warm up", forcedStrategy: "multi-agent" },
-      root,
-      agent.bots,
-    );
-    await until(async () => {
-      const latest = await orchestrator.getRun(run.id);
-      return latest?.status === "completed" ? latest : null;
-    }, 120_000);
-  } finally {
-    for (const cleanup of cleanups.splice(0)) await cleanup();
-    await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }).catch(
-      () => undefined,
-    );
-  }
-}, 130_000);
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "sahkarmi-team-run-"));
