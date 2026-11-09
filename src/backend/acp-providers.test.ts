@@ -46,7 +46,10 @@ describe("Google account emails for Gemini", () => {
 
   it.each([
     ["no token address", base],
-    ["Google's older token address", { ...base, token_uri: "https://accounts.google.com/o/oauth2/token" }],
+    [
+      "Google's older token address",
+      { ...base, token_uri: "https://accounts.google.com/o/oauth2/token" },
+    ],
     ["the usual token address", { ...base, token_uri: "https://oauth2.googleapis.com/token" }],
   ])("shows the email when the sign-in saved %s", async (_label, token) => {
     const { home, acp, called } = await signedIn(token);
