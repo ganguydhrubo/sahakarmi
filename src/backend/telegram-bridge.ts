@@ -4,9 +4,12 @@ import { join } from "node:path";
 import type {
   AgentEvent,
   ApprovalRequest,
+  BrowserTakeoverState,
   ConversationSnapshot,
   DecideApprovalInput,
   PermissionPolicyState,
+  SecureInputKind,
+  SecureInputRequest,
   TelegramStatus,
 } from "../shared/ipc";
 import type { SecretCodec } from "./secret-store";
@@ -34,6 +37,8 @@ interface StoredTelegram {
    * username: usernames can be changed and reused, numeric ids cannot.
    */
   ownerUserId: number | null;
+  /** Passwords and PINs may be answered from Telegram too. Off until the owner turns it on. */
+  allowPasswords: boolean;
 }
 
 export interface TelegramAgent {
@@ -62,6 +67,14 @@ export interface TelegramAgent {
   sweepExpiredApprovals?(): Promise<ApprovalRequest[]>;
   recordApprovalDelivery?(approvalId: string, error: string | null): Promise<void>;
   workspaceName?(workspaceId: string): string | null;
+  /**
+   * The desktop's secure cards (password, OTP, PIN, login ID). Answering here makes the same
+   * call as the card, so the value goes straight into the page and the coworker never sees it.
+   */
+  listSecureInputs?(): SecureInputRequest[];
+  submitSecureInput?(id: string, value: string): Promise<unknown>;
+  dismissSecureInput?(id: string): Promise<unknown>;
+  takeOverSecureInput?(id: string): unknown;
 }
 
 export interface TelegramBridgeOptions {
@@ -91,6 +104,8 @@ export interface TelegramBridgeOptions {
 interface TelegramUpdate {
   update_id: number;
   message?: {
+    message_id?: number;
+    reply_to_message?: { message_id: number };
     text?: string;
     from?: { id: number; username?: string; first_name?: string; is_bot?: boolean };
     chat: { id: number; type: string; first_name?: string; title?: string; username?: string };
@@ -142,7 +157,7 @@ export const PAIRING_COOLDOWN_MS = 10 * 60_000;
 
 const HELP = [
   "Write to your Sahkarmi coworker here, as in the app.",
-  "/coworkers - list your coworkers",
+  "/coworkers - pick the coworker to talk to",
   "/use <name or number> - talk to another coworker",
   "/ceo - talk to the CEO of your workspace",
   "",
@@ -154,10 +169,31 @@ const HELP = [
   "/cancel <id> - refuse it and tell the coworker to stop",
   "/status <id> - what happened to a request",
   "/policy - your current permission settings",
+  "",
+  "When a coworker needs an OTP, login ID or password, it asks here. Reply with it: it is",
+  "typed straight into the page and your message is deleted at once.",
+  "/skip - say no · /pc - type it on the computer yourself",
   "/help - show this help",
   "",
   "Sahkarmi must be open on your computer to answer.",
 ].join("\n");
+
+const SECURE_NOUN: Record<SecureInputKind, string> = {
+  password: "password",
+  otp: "OTP",
+  pin: "PIN",
+  username: "login ID",
+  other: "answer",
+};
+
+/** "https://accounts.google.com" -> "accounts.google.com". */
+function siteOf(origin: string): string {
+  try {
+    return new URL(origin).host || origin;
+  } catch {
+    return origin;
+  }
+}
 
 /** Short handle, as shown and accepted in Telegram. */
 function handleOf(approval: ApprovalRequest): string {
@@ -227,6 +263,12 @@ export class TelegramBridge {
   readonly #notifiedApprovals = new Set<string>();
   /** The message carrying each approval's buttons, so they go once it is decided anywhere. */
   readonly #approvalMessages = new Map<string, number>();
+  /** The message asking for each secure request, so a reply finds its request. */
+  readonly #secureMessages = new Map<string, number>();
+  readonly #notifiedSecure = new Set<string>();
+  readonly #notifiedTakeovers = new Set<string>();
+  /** The owner chose /pc for this coworker: the take-over it starts is theirs, not news. */
+  readonly #ownTakeovers = new Map<string, number>();
   /** Coworkers the owner is following here: their next replies come to Telegram too. */
   readonly #following = new Map<string, number>();
   /** Approvals asked before the bridge started were already there for the owner to see. */
@@ -274,6 +316,7 @@ export class TelegramBridge {
           chatName: typeof raw.chatName === "string" ? raw.chatName : null,
           coworkerId: typeof raw.coworkerId === "string" ? raw.coworkerId : null,
           ownerUserId: typeof raw.ownerUserId === "number" ? raw.ownerUserId : null,
+          allowPasswords: raw.allowPasswords === true,
         };
       }
     } catch {
@@ -319,6 +362,7 @@ export class TelegramBridge {
       error: this.#error,
       ownerIdVerified: this.#ownerUserId() != null,
       approvalsEnabled: this.#approvalsEnabled && typeof this.#agent.decideApproval === "function",
+      allowPasswords: state?.allowPasswords ?? false,
     };
   }
 
@@ -351,6 +395,7 @@ export class TelegramBridge {
       chatName: sameBot ? (this.#state?.chatName ?? null) : null,
       coworkerId: this.#state?.coworkerId ?? null,
       ownerUserId: sameBot ? (this.#state?.ownerUserId ?? null) : null,
+      allowPasswords: this.#state?.allowPasswords ?? false,
     };
     this.#error = null;
     await this.#save();
@@ -364,6 +409,14 @@ export class TelegramBridge {
       throw new Error("Unknown coworker.");
     }
     this.#state.coworkerId = botId;
+    await this.#save();
+    return this.#changed();
+  }
+
+  /** Lets passwords and PINs be answered from Telegram too (OTPs and login IDs always can). */
+  async setAllowPasswords(allow: boolean): Promise<TelegramStatus> {
+    if (!this.#state) throw new Error("Connect a Telegram bot first.");
+    this.#state.allowPasswords = allow === true;
     await this.#save();
     return this.#changed();
   }
@@ -471,6 +524,21 @@ export class TelegramBridge {
     const state = this.#state;
     if (!query || !state) return;
     const chatId = query.message?.chat.id;
+    const pick = query.data?.match(/^use:([\w-]{1,60})$/)?.[1];
+    if (pick && chatId != null && chatId === state.chatId) {
+      const bot = this.#agent.listBots().find((item) => item.id === pick);
+      if (bot) {
+        state.coworkerId = bot.id;
+        await this.#save();
+        this.#changed();
+      }
+      await this.#call(state.token, "answerCallbackQuery", {
+        callback_query_id: query.id,
+        text: bot ? `Now talking to ${bot.name}` : "That coworker is gone.",
+      }).catch(() => {});
+      if (bot) await this.#send(chatId, `Now talking to ${bot.name}. Write your message.`);
+      return;
+    }
     const button = query.data?.match(/^(approve|reject|details):([0-9a-f-]{8,36})$/);
     const answer = (text?: string) =>
       this.#call(state.token, "answerCallbackQuery", {
@@ -570,19 +638,14 @@ export class TelegramBridge {
     // Everyone else is ignored: answering would tell a stranger this bot is alive.
     if (chat.id !== state.chatId) return;
 
+    if (await this.#handleSecureReply(message, text)) return;
+
     if (/^\/(help|start)\b/.test(text)) {
       await this.#send(chat.id, HELP);
       return;
     }
-    if (/^\/coworkers\b/.test(text)) {
-      const current = this.#coworker();
-      const lines = this.#agent
-        .listBots()
-        .map(
-          (bot, index) =>
-            `${index + 1}. ${bot.name}${bot.role ? ` - ${bot.role}` : ""}${bot.id === current?.id ? " (current)" : ""}`,
-        );
-      await this.#send(chat.id, lines.length ? lines.join("\n") : "You have no coworkers yet.");
+    if (/^\/(coworkers|use)(?:@\w+)?\s*$/.test(text)) {
+      await this.#sendCoworkerPicker(chat.id);
       return;
     }
     const use = text.match(/^\/use(?:@\w+)?\s+(.+)$/)?.[1]?.trim();
@@ -800,6 +863,225 @@ export class TelegramBridge {
     }
   }
 
+  /** Every coworker as a button: one tap and the next message goes to them. */
+  async #sendCoworkerPicker(chatId: number): Promise<void> {
+    const state = this.#state;
+    if (!state) return;
+    const bots = this.#agent.listBots();
+    if (bots.length === 0) {
+      await this.#send(chatId, "You have no coworkers yet.");
+      return;
+    }
+    const current = this.#coworker();
+    const lines = bots.map(
+      (bot, index) =>
+        `${index + 1}. ${bot.name}${bot.role ? ` - ${bot.role}` : ""}${bot.id === current?.id ? " (current)" : ""}`,
+    );
+    // Telegram allows 100 buttons; /use <number> still reaches the rest.
+    const buttons = bots.slice(0, 98).map((bot) => ({
+      text: `${bot.id === current?.id ? "✓ " : ""}${bot.name}`.slice(0, 60),
+      callback_data: `use:${bot.id}`,
+    }));
+    const rows: Array<typeof buttons> = [];
+    for (let index = 0; index < buttons.length; index += 2) {
+      rows.push(buttons.slice(index, index + 2));
+    }
+    const chunks = telegramChunks(`Tap a coworker to talk to them:\n\n${lines.join("\n")}`);
+    const last = chunks.pop() ?? "";
+    for (const chunk of chunks) await this.#send(chatId, chunk);
+    await this.#call(state.token, "sendMessage", {
+      chat_id: chatId,
+      text: last,
+      reply_markup: { inline_keyboard: rows },
+    });
+  }
+
+  /** OTPs and login IDs always; passwords and PINs only once the owner allowed it. */
+  #canAnswer(request: SecureInputRequest): boolean {
+    if (request.kind === "password" || request.kind === "pin") {
+      return this.#state?.allowPasswords === true;
+    }
+    return true;
+  }
+
+  /**
+   * A reply to a coworker's secure request: the value goes into the page exactly as from the
+   * desktop card, and the owner's message is deleted from the chat at once. The value is never
+   * logged, stored or sent anywhere else. Returns false when the message is not one of those.
+   */
+  async #handleSecureReply(
+    message: NonNullable<TelegramUpdate["message"]>,
+    text: string,
+  ): Promise<boolean> {
+    const state = this.#state;
+    const open = this.#agent.listSecureInputs?.() ?? [];
+    if (!state || state.chatId == null || open.length === 0) return false;
+    const chatId = state.chatId;
+    const command = text.match(/^\/(skip|pc)(?:@\w+)?\s*$/i)?.[1]?.toLowerCase();
+    if (!command && text.startsWith("/")) return false;
+    const replyTo = message.reply_to_message?.message_id;
+    const byReply =
+      replyTo === undefined
+        ? undefined
+        : open.find((request) => this.#secureMessages.get(request.id) === replyTo);
+    // A reply to some other message is ordinary chat. So is a message that is not a reply and
+    // has a space in it: codes, IDs and passwords have none, chat almost always does, and a
+    // sentence must never be typed into a sign-in page.
+    if (replyTo !== undefined && !byReply && !command) return false;
+    if (!byReply && !command && /s/.test(text)) return false;
+    const target = byReply ?? (open.length === 1 ? open[0] : undefined);
+    if (!command) await this.#deleteOwnerMessage(chatId, message.message_id);
+    if (!target) {
+      await this.#send(
+        chatId,
+        `${open.length} coworkers are waiting for a code or ID. Reply to the right request message (swipe it left), or reply /skip to it to say no.${command ? "" : " Your message was deleted and not used."}`,
+      );
+      return true;
+    }
+    this.#adoptPrivateChatOwner("private", chatId, message.from?.id);
+    const owner = this.#ownerUserId();
+    if (owner == null || message.from?.id !== owner) {
+      this.#log("warn", "Telegram secure reply refused: wrong user id");
+      await this.#send(
+        chatId,
+        "Only the Telegram account that paired this Sahkarmi can answer this. Nothing was typed.",
+      );
+      return true;
+    }
+    const who =
+      this.#agent.listBots().find((bot) => bot.id === target.botId)?.name ?? "The coworker";
+    const site = siteOf(target.origin);
+    if (command === "skip") {
+      await this.#agent.dismissSecureInput?.(target.id);
+      await this.#send(chatId, `Told ${who} no. Nothing was typed on ${site}.`);
+      return true;
+    }
+    if (command === "pc") {
+      this.#ownTakeovers.set(target.botId, Date.now());
+      this.#agent.takeOverSecureInput?.(target.id);
+      await this.#send(
+        chatId,
+        `The ${site} page is open on your computer. Type it there, then hand the browser back to ${who}.`,
+      );
+      return true;
+    }
+    if (!this.#canAnswer(target)) {
+      await this.#send(
+        chatId,
+        "Not used: passwords and PINs are typed only on your computer. Your message was deleted. To answer them here too, turn on Settings > Telegram > Allow passwords from Telegram.",
+      );
+      return true;
+    }
+    if (!this.#agent.submitSecureInput) {
+      await this.#send(
+        chatId,
+        "Answering from Telegram is not available here. Use the card in Sahkarmi.",
+      );
+      return true;
+    }
+    try {
+      await this.#agent.submitSecureInput(target.id, message.text ?? text);
+      await this.#send(chatId, `Typed into ${site}. ${who} carries on and never saw it.`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "It could not be typed.";
+      await this.#send(chatId, `Not typed: ${reason}`);
+    }
+    return true;
+  }
+
+  async #deleteOwnerMessage(chatId: number, messageId: number | undefined): Promise<void> {
+    const state = this.#state;
+    if (!state || messageId === undefined) return;
+    try {
+      await this.#call(state.token, "deleteMessage", { chat_id: chatId, message_id: messageId });
+    } catch (error) {
+      this.#log("warn", "Telegram could not delete the owner's secure reply", error);
+      await this.#send(
+        chatId,
+        "Telegram did not let Sahkarmi delete your message. Please delete it yourself.",
+      ).catch(() => {});
+    }
+  }
+
+  /** A coworker asked for a password, OTP, PIN or login ID: ask here too. */
+  async #notifySecureInputs(requests: SecureInputRequest[]): Promise<void> {
+    const state = this.#state;
+    if (!state || state.chatId == null) return;
+    const chatId = state.chatId;
+    const open = new Set(requests.map((request) => request.id));
+    // Answered, refused or taken over anywhere: its question here is closed.
+    for (const [id, messageId] of this.#secureMessages) {
+      if (open.has(id)) continue;
+      this.#secureMessages.delete(id);
+      await this.#call(state.token, "editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: "This request is closed.",
+      }).catch(() => {});
+    }
+    const names = new Map(this.#agent.listBots().map((bot) => [bot.id, bot.name]));
+    for (const request of requests) {
+      if (this.#notifiedSecure.has(request.id) || request.createdAt < this.#startedAt) continue;
+      this.#notifiedSecure.add(request.id);
+      const who = names.get(request.botId) ?? "A coworker";
+      const noun = SECURE_NOUN[request.kind];
+      const site = siteOf(request.origin);
+      const answerable = this.#canAnswer(request);
+      const label =
+        request.label && request.label.toLowerCase() !== noun.toLowerCase()
+          ? ` (${request.label})`
+          : "";
+      const text = [
+        `${who} needs your ${noun} for ${site}${label}.`,
+        "",
+        answerable
+          ? `Reply with it here. It is typed straight into that page and your message is deleted from this chat at once. ${who} never sees it.`
+          : "Passwords and PINs are typed only on your computer, in the card in Sahkarmi. To answer them here too, turn on Settings > Telegram > Allow passwords from Telegram.",
+        "",
+        answerable ? "/skip - say no · /pc - type it on the computer" : "/skip - say no",
+      ].join("\n");
+      try {
+        const sent = await this.#call<{ message_id?: number }>(state.token, "sendMessage", {
+          chat_id: chatId,
+          text,
+          ...(answerable
+            ? { reply_markup: { force_reply: true, input_field_placeholder: noun } }
+            : {}),
+        });
+        if (typeof sent?.message_id === "number") {
+          this.#secureMessages.set(request.id, sent.message_id);
+        }
+      } catch (error) {
+        this.#notifiedSecure.delete(request.id);
+        this.#log("warn", "Telegram secure request not delivered", error);
+      }
+    }
+  }
+
+  /** A coworker needs the owner at the computer (CAPTCHA, payment page, a human check). */
+  async #notifyTakeovers(takeover: BrowserTakeoverState): Promise<void> {
+    const chatId = this.#state?.chatId;
+    if (chatId == null) return;
+    const names = new Map(this.#agent.listBots().map((bot) => [bot.id, bot.name]));
+    for (const request of takeover.requests) {
+      if (this.#notifiedTakeovers.has(request.id) || request.createdAt < this.#startedAt) continue;
+      this.#notifiedTakeovers.add(request.id);
+      const own = this.#ownTakeovers.get(request.botId);
+      if (own !== undefined && Date.now() - own < 60_000) {
+        this.#ownTakeovers.delete(request.botId);
+        continue;
+      }
+      const who = names.get(request.botId) ?? "A coworker";
+      await this.#send(
+        chatId,
+        `${who} needs you at your computer: ${request.reason}\n\nOpen Sahkarmi there, do this step in the browser yourself (for example a "verify you are human" check), then hand the browser back.`,
+      ).catch((error) => {
+        this.#notifiedTakeovers.delete(request.id);
+        this.#log("warn", "Telegram take-over notice not delivered", error);
+      });
+    }
+  }
+
   #describePending(): string {
     const approvals = (this.#agent.listApprovals?.() ?? []).filter(
       (approval) => approval.status === "pending",
@@ -925,6 +1207,8 @@ export class TelegramBridge {
         await this.#notifyApprovals(event.approvals);
         await this.#closeDecidedApprovals(event.approvals);
       }
+      if (event.type === "secure-inputs-changed") await this.#notifySecureInputs(event.requests);
+      if (event.type === "browser-takeover-changed") await this.#notifyTakeovers(event.state);
     } catch (error) {
       this.#log("warn", "Telegram reply not sent", error);
     }

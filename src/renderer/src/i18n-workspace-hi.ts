@@ -109,6 +109,9 @@ export const workspaceHi: WorkspaceDictionary = {
   telegramCoworker: "सहकर्मी",
   telegramUnpair: "चैट हटाएँ",
   telegramDisconnect: "डिस्कनेक्ट करें",
+  telegramAllowPasswords: "Telegram से पासवर्ड की अनुमति दें",
+  telegramSecureHint:
+    'जब किसी सहकर्मी को OTP या लॉगिन आईडी चाहिए, वह Telegram में भी पूछेगा: जवाब में भेजें, वह सीधे पेज में भर दिया जाएगा और आपका मैसेज चैट से हटा दिया जाएगा। पासवर्ड और PIN वहाँ तभी चलेंगे जब ऊपर का स्विच चालू हो। सहकर्मी आपका लिखा कभी नहीं देखते, और "आप इंसान हैं" वाली जाँच के लिए आपको कंप्यूटर पर करने का संदेश मिलेगा।',
   telegramKeepOpen:
     "सहकर्मियों के जवाब के लिए इस कंप्यूटर पर Sahkarmi खुला रहना चाहिए। मंज़ूरी अब भी ऐप में दी जाती है।",
   setFeatures: "फ़ीचर",

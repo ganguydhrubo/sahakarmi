@@ -115,6 +115,7 @@ export const hi: Dictionary = {
   secureTitlePassword: "अपना पासवर्ड डालें",
   secureTitleOtp: "OTP डालें",
   secureTitlePin: "अपना PIN डालें",
+  secureTitleUsername: "अपनी लॉगिन आईडी डालें",
   secureTitleOther: "जानकारी डालें",
   secureSubmitOnce: "सिर्फ़ एक बार {origin} पर भेजा जाएगा",
   secureSignInPage: "साइन-इन पेज",

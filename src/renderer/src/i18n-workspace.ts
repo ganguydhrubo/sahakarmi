@@ -111,6 +111,9 @@ export const workspaceEn = {
   telegramCoworker: "Coworker",
   telegramUnpair: "Unpair chat",
   telegramDisconnect: "Disconnect",
+  telegramAllowPasswords: "Allow passwords from Telegram",
+  telegramSecureHint:
+    'When a coworker needs an OTP or login ID, it asks in Telegram too: reply with it and it is typed straight into the page, then your message is deleted from the chat. Passwords and PINs work there only when the switch above is on. Coworkers never see what you type, and for a "verify you are human" check you get a note to do it at the computer.',
   telegramKeepOpen:
     "Sahkarmi must be open on this computer for coworkers to answer. Approvals are still given in the app.",
   setFeatures: "Features",

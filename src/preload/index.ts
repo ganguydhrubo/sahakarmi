@@ -357,6 +357,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     setToken: (token: string) => ipcRenderer.invoke(IPC_CHANNELS.telegramSetToken, { token }),
     setCoworker: (botId: string) => ipcRenderer.invoke(IPC_CHANNELS.telegramSetCoworker, { botId }),
     unpair: () => ipcRenderer.invoke(IPC_CHANNELS.telegramUnpair),
+    setAllowPasswords: (allow: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.telegramSetAllowPasswords, { allow }),
   },
   customSkills: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.customSkillsList),

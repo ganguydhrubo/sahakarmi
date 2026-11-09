@@ -154,6 +154,19 @@ export function TelegramSettings(props: { bots: BotProfile[] }) {
             <For each={props.bots}>{(bot) => <option value={bot.id}>{bot.name}</option>}</For>
           </select>
         </label>
+        <label class="engine-setting engine-setting-toggle">
+          <input
+            type="checkbox"
+            checked={status()?.allowPasswords === true}
+            disabled={busy()}
+            onChange={(event) => {
+              const allow = event.currentTarget.checked;
+              void run(() => window.sahkarmi.telegram.setAllowPasswords(allow));
+            }}
+          />
+          <span>{t("telegramAllowPasswords")}</span>
+        </label>
+        <p class="settings-meta">{t("telegramSecureHint")}</p>
         <div class="settings-buttons">
           <Show when={status()?.paired}>
             <button
