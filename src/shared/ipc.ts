@@ -1,3 +1,4 @@
+import type { IntelligenceDesktopApi } from "./intelligence";
 import type { ResourceAccess, ResourceKind } from "./resource-access";
 export const IPC_CHANNELS = {
   setTheme: "app:set-theme",
@@ -161,6 +162,22 @@ export const IPC_CHANNELS = {
   orchestratorResourceStatus: "orchestrator:resource-status",
   orchestratorGetBudgets: "orchestrator:get-budgets",
   orchestratorSetBudgets: "orchestrator:set-budgets",
+  intelligenceStatus: "intelligence:status",
+  intelligencePerformance: "intelligence:performance",
+  intelligenceOutcomes: "intelligence:outcomes",
+  intelligenceRecommend: "intelligence:recommend",
+  intelligencePredictions: "intelligence:predictions",
+  intelligenceAnalyzeRun: "intelligence:analyze-run",
+  intelligenceDecisions: "intelligence:decisions",
+  intelligenceExperiences: "intelligence:experiences",
+  intelligenceAddExperience: "intelligence:add-experience",
+  intelligenceCorrectExperience: "intelligence:correct-experience",
+  intelligenceDeleteExperience: "intelligence:delete-experience",
+  intelligenceSetFeedback: "intelligence:set-feedback",
+  intelligenceSetExcluded: "intelligence:set-excluded",
+  intelligenceResources: "intelligence:resources",
+  intelligenceRollbackModel: "intelligence:rollback-model",
+  intelligenceResetLearning: "intelligence:reset-learning",
   assignmentsOverview: "assignments:overview",
   assignmentsSet: "assignments:set",
   agentRerunInterrupted: "agent:rerun-interrupted",
@@ -2290,6 +2307,8 @@ export interface SahkarmiDesktopApi {
   aiRuntime: AiRuntimeDesktopApi;
   maintenance: MaintenanceDesktopApi;
   orchestrator: OrchestratorDesktopApi;
+  /** Settings > Intelligence. Optional: older preloads do not have it. */
+  intelligence?: IntelligenceDesktopApi;
   memory: MemoryDesktopApi;
   knowledge: KnowledgeDesktopApi;
   composio: ComposioDesktopApi;

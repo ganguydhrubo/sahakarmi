@@ -26,6 +26,7 @@ import { SETTINGS_SECTION_KEY } from "../settings-section";
 import { AboutCard } from "./AboutCard";
 import { AssignmentsSettings } from "./AssignmentsSettings";
 import { FeaturesSettings } from "./FeaturesSettings";
+import { IntelligenceSettings } from "./IntelligenceSettings";
 import { McpSettings } from "./McpSettings";
 import { ModelSuggestions } from "./ModelSuggestions";
 import { PermissionsSettings } from "./PermissionsSettings";
@@ -44,6 +45,7 @@ type SettingsSection =
   | "skills"
   | "mcp"
   | "assignments"
+  | "intelligence"
   | "voice"
   | "telegram"
   | "features"
@@ -76,6 +78,7 @@ const SECTION_GROUPS: Array<{ label: MessageKey; items: SectionItem[] }> = [
       { id: "skills", label: "setSkills", description: "setDescSkills" },
       { id: "mcp", label: "setMcp", description: "setDescMcp" },
       { id: "assignments", label: "assignmentsTitle", description: "setDescAssignments" },
+      { id: "intelligence", label: "setIntelligence", description: "setDescIntelligence" },
     ],
   },
   {
@@ -370,6 +373,10 @@ export function SettingsView(props: SettingsViewProps) {
             <section class="settings-card">
               <AssignmentsSettings />
             </section>
+          ))}
+
+          {panel("intelligence", () => (
+            <IntelligenceSettings />
           ))}
 
           {panel("telegram", () => (

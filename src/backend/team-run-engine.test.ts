@@ -15,10 +15,10 @@ import type {
   QueuedMessageReceipt,
   SendMessageInput,
 } from "../shared/ipc";
-import { AdaptiveOrchestrator } from "./adaptive-orchestrator";
+import { AdaptiveOrchestrator, type OrchestratorEngineOptions } from "./adaptive-orchestrator";
 import { OrchestratorStore } from "./orchestrator-store";
 import { TeamRunCheckpointSaver } from "./team-run-checkpoints";
-import type { TeamRunAgentPort } from "./team-run-engine";
+import type { TeamRunAgentPort, TeamRunIntelligence } from "./team-run-engine";
 // Loaded here, not first by the orchestrator's lazy import: on a busy machine, loading them that
 // way inside the test runner made runs stall or fail on resume now and then (2 in 10 file runs
 // under load; 0 in 20 loaded up front). The app bundles this code, so it is not affected.
@@ -249,7 +249,12 @@ async function runStatus(
   });
 }
 
-async function build(agent: FakeAgent, planner: string | null = null, review = false) {
+async function build(
+  agent: FakeAgent,
+  planner: string | null = null,
+  review = false,
+  extra: Pick<OrchestratorEngineOptions, "route" | "intelligence"> = {},
+) {
   const store = new OrchestratorStore(root);
   await store.initialize();
   const orchestrator = new AdaptiveOrchestrator(store, {
@@ -257,6 +262,7 @@ async function build(agent: FakeAgent, planner: string | null = null, review = f
     retryGraceMs: 30,
     planner: () => planner,
     review: () => review,
+    ...extra,
   });
   cleanups.push(() => orchestrator.dispose());
   return { store, orchestrator };
@@ -703,5 +709,275 @@ describe("a second model reviews team-run work (cross-model-review)", () => {
     const done = await runStatus(orchestrator, run.id, "completed");
     expect(done.tasks[0]?.verification).toBe("unverified");
     expect(agent.sent.some((item) => item.text.startsWith("[Team run review]"))).toBe(false);
+  });
+});
+
+/** A stand-in for the Intelligence Core's engine hooks that records every call. */
+function fakeIntelligence(
+  active: boolean,
+  pick: (reason: "unavailable" | "repeated-failure", fromBotId: string) => string | null,
+) {
+  const calls = {
+    reassign: [] as Array<{ reason: string; fromBotId: string; taskId: string }>,
+    stopped: [] as Array<{ taskId: string; botId: string; signature: string }>,
+  };
+  const intelligence: TeamRunIntelligence = {
+    active: () => active,
+    reassign: (input) => {
+      calls.reassign.push({
+        reason: input.reason,
+        fromBotId: input.fromBotId,
+        taskId: input.task.id,
+      });
+      const botId = pick(input.reason, input.fromBotId);
+      return botId ? { botId, botName: botId, explanation: `test pick ${botId}` } : null;
+    },
+    noteStoppedRetry: (input) =>
+      calls.stopped.push({ taskId: input.task.id, botId: input.botId, signature: input.signature }),
+    signature: (text) => (text ? text.toLowerCase().replace(/\d+/g, "<n>") : null),
+  };
+  return { intelligence, calls };
+}
+
+describe("team runs with the Intelligence Core", () => {
+  it("changes nothing while adaptive mode is off (same three attempts as before)", async () => {
+    const agent = new FakeAgent(BOTS);
+    agent.responder = () => ({ fail: "The model refused." });
+    const { intelligence, calls } = fakeIntelligence(false, () => "tara-ops");
+    const { orchestrator } = await build(agent, null, false, { intelligence });
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    const failed = await runStatus(orchestrator, run.id, "failed");
+    expect(failed.tasks[0]?.attemptCount).toBe(3);
+    expect(agent.sent).toHaveLength(3);
+    expect(calls.reassign).toHaveLength(0);
+    expect(calls.stopped).toHaveLength(0);
+    expect(failed.tasks[0]?.inputs.failureSignatures).toBeUndefined();
+  });
+
+  it("an engine hook that throws is ignored, never a crash", async () => {
+    const agent = new FakeAgent(BOTS);
+    agent.responder = () => ({ fail: "The model refused." });
+    const broken: TeamRunIntelligence = {
+      active: () => {
+        throw new Error("boom");
+      },
+      reassign: () => {
+        throw new Error("boom");
+      },
+      noteStoppedRetry: () => {
+        throw new Error("boom");
+      },
+      signature: () => {
+        throw new Error("boom");
+      },
+    };
+    const { orchestrator } = await build(agent, null, false, { intelligence: broken });
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    const failed = await runStatus(orchestrator, run.id, "failed");
+    expect(failed.tasks[0]?.attemptCount).toBe(3);
+  });
+
+  it("stops a task that fails the same way twice when no coworker is clearly better", async () => {
+    const agent = new FakeAgent(BOTS);
+    agent.responder = () => ({ fail: "The model refused (code 429)." });
+    const { intelligence, calls } = fakeIntelligence(true, () => null);
+    const events: AgentEvent[] = [];
+    const { orchestrator } = await build(agent, null, false, { intelligence });
+    orchestrator.onEvent((event) => events.push(event));
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    const failed = await runStatus(orchestrator, run.id, "failed");
+    // Two tries, not three: the third would have failed the same way.
+    expect(agent.sent).toHaveLength(2);
+    expect(failed.tasks[0]?.status).toBe("failed");
+    expect(failed.tasks[0]?.error).toContain("failed the same way twice");
+    expect(calls.reassign).toEqual([
+      expect.objectContaining({ reason: "repeated-failure", taskId: failed.tasks[0]?.id }),
+    ]);
+    expect(calls.stopped).toHaveLength(1);
+    expect(calls.stopped[0]?.signature).toBe("the model refused (code <n>).");
+  });
+
+  it("keeps retrying when the failures differ", async () => {
+    const agent = new FakeAgent(BOTS);
+    let attempt = 0;
+    agent.responder = () => {
+      attempt += 1;
+      return { fail: attempt === 1 ? "Network timed out." : "The model refused." };
+    };
+    const { intelligence, calls } = fakeIntelligence(true, () => null);
+    const { orchestrator } = await build(agent, null, false, { intelligence });
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    const failed = await runStatus(orchestrator, run.id, "failed");
+    // Different failures are retried as before. The repeat comes on the last allowed try, when
+    // no retry follows anyway, so there is nothing to stop or hand over.
+    expect(agent.sent).toHaveLength(3);
+    expect(calls.reassign).toHaveLength(0);
+    expect(calls.stopped).toHaveLength(0);
+    expect(failed.tasks[0]?.attemptCount).toBe(3);
+  });
+
+  it("hands a repeatedly failing task to a better coworker once, and says so", async () => {
+    const agent = new FakeAgent(BOTS);
+    let first: string | null = null;
+    agent.responder = (botId) => {
+      first ??= botId;
+      return botId === first ? { fail: "Build failed: missing module." } : { reply: "Done." };
+    };
+    const { intelligence, calls } = fakeIntelligence(
+      true,
+      (_reason, from) => BOTS.find((id) => id !== from) ?? null,
+    );
+    const events: AgentEvent[] = [];
+    const { orchestrator } = await build(agent, null, false, { intelligence });
+    orchestrator.onEvent((event) => events.push(event));
+    const run = await orchestrator.startRun(
+      { objective: "Quick fix", forcedStrategy: "single-agent" },
+      root,
+      agent.bots,
+    );
+    const done = await runStatus(orchestrator, run.id, "completed");
+    const other = BOTS.find((id) => id !== first);
+    expect(agent.sent.map((item) => item.botId)).toEqual([first, first, other]);
+    expect(done.tasks[0]?.assignedBotId).toBe(other);
+    expect(done.tasks[0]?.inputs.reassignments).toEqual([
+      expect.objectContaining({ from: first, to: other, reason: "repeated-failure" }),
+    ]);
+    expect(calls.reassign).toHaveLength(1);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "notice" &&
+          event.code === "team_run_reassigned" &&
+          event.message.includes("test pick"),
+      ),
+    ).toBe(true);
+  });
+
+  it("replaces a coworker that was removed mid-run, once", async () => {
+    const agent = new FakeAgent(BOTS);
+    agent.responder = (botId) => {
+      // The last task's coworker is deleted while the first task runs.
+      const index = agent.bots.findIndex((bot) => bot.id === "tara-ops");
+      if (index >= 0) agent.bots.splice(index, 1);
+      return { reply: `${botId} finished.` };
+    };
+    const { intelligence, calls } = fakeIntelligence(true, () => "dev-code");
+    const { orchestrator } = await build(agent, null, false, { intelligence });
+    const run = await orchestrator.startRun(
+      { objective: "Launch the Diwali campaign end-to-end", forcedStrategy: "multi-agent" },
+      root,
+      [...agent.bots],
+    );
+    const done = await runStatus(orchestrator, run.id, "completed");
+    expect(agent.sent.every((item) => item.botId === "dev-code")).toBe(true);
+    expect(calls.reassign.map((call) => call.reason)).toEqual(["unavailable"]);
+    expect(done.tasks.at(-1)?.assignedBotId).toBe("dev-code");
+  });
+
+  it("without adaptive mode a removed coworker still fails the task, as before", async () => {
+    const agent = new FakeAgent(BOTS);
+    agent.responder = (botId) => {
+      const index = agent.bots.findIndex((bot) => bot.id === "tara-ops");
+      if (index >= 0) agent.bots.splice(index, 1);
+      return { reply: `${botId} finished.` };
+    };
+    const { intelligence, calls } = fakeIntelligence(false, () => "dev-code");
+    const { orchestrator } = await build(agent, null, false, { intelligence });
+    const run = await orchestrator.startRun(
+      { objective: "Launch the Diwali campaign end-to-end", forcedStrategy: "multi-agent" },
+      root,
+      [...agent.bots],
+    );
+    const failed = await runStatus(orchestrator, run.id, "failed");
+    expect(failed.error ?? failed.tasks.at(-1)?.error).toContain("not available");
+    expect(calls.reassign).toHaveLength(0);
+  });
+
+  it("applies a routing pick only when the Intelligence Core says it applies", async () => {
+    for (const applied of [true, false]) {
+      const agent = new FakeAgent(BOTS);
+      const seen: string[] = [];
+      const { orchestrator } = await build(agent, null, false, {
+        route: (input) => {
+          seen.push(input.task.id);
+          return { botId: "tara-ops", applied, explanation: "tara-ops has the better record" };
+        },
+      });
+      const run = await orchestrator.startRun(
+        { objective: "Launch the Diwali campaign end-to-end", forcedStrategy: "multi-agent" },
+        root,
+        agent.bots,
+      );
+      const done = await runStatus(orchestrator, run.id, "completed");
+      expect(seen).toHaveLength(3);
+      if (applied) {
+        expect(agent.sent.every((item) => item.botId === "tara-ops")).toBe(true);
+        // The third task already belongs to tara-ops: nothing to change there, nothing noted.
+        expect(done.tasks.map((task) => task.inputs.routedBy ?? null)).toEqual([
+          "intelligence",
+          "intelligence",
+          null,
+        ]);
+      } else {
+        expect(agent.sent[0]?.botId).toBe("dev-code");
+        expect(done.tasks.some((task) => task.inputs.routedBy)).toBe(false);
+      }
+    }
+  });
+
+  it("never re-routes a plan the CEO wrote", async () => {
+    const agent = new FakeAgent(["ceo", ...BOTS]);
+    agent.responder = (botId, text) =>
+      botId === "ceo" && text.startsWith("[Team run planning]")
+        ? {
+            reply: JSON.stringify({
+              tasks: [
+                {
+                  title: "Draft",
+                  description: "Write it",
+                  role: "frontend",
+                  coworkerId: "dev-code",
+                },
+              ],
+            }),
+          }
+        : { reply: `${botId} finished.` };
+    let routed = 0;
+    const { orchestrator } = await build(agent, "ceo", false, {
+      route: () => {
+        routed += 1;
+        return { botId: "tara-ops", applied: true, explanation: "x" };
+      },
+    });
+    const run = await orchestrator.startRun(
+      {
+        objective:
+          "Build a GST invoice page with PDF export, email reminders and full tests for it",
+        forcedStrategy: "multi-agent",
+      },
+      root,
+    );
+    const done = await runStatus(orchestrator, run.id, "completed");
+    expect(done.plannedBy).toBe("ceo");
+    expect(routed).toBe(0);
+    expect(agent.sent.filter((item) => item.botId !== "ceo").map((item) => item.botId)).toEqual([
+      "dev-code",
+    ]);
   });
 });

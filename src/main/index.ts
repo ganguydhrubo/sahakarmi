@@ -55,6 +55,8 @@ import { EngineSettingsStore } from "../backend/engine-settings";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
 import { COMPOSIO_SECRET, ComposioClient } from "../backend/integrations/composio-client";
+import { errorSignature } from "../backend/intelligence/error-signature";
+import { IntelligenceService } from "../backend/intelligence/intelligence-service";
 import { onCorruptFileRecovered } from "../backend/json-file";
 import type { KnowledgeApi } from "../backend/knowledge/knowledge-api";
 import { KnowledgeHost } from "../backend/knowledge/knowledge-host";
@@ -69,7 +71,7 @@ import { McpInstaller } from "../backend/mcp/installer";
 import { SharedMcpBridge } from "../backend/mcp/shared-bridge";
 import { serverEnvironment } from "../backend/mcp/windows-env";
 import { McpServerStore } from "../backend/mcp-servers";
-import { setMemoryBudget } from "../backend/memory-pressure";
+import { readMemory, setMemoryBudget } from "../backend/memory-pressure";
 import { OrchestratorStore } from "../backend/orchestrator-store";
 import { classifyCommand } from "../backend/permission-policy";
 import { PermissionService } from "../backend/permission-service";
@@ -320,6 +322,7 @@ let knowledgeService: KnowledgeApi | null = null;
 let routineStore: RoutineStore | null = null;
 let telegramBridge: TelegramBridge | null = null;
 let usageService: UsageService | null = null;
+let intelligenceService: IntelligenceService | null = null;
 let isQuitting = false;
 let shutdownStarted = false;
 
@@ -2602,6 +2605,29 @@ if (!hasSingleInstanceLock) {
       registerVoiceHandlers(voiceService, voiceReady);
       const orchestratorStore = new OrchestratorStore(app.getPath("userData"));
       await orchestratorStore.initialize();
+      // The Intelligence Core watches finished work (Settings > Features > Intelligence). It opens
+      // its own SQLite file on first use and never runs anything in the background.
+      const intelligence = new IntelligenceService({
+        directory: join(app.getPath("userData"), "intelligence"),
+        enabled: () => features.isEnabled("intelligence-core"),
+        adaptive: () =>
+          features.isEnabled("intelligence-core") && features.isEnabled("intelligence-adaptive"),
+        log: (level, line) => appLog.write(level, line),
+        ports: {
+          listBots: () => service.listBots(),
+          activeWorkspaceId: () => service.listWorkspaces().activeWorkspaceId ?? null,
+          deliveryForTurn: (turnId) => mailboxStore?.findDeliveryByTurn(turnId)?.delivery ?? null,
+          queue: (botId) => service.listQueue(botId),
+          readConversation: (botId) => service.readConversation(botId),
+          sharedRoot: () => store.sharedRoot,
+          memory: () => readMemory(),
+          getRun: (runId) => orchestratorStore.getRun(runId),
+          runtimes: async () => (await appMemory.status()).groups,
+        },
+      });
+      intelligenceService = intelligence;
+      service.on("event", (event) => intelligence.handleEvent(event));
+      registerIntelligenceIpc(intelligence);
       const orchestrator = new AdaptiveOrchestrator(
         orchestratorStore,
         {
@@ -2619,6 +2645,13 @@ if (!hasSingleInstanceLock) {
             features.isEnabled("team-run-sqlite-checkpoints") ? "sqlite" : "json",
           review: () => features.isEnabled("cross-model-review"),
           stepBudget: () => (features.isEnabled("budget-stop") ? budgets.teamRunSteps() : null),
+          route: (input) => intelligence.routeTeamTask(input),
+          intelligence: {
+            active: () => intelligence.mode() === "adaptive",
+            reassign: (input) => intelligence.reassign(input),
+            noteStoppedRetry: (input) => intelligence.noteStoppedRetry(input),
+            signature: (text) => errorSignature(text),
+          },
           planner: (workspaceId) => {
             if (!features.isEnabled("team-run-ai-planning")) return null;
             const workspaces = service.listWorkspaces().workspaces;
@@ -2645,6 +2678,7 @@ if (!hasSingleInstanceLock) {
         },
       );
       orchestrator.onEvent((event) => forwardAgentEvent(event));
+      orchestrator.onEvent((event) => intelligence.handleEvent(event));
       const agentInitialization = new AgentInitializationGate(() => service.initialize());
       registerIpcHandlers(
         service,
@@ -2861,6 +2895,7 @@ async function prepareForShutdown(): Promise<void> {
     telegramBridge?.stop().catch(() => {}),
     agentService?.stop().catch(() => {}),
     usageService?.flush().catch(() => {}),
+    intelligenceService?.dispose().catch(() => {}),
     voiceService?.dispose().catch(() => {}),
     desktopHost?.dispose().catch(() => {}),
   ]);
@@ -3148,6 +3183,106 @@ function registerEngineIpc(
         byModel: [],
         recent: [],
       },
+  );
+}
+
+/** Settings > Intelligence: read-only questions plus the owner's own corrections. */
+function registerIntelligenceIpc(intelligence: IntelligenceService): void {
+  const workspace = (value: unknown) => (typeof value === "string" && value ? value : null);
+  const text = (value: unknown, field: string, max = 4_000) => {
+    if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required.`);
+    return value.slice(0, max);
+  };
+  handleTrusted(IPC_CHANNELS.intelligenceStatus, async (workspaceId: unknown) => {
+    await intelligence.settle();
+    return intelligence.status(workspace(workspaceId));
+  });
+  handleTrusted(IPC_CHANNELS.intelligencePerformance, (workspaceId: unknown) =>
+    intelligence.performance(workspace(workspaceId)),
+  );
+  handleTrusted(IPC_CHANNELS.intelligenceOutcomes, (input: unknown) => {
+    const value = isObject(input) ? input : {};
+    return intelligence.outcomes({
+      workspaceId: workspace(value.workspaceId),
+      limit: typeof value.limit === "number" ? value.limit : undefined,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligenceRecommend, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    return intelligence.recommend({
+      workspaceId: workspace(input.workspaceId),
+      text: text(input.text, "Task text"),
+      role: typeof input.role === "string" ? input.role : null,
+      defaultBotId: typeof input.defaultBotId === "string" ? input.defaultBotId : null,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligencePredictions, (workspaceId: unknown) =>
+    intelligence.predictions(workspace(workspaceId)),
+  );
+  handleTrusted(IPC_CHANNELS.intelligenceAnalyzeRun, (runId: unknown) =>
+    intelligence.analyzeRun(requireString(runId, "runId")),
+  );
+  handleTrusted(IPC_CHANNELS.intelligenceDecisions, (workspaceId: unknown) =>
+    intelligence.decisions(workspace(workspaceId)),
+  );
+  handleTrusted(IPC_CHANNELS.intelligenceExperiences, (workspaceId: unknown) =>
+    intelligence.experiences(workspace(workspaceId)),
+  );
+  handleTrusted(IPC_CHANNELS.intelligenceAddExperience, (input: unknown) => {
+    if (!isObject(input) || (input.kind !== "fact" && input.kind !== "preference")) {
+      throw new Error("Invalid note.");
+    }
+    return intelligence.addExperience({
+      workspaceId: workspace(input.workspaceId),
+      kind: input.kind,
+      text: text(input.text, "Note", 400),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligenceCorrectExperience, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid correction.");
+    return intelligence.correctExperience({
+      workspaceId: workspace(input.workspaceId),
+      id: requireString(input.id, "id"),
+      text: text(input.text, "Note", 400),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligenceDeleteExperience, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid request.");
+    return intelligence.deleteExperience({
+      workspaceId: workspace(input.workspaceId),
+      id: requireString(input.id, "id"),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligenceSetFeedback, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid feedback.");
+    const feedback = input.feedback === "good" || input.feedback === "bad" ? input.feedback : null;
+    return intelligence.setFeedback({
+      outcomeId: requireString(input.outcomeId, "outcomeId"),
+      feedback,
+      note: typeof input.note === "string" ? input.note : null,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligenceSetExcluded, (input: unknown) => {
+    if (!isObject(input) || typeof input.excluded !== "boolean") {
+      throw new Error("Invalid request.");
+    }
+    return intelligence.setExcluded({
+      outcomeId: requireString(input.outcomeId, "outcomeId"),
+      excluded: input.excluded,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligenceResources, () => intelligence.resources());
+  handleTrusted(IPC_CHANNELS.intelligenceRollbackModel, (input: unknown) => {
+    if (!isObject(input) || typeof input.snapshotId !== "number") {
+      throw new Error("Invalid request.");
+    }
+    return intelligence.rollbackModel({
+      workspaceId: workspace(input.workspaceId),
+      snapshotId: input.snapshotId,
+    });
+  });
+  handleTrusted(IPC_CHANNELS.intelligenceResetLearning, (workspaceId: unknown) =>
+    intelligence.resetLearning(workspace(workspaceId)),
   );
 }
 
