@@ -22,9 +22,7 @@
       "repositoryUrl": {
         "url": "https://github.com/ganguydhrubo/sahakarmi"
       },
-      "licenses": [
-        "spdx:Apache-2.0"
-      ],
+      "licenses": ["spdx:Apache-2.0"],
       "tags": [
         "ai",
         "agents",
@@ -54,9 +52,7 @@
         "amount": 0,
         "currency": "USD",
         "frequency": "yearly",
-        "channels": [
-          "primary-contact"
-        ]
+        "channels": ["primary-contact"]
       },
       {
         "guid": "cloud-execution",
@@ -66,9 +62,7 @@
         "amount": 25000,
         "currency": "USD",
         "frequency": "one-time",
-        "channels": [
-          "primary-contact"
-        ]
+        "channels": ["primary-contact"]
       }
     ]
   }
