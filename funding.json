@@ -1,0 +1,75 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.0.0",
+  "entity": {
+    "type": "individual",
+    "role": "owner",
+    "name": "Dhrubojyoti Gangopadhyay",
+    "email": "gangulydhrubo@gmail.com",
+    "description": "Maintainer of Sahkarmi, a free and open-source desktop application that gives Indian small businesses a team of AI coworkers which run on the owner's own computer, in English, Hindi and Bengali.",
+    "webpageUrl": {
+      "url": "https://sahkarmi.site"
+    }
+  },
+  "projects": [
+    {
+      "guid": "sahkarmi",
+      "name": "Sahkarmi",
+      "description": "A free, open-source Windows application that gives a small business a team of AI coworkers. They browse, research, draft, work in connected apps and run scheduled routines on the owner's own PC, in English, Hindi and Bengali, and stop for the owner's approval before paying, sending or posting anything. Built for the long tail of India's 7.8 crore MSMEs, who cannot afford per-seat cloud AI and cannot risk automated systems acting alone on money or customers.",
+      "webpageUrl": {
+        "url": "https://sahkarmi.site"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/ganguydhrubo/sahakarmi"
+      },
+      "licenses": [
+        "spdx:Apache-2.0"
+      ],
+      "tags": [
+        "ai",
+        "agents",
+        "small-business",
+        "desktop",
+        "privacy",
+        "local-first",
+        "india",
+        "automation"
+      ]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "primary-contact",
+        "type": "other",
+        "description": "Contact the maintainer by email to arrange a funding channel."
+      }
+    ],
+    "plans": [
+      {
+        "guid": "maintainer-time",
+        "status": "active",
+        "name": "Maintainer time",
+        "description": "Full-time maintenance and development of Sahkarmi, including Hindi and Bengali language support and the approval layer that makes the product safe for non-technical business owners.",
+        "amount": 0,
+        "currency": "USD",
+        "frequency": "yearly",
+        "channels": [
+          "primary-contact"
+        ]
+      },
+      {
+        "guid": "cloud-execution",
+        "status": "active",
+        "name": "Durable cloud execution",
+        "description": "Build and host cloud execution so a small business owner's scheduled work keeps running when their computer is switched off.",
+        "amount": 25000,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": [
+          "primary-contact"
+        ]
+      }
+    ]
+  }
+}
