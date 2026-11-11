@@ -90,7 +90,15 @@ jobs:
       # IndexNow tells Bing (and other IndexNow engines) the page changed. The key file is public by design.
       - name: Notify IndexNow
         continue-on-error: true
+        # Every URL in the sitemap (including the generated coworker pages) plus llms.txt.
         run: |
+          node -e '
+            const fs = require("fs");
+            const urls = [...fs.readFileSync("website/sitemap.xml", "utf8").matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+            urls.push("https://sahkarmi.site/llms.txt");
+            fs.writeFileSync("indexnow.json", JSON.stringify({ host: "sahkarmi.site", key: "6e6727cb6c8c260da983dc72a7515153", keyLocation: "https://sahkarmi.site/6e6727cb6c8c260da983dc72a7515153.txt", urlList: urls }));
+            console.log(`${urls.length} URLs`);
+          '
           curl -sS -o /dev/null -w "IndexNow HTTP %{http_code}\n" -X POST "https://api.indexnow.org/indexnow" \
             -H "Content-Type: application/json; charset=utf-8" \
-            -d '{"host":"sahkarmi.site","key":"6e6727cb6c8c260da983dc72a7515153","keyLocation":"https://sahkarmi.site/6e6727cb6c8c260da983dc72a7515153.txt","urlList":["https://sahkarmi.site/","https://sahkarmi.site/computer-use.html","https://sahkarmi.site/ai-agent-for-windows.html","https://sahkarmi.site/use-cases.html","https://sahkarmi.site/alternatives.html","https://sahkarmi.site/open-source-ai-agent.html","https://sahkarmi.site/install.html","https://sahkarmi.site/llms.txt"]}'
+            --data-binary @indexnow.json

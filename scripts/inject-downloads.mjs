@@ -124,10 +124,12 @@ function applyWinget(html) {
     .replace(/(\sdata-winget="live")\s+hidden/g, "$1");
 }
 
-// Every page: the home and install pages must carry the links, other pages may (guides, use cases).
-const pages = readdirSync(dirname(file)).filter(
-  (name) => name.endsWith(".html") && name !== "404.html",
-);
+// Every page: the home and install pages must carry the links, other pages may (guides, use cases,
+// and the generated coworker pages in coworkers/).
+const pages = [
+  ...readdirSync(dirname(file)),
+  ...readdirSync(join(dirname(file), "coworkers")).map((name) => `coworkers/${name}`),
+].filter((name) => name.endsWith(".html") && name !== "404.html");
 for (const name of pages) {
   const target = join(dirname(file), name);
   let html = readFileSync(target, "utf8");
