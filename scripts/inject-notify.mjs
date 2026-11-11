@@ -17,8 +17,12 @@ if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) {
   process.exit(0);
 }
 const site = join(dirname(fileURLToPath(import.meta.url)), "..", "website");
-// Every page that carries the meta (home, install, guides and use-case pages).
-for (const name of readdirSync(site).filter((file) => file.endsWith(".html"))) {
+// Every page that carries the meta (home, install, guides, use-case and coworker pages).
+const pages = [
+  ...readdirSync(site),
+  ...readdirSync(join(site, "coworkers")).map((name) => `coworkers/${name}`),
+];
+for (const name of pages.filter((file) => file.endsWith(".html"))) {
   const target = join(site, name);
   const html = readFileSync(target, "utf8");
   const next = html.replace(

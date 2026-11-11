@@ -30,7 +30,11 @@ const check = (name, ok, detail = "") => results.push({ name, ok: Boolean(ok), d
 
 async function load(path) {
   if (!live) {
-    const file = join(root, path === "/" ? "index.html" : path.replace(/^\//, ""));
+    const relative = path.replace(/^\//, "");
+    const file = join(
+      root,
+      relative === "" || relative.endsWith("/") ? `${relative}index.html` : relative,
+    );
     return {
       status: existsSync(file) ? 200 : 404,
       text: existsSync(file) ? readFileSync(file, "utf8") : "",
@@ -274,6 +278,10 @@ async function main() {
     "/open-source-ai-agent.html",
     "/ai-agent-for-windows.html",
     "/alternatives.html",
+    // The generated coworker pages (scripts/build-coworker-pages.ts), as listed in the sitemap.
+    ...[
+      ...sitemapForPages.matchAll(/<loc>https:\/\/sahkarmi\.site(\/coworkers\/[^<]*)<\/loc>/g),
+    ].map((m) => m[1]),
   ]) {
     const secondary = await load(page);
     check(`${page} returns 200`, secondary.status === 200, String(secondary.status));

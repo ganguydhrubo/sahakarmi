@@ -29,10 +29,18 @@ privacy/security/permissions, FAQ, community and feedback, footer with contact.
   Facebook https://www.facebook.com/sahakarmi, GitHub https://github.com/ganguydhrubo/sahakarmi,
   email sahkarmi.site@gmail.com, WhatsApp +91 82408 01921.
 
+## Coworker pages (generated)
+
+`coworkers/` holds one page per Marketplace coworker, one per team and a hub (`/coworkers/`), built
+from `src/shared/agent-catalog` by `bun scripts/build-coworker-pages.ts` (template in
+`scripts/coworker-pages-lib.ts`). Do not edit them by hand: change the catalogue or the template and
+run the script, which also rewrites the generated block of `sitemap.xml`.
+`scripts/coworker-pages-lib.test.ts` fails if the committed pages are out of date.
+
 ## Crawling
 
 - `robots.txt` allows every crawler and documents how to opt out of AI training crawlers.
-- `sitemap.xml` lists the home page and `install.html`. Update `<lastmod>` when content changes.
+- `sitemap.xml` lists every page, including the generated coworker pages. Update `<lastmod>` when content changes.
 - `llms.txt` is a plain-text guide for AI tools and answer engines; keep it in sync with the FAQ.
 - `404.html` is served by GitHub Pages for unknown URLs and is `noindex`.
 - `<32 hex>.txt` is the public IndexNow key (Bing and other IndexNow engines).

@@ -21,6 +21,7 @@ Key facts (verified against release 0.22.0 on 5 November 2026):
 
 - [Website](https://sahkarmi.site/): product overview, explainer video, real screenshots, download and FAQ
 - [AI that can use your computer](https://sahkarmi.site/computer-use.html): how Sahkarmi's computer use works in websites and Windows desktop apps, permissions, approvals and limits
+- [All AI coworkers](https://sahkarmi.site/coworkers/): one page for each of the 175 ready-made Marketplace coworkers (what it covers, what it needs, its steps, outputs, checks, approvals and limits), grouped into 15 teams such as finance, sales, marketing, HR, e-commerce and software
 - [Use cases](https://sahkarmi.site/use-cases.html): workflows by profession (finance, marketing, sales, research, development, writing, design, operations) with the ready-made coworkers for each
 - [AI agent for Windows](https://sahkarmi.site/ai-agent-for-windows.html): install options (Microsoft Store, installer, Scoop, winget status), requirements, what it does in Windows, first steps
 - [Alternatives](https://sahkarmi.site/alternatives.html): comparison with ChatGPT agent, Claude computer use, Manus, Browser Use, UI-TARS Desktop, Bytebot and UFO, checked 5 November 2026
