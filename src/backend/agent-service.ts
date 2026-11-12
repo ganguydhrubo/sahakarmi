@@ -211,6 +211,7 @@ import {
   socialPlatformForUrl,
 } from "./publishing-accounts";
 import type { ResourceAssignmentStore } from "./resource-assignments";
+import type { RoutineApprovalResult } from "./routine-store";
 import type { NewRunEvent } from "./run-events";
 import { installedSkillNames, LearnedSkills, learnedSkillNames } from "./skill-library";
 import {
@@ -426,7 +427,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #permissions: PermissionService | null;
   readonly #permissionWaiters = new Map<
     string,
-    (outcome: "approved" | "rejected" | "timed-out") => void
+    (outcome: "approved" | "rejected" | "timed-out", note?: string | null) => void
   >();
   /** Approvals a coworker stopped waiting for (its runtime's tool time limit), by approval id. */
   readonly #deferredPermissions = new Map<
@@ -1550,7 +1551,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     question: string;
     details: string;
     timeoutMs: number;
-  }): Promise<"approved" | "rejected" | "timed-out"> {
+  }): Promise<RoutineApprovalResult> {
     if (!this.#approvals) throw new Error("Approvals are unavailable.");
     const approval = await this.#approvals.create({
       botId: input.botId,
@@ -1578,9 +1579,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           .catch(() => undefined);
       }, input.timeoutMs);
       timer.unref?.();
-      this.#permissionWaiters.set(approval.id, (outcome) => {
+      this.#permissionWaiters.set(approval.id, (outcome, note) => {
         clearTimeout(timer);
-        resolve(outcome);
+        // The owner's note travels on to the routine's next steps.
+        resolve(
+          outcome !== "timed-out" && note?.trim()
+            ? { decision: outcome, note: note.trim() }
+            : outcome,
+        );
       });
     });
   }
@@ -1759,7 +1765,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // The paused tool call continues (or is declined) in place; no message to the coworker.
       const waiter = this.#permissionWaiters.get(approval.id);
       this.#permissionWaiters.delete(approval.id);
-      waiter?.(approval.status === "approved" ? "approved" : "rejected");
+      waiter?.(approval.status === "approved" ? "approved" : "rejected", approval.note);
+      // The paused action itself only hears yes or no, so a note the owner wrote is passed to
+      // the coworker straight away (into its running turn when possible). Routine cards hand
+      // the note to the routine instead.
+      const note = approval.note?.trim();
+      if (waiter && note && approval.provenance?.kind !== "routine") {
+        const approved = approval.status === "approved";
+        await this.#notifyBot(
+          approval.botId,
+          [
+            `[Approval ${approved ? "APPROVED" : "REJECTED"}] "${approval.title}".`,
+            `${noteLabel}: ${note}`,
+            approved
+              ? "The action went ahead. Follow this note for the rest of the task."
+              : "The action did not run. Follow this note to decide what to do instead.",
+          ].join("\n"),
+          { steer: true },
+        );
+      }
       const deferred = this.#deferredPermissions.get(approval.id);
       if (deferred) {
         // The coworker stopped waiting: tell it, and let the same action through once.
@@ -2060,10 +2084,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /** Queues a message from the owner to a coworker so it resumes work after an async decision. */
-  async #notifyBot(botId: string, text: string): Promise<void> {
+  async #notifyBot(botId: string, text: string, options: { steer?: boolean } = {}): Promise<void> {
     if (!this.#store.list().some((bot) => bot.id === botId)) return;
     try {
-      await this.sendMessage({ botId, text, origin: "system" });
+      await this.sendMessage({
+        botId,
+        text,
+        origin: "system",
+        ...(options.steer ? { steer: true } : {}),
+      });
     } catch (error) {
       this.#emitError("notify_failed", error, botId);
     }

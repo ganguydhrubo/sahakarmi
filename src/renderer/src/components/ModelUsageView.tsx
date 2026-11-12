@@ -430,7 +430,8 @@ function formatNumber(value: number): string {
 /** Short form for big counts (1.37 bn, 137 Cr); the exact number is in the tooltip. */
 function formatCompact(value: number): string {
   if (Math.abs(value) < 10_000) return formatNumber(value);
-  return new Intl.NumberFormat(localeTag(), {
+  // Token counts use K and M everywhere: the Indian compact form mixed them ("27.7K of 2L").
+  return new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumSignificantDigits: 3,
   }).format(value);
