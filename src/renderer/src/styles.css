@@ -16150,3 +16150,46 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
     transition: none;
   }
 }
+
+/* First mic press with no speech model: offer the free on-PC one. */
+.voice-setup {
+  display: grid;
+  gap: 10px;
+}
+
+.voice-setup h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.voice-setup p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.voice-setup > .button-primary {
+  justify-self: start;
+}
+
+.voice-setup .voice-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(var(--ink-rgb) / 0.12);
+}
+
+.voice-setup .voice-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transition: width 200ms linear;
+}
+
+/* Dictation: the live words are the main thing on screen. */
+.voice-panel-dictate .voice-live-text {
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--text-primary);
+}

@@ -77,6 +77,17 @@ export const workspaceEn = {
   routineReused: "Reused from the last run",
   routineTriggerRerun: "Rerun from a step",
   routineNoteStep: "Step {step} of {total}",
+  voiceSetupTitle: "Free voice typing on this PC",
+  voiceSetupBody:
+    "Speak and your words appear in the message box, like ChatGPT. It runs on your computer: free, private and fast, and it uses no AI tokens.",
+  voiceSetupDownload: "Download once and start ({size})",
+  voiceSetupProgress: "Downloading… {percent}%",
+  voiceSetupInstalling: "Getting it ready…",
+  voiceSetupFailed: "The download did not finish. Check the internet and try again.",
+  voiceSetupModel: "Model: {name}. Other languages are in Settings > Voice.",
+  voiceSetupNote: "Record a voice note instead",
+  voiceDone: "Done",
+  voiceNothingHeard: "No words were heard. Try again a little closer to the mic.",
   routineDesignAsked: "Asked to draft a routine: {wish}",
   routineDesignReplied:
     "Drafted “{name}” with {count} steps. It is open in Routines for you to check.",

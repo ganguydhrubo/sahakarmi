@@ -1,9 +1,9 @@
-import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import type { DraftAttachment } from "../../../shared/ipc";
 import { featureOn } from "../features";
 import { type MessageKey, t } from "../i18n";
 import { LocalDictation } from "../local-dictation";
-import { speechLocale } from "../preferences";
+import { language, speechLocale } from "../preferences";
 import {
   formatDuration,
   INITIAL_VOICE_STATE,
@@ -13,8 +13,14 @@ import {
   VoiceRecorderController,
   voiceReducer,
 } from "../voice-recorder";
-import { cleanVoiceError, localDictationReady } from "../voice-store";
+import { cleanVoiceError, loadVoiceState, localDictationReady, voiceState } from "../voice-store";
 import { recognitionConstructor, type SpeechRecognitionLike } from "./VoiceInputButton";
+
+/** The free on-PC model to offer first for each app language. */
+export function preferredDictationModels(code: string): string[] {
+  if (code === "en" || code === "hi") return ["hinglish-swift", "english-fast"];
+  return [`indic-${code}`, "hinglish-swift"];
+}
 
 const PHASE_KEYS: Record<VoicePhase, MessageKey> = {
   idle: "voiceIdle",
@@ -47,6 +53,36 @@ export function VoiceRecorder(props: {
   let local: LocalDictation | null = null;
   const [writing, setWriting] = createSignal(false);
   const [dictationMode, setDictationMode] = createSignal<"local" | "online" | null>(null);
+  /**
+   * dictate: like ChatGPT, the words go into the message box and no audio is kept ·
+   * note: the older voice note with an audio file · setup: offer the free on-PC model first.
+   */
+  const [mode, setMode] = createSignal<"dictate" | "note" | "setup">("note");
+  onMount(loadVoiceState);
+  const offered = createMemo(() => {
+    const models = voiceState()?.models.filter((model) => model.type === "dictation") ?? [];
+    for (const id of preferredDictationModels(language())) {
+      const model = models.find((candidate) => candidate.id === id);
+      if (model) return model;
+    }
+    return models[0] ?? null;
+  });
+  const offerBytes = () => {
+    const model = offered();
+    const state = voiceState();
+    if (!model || !state) return 0;
+    return model.sizeBytes + (state.engineInstalled ? 0 : state.engineSizeBytes);
+  };
+  // The free model just finished downloading: start listening straight away.
+  createEffect(
+    on(
+      () => mode() === "setup" && open() && localDictationReady(),
+      (ready) => {
+        if (ready) void start();
+      },
+      { defer: true },
+    ),
+  );
   const dispatch = (event: VoiceEvent) => setState((current) => voiceReducer(current, event));
 
   const controller = new VoiceRecorderController({
@@ -78,10 +114,15 @@ export function VoiceRecorder(props: {
     releaseAudio();
   });
 
-  async function start() {
+  async function start(asNote = false) {
     releaseAudio();
     setDictationMode(null);
     setOpen(true);
+    if (!asNote && !localDictationReady() && window.sahkarmi?.voice && offered()) {
+      setMode("setup");
+      return;
+    }
+    setMode(!asNote && localDictationReady() ? "dictate" : "note");
     dispatch({ type: "start" });
     try {
       await controller.start();
@@ -157,6 +198,37 @@ export function VoiceRecorder(props: {
     } catch (error) {
       dispatch({ type: "fail", message: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  async function download() {
+    const model = offered();
+    if (!model) return;
+    try {
+      if (model.installed) await window.sahkarmi.voice.setSettings({ dictationModel: model.id });
+      else await window.sahkarmi.voice.install(model.id);
+    } catch (error) {
+      props.onError(cleanVoiceError(error));
+    }
+  }
+
+  /** Done (✓): wait for the last words, put the text in the message box, keep no audio. */
+  async function finishDictation() {
+    const finishing = local;
+    local = null;
+    setWriting(true);
+    controller.pause();
+    try {
+      await finishing?.stop();
+    } finally {
+      controller.dispose();
+      setWriting(false);
+    }
+    const text = state().transcript.trim();
+    setOpen(false);
+    setDictationMode(null);
+    dispatch({ type: "reset" });
+    if (text) props.onAttach([], text);
+    else props.onError(t("voiceNothingHeard"));
   }
 
   function cancel() {
@@ -243,114 +315,196 @@ export function VoiceRecorder(props: {
           aria-label="Cancel recording"
           onClick={cancel}
         />
-        <div class="voice-panel" role="dialog" aria-label={t("voiceRecord")}>
-          <div class="voice-panel-head">
-            <span class={`voice-phase voice-phase-${phase()}`} role="status" aria-live="polite">
-              {t(PHASE_KEYS[phase()])}
-            </span>
-            <span class="voice-timer">
-              {formatDuration(state().durationMs ?? state().elapsedMs)} /{" "}
-              {formatDuration(MAX_RECORDING_MS)}
-            </span>
-          </div>
-          <Show when={active()}>
-            <div class="voice-level" aria-hidden="true">
-              <span style={{ transform: `scaleX(${Math.max(0.04, state().level)})` }} />
+        <div
+          class="voice-panel"
+          classList={{ "voice-panel-dictate": mode() === "dictate" }}
+          role="dialog"
+          aria-label={t("voiceRecord")}
+        >
+          <Show when={mode() === "setup"}>
+            {(() => {
+              const busy = () =>
+                offered()?.phase === "downloading" || offered()?.phase === "installing";
+              const percent = () => {
+                const model = offered();
+                return model?.sizeBytes
+                  ? Math.min(100, Math.round((model.receivedBytes / model.sizeBytes) * 100))
+                  : 0;
+              };
+              return (
+                <div class="voice-setup">
+                  <h3>{t("voiceSetupTitle")}</h3>
+                  <p>{t("voiceSetupBody")}</p>
+                  <Show
+                    when={busy()}
+                    fallback={
+                      <>
+                        <Show when={offered()?.phase === "failed"}>
+                          <p class="voice-error" role="alert">
+                            {offered()?.message ?? t("voiceSetupFailed")}
+                          </p>
+                        </Show>
+                        <button
+                          type="button"
+                          class="button-primary"
+                          onClick={() => void download()}
+                        >
+                          {t("voiceSetupDownload", {
+                            size: `${Math.max(1, Math.round(offerBytes() / 1_000_000))} MB`,
+                          })}
+                        </button>
+                      </>
+                    }
+                  >
+                    <div
+                      class="voice-progress"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={percent()}
+                    >
+                      <span style={{ width: `${percent()}%` }} />
+                    </div>
+                    <p class="settings-meta" role="status">
+                      {offered()?.phase === "installing"
+                        ? t("voiceSetupInstalling")
+                        : t("voiceSetupProgress", { percent: String(percent()) })}
+                    </p>
+                  </Show>
+                  <p class="settings-meta">
+                    {t("voiceSetupModel", { name: offered()?.name ?? "" })}
+                  </p>
+                  <div class="voice-actions">
+                    <button type="button" class="button-danger-quiet" onClick={cancel}>
+                      {t("cancel")}
+                    </button>
+                    <button type="button" onClick={() => void start(true)}>
+                      {t("voiceSetupNote")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </Show>
+          <Show when={mode() !== "setup"}>
+            <div class="voice-panel-head">
+              <span class={`voice-phase voice-phase-${phase()}`} role="status" aria-live="polite">
+                {t(PHASE_KEYS[phase()])}
+              </span>
+              <span class="voice-timer">
+                {formatDuration(state().durationMs ?? state().elapsedMs)} /{" "}
+                {formatDuration(MAX_RECORDING_MS)}
+              </span>
+            </div>
+            <Show when={active()}>
+              <div class="voice-level" aria-hidden="true">
+                <span style={{ transform: `scaleX(${Math.max(0.04, state().level)})` }} />
+              </div>
+            </Show>
+            <Show when={state().error}>
+              <p class="voice-error" role="alert">
+                {state().error}
+              </p>
+            </Show>
+            <Show when={phase() === "preview" || phase() === "sending"}>
+              <audio
+                class="voice-audio"
+                controls
+                src={audioUrl() ?? undefined}
+                onLoadedMetadata={(event) => revealRecordedDuration(event.currentTarget)}
+              >
+                <track kind="captions" />
+              </audio>
+              <label class="voice-transcript">
+                <span>
+                  {state().transcriptSource === "live-dictation"
+                    ? t("voiceTextDictated")
+                    : t("voiceTextTyped")}
+                </span>
+                <textarea
+                  rows={3}
+                  value={state().transcript}
+                  placeholder={t("voiceTextPlaceholder")}
+                  onInput={(event) =>
+                    dispatch({ type: "edit-transcript", text: event.currentTarget.value })
+                  }
+                />
+              </label>
+              <p class="voice-honest">{t("voiceHonest")}</p>
+            </Show>
+            <Show when={active() && dictationMode() === "online"}>
+              <p class="voice-honest">{t("voiceDictationDisclosure")}</p>
+            </Show>
+            <Show when={dictationMode() === "local" && (active() || writing())}>
+              <p class="voice-honest">
+                {writing() ? t("voiceLocalWriting") : t("voiceLocalDisclosure")}
+              </p>
+            </Show>
+            <Show when={active() && dictationMode() === "local" && state().transcript}>
+              <p class="voice-live-text" aria-live="polite">
+                {state().transcript}
+              </p>
+            </Show>
+            <div class="voice-actions">
+              <button type="button" class="button-danger-quiet" onClick={cancel}>
+                {phase() === "preview" ? t("voiceDiscard") : t("cancel")}
+              </button>
+              <Show when={phase() === "recording"}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    controller.pause();
+                    local?.pause();
+                    dispatch({ type: "pause" });
+                  }}
+                >
+                  {t("pause")}
+                </button>
+              </Show>
+              <Show when={phase() === "paused"}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    controller.resume();
+                    local?.resume();
+                    dispatch({ type: "resume" });
+                  }}
+                >
+                  {t("resume")}
+                </button>
+              </Show>
+              <Show when={active() && mode() === "dictate"}>
+                <button
+                  type="button"
+                  class="button-primary"
+                  disabled={writing() && !local}
+                  onClick={() => void finishDictation()}
+                >
+                  {writing() && !local ? t("voiceLocalWriting") : `✓ ${t("voiceDone")}`}
+                </button>
+              </Show>
+              <Show when={active() && mode() === "note"}>
+                <button type="button" class="button-primary" onClick={() => void stop()}>
+                  {t("voiceStop")}
+                </button>
+              </Show>
+              <Show when={phase() === "preview" && state().transcript.trim()}>
+                <button type="button" onClick={useTextOnly}>
+                  {t("voiceUseTextOnly")}
+                </button>
+              </Show>
+              <Show when={phase() === "preview"}>
+                <button type="button" class="button-primary" onClick={() => void attach()}>
+                  {t("voiceAttach")}
+                </button>
+              </Show>
+              <Show when={phase() === "error"}>
+                <button type="button" onClick={() => void start()}>
+                  {t("updateRetry")}
+                </button>
+              </Show>
             </div>
           </Show>
-          <Show when={state().error}>
-            <p class="voice-error" role="alert">
-              {state().error}
-            </p>
-          </Show>
-          <Show when={phase() === "preview" || phase() === "sending"}>
-            <audio
-              class="voice-audio"
-              controls
-              src={audioUrl() ?? undefined}
-              onLoadedMetadata={(event) => revealRecordedDuration(event.currentTarget)}
-            >
-              <track kind="captions" />
-            </audio>
-            <label class="voice-transcript">
-              <span>
-                {state().transcriptSource === "live-dictation"
-                  ? t("voiceTextDictated")
-                  : t("voiceTextTyped")}
-              </span>
-              <textarea
-                rows={3}
-                value={state().transcript}
-                placeholder={t("voiceTextPlaceholder")}
-                onInput={(event) =>
-                  dispatch({ type: "edit-transcript", text: event.currentTarget.value })
-                }
-              />
-            </label>
-            <p class="voice-honest">{t("voiceHonest")}</p>
-          </Show>
-          <Show when={active() && dictationMode() === "online"}>
-            <p class="voice-honest">{t("voiceDictationDisclosure")}</p>
-          </Show>
-          <Show when={dictationMode() === "local" && (active() || writing())}>
-            <p class="voice-honest">
-              {writing() ? t("voiceLocalWriting") : t("voiceLocalDisclosure")}
-            </p>
-          </Show>
-          <Show when={active() && dictationMode() === "local" && state().transcript}>
-            <p class="voice-live-text" aria-live="polite">
-              {state().transcript}
-            </p>
-          </Show>
-          <div class="voice-actions">
-            <button type="button" class="button-danger-quiet" onClick={cancel}>
-              {phase() === "preview" ? t("voiceDiscard") : t("cancel")}
-            </button>
-            <Show when={phase() === "recording"}>
-              <button
-                type="button"
-                onClick={() => {
-                  controller.pause();
-                  local?.pause();
-                  dispatch({ type: "pause" });
-                }}
-              >
-                {t("pause")}
-              </button>
-            </Show>
-            <Show when={phase() === "paused"}>
-              <button
-                type="button"
-                onClick={() => {
-                  controller.resume();
-                  local?.resume();
-                  dispatch({ type: "resume" });
-                }}
-              >
-                {t("resume")}
-              </button>
-            </Show>
-            <Show when={active()}>
-              <button type="button" class="button-primary" onClick={() => void stop()}>
-                {t("voiceStop")}
-              </button>
-            </Show>
-            <Show when={phase() === "preview" && state().transcript.trim()}>
-              <button type="button" onClick={useTextOnly}>
-                {t("voiceUseTextOnly")}
-              </button>
-            </Show>
-            <Show when={phase() === "preview"}>
-              <button type="button" class="button-primary" onClick={() => void attach()}>
-                {t("voiceAttach")}
-              </button>
-            </Show>
-            <Show when={phase() === "error"}>
-              <button type="button" onClick={() => void start()}>
-                {t("updateRetry")}
-              </button>
-            </Show>
-          </div>
         </div>
       </Show>
     </div>
