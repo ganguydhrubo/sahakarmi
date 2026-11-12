@@ -144,6 +144,9 @@ import {
   type ReadConversationOptions,
   type ResourceOverviewItem,
   type RespondToPromptInput,
+  type RoutineConditionNo,
+  type RoutineOutput,
+  type RoutineStepKind,
   type SaveBusinessTargetInput,
   type SendMessageInput,
   type SetBudgetInput,
@@ -1334,12 +1337,21 @@ function registerIpcHandlers(
     const known = new Set(service.listBots().map((bot) => bot.id));
     const steps = input.steps.map((step) => {
       if (!isObject(step)) throw new Error("Invalid routine step.");
-      const botId = requireString(step.botId, "botId");
-      if (!known.has(botId)) throw new Error("Unknown coworker.");
+      const kind: RoutineStepKind =
+        step.kind === "condition" || step.kind === "approval" || step.kind === "output"
+          ? step.kind
+          : "agent";
+      // Approval and output steps are not done by a coworker.
+      const botId =
+        kind === "agent" || kind === "condition" ? requireString(step.botId, "botId") : "";
+      if (botId && !known.has(botId)) throw new Error("Unknown coworker.");
       return {
         id: typeof step.id === "string" ? step.id : undefined,
+        ...(kind === "agent" ? {} : { kind }),
         botId,
         instruction: typeof step.instruction === "string" ? step.instruction : "",
+        ...(isObject(step.onNo) ? { onNo: step.onNo as RoutineConditionNo } : {}),
+        ...(isObject(step.output) ? { output: step.output as RoutineOutput } : {}),
       };
     });
     const trigger = input.trigger ? await parseRoutineTrigger(input.trigger) : null;
@@ -2770,7 +2782,11 @@ if (!hasSingleInstanceLock) {
             origin: "schedule",
           });
         });
-        routines.start(createRoutineExecutor(service));
+        routines.start(
+          createRoutineExecutor(service, undefined, {
+            sendTelegram: (text) => telegram.sendToOwner(text),
+          }),
+        );
         // A team run paused on an approval before the restart listens for the decision again.
         void orchestrator
           .restoreWaitingRuns()

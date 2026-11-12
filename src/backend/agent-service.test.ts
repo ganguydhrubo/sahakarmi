@@ -257,6 +257,41 @@ describe.sequential("AgentService", () => {
     expect(routines.state().routines[0]?.nextRunAt).not.toBeNull();
   });
 
+  it("asks the owner for a routine approval step and tells the coworker nothing", async () => {
+    const { store, mailbox } = stores();
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex", approvals);
+    await service.initialize();
+    const before = service.listQueue("asha-accounts").deliveries.length;
+    const decision = service.requestRoutineApproval({
+      botId: "asha-accounts",
+      routineName: "Weekly payables",
+      question: "Pay these 3 invoices?",
+      details: 'Routine "Weekly payables" is waiting for you.',
+      timeoutMs: 60_000,
+    });
+    await waitFor(() => service?.listApprovals().length === 1);
+    const [approval] = service.listApprovals();
+    expect(approval).toMatchObject({
+      title: "Pay these 3 invoices?",
+      status: "pending",
+      ownerOnly: true,
+      provenance: { kind: "routine", label: "Weekly payables" },
+    });
+    await service.decideApproval({ approvalId: approval?.id ?? "", decision: "approved" });
+    await expect(decision).resolves.toBe("approved");
+    expect(service.listQueue("asha-accounts").deliveries.length).toBe(before);
+
+    const silent = await service.requestRoutineApproval({
+      botId: "asha-accounts",
+      routineName: "Weekly payables",
+      question: "Send the summary?",
+      details: "Waiting.",
+      timeoutMs: 20,
+    });
+    expect(silent).toBe("timed-out");
+  });
+
   it("files approvals from coworkers and queues the owner's decision back to them", async () => {
     process.env.SAHKARMI_FAKE_TOOL_CALL = JSON.stringify({
       namespace: "sahkarmi",

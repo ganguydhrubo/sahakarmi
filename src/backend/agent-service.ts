@@ -1539,6 +1539,52 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return this.#approvals?.list() ?? [];
   }
 
+  /**
+   * A routine's Approval step: one owner-only card (desktop and Telegram, like every other
+   * approval). Nothing is sent to the coworker when it is decided; the routine just continues
+   * or stops. Never routed to a coworker with authority: the owner asked to be asked.
+   */
+  async requestRoutineApproval(input: {
+    botId: string;
+    routineName: string;
+    question: string;
+    details: string;
+    timeoutMs: number;
+  }): Promise<"approved" | "rejected" | "timed-out"> {
+    if (!this.#approvals) throw new Error("Approvals are unavailable.");
+    const approval = await this.#approvals.create({
+      botId: input.botId,
+      title: input.question,
+      details: input.details,
+      category: "other",
+      kind: "permission",
+      ownerOnly: true,
+      workspaceId: this.#store.list().find((bot) => bot.id === input.botId)?.workspaceId,
+      provenance: { kind: "routine", label: input.routineName.slice(0, 80) },
+      expiresAt: new Date(Date.now() + input.timeoutMs).toISOString(),
+    });
+    this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.#permissionWaiters.delete(approval.id);
+        resolve("timed-out");
+        void this.#approvals
+          ?.expire(approval.id, "Timed out: no decision in time, so the routine stopped.")
+          .then(() => {
+            if (this.#approvals) {
+              this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+            }
+          })
+          .catch(() => undefined);
+      }, input.timeoutMs);
+      timer.unref?.();
+      this.#permissionWaiters.set(approval.id, (outcome) => {
+        clearTimeout(timer);
+        resolve(outcome);
+      });
+    });
+  }
+
   /** Which workspace and turn an approval belongs to, so a remote decision names the right one. */
   #approvalContext(botId: string): {
     workspaceId?: string;

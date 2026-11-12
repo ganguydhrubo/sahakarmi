@@ -5,10 +5,20 @@ import type { RoutineExecutor } from "./routine-store";
 /** The parts of AgentService a routine needs. */
 export interface RoutineAgentPort extends DeliveryWaitPort {
   sendMessage(input: SendMessageInput): Promise<QueuedMessageReceipt>;
+  /** Approval steps. Optional so the team-run engine and tests need not provide it. */
+  requestRoutineApproval?(input: {
+    botId: string;
+    routineName: string;
+    question: string;
+    details: string;
+    timeoutMs: number;
+  }): Promise<"approved" | "rejected" | "timed-out">;
 }
 
 /** A step waiting on approvals can take a while, but never forever. */
 const DEFAULT_STEP_TIMEOUT_MS = 6 * 60 * 60_000;
+/** An Approval step waits a day for the owner; then the run stops. */
+const APPROVAL_TIMEOUT_MS = 24 * 60 * 60_000;
 
 /**
  * Sends each routine step through the normal owner queue, so permissions, approvals and the
@@ -18,6 +28,7 @@ const DEFAULT_STEP_TIMEOUT_MS = 6 * 60 * 60_000;
 export function createRoutineExecutor(
   agent: RoutineAgentPort,
   stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS,
+  extras: { sendTelegram?: (text: string) => Promise<void> } = {},
 ): RoutineExecutor {
   return {
     async send(botId, text) {
@@ -39,6 +50,14 @@ export function createRoutineExecutor(
         };
       }
       return { ok: true, reply: outcome.reply, error: null };
+    },
+    async askApproval(input) {
+      if (!agent.requestRoutineApproval) throw new Error("Approvals are unavailable.");
+      return agent.requestRoutineApproval({ ...input, timeoutMs: APPROVAL_TIMEOUT_MS });
+    },
+    async sendTelegram(text) {
+      if (!extras.sendTelegram) throw new Error("Telegram is not set up.");
+      await extras.sendTelegram(text);
     },
   };
 }
