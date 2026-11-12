@@ -228,6 +228,25 @@ describe("Sahkarmi Host", () => {
     expect((await post("/api/pair", { code: status.pairing?.code })).status).toBe(410);
   });
 
+  it("answers only to its own names, never to a rebound site name", async () => {
+    const { request } = await import("node:http");
+    const statusFor = (name: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = request(
+          { host: "127.0.0.1", port: host.port ?? 0, path: "/", headers: { Host: name } },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+    expect(await statusFor(`127.0.0.1:${host.port}`)).toBe(200);
+    expect(await statusFor("evil.example")).toBe(421);
+    expect(await statusFor("pc.tail1.ts.net")).toBe(200);
+  });
+
   it("refuses requests without a paired key, from other sites, or not sent as JSON", async () => {
     expect((await call("/api/overview")).status).toBe(401);
     expect(

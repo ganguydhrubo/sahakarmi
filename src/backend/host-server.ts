@@ -487,6 +487,11 @@ export class HostServer {
   async #handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     try {
       const url = new URL(request.url ?? "/", "http://host.invalid");
+      // Only names this PC really answers to: a site that points its own name at 127.0.0.1
+      // (DNS rebinding) is turned away before anything else.
+      if (!(await this.#knownHost(request.headers.host ?? ""))) {
+        throw new HttpError(421, "Open this page from the address shown on your PC.");
+      }
       // A page on another site cannot drive this one through the visitor's browser.
       const origin = request.headers.origin;
       if (origin && origin !== "null") {
@@ -530,6 +535,26 @@ export class HostServer {
       if (!response.headersSent) this.#json(response, status, { error: message });
       else response.end();
     }
+  }
+
+  async #knownHost(header: string): Promise<boolean> {
+    const host = header.trim().toLowerCase();
+    if (!host) return false;
+    const port = this.port;
+    const names = (): Set<string> => {
+      const allowed = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+      if (this.#data.address) allowed.add(new URL(this.#data.address).host.toLowerCase());
+      const dnsName = this.#tailscale?.value.dnsName;
+      if (dnsName) allowed.add(dnsName).add(`${dnsName}:443`);
+      return allowed;
+    };
+    if (names().has(host)) return true;
+    // The first phone visit after a start can come before Tailscale was asked for this PC's name.
+    if (host.endsWith(".ts.net") || host.endsWith(".ts.net:443")) {
+      await this.#tailscaleStatus(false);
+      return names().has(host);
+    }
+    return false;
   }
 
   #json(response: ServerResponse, status: number, value: unknown): void {
