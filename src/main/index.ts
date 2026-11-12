@@ -47,6 +47,7 @@ import {
   setRuntimeDirectory,
   setToolsDirectory,
 } from "../backend/cli";
+import { attachContextMenu } from "../backend/context-menu";
 import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills, parseSkillMarkdown } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
@@ -937,6 +938,14 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.browserActivate, (tabId: unknown) =>
     browser.activate(requireString(tabId, "tabId")),
   );
+  handleTrusted(IPC_CHANNELS.browserNavigate, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid browser navigation.");
+    const action = input.action;
+    if (action !== "back" && action !== "forward" && action !== "reload") {
+      throw new Error("Unknown browser navigation.");
+    }
+    await browser.navigate?.(requireString(input.tabId, "tabId"), action);
+  });
   handleTrusted(IPC_CHANNELS.browserClose, (tabId: unknown) =>
     browser.close(requireString(tabId, "tabId")),
   );
@@ -1666,6 +1675,7 @@ function createWindow(): BrowserWindow {
     allowed(contents, permission, details.mediaType ? [details.mediaType] : undefined),
   );
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  attachContextMenu(window.webContents, { navigation: false });
   window.webContents.on("will-navigate", (event, targetUrl) => {
     if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();
   });

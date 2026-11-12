@@ -153,8 +153,8 @@ function MemoryLimit(props: {
     return t("memoryLevelOk");
   };
   return (
-    <section class="memory-limit" aria-label={t("memoryTitle")}>
-      <h4>{t("memoryTitle")}</h4>
+    <section class="memory-limit" aria-label={t("memoryLimitTitle")}>
+      <h4>{t("memoryLimitTitle")}</h4>
       <p class="settings-meta">{t("memoryIntro")}</p>
       <div class="memory-presets">
         <button

@@ -114,9 +114,9 @@ export function OrchestratorView(props: {
   };
 
   const modes: Array<{ id: "auto" | TaskExecutionStrategy; label: string }> = [
-    { id: "auto", label: "Auto-Adaptive" },
-    { id: "single-agent", label: "Fast Path (1 Agent)" },
-    { id: "multi-agent", label: "Multi-Agent DAG" },
+    { id: "auto", label: t("orchModeAuto") },
+    { id: "single-agent", label: t("orchestratorFastPath") },
+    { id: "multi-agent", label: t("orchestratorMultiAgent") },
   ];
 
   return (
@@ -124,7 +124,6 @@ export function OrchestratorView(props: {
       <header class="orch-header">
         <div class="orch-header-row">
           <h1>{t("orchestratorTitle")}</h1>
-          <span class="orch-badge">Adaptive DAG Engine</span>
         </div>
         <p>{t("orchestratorSubtitle")}</p>
         <button
@@ -148,20 +147,23 @@ export function OrchestratorView(props: {
           placeholder={t("orchestratorObjectivePlaceholder")}
           rows={3}
         />
-        <label class="orch-check">
-          <span>{t("engineCheckLabel")}</span>
-          <input
-            type="text"
-            maxLength={500}
-            value={checkCommand()}
-            onInput={(e) => setCheckCommand(e.currentTarget.value)}
-            placeholder={t("engineCheckPlaceholder")}
-          />
-          <small class="settings-meta">{t("engineCheckHint")}</small>
-        </label>
+        <details class="orch-advanced">
+          <summary>{t("orchAdvanced")}</summary>
+          <label class="orch-check">
+            <span>{t("engineCheckLabel")}</span>
+            <input
+              type="text"
+              maxLength={500}
+              value={checkCommand()}
+              onInput={(e) => setCheckCommand(e.currentTarget.value)}
+              placeholder={t("engineCheckPlaceholder")}
+            />
+            <small class="settings-meta">{t("engineCheckHint")}</small>
+          </label>
+        </details>
         <div class="orch-form-row">
           <div class="orch-modes">
-            <span>Execution Mode:</span>
+            <span>{t("orchModeLabel")}:</span>
             <For each={modes}>
               {(mode) => (
                 <button

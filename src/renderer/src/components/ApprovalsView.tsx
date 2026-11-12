@@ -176,7 +176,7 @@ export function ApprovalCard(props: {
             {t(CATEGORY_LABELS[props.approval.category])}
           </span>
         </Show>
-        <Show when={props.approval.kind === "permission"}>
+        <Show when={props.approval.kind === "permission" && pending()}>
           <span class="approval-kind" title={t("approvalPausedHint")}>
             {t("approvalPaused")}
           </span>

@@ -6720,19 +6720,119 @@ body {
   transform: translateX(12px);
 }
 
+/*
+ * Send: a quiet circle while the box is empty, an orange "Send" pill once there is something to
+ * send, a spinner while it goes. The words make it obvious what the button does.
+ */
 .send-button {
-  width: 34px;
-  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: auto;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgb(var(--ink-rgb) / 0.1);
+  color: rgb(var(--ink-rgb) / 0.55);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    padding 200ms ease,
+    transform 120ms ease,
+    box-shadow 160ms ease;
+}
+
+.send-button-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.send-button-label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    max-width 200ms ease,
+    opacity 160ms ease,
+    margin 200ms ease;
+}
+
+.send-button-ready,
+.send-button-busy {
+  padding: 0 14px 0 11px;
   background: var(--primary);
-  color: var(--on-primary);
-  font-size: var(--fs-xl);
-  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 4px 14px rgb(var(--primary-rgb) / 0.35);
+}
+
+.send-button-ready .send-button-label,
+.send-button-busy .send-button-label {
+  max-width: 120px;
+  margin-left: 6px;
+  opacity: 1;
 }
 
 .send-button:hover:not(:disabled) {
+  background: rgb(var(--ink-rgb) / 0.16);
+  color: var(--text-primary);
+}
+
+.send-button-ready:hover:not(:disabled) {
   background: var(--primary);
-  color: var(--on-primary);
-  filter: brightness(1.06);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgb(var(--primary-rgb) / 0.45);
+}
+
+.send-button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.send-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.send-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.send-button-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgb(255 255 255 / 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: send-spin 700ms linear infinite;
+}
+
+@keyframes send-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send-button,
+  .send-button-label {
+    transition: none;
+  }
+
+  .send-button-spinner {
+    animation-duration: 2s;
+  }
 }
 
 .send-button:disabled {
@@ -16192,4 +16292,152 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
   font-size: var(--fs-md);
   line-height: 1.5;
   color: var(--text-primary);
+}
+
+/* Address bar: a lock for secure pages and a clear focus ring, like Chrome or Edge. */
+.browser-address-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.browser-address-lock {
+  position: absolute;
+  left: 10px;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+
+.browser-address-secure input {
+  padding-left: 30px;
+}
+
+.browser-address-bar input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+
+.browser-toolbar-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.browser-toolbar-loading svg {
+  animation: browser-reload-spin 900ms linear infinite;
+}
+
+@keyframes browser-reload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-toolbar-loading svg {
+    animation: none;
+  }
+}
+
+/* Older messages: loaded by scrolling up; the button is a quiet fallback. */
+.load-earlier-button {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.load-earlier-button:hover {
+  color: var(--text-primary);
+  background: var(--surface-3);
+}
+
+.load-earlier-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* What another coworker said: one line, the whole message on click. */
+.exchange-system-row {
+  flex-wrap: wrap;
+}
+
+.exchange-preview {
+  flex-basis: 100%;
+  max-width: 100%;
+  margin-top: 2px;
+  text-align: left;
+}
+
+.exchange-preview summary {
+  display: block;
+  overflow: hidden;
+  padding: 6px 10px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.1);
+  border-radius: var(--radius-sm);
+  background: rgb(var(--ink-rgb) / 0.04);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  list-style: none;
+  cursor: pointer;
+}
+
+.exchange-preview summary::-webkit-details-marker {
+  display: none;
+}
+
+.exchange-preview summary:hover {
+  background: rgb(var(--ink-rgb) / 0.07);
+}
+
+.exchange-preview[open] summary {
+  display: none;
+}
+
+.exchange-preview p {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.1);
+  border-radius: var(--radius-sm);
+  background: rgb(var(--ink-rgb) / 0.04);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.orch-advanced summary {
+  width: fit-content;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.orch-advanced[open] summary {
+  margin-bottom: 8px;
+}
+
+.composer-wrap > .feature-tip {
+  max-width: 860px;
+  margin: 0 auto 8px;
+}
+
+/* A primary button that cannot be pressed yet: clearly off, not a muddy orange. */
+.button-primary:disabled,
+button.button-primary[disabled] {
+  background: rgb(var(--ink-rgb) / 0.12);
+  border-color: transparent;
+  color: rgb(var(--ink-rgb) / 0.45);
+  box-shadow: none;
+  cursor: default;
 }

@@ -2,6 +2,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { QueueDelivery, QueueDeliveryStatus, QueueSnapshot } from "../../../shared/ipc";
 import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
+import { friendlyTaskText } from "../message-display";
 import { speechLocale } from "../preferences";
 import { AgentAvatar } from "./AgentAvatar";
 import { VoiceInputButton } from "./VoiceInputButton";
@@ -156,7 +157,7 @@ export function TasksView(props: {
                   >
                     <AgentAvatar bot={bot(delivery.recipientBotId)} />
                     <span class="task-row-copy">
-                      <strong>{delivery.text || "—"}</strong>
+                      <strong>{delivery.text ? friendlyTaskText(delivery.text) : "—"}</strong>
                       <small>
                         {bot(delivery.recipientBotId)?.name ?? delivery.recipientBotId} ·{" "}
                         {formatWhen(delivery.createdAt)}

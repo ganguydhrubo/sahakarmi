@@ -125,6 +125,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   browser: {
     open: (input) => ipcRenderer.invoke(IPC_CHANNELS.browserOpen, input),
     activate: (tabId) => ipcRenderer.invoke(IPC_CHANNELS.browserActivate, tabId),
+    navigate: (tabId, action) =>
+      ipcRenderer.invoke(IPC_CHANNELS.browserNavigate, { tabId, action }),
     close: (tabId) => ipcRenderer.invoke(IPC_CHANNELS.browserClose, tabId),
     listTabs: () => ipcRenderer.invoke(IPC_CHANNELS.browserListTabs),
     getControlState: () => ipcRenderer.invoke(IPC_CHANNELS.browserGetControlState),

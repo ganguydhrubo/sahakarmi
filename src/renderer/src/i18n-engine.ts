@@ -30,7 +30,7 @@ export const engineEn = {
   meterCpu: "Processor {percent}%",
   meterPages: "{count} browser pages awake",
   engineSaved: "Saved",
-  memoryTitle: "Memory limit",
+  memoryLimitTitle: "Memory limit",
   memoryIntro:
     "How much RAM Sahkarmi and the coworker programs it starts may use together. Work already running is never stopped for memory; new background work waits, and idle programs close to make room.",
   memoryAutomatic: "Automatic",
@@ -104,7 +104,7 @@ export const engineHi: EngineDictionary = {
   meterCpu: "प्रोसेसर {percent}%",
   meterPages: "{count} ब्राउज़र पेज जागे हुए",
   engineSaved: "सहेजा गया",
-  memoryTitle: "मेमोरी सीमा",
+  memoryLimitTitle: "मेमोरी सीमा",
   memoryIntro:
     "Sahkarmi और उसके शुरू किए सहकर्मी प्रोग्राम मिलकर कितनी RAM ले सकते हैं। चलता हुआ काम मेमोरी के लिए कभी नहीं रुकता; नया बैकग्राउंड काम रुकता है और खाली बैठे प्रोग्राम बंद होकर जगह बनाते हैं।",
   memoryAutomatic: "अपने आप",
@@ -175,7 +175,7 @@ export const engineBn: EngineDictionary = {
   meterCpu: "প্রসেসর {percent}%",
   meterPages: "{count}টি ব্রাউজার পেজ জেগে আছে",
   engineSaved: "সংরক্ষিত",
-  memoryTitle: "মেমোরি সীমা",
+  memoryLimitTitle: "মেমোরি সীমা",
   memoryIntro:
     "Sahkarmi আর তার চালু করা সহকর্মী প্রোগ্রাম মিলে কত RAM নিতে পারবে। চলমান কাজ মেমোরির জন্য কখনও থামে না; নতুন ব্যাকগ্রাউন্ড কাজ অপেক্ষা করে আর অলস প্রোগ্রাম বন্ধ হয়ে জায়গা করে।",
   memoryAutomatic: "স্বয়ংক্রিয়",

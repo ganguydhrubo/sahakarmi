@@ -55,7 +55,8 @@ import { AVATAR_COLORS, AVATAR_SHAPES } from "../data";
 import { featureOn } from "../features";
 import { t } from "../i18n";
 import { markdownToPlainText } from "../markdown";
-import { activityStyle } from "../preferences";
+import { isSystemNote, routineDesignNote, routineNote, systemNoteText } from "../message-display";
+import { activityStyle, sendKey } from "../preferences";
 import { starterPrompts } from "../starter-prompts";
 import { speakingId, speakText, stopSpeaking } from "../voice-store";
 import { ActivityIndicator } from "./ActivityIndicator";
@@ -548,6 +549,14 @@ function AttachmentCards(props: {
   );
 }
 
+function SendArrowIcon() {
+  return (
+    <svg class="send-button-icon" aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M10 15.5V4.5M5.2 9.3 10 4.5l4.8 4.8" />
+    </svg>
+  );
+}
+
 function ExchangeAgentAvatar(props: { bot: BotProfile | undefined }) {
   return <AgentAvatar bot={props.bot} class="exchange-agent-avatar" />;
 }
@@ -576,7 +585,7 @@ function ExchangeSystemRow(props: {
         when={exchange()?.direction === "outgoing"}
         fallback={
           <>
-            <span class="exchange-system-label">Message from</span>
+            <span class="exchange-system-label">{t("exchangeFrom")}</span>
             <button
               type="button"
               class="exchange-agent-trigger exchange-agent-trigger-incoming"
@@ -592,7 +601,7 @@ function ExchangeSystemRow(props: {
           </>
         }
       >
-        <span class="exchange-system-label">Messaged</span>
+        <span class="exchange-system-label">{t("exchangeTo")}</span>
         <Show
           when={recipients().length === 1}
           fallback={
@@ -662,6 +671,12 @@ function ExchangeSystemRow(props: {
         </Show>
       </Show>
       <time dateTime={props.message.time}>{props.message.time}</time>
+      <Show when={props.message.body.trim()}>
+        <details class="exchange-preview">
+          <summary>{props.message.body.replace(/\s+/g, " ").trim()}</summary>
+          <p>{props.message.body.trim()}</p>
+        </details>
+      </Show>
     </div>
   );
 }
@@ -684,7 +699,10 @@ function MessageBody(props: {
   const [expanded, setExpanded] = createSignal(false);
   const routine = createMemo(() => routineNote(props.message));
   const design = createMemo(() => routineDesignNote(props.message));
-  const body = () => design() ?? routine()?.text ?? props.message.body;
+  const system = createMemo(() =>
+    props.message.author === "you" ? systemNoteText(props.message.body) : null,
+  );
+  const body = () => system() ?? design() ?? routine()?.text ?? props.message.body;
   // A routine step carries the earlier step's result, so it folds sooner.
   const collapsible = () =>
     props.message.author === "you" &&
@@ -804,58 +822,26 @@ function sameTools(left: ToolCallSummary[] | null, right: ToolCallSummary[] | nu
   return left.every((tool, index) => tool === right[index]);
 }
 
+/**
+ * What the address bar opens, as Chrome does: a web address as typed, anything else as a Google
+ * search. "localhost:3000" and "192.168.1.1" count as addresses.
+ */
+export function addressToUrl(value: string): string {
+  const text = value.trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || /^(about|mailto):/i.test(text)) return text;
+  const looksLikeAddress =
+    !/\s/.test(text) &&
+    (/^localhost(:\d+)?(\/|$)/i.test(text) ||
+      /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/|$)/.test(text) ||
+      /^[^/?#]+\.[a-z]{2,}(:\d+)?([/?#]|$)/i.test(text));
+  if (looksLikeAddress) {
+    return /^(localhost|\d{1,3}(\.\d{1,3}){3})/i.test(text) ? `http://${text}` : `https://${text}`;
+  }
+  return `https://www.google.com/search?q=${encodeURIComponent(text)}`;
+}
+
 /** Window event the app sends to bring an older message into the rendered window. */
 export const REVEAL_MESSAGE_EVENT = "sahkarmi:reveal-message";
-
-/** Notes the app sends a coworker for the owner (approval results, browser hand-back). */
-const SYSTEM_NOTE =
-  /^\[(Approval (APPROVED|REJECTED)|Browser handed back|Browser takeover declined|Secure input (entered|declined))\]/;
-
-function isSystemNote(message: BotMessage): boolean {
-  return message.author === "you" && SYSTEM_NOTE.test(message.body);
-}
-
-const ROUTINE_NOTE = /^\[Routine "(.*?)" · step (\d+)\/(\d+)(?: · yes\/no check)?\] ?/;
-const DESIGN_NOTE = /^\[Routine design\][\s\S]*?What the owner wants: (.*)/;
-const DESIGN_REPLY = /^\s*(?:```(?:json)?\s*)?\{\s*"name"\s*:[\s\S]*"steps"\s*:\s*\[/;
-
-/** "Describe it" asks the orchestrator in its chat; show the request and the JSON reply briefly. */
-export function routineDesignNote(message: Pick<BotMessage, "author" | "body">): string | null {
-  if (message.author === "you") {
-    const match = DESIGN_NOTE.exec(message.body);
-    return match ? t("routineDesignAsked", { wish: (match[1] as string).trim() }) : null;
-  }
-  if (!DESIGN_REPLY.test(message.body)) return null;
-  try {
-    const start = message.body.indexOf("{");
-    const value = JSON.parse(message.body.slice(start, message.body.lastIndexOf("}") + 1)) as {
-      name?: unknown;
-      steps?: unknown;
-    };
-    if (!Array.isArray(value.steps)) return null;
-    return t("routineDesignReplied", {
-      name: typeof value.name === "string" ? value.name : "",
-      count: String(value.steps.length),
-    });
-  } catch {
-    return null;
-  }
-}
-
-/** A step a routine sent a coworker: shown as a quiet card with a label, not as the owner typing. */
-export function routineNote(
-  message: Pick<BotMessage, "author" | "body">,
-): { name: string; step: string; total: string; text: string } | null {
-  if (message.author !== "you") return null;
-  const match = ROUTINE_NOTE.exec(message.body);
-  if (!match) return null;
-  return {
-    name: match[1] as string,
-    step: match[2] as string,
-    total: match[3] as string,
-    text: message.body.slice(match[0].length),
-  };
-}
 
 function MessageActions(props: {
   message: BotMessage;
@@ -939,6 +925,15 @@ function MessageActions(props: {
           </div>
         </Show>
       </div>
+      <button
+        type="button"
+        class="message-action-button"
+        aria-label={props.copied ? "Copied" : "Copy message"}
+        title={props.copied ? "Copied" : "Copy"}
+        onClick={props.onCopy}
+      >
+        {props.copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
       <button
         type="button"
         class="message-action-button"
@@ -2377,10 +2372,16 @@ export function Conversation(props: ConversationProps) {
     void window.sahkarmi.agent.discardDraftAttachment(id);
   }
 
+  function navigateBrowser(action: "back" | "forward" | "reload") {
+    const tab = activeBrowserTab();
+    if (!tab) return;
+    void window.sahkarmi.browser.navigate(tab.id, action).catch(() => undefined);
+  }
+
   async function openBrowserAddress() {
     const value = browserAddress().trim();
     if (!value) return;
-    const url = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    const url = addressToUrl(value);
     try {
       const tab = await window.sahkarmi.browser.open({
         url,
@@ -2551,6 +2552,7 @@ export function Conversation(props: ConversationProps) {
     } else if (event.key === "Escape") props.onCloseAgentPicker();
   }
 
+  let earlierAsked = -1;
   return (
     <main
       ref={(element) => (conversationPanel = element)}
@@ -2840,6 +2842,12 @@ export function Conversation(props: ConversationProps) {
           const element = event.currentTarget;
           trackScrollPosition(element);
           updateScrollFade(element);
+          // Near the top: bring in older messages by themselves, once per batch.
+          const earlier = props.earlierCount ?? 0;
+          if (element.scrollTop < 240 && earlier > 0 && earlierAsked !== earlier) {
+            earlierAsked = earlier;
+            props.onLoadEarlier?.();
+          }
         }}
       >
         <Show when={!props.agentPickerOpen && props.loaded}>
@@ -2900,7 +2908,11 @@ export function Conversation(props: ConversationProps) {
           </Show>
           <Show when={(props.earlierCount ?? 0) > 0 && props.onLoadEarlier}>
             <div class="load-earlier">
-              <button type="button" class="link-button" onClick={() => props.onLoadEarlier?.()}>
+              <button
+                type="button"
+                class="load-earlier-button"
+                onClick={() => props.onLoadEarlier?.()}
+              >
                 {t("loadEarlier", { count: String(props.earlierCount ?? 0) })}
               </button>
             </div>
@@ -3175,15 +3187,6 @@ export function Conversation(props: ConversationProps) {
             now={activityNow()}
             activeSince={activeSince()}
           />
-          <Tip
-            id="chat-follow-up"
-            text="tipChatFollowUp"
-            when={
-              !props.pendingApprovals?.length &&
-              shownMessages().some((message) => message.author === "bot" && !message.streaming) &&
-              !shownMessages().some((message) => message.streaming)
-            }
-          />
           <Show when={props.pendingApprovals?.length && props.onDecideApproval}>
             <Tip id="first-approval" text="tipApproval" />
             <ul class="approval-list inline-approvals" aria-label={t("approvals")}>
@@ -3223,6 +3226,15 @@ export function Conversation(props: ConversationProps) {
       </div>
 
       <div class="composer-wrap">
+        <Tip
+          id="chat-follow-up"
+          text="tipChatFollowUp"
+          when={
+            !props.pendingApprovals?.length &&
+            !props.activeTurnId &&
+            shownMessages().some((message) => message.author === "bot" && !message.streaming)
+          }
+        />
         <Show
           when={
             props.plan?.steps.length && props.plan.turnId === props.activeTurnId ? props.plan : null
@@ -3463,22 +3475,44 @@ export function Conversation(props: ConversationProps) {
                 currentDraft().attachments.length
               }
             >
-              <button
-                type="button"
-                class="voice-button send-button"
-                aria-label={scheduleMode() ? t("scheduleLabel") : "Send message"}
-                title={
-                  props.activeTurnId && !scheduleMode()
-                    ? t(canSteer() ? "steerHint" : "queueHint")
-                    : undefined
-                }
-                disabled={submitting() || !agentReady() || onboardingModelRequired()}
-                onClick={() => void submitMessage()}
-              >
-                <Show when={scheduleMode()} fallback={submitting() ? "…" : "↑"}>
-                  <ClockIcon />
-                </Show>
-              </button>
+              {(() => {
+                const hasDraft = () =>
+                  Boolean(currentDraft().text.trim() || currentDraft().attachments.length);
+                const label = () =>
+                  scheduleMode()
+                    ? t("scheduleLabel")
+                    : props.activeTurnId
+                      ? t(canSteer() ? "sendSteer" : "sendQueue")
+                      : t("sendLabel");
+                return (
+                  <button
+                    type="button"
+                    class="voice-button send-button"
+                    classList={{
+                      "send-button-ready": hasDraft() && !submitting(),
+                      "send-button-busy": submitting(),
+                    }}
+                    aria-label={label()}
+                    title={
+                      props.activeTurnId && !scheduleMode()
+                        ? t(canSteer() ? "steerHint" : "queueHint")
+                        : t(sendKey() === "ctrl-enter" ? "sendTitleCtrl" : "sendTitleEnter")
+                    }
+                    disabled={submitting() || !agentReady() || onboardingModelRequired()}
+                    onClick={() => void submitMessage()}
+                  >
+                    <Show
+                      when={!submitting()}
+                      fallback={<span class="send-button-spinner" aria-hidden="true" />}
+                    >
+                      <Show when={scheduleMode()} fallback={<SendArrowIcon />}>
+                        <ClockIcon />
+                      </Show>
+                    </Show>
+                    <span class="send-button-label">{label()}</span>
+                  </button>
+                );
+              })()}
             </Show>
           </div>
         </div>
@@ -3724,31 +3758,67 @@ export function Conversation(props: ConversationProps) {
             </div>
           </header>
           <div class="browser-toolbar">
-            <button type="button" aria-label="Go back" class="browser-toolbar-button" disabled>
+            <button
+              type="button"
+              aria-label="Go back"
+              title="Back (Alt+Left)"
+              class="browser-toolbar-button"
+              disabled={!activeBrowserTab() || activeBrowserTab()?.canGoBack === false}
+              onClick={() => navigateBrowser("back")}
+            >
               <BrowserBackIcon />
             </button>
-            <button type="button" aria-label="Go forward" class="browser-toolbar-button" disabled>
+            <button
+              type="button"
+              aria-label="Go forward"
+              title="Forward (Alt+Right)"
+              class="browser-toolbar-button"
+              disabled={!activeBrowserTab() || activeBrowserTab()?.canGoForward === false}
+              onClick={() => navigateBrowser("forward")}
+            >
               <BrowserForwardIcon />
             </button>
             <button
               type="button"
               aria-label="Reload page"
+              title="Reload (F5)"
               class="browser-toolbar-button"
-              onClick={() => void openBrowserAddress()}
+              classList={{ "browser-toolbar-loading": activeBrowserTab()?.loading === true }}
+              onClick={() =>
+                activeBrowserTab() ? navigateBrowser("reload") : void openBrowserAddress()
+              }
             >
               <BrowserReloadIcon />
             </button>
             <form
               class="browser-address-bar"
+              classList={{ "browser-address-secure": /^https:\/\//i.test(browserAddress()) }}
               onSubmit={(event) => {
                 event.preventDefault();
                 void openBrowserAddress();
+                (event.currentTarget.querySelector("input") as HTMLInputElement | null)?.blur();
               }}
             >
+              <Show when={/^https:\/\//i.test(browserAddress())}>
+                <svg class="browser-address-lock" aria-hidden="true" viewBox="0 0 16 16">
+                  <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" />
+                  <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" />
+                </svg>
+              </Show>
               <input
                 value={browserAddress()}
-                aria-label="Browser address"
+                aria-label="Search or type a web address"
+                placeholder="Search Google or type a web address"
+                spellcheck={false}
+                autocomplete="off"
+                onFocus={(event) => event.currentTarget.select()}
                 onInput={(event) => setBrowserAddress(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setBrowserAddress(activeBrowserTab()?.url ?? "");
+                    event.currentTarget.blur();
+                  }
+                }}
               />
             </form>
             <Show

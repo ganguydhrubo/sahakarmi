@@ -68,26 +68,26 @@ const SAVE_DELAY_MS = 2_000;
 /** Where each provider's numbers come from; shown next to the data. */
 export const USAGE_SOURCES: Record<AgentProviderId, { limits: string; tokens: string }> = {
   codex: {
-    limits: "Codex App Server · account/rateLimits/read",
+    limits: "ChatGPT shows your plan limits here after your first task with it.",
     tokens: "Codex App Server · thread/tokenUsage/updated",
   },
   claude: {
-    limits: "Claude Agent SDK · plan usage (on refresh) and rate_limit_event (during a task)",
+    limits: "Claude shows your plan limits here after a task, or when you press Refresh.",
     tokens: "Claude Agent SDK · result.modelUsage",
   },
   opencode: {
-    limits: "OpenCode free models publish no quota",
+    limits: "The free model does not publish a limit.",
     tokens: "OpenCode ACP · usage_update (context size and session cost)",
   },
   antigravity: {
-    limits: "Google Antigravity quota",
+    limits: "Google Antigravity shows its quota here once it reports one.",
     tokens: "Google Antigravity usage_update",
   },
   ...(Object.fromEntries(
     ACP_AGENT_PROVIDERS.map((provider) => [
       provider,
       {
-        limits: `${PROVIDER_LABELS[provider]} publishes no quota to Sahkarmi`,
+        limits: `${PROVIDER_LABELS[provider]} does not share its limits with Sahkarmi.`,
         tokens: `${PROVIDER_LABELS[provider]} ACP · usage_update`,
       },
     ]),

@@ -1,6 +1,6 @@
 /** Settings > Storage, and the chat's "Load earlier" button. */
 export const storageEn = {
-  loadEarlier: "Load {count} earlier messages",
+  loadEarlier: "Show {count} earlier messages",
   setStorage: "Storage",
   storageIntro:
     "How much space Sahkarmi uses on this computer, and what can be removed safely. Your chats, coworkers and documents are never removed here.",

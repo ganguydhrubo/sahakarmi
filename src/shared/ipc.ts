@@ -69,6 +69,7 @@ export const IPC_CHANNELS = {
   agentEvent: "agent:event",
   browserOpen: "browser:open",
   browserActivate: "browser:activate",
+  browserNavigate: "browser:navigate",
   browserClose: "browser:close",
   browserListTabs: "browser:list-tabs",
   browserGetControlState: "browser:get-control-state",
@@ -1860,7 +1861,12 @@ export interface BrowserTab {
   loading: boolean;
   ownerThreadId: string | null;
   ownerBotId: string | null;
+  /** Missing when the browser cannot tell; the buttons then stay usable. */
+  canGoBack?: boolean;
+  canGoForward?: boolean;
 }
+
+export type BrowserNavigation = "back" | "forward" | "reload";
 
 export type BrowserControlPhase = "acting" | "waiting";
 
@@ -1962,6 +1968,8 @@ export interface AgentDesktopApi {
 export interface BrowserDesktopApi {
   open: (input: BrowserOpenInput) => Promise<BrowserTab>;
   activate: (tabId: string) => Promise<void>;
+  /** The toolbar's Back, Forward and Reload on one tab. */
+  navigate: (tabId: string, action: BrowserNavigation) => Promise<void>;
   close: (tabId: string) => Promise<void>;
   listTabs: () => Promise<BrowserTab[]>;
   getControlState: () => Promise<BrowserControlState>;
