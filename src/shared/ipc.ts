@@ -1199,10 +1199,31 @@ export interface ScheduledTask {
 /** Routines also accept "every N minutes" (N >= 1; under 5 needs explicit confirmation). */
 export type RoutineCadence = ScheduleCadence | { kind: "interval"; minutes: number };
 
+/**
+ * What a step does. Missing means "agent" (every routine saved before 0.31.0).
+ * - agent:     the coworker does the instruction; its reply feeds the next step.
+ * - condition: the coworker answers the instruction (a question) with yes or no; yes goes on,
+ *              no does `onNo`. The previous result passes through unchanged.
+ * - approval:  the owner gets one card with the instruction as its question; reject stops.
+ * - output:    the previous result is saved to a file or sent to Telegram.
+ */
+export type RoutineStepKind = "agent" | "condition" | "approval" | "output";
+
+/** A condition's "no": stop the run, or jump forward to a later step. */
+export type RoutineConditionNo = { action: "stop" } | { action: "jump"; stepId: string };
+
+export type RoutineOutput = { kind: "file"; folder: string } | { kind: "telegram" };
+
 export interface RoutineStep {
   id: string;
+  kind?: RoutineStepKind;
+  /** The coworker for agent and condition steps; "" for approval and output steps. */
   botId: string;
   instruction: string;
+  /** Condition steps only. */
+  onNo?: RoutineConditionNo;
+  /** Output steps only. */
+  output?: RoutineOutput;
 }
 
 /** "When a file is added to this folder (or a subfolder)". */
@@ -1229,10 +1250,11 @@ export interface Routine {
   nextRunAt: string | null;
 }
 
-export type RoutineStepStatus = "queued" | "running" | "done" | "failed" | "skipped";
+export type RoutineStepStatus = "queued" | "running" | "waiting" | "done" | "failed" | "skipped";
 
 export interface RoutineRunStep {
   stepId: string;
+  kind?: RoutineStepKind;
   botId: string;
   instruction: string;
   status: RoutineStepStatus;
@@ -1266,7 +1288,14 @@ export interface SaveRoutineInput {
   /** Omit to create a new routine. */
   id?: string;
   name: string;
-  steps: Array<{ id?: string; botId: string; instruction: string }>;
+  steps: Array<{
+    id?: string;
+    kind?: RoutineStepKind;
+    botId: string;
+    instruction: string;
+    onNo?: RoutineConditionNo;
+    output?: RoutineOutput;
+  }>;
   cadence: RoutineCadence | null;
   /** Omit or null for no event trigger. */
   trigger?: RoutineTrigger | null;
@@ -2339,6 +2368,20 @@ export interface WorkflowTimelineEntry {
 }
 
 /** An exported workflow ("sahkarmi.workflow/v1"); the .json export is exactly this. */
+/**
+ * One recipe step. Files from before 0.31.0 only have `by` and `do` (a coworker task).
+ * Approval and output steps have no coworker (`by` is "").
+ */
+export interface WorkflowDocStep {
+  by: string;
+  do: string;
+  kind?: Exclude<RoutineStepKind, "agent">;
+  /** Condition steps: the step number (1-based) a "no" jumps to; absent = stop. */
+  ifNoSkipTo?: number;
+  /** Output steps. A folder is never exported: it belongs to one computer. */
+  sendTo?: "file" | "telegram";
+}
+
 export interface WorkflowDoc {
   format: "sahkarmi.workflow/v1";
   name: string;
@@ -2347,7 +2390,7 @@ export interface WorkflowDoc {
   goal?: string;
   coworkers: Array<{ name: string; role?: string; model?: string }>;
   /** The reusable recipe: what each coworker is asked to do, in order. */
-  steps: Array<{ by: string; do: string }>;
+  steps: WorkflowDocStep[];
   schedule?: RoutineCadence;
   /** What actually happened, oldest first. */
   timeline: WorkflowTimelineEntry[];

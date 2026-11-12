@@ -5,6 +5,24 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-12
+
+### Added
+
+- Workflows 2.0 (Routines): three new step types besides "Coworker does a task".
+  - **Yes/no check**: a coworker answers a question about the result so far. Yes goes on; no
+    stops the routine or skips to a later step. The result so far is passed on unchanged.
+  - **Ask me first**: one approval card with the result so far, in the app and on Telegram if
+    paired. No stops the routine; no answer within 24 hours stops it as failed.
+  - **Send the result**: save the result as a new .md file in a folder (never overwrites a
+    file), or send it to your Telegram.
+- Exported workflow files keep the step types, so an imported workflow runs the same way. A file
+  output asks for a folder again, because a folder belongs to one computer.
+
+### Changed
+
+- Routines saved before this version keep running exactly as before.
+
 ## [0.30.0] - 2026-11-10
 
 ### Added

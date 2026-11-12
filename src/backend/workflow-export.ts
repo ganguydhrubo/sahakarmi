@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   BotSummary,
   ConversationMessage,
@@ -6,6 +7,7 @@ import type {
   RoutinesState,
   SaveRoutineInput,
   WorkflowDoc,
+  WorkflowDocStep,
   WorkflowFormat,
   WorkflowTimelineEntry,
 } from "../shared/ipc";
@@ -221,14 +223,17 @@ export function routineWorkflow(
   const lastRun = state.runs.find((run) => run.routineId === routine.id);
   const coworkers = new Map<string, WorkflowDoc["coworkers"][number]>();
   for (const step of routine.steps) {
+    if (step.kind === "approval" || step.kind === "output") continue;
     const bot = bots.find((candidate) => candidate.id === step.botId);
     const name = nameOf(step.botId);
     if (!coworkers.has(name)) coworkers.set(name, { name, role: bot?.role || undefined });
   }
+  const byOf = (step: { kind?: string; botId: string }) =>
+    step.kind === "approval" ? "Owner" : step.kind === "output" ? "Sahkarmi" : nameOf(step.botId);
   const timeline: WorkflowTimelineEntry[] = (lastRun?.steps ?? []).flatMap((step) => [
     {
       at: step.startedAt ?? undefined,
-      by: nameOf(step.botId),
+      by: byOf(step),
       kind: "task" as const,
       text: clean(step.instruction, 300),
       status: step.status,
@@ -237,7 +242,7 @@ export function routineWorkflow(
       ? [
           {
             at: step.finishedAt ?? undefined,
-            by: nameOf(step.botId),
+            by: byOf(step),
             kind: "said" as const,
             text: clean(step.result),
           },
@@ -250,10 +255,23 @@ export function routineWorkflow(
     exportedAt: new Date().toISOString(),
     source: "routine",
     coworkers: [...coworkers.values()],
-    steps: routine.steps.map((step) => ({
-      by: nameOf(step.botId),
-      do: clean(step.instruction, 2_000),
-    })),
+    steps: routine.steps.map((step): WorkflowDocStep => {
+      if (!step.kind || step.kind === "agent") {
+        return { by: nameOf(step.botId), do: clean(step.instruction, 2_000) };
+      }
+      const docStep: WorkflowDocStep = {
+        by: step.kind === "condition" ? nameOf(step.botId) : "",
+        do: clean(step.instruction, 2_000),
+        kind: step.kind,
+      };
+      if (step.onNo?.action === "jump") {
+        const target = step.onNo.stepId;
+        const to = routine.steps.findIndex((candidate) => candidate.id === target);
+        if (to >= 0) docStep.ifNoSkipTo = to + 1;
+      }
+      if (step.output) docStep.sendTo = step.output.kind;
+      return docStep;
+    }),
     schedule: routine.cadence ?? undefined,
     timeline,
     result: lastRun ? { status: lastRun.status, files: [] } : undefined,
@@ -339,7 +357,7 @@ export function workflowMarkdown(doc: WorkflowDoc): string {
     lines.push("## Workflow (to run again)", "");
     doc.steps.forEach((step, index) => {
       const [firstLine, ...rest] = step.do.split("\n");
-      lines.push(`${index + 1}. **${step.by}:** ${firstLine}`);
+      lines.push(`${index + 1}. **${stepLabel(step)}:** ${firstLine}`);
       for (const line of rest) lines.push(`   ${line}`);
     });
     lines.push("");
@@ -389,7 +407,7 @@ export function workflowText(doc: WorkflowDoc): string {
   if (doc.steps.length > 0) {
     lines.push("WORKFLOW");
     doc.steps.forEach((step, index) => {
-      lines.push(`${index + 1}. ${step.by}: ${step.do.replace(/\n/g, "\n   ")}`);
+      lines.push(`${index + 1}. ${stepLabel(step)}: ${step.do.replace(/\n/g, "\n   ")}`);
     });
     lines.push("");
   }
@@ -446,16 +464,35 @@ export function parseWorkflowJson(text: string): WorkflowDoc {
   const steps = Array.isArray(parsed.steps)
     ? parsed.steps
         .filter(isRecord)
-        .map((step) => ({
-          by: String(step.by ?? "").slice(0, 80),
-          do: String(step.do ?? "")
-            .trim()
-            .slice(0, 4_000),
-        }))
-        .filter((step) => step.do)
+        .map((step) => {
+          const docStep: WorkflowDocStep = {
+            by: String(step.by ?? "").slice(0, 80),
+            do: String(step.do ?? "")
+              .trim()
+              .slice(0, 4_000),
+          };
+          if (step.kind === "condition" || step.kind === "approval" || step.kind === "output") {
+            docStep.kind = step.kind;
+          }
+          if (docStep.kind === "condition" && Number.isInteger(step.ifNoSkipTo)) {
+            docStep.ifNoSkipTo = step.ifNoSkipTo as number;
+          }
+          if (docStep.kind === "output") {
+            docStep.by = "";
+            docStep.sendTo = step.sendTo === "telegram" ? "telegram" : "file";
+          }
+          if (docStep.kind === "approval") docStep.by = "";
+          return docStep;
+        })
+        .filter((step) => step.do || step.kind === "output")
         .slice(0, MAX_STEPS)
     : [];
-  if (steps.length === 0) throw new Error("That workflow has no steps to run.");
+  if (!steps.some(isCoworkerStep)) throw new Error("That workflow has no steps to run.");
+  // A jump must point at a later step that survived the import; otherwise "no" stops.
+  steps.forEach((step, index) => {
+    const to = step.ifNoSkipTo;
+    if (to !== undefined && (to <= index + 1 || to > steps.length)) delete step.ifNoSkipTo;
+  });
   const coworkers = Array.isArray(parsed.coworkers)
     ? parsed.coworkers.filter(isRecord).map((coworker) => ({
         name: String(coworker.name ?? "").slice(0, 80),
@@ -484,23 +521,65 @@ export function routineFromWorkflow(
   bots: BotSummary[],
 ): SaveRoutineInput {
   const ids = new Set(bots.map((bot) => bot.id));
+  // Ids only matter when a "no" jumps to a later step.
+  const stepIds = doc.steps.map(() => randomUUID());
+  const jumps = doc.steps.some((step) => step.ifNoSkipTo);
   return {
     name: doc.name,
-    steps: doc.steps.map((step) => {
+    steps: doc.steps.map((step, index) => {
+      const id = jumps ? { id: stepIds[index] as string } : {};
+      if (step.kind === "approval") {
+        return { ...id, kind: "approval", botId: "", instruction: step.do };
+      }
+      if (step.kind === "output") {
+        return {
+          ...id,
+          kind: "output",
+          botId: "",
+          instruction: step.do,
+          // A folder belongs to one computer, so a file output asks for one again.
+          output: step.sendTo === "telegram" ? { kind: "telegram" } : { kind: "file", folder: "" },
+        };
+      }
       const botId = assign[step.by];
       if (!botId || !ids.has(botId))
         throw new Error(`Choose a coworker for "${step.by || "step"}".`);
-      return { botId, instruction: step.do };
+      if (step.kind === "condition") {
+        const target = step.ifNoSkipTo ? stepIds[step.ifNoSkipTo - 1] : undefined;
+        return {
+          ...id,
+          kind: "condition",
+          botId,
+          instruction: step.do,
+          onNo: target ? { action: "jump", stepId: target } : { action: "stop" },
+        };
+      }
+      return { ...id, botId, instruction: step.do };
     }),
     cadence: null,
     enabled: true,
   };
 }
 
+/** Steps a coworker does (tasks and yes/no checks); approvals and outputs have none. */
+export function isCoworkerStep(step: WorkflowDocStep): boolean {
+  return step.kind === undefined || step.kind === "condition";
+}
+
+function stepLabel(step: WorkflowDocStep): string {
+  if (step.kind === "approval") return "Owner approves";
+  if (step.kind === "output")
+    return step.sendTo === "telegram" ? "Send to Telegram" : "Save to a file";
+  if (step.kind === "condition") {
+    return `${step.by} (yes/no${step.ifNoSkipTo ? `, no → step ${step.ifNoSkipTo}` : ", no → stop"})`;
+  }
+  return step.by;
+}
+
 /** Best guess of which of the owner's coworkers should take each name in a workflow. */
 export function suggestAssignments(doc: WorkflowDoc, bots: BotSummary[]): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const name of new Set(doc.steps.map((step) => step.by))) {
+  for (const name of new Set(doc.steps.filter(isCoworkerStep).map((step) => step.by))) {
     const role = doc.coworkers.find((coworker) => coworker.name === name)?.role?.toLowerCase();
     const match =
       bots.find((bot) => bot.name.toLowerCase() === name.toLowerCase()) ??

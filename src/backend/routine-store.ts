@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   isFrequentCadence,
@@ -41,6 +41,15 @@ export interface RoutineExecutor {
     botId: string,
     deliveryId: string,
   ): Promise<{ ok: boolean; reply: string | null; error: string | null }>;
+  /** Approval steps: one owner card; resolves with the owner's decision. */
+  askApproval?(input: {
+    botId: string;
+    routineName: string;
+    question: string;
+    details: string;
+  }): Promise<"approved" | "rejected" | "timed-out">;
+  /** Output steps that post to Telegram. */
+  sendTelegram?(text: string): Promise<void>;
 }
 
 const TICK_MS = 30_000;
@@ -92,7 +101,7 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
       run.status = "failed";
       run.finishedAt = this.#now().toISOString();
       for (const step of run.steps) {
-        if (step.status === "running") {
+        if (step.status === "running" || step.status === "waiting") {
           step.status = "failed";
           step.result = "Sahkarmi was closed during this step.";
         } else if (step.status === "queued") {
@@ -148,17 +157,7 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     if (input.steps.length > MAX_STEPS)
       throw new Error(`A routine can have up to ${MAX_STEPS} steps.`);
     const existing = input.id ? this.#require(input.id) : null;
-    const steps = input.steps.map((step) => {
-      const instruction = typeof step.instruction === "string" ? step.instruction.trim() : "";
-      if (typeof step.botId !== "string" || !step.botId)
-        throw new Error("Pick a coworker for every step.");
-      if (!instruction) throw new Error("Every step needs an instruction.");
-      return {
-        id: typeof step.id === "string" && step.id ? step.id : randomUUID(),
-        botId: step.botId,
-        instruction: instruction.slice(0, 20_000),
-      };
-    });
+    const steps = await parseRoutineSteps(input.steps);
     const trigger = input.trigger ? await parseRoutineTrigger(input.trigger) : null;
     const cadence = trigger || input.cadence === null ? null : parseRoutineCadence(input.cadence);
     if (cadence && isFrequentCadence(cadence) && input.confirmFrequent !== true) {
@@ -212,12 +211,23 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     return this.state();
   }
 
-  /** Steps that use a deleted coworker are removed; a routine left with no steps is removed. */
+  /**
+   * Steps that use a deleted coworker are removed; a routine left with no coworker step is
+   * removed. A "no" that jumped to a removed step now stops the run instead.
+   */
   async deleteBotData(botId: string): Promise<void> {
     for (const routine of this.#state.routines) {
-      routine.steps = routine.steps.filter((step) => step.botId !== botId);
+      routine.steps = routine.steps.filter((step) => !usesCoworker(step) || step.botId !== botId);
+      const ids = new Set(routine.steps.map((step) => step.id));
+      for (const step of routine.steps) {
+        if (step.onNo?.action === "jump" && !ids.has(step.onNo.stepId)) {
+          step.onNo = { action: "stop" };
+        }
+      }
     }
-    this.#state.routines = this.#state.routines.filter((routine) => routine.steps.length > 0);
+    this.#state.routines = this.#state.routines.filter((routine) =>
+      routine.steps.some(usesCoworker),
+    );
     await this.#persist();
   }
 
@@ -329,6 +339,7 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
       steps: routine.steps.map(
         (step): RoutineRunStep => ({
           stepId: step.id,
+          ...(step.kind && step.kind !== "agent" ? { kind: step.kind } : {}),
           botId: step.botId,
           instruction: step.instruction,
           status: "queued",
@@ -339,56 +350,152 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
         }),
       ),
     };
+    // The run follows the steps as they were when it started, even if the routine is edited.
+    const plan = structuredClone(routine.steps);
     this.#state.runs.unshift(run);
     this.#state.runs = this.#state.runs.slice(0, MAX_RUNS);
     await this.#persist();
 
+    const finish = async (status: RoutineRun["status"], from: number) => {
+      for (const rest of run.steps.slice(from)) {
+        if (rest.status === "queued") rest.status = "skipped";
+      }
+      run.status = status;
+      run.finishedAt = this.#now().toISOString();
+      await this.#persist();
+    };
+
     let previous: string | null = null;
-    for (const [index, step] of run.steps.entries()) {
+    let index = 0;
+    while (index < run.steps.length) {
+      const step = run.steps[index] as RoutineRunStep;
+      const definition = plan[index] as Routine["steps"][number];
+      const kind = definition.kind ?? "agent";
       step.status = "running";
       step.startedAt = this.#now().toISOString();
       await this.#persist();
-      let outcome: { ok: boolean; reply: string | null; error: string | null };
+      let outcome: StepOutcome;
       try {
         if (!executor) throw new Error("Coworkers are not ready yet.");
-        step.deliveryId = await executor.send(
-          step.botId,
-          stepText(
-            routine.name,
-            index,
-            run.steps.length,
-            step.instruction,
-            previous,
-            index === 0 ? files : [],
-          ),
-        );
-        await this.#persist();
-        outcome = await executor.waitFor(step.botId, step.deliveryId);
+        if (kind === "approval") {
+          step.status = "waiting";
+          await this.#persist();
+          outcome = await this.#approve(executor, routine.name, plan, index, previous);
+        } else if (kind === "output") {
+          outcome = await this.#output(executor, routine.name, definition, previous);
+        } else {
+          const text =
+            kind === "condition"
+              ? conditionText(routine.name, index, run.steps.length, step.instruction, previous)
+              : stepText(
+                  routine.name,
+                  index,
+                  run.steps.length,
+                  step.instruction,
+                  previous,
+                  index === 0 ? files : [],
+                );
+          step.deliveryId = await executor.send(step.botId, text);
+          await this.#persist();
+          const reply = await executor.waitFor(step.botId, step.deliveryId);
+          outcome = !reply.ok
+            ? { ok: false, error: reply.error ?? "The step did not finish." }
+            : kind === "condition"
+              ? conditionOutcome(reply.reply)
+              : { ok: true, result: reply.reply, next: reply.reply };
+        }
       } catch (error) {
-        outcome = {
-          ok: false,
-          reply: null,
-          error: error instanceof Error ? error.message : String(error),
-        };
+        outcome = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
       step.finishedAt = this.#now().toISOString();
       if (!outcome.ok) {
         step.status = "failed";
-        step.result = excerpt(outcome.error ?? "The step did not finish.");
-        for (const rest of run.steps.slice(index + 1)) rest.status = "skipped";
-        run.status = "failed";
-        run.finishedAt = this.#now().toISOString();
-        await this.#persist();
+        step.result = excerpt(outcome.error);
+        await finish("failed", index + 1);
         return;
       }
       step.status = "done";
-      step.result = outcome.reply ? excerpt(outcome.reply) : null;
-      previous = outcome.reply;
+      step.result = outcome.result ? excerpt(outcome.result) : null;
+      if (outcome.next !== undefined) previous = outcome.next;
+      if (outcome.stop) {
+        await finish("done", index + 1);
+        return;
+      }
+      if (outcome.no && definition.onNo?.action === "jump") {
+        const target = definition.onNo.stepId;
+        const to = plan.findIndex(
+          (candidate, position) => position > index && candidate.id === target,
+        );
+        if (to > index) {
+          for (const skipped of run.steps.slice(index + 1, to)) skipped.status = "skipped";
+          await this.#persist();
+          index = to;
+          continue;
+        }
+      }
+      if (outcome.no) {
+        await finish("done", index + 1);
+        return;
+      }
       await this.#persist();
+      index += 1;
     }
-    run.status = "done";
-    run.finishedAt = this.#now().toISOString();
-    await this.#persist();
+    await finish("done", run.steps.length);
+  }
+
+  /** One owner card. Yes continues; no stops the run (as the owner asked); silence fails it. */
+  async #approve(
+    executor: RoutineExecutor,
+    routineName: string,
+    plan: Routine["steps"],
+    index: number,
+    previous: string | null,
+  ): Promise<StepOutcome> {
+    if (!executor.askApproval) return { ok: false, error: "Approvals are unavailable." };
+    const step = plan[index] as Routine["steps"][number];
+    // The card belongs to the coworker whose work is being approved (or the first one).
+    const owner =
+      plan.slice(0, index).reverse().find(usesCoworker) ?? plan.find(usesCoworker) ?? null;
+    if (!owner) return { ok: false, error: "This routine has no coworker to ask for." };
+    const shown = previous
+      ? previous.length > APPROVAL_PREVIEW
+        ? `${previous.slice(0, APPROVAL_PREVIEW)}\n…`
+        : previous
+      : null;
+    const decision = await executor.askApproval({
+      botId: owner.botId,
+      routineName,
+      question: step.instruction,
+      details: shown
+        ? `Routine "${routineName}" is waiting for you. The result so far:\n\n${shown}`
+        : `Routine "${routineName}" is waiting for you before it goes on.`,
+    });
+    if (decision === "approved") return { ok: true, result: "Approved." };
+    if (decision === "rejected") {
+      return { ok: true, result: "Not approved, so the routine stopped here.", stop: true };
+    }
+    return { ok: false, error: "No answer within 24 hours, so the routine stopped." };
+  }
+
+  async #output(
+    executor: RoutineExecutor,
+    routineName: string,
+    step: Routine["steps"][number],
+    previous: string | null,
+  ): Promise<StepOutcome> {
+    const text = previous?.trim();
+    if (!text) return { ok: false, error: "There is no result to send yet." };
+    const output = step.output;
+    if (output?.kind === "telegram") {
+      if (!executor.sendTelegram) return { ok: false, error: "Telegram is not set up." };
+      await executor.sendTelegram(`${routineName}\n\n${text}`);
+      return { ok: true, result: "Sent to Telegram." };
+    }
+    if (output?.kind === "file") {
+      const path = await writeOutputFile(output.folder, routineName, text, this.#now());
+      return { ok: true, result: `Saved to ${path}` };
+    }
+    return { ok: false, error: "This output step has no destination." };
   }
 
   #require(routineId: string): Routine {
@@ -455,6 +562,154 @@ function stepText(
   const context =
     previous.length > CONTEXT_LIMIT ? `${previous.slice(0, CONTEXT_LIMIT)}\n…` : previous;
   return `${header}\n\nResult of step ${index} (use as input):\n${context}`;
+}
+
+type StepOutcome =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      /** Shown on the step. */
+      result: string | null;
+      /** What the next step receives; absent = the previous result passes through. */
+      next?: string | null;
+      /** A condition answered no. */
+      no?: boolean;
+      /** End the run here as done (the owner said no). */
+      stop?: boolean;
+    };
+
+/** How much of the result so far an approval card shows. */
+const APPROVAL_PREVIEW = 1_500;
+
+type StepDefinition = Routine["steps"][number];
+
+/** Agent and condition steps are done by a coworker; approval and output steps are not. */
+function usesCoworker(step: StepDefinition): boolean {
+  return step.kind === undefined || step.kind === "agent" || step.kind === "condition";
+}
+
+function conditionText(
+  name: string,
+  index: number,
+  total: number,
+  question: string,
+  previous: string | null,
+): string {
+  const header = `[Routine "${name}" · step ${index + 1}/${total} · yes/no check] ${question}`;
+  const rule =
+    "Do not do any task. Only decide. Answer YES or NO as the first word, then one short reason.";
+  if (!previous) return `${header}\n\n${rule}`;
+  const context =
+    previous.length > CONTEXT_LIMIT ? `${previous.slice(0, CONTEXT_LIMIT)}\n…` : previous;
+  return `${header}\n\n${rule}\n\nResult of step ${index} (decide from this):\n${context}`;
+}
+
+/** The first word decides: yes/no in English, Hindi (haan/nahi) and Bengali (hyan/na). */
+export function parseYesNo(reply: string | null): boolean | null {
+  const word = reply
+    ?.trim()
+    .replace(/^[^\p{L}]+/u, "")
+    .match(/^[\p{L}\p{M}]+/u)?.[0]
+    ?.toLowerCase();
+  if (!word) return null;
+  if (["yes", "y", "haan", "han", "ha", "hyan", "हाँ", "हां", "হ্যাঁ"].includes(word)) return true;
+  if (["no", "n", "nahi", "nahin", "na", "नहीं", "না"].includes(word)) return false;
+  return null;
+}
+
+function conditionOutcome(reply: string | null): StepOutcome {
+  const answer = parseYesNo(reply);
+  if (answer === null) {
+    return { ok: false, error: "The coworker did not answer yes or no." };
+  }
+  const reason = reply?.trim() ?? "";
+  return { ok: true, result: reason || (answer ? "Yes" : "No"), no: !answer };
+}
+
+/** Writes the result as "<routine> <date time>.md" in the folder; never overwrites a file. */
+async function writeOutputFile(
+  folder: string,
+  routineName: string,
+  text: string,
+  now: Date,
+): Promise<string> {
+  const info = await stat(folder).catch(() => null);
+  if (!info?.isDirectory()) throw new Error(`The folder ${folder} no longer exists.`);
+  const safe = routineName
+    .replace(/[<>:"/\\|?*\p{Cc}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const base = `${(safe || "Routine").slice(0, 80)} ${stamp}`;
+  for (let attempt = 1; attempt <= 50; attempt += 1) {
+    const path = join(folder, attempt === 1 ? `${base}.md` : `${base} (${attempt}).md`);
+    try {
+      await writeFile(path, `${text}\n`, { encoding: "utf8", flag: "wx" });
+      return path;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+  throw new Error("Could not find a free file name in that folder.");
+}
+
+/** Validates the steps from the window. Ids are kept, so a condition can name a later step. */
+export async function parseRoutineSteps(raw: SaveRoutineInput["steps"]): Promise<StepDefinition[]> {
+  const steps: StepDefinition[] = [];
+  for (const step of raw) {
+    const kind = step.kind ?? "agent";
+    if (!["agent", "condition", "approval", "output"].includes(kind)) {
+      throw new Error("Unknown step type.");
+    }
+    const id = typeof step.id === "string" && step.id ? step.id.slice(0, 80) : randomUUID();
+    const instruction = typeof step.instruction === "string" ? step.instruction.trim() : "";
+    const parsed: StepDefinition = { id, botId: "", instruction: instruction.slice(0, 20_000) };
+    if (kind !== "agent") parsed.kind = kind;
+    if (kind === "agent" || kind === "condition") {
+      if (typeof step.botId !== "string" || !step.botId) {
+        throw new Error("Pick a coworker for every step.");
+      }
+      parsed.botId = step.botId;
+    }
+    if (kind === "agent" && !instruction) throw new Error("Every step needs an instruction.");
+    if (kind === "condition" && !instruction) throw new Error("Write the yes/no question.");
+    if (kind === "approval" && !instruction) throw new Error("Write what you want to approve.");
+    if (kind === "condition") {
+      const onNo = step.onNo;
+      parsed.onNo =
+        isRecord(onNo) && onNo.action === "jump" && typeof onNo.stepId === "string"
+          ? { action: "jump", stepId: onNo.stepId }
+          : { action: "stop" };
+    }
+    if (kind === "output") {
+      const output = step.output;
+      if (isRecord(output) && output.kind === "telegram") {
+        parsed.output = { kind: "telegram" };
+      } else if (isRecord(output) && output.kind === "file" && typeof output.folder === "string") {
+        const folder = output.folder.trim();
+        if (!folder || !isAbsolute(folder)) throw new Error("Choose a folder for the output.");
+        const info = await stat(folder).catch(() => null);
+        if (!info?.isDirectory()) throw new Error("The output folder does not exist.");
+        parsed.output = { kind: "file", folder: resolve(folder) };
+      } else {
+        throw new Error("Choose where the output goes.");
+      }
+    }
+    steps.push(parsed);
+  }
+  if (!steps.some(usesCoworker)) throw new Error("Add at least one coworker step.");
+  if ((steps[0]?.kind ?? "agent") === "output") {
+    throw new Error("An output step needs a step before it.");
+  }
+  const ids = steps.map((step) => step.id);
+  if (new Set(ids).size !== ids.length) throw new Error("Two steps have the same id.");
+  for (const [index, step] of steps.entries()) {
+    if (step.onNo?.action !== "jump") continue;
+    const target = step.onNo.stepId;
+    if (ids.indexOf(target) <= index) throw new Error("A “no” can only jump to a later step.");
+  }
+  return steps;
 }
 
 function excerpt(text: string): string {

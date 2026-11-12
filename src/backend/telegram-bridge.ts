@@ -1391,6 +1391,15 @@ export class TelegramBridge {
     return chosen ? (bots.find((bot) => bot.id === chosen) ?? null) : (bots[0] ?? null);
   }
 
+  /** A routine's Output step: the text goes to the paired owner chat, split to Telegram's limit. */
+  async sendToOwner(text: string): Promise<void> {
+    const chatId = this.#state?.chatId;
+    if (!this.#running || chatId == null) {
+      throw new Error("Telegram is not connected. Pair it in Settings → Telegram first.");
+    }
+    for (const chunk of telegramChunks(text)) await this.#send(chatId, chunk);
+  }
+
   async #send(chatId: number, text: string): Promise<void> {
     if (!this.#state) return;
     await this.#call(this.#state.token, "sendMessage", { chat_id: chatId, text });

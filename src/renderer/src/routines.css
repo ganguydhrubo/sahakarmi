@@ -615,3 +615,50 @@
   overflow-wrap: anywhere;
   font-size: var(--fs-xs);
 }
+
+/* Approval and output steps: an icon where coworker steps show an avatar. */
+.routine-kind-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: rgb(var(--primary-rgb) / 0.12);
+  font-size: 17px;
+  flex: none;
+}
+
+.routine-output-choice {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.routine-output-choice > legend {
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+/* An Approval step waiting for the owner. */
+.routine-step-waiting {
+  background: rgb(var(--primary-rgb) / 0.16);
+  color: var(--primary);
+}
+
+.routine-node-waiting {
+  border-color: var(--primary);
+}
+
+/* The step-field labels are grids; a radio sits beside its text. */
+.routine-step-fields .routine-output-choice > label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.routine-output-choice .routine-folder-trigger {
+  margin: 0 0 4px 24px;
+}
