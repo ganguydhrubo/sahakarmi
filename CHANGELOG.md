@@ -5,6 +5,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-12
+
 ### Added
 
 - Workflows 2.0 (Routines): three new step types besides "Coworker does a task".
