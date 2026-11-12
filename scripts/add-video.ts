@@ -144,8 +144,9 @@ const info = JSON.parse(probe.stdout || "{}") as {
   format?: { duration?: string };
   streams?: { codec_type: string; codec_name: string; width?: number; height?: number }[];
 };
-const picture = info.streams?.find((stream) => stream.codec_type === "video");
-if (!picture?.width || !picture.height) fail("This file has no video picture.");
+const found = info.streams?.find((stream) => stream.codec_type === "video");
+if (!found?.width || !found.height) fail("This file has no video picture.");
+const picture = found as { width: number; height: number; codec_name?: string };
 const seconds = Math.round(Number(info.format?.duration ?? 0) * 10) / 10;
 const megabytes = statSync(source).size / 1_000_000;
 say(
