@@ -832,12 +832,21 @@ export class HostServer {
       if (!pending) throw new HttpError(409, "This request was already decided or has expired.");
       // The same call and policy as the desktop card; only the audit label differs.
       const note = typeof body.note === "string" ? body.note.trim().slice(0, 1_000) : "";
-      await agent.decideApproval({
-        approvalId,
-        decision,
-        decidedBy: `phone:${device.id}`,
-        ...(note ? { note } : {}),
-      });
+      try {
+        await agent.decideApproval({
+          approvalId,
+          decision,
+          decidedBy: `phone:${device.id}`,
+          ...(note ? { note } : {}),
+        });
+      } catch (error) {
+        // Decided on the PC a moment ago: say so instead of "something went wrong".
+        const still = agent
+          .listApprovals()
+          .some((approval) => approval.id === approvalId && approval.status === "pending");
+        if (!still) throw new HttpError(409, "This request was already decided or has expired.");
+        throw error;
+      }
       await this.#record(device.name, decision, pending.title);
       return { ok: true };
     }

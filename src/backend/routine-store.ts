@@ -531,6 +531,13 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     const note = typeof decision === "string" ? null : decision.note;
     if (verdict === "approved") {
       if (!note) return { ok: true, result: "Approved." };
+      // An Output step sends the result word for word: the note must not be sent along with it.
+      if ((plan[index + 1]?.kind ?? "agent") === "output") {
+        return {
+          ok: true,
+          result: `Approved. Your note: ${note} (The next step sends the result as it is, so no coworker read this note.)`,
+        };
+      }
       // The next steps read the owner's note together with the result so far.
       return {
         ok: true,

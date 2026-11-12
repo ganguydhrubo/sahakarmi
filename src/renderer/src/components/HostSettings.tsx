@@ -193,6 +193,7 @@ function HostPanel(props: { api: HostDesktopApi }) {
   const tailscale = () => current()?.tailscale;
   const step1Done = () => tailscale()?.connected === true || Boolean(current()?.address);
   const step2Done = () => Boolean(current()?.address);
+  const ownAddress = () => Boolean(current()?.address && !current()?.addressFromTailscale);
   const step3Done = () => (current()?.devices.length ?? 0) > 0;
   const msLeft = () => {
     const pairing = current()?.pairing;
@@ -228,7 +229,9 @@ function HostPanel(props: { api: HostDesktopApi }) {
             {busy() === "enable"
               ? t("hostStarting")
               : current()?.running
-                ? t("hostOn")
+                ? current()?.address
+                  ? t("hostOn")
+                  : t("hostOnSetup")
                 : t("hostOff")}
           </span>
         </div>
@@ -330,7 +333,7 @@ function HostPanel(props: { api: HostDesktopApi }) {
             done={step2Done()}
             active={step1Done() && !step2Done()}
             title={t("hostStep2")}
-            summary={t("hostStep2Summary")}
+            summary={ownAddress() ? t("hostStep2SummaryOwn") : t("hostStep2Summary")}
           >
             <p class="host-hint">{t("hostStep2Hint")}</p>
             <Show when={step1Done()}>
@@ -368,6 +371,18 @@ function HostPanel(props: { api: HostDesktopApi }) {
                 <Show when={step2Done()}>
                   <Show when={!step3Done()}>
                     <p class="host-hint">{t("hostStep3Hint")}</p>
+                    <Show when={current()?.installQrSvg}>
+                      <details class="host-type-code">
+                        <summary>{t("hostPhoneNoTailscale")}</summary>
+                        <div
+                          class="host-install-qr"
+                          role="img"
+                          aria-label={t("hostStep1PhoneHint")}
+                          innerHTML={current()?.installQrSvg ?? ""}
+                        />
+                        <small class="host-hint">{t("hostStep1Same")}</small>
+                      </details>
+                    </Show>
                   </Show>
                   <div class="host-actions">
                     <button
@@ -541,7 +556,7 @@ function HostPanel(props: { api: HostDesktopApi }) {
           </Show>
         </details>
 
-        <p class="host-safety">{t("hostSafety")}</p>
+        <p class="host-safety">{ownAddress() ? t("hostSafetyOwn") : t("hostSafety")}</p>
       </Show>
     </div>
   );

@@ -51,7 +51,8 @@ describe("Phone & Host settings", () => {
     expect(screen.queryByText("Three steps, once")).not.toBeInTheDocument();
     fireEvent.click(toggle);
     await waitFor(() => expect(api.setEnabled).toHaveBeenCalledWith(true));
-    expect(await screen.findByText("On: ready for your phone")).toBeInTheDocument();
+    // Not set up yet, so it does not claim the phone can connect.
+    expect(await screen.findByText("On: finish the steps below")).toBeInTheDocument();
   });
 
   it("guides to the first missing step: get Tailscale", async () => {

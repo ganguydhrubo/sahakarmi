@@ -1877,8 +1877,13 @@ function showBackgroundTray(): void {
       setPaused: (paused) => void setAllCoworkersPaused(paused),
       isPaused: () => allPaused,
       quit: () => app.quit(),
+      // Says "on" only while the phone page is really being served.
       statusLine: () =>
-        hostServer?.enabled ? "Sahkarmi Host is on: your phone can reach this PC" : null,
+        !hostServer?.enabled
+          ? null
+          : hostServer.port !== null
+            ? "Sahkarmi Host is on for your phone"
+            : "Sahkarmi Host could not start: see Settings, Phone & Host",
     });
   }
   backgroundTray.show();

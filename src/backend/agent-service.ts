@@ -429,6 +429,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     string,
     (outcome: "approved" | "rejected" | "timed-out", note?: string | null) => void
   >();
+  /** Cards made by a routine's own Approval step: their note goes to the routine, not a chat. */
+  readonly #routineStepApprovals = new Set<string>();
   /** Approvals a coworker stopped waiting for (its runtime's tool time limit), by approval id. */
   readonly #deferredPermissions = new Map<
     string,
@@ -1565,9 +1567,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       expiresAt: new Date(Date.now() + input.timeoutMs).toISOString(),
     });
     this.#emit({ type: "approvals-changed", approvals: this.#approvals.list() });
+    this.#routineStepApprovals.add(approval.id);
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.#permissionWaiters.delete(approval.id);
+        this.#routineStepApprovals.delete(approval.id);
         resolve("timed-out");
         void this.#approvals
           ?.expire(approval.id, "Timed out: no decision in time, so the routine stopped.")
@@ -1767,12 +1771,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       this.#permissionWaiters.delete(approval.id);
       waiter?.(approval.status === "approved" ? "approved" : "rejected", approval.note);
       // The paused action itself only hears yes or no, so a note the owner wrote is passed to
-      // the coworker straight away (into its running turn when possible). Routine cards hand
-      // the note to the routine instead.
+      // the coworker straight away (into its running turn when possible). A routine's own
+      // Approval step hands the note to the routine instead. Not awaited: joining a running
+      // turn can take a while, and the decision itself is already made.
+      const routineStep = this.#routineStepApprovals.delete(approval.id);
       const note = approval.note?.trim();
-      if (waiter && note && approval.provenance?.kind !== "routine") {
+      if (waiter && note && !routineStep) {
         const approved = approval.status === "approved";
-        await this.#notifyBot(
+        void this.#notifyBot(
           approval.botId,
           [
             `[Approval ${approved ? "APPROVED" : "REJECTED"}] "${approval.title}".`,
@@ -2618,7 +2624,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await this.ensureProvider(providerForBot(bot));
     // Stop pauses the queue so nothing else starts behind the owner's back; a new message from
     // the owner is the clearest "go on" there is, so it resumes the queue instead of waiting.
-    if (this.#mailbox.listQueue(bot.id).paused) await this.#mailbox.setPaused(bot.id, false);
+    // The app's own notes (origin "system") wait until the owner says go on.
+    if (input.origin !== "system" && this.#mailbox.listQueue(bot.id).paused) {
+      await this.#mailbox.setPaused(bot.id, false);
+    }
     const receipt = await this.#mailbox.enqueue({
       sender: { kind: "user" },
       origin: input.origin ?? "owner",
@@ -2645,8 +2654,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#emit({ type: "bots-changed", bots: this.#store.list() });
     this.#emitConversation(snapshot);
     this.#emitQueue(bot.id);
-    // Only what the owner types in the composer joins a running turn. Team-run tasks, routine
-    // steps, schedules and the app's own notes queue, so each gets a turn (and a reply) of its own.
+    // Only what the owner types in the composer, and the owner's note on an approval, joins a
+    // running turn. Team-run tasks, routine steps, schedules and other app notes queue, so each
+    // gets a turn (and a reply) of its own.
     if (input.steer === true && (await this.#steerActiveTurn(bot, delivery))) {
       this.#syncMailboxMessages(snapshot);
       this.#emitConversation(snapshot);

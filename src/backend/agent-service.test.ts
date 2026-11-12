@@ -436,6 +436,37 @@ describe.sequential("AgentService", () => {
     );
   });
 
+  it("keeps a routine card's note for the routine, and never wakes a stopped coworker with a note", async () => {
+    const { store, mailbox } = stores();
+    const approvals = new ApprovalStore(join(root, "user-data"));
+    service = new AgentService(store, mailbox, fakeBrowser(), null, 30_000, "codex", approvals);
+    await service.initialize();
+    const asked = service.requestRoutineApproval({
+      botId: "arjun-research",
+      routineName: "Weekly report",
+      question: "Post the report?",
+      details: "Waiting for you.",
+      timeoutMs: 60_000,
+    });
+    await waitFor(() => service?.listApprovals().length === 1);
+    const [card] = service.listApprovals();
+    await service.decideApproval({
+      approvalId: card?.id ?? "",
+      decision: "approved",
+      note: "Only LinkedIn",
+    });
+    expect(await asked).toEqual({ decision: "approved", note: "Only LinkedIn" });
+    expect(service.listQueue("arjun-research").deliveries).toHaveLength(0);
+
+    await service.setQueuePaused("arjun-research", true);
+    await service.sendMessage({
+      botId: "arjun-research",
+      text: "[Approval] note",
+      origin: "system",
+    });
+    expect(service.listQueue("arjun-research").paused).toBe(true);
+  });
+
   it("tells a coworker whose runtime cannot wait, and lets its repeat through once approved", async () => {
     const { store, mailbox } = stores();
     await store.initialize();

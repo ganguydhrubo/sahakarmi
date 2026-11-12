@@ -16,6 +16,11 @@ export const hostEn = {
   hostHomeScreen:
     "Tip: keep it on your home screen like an app. iPhone (Safari): Share, then Add to Home Screen. Android (Chrome): ⋮, then Add to Home screen.",
   hostStep1PcHint: "Opens Tailscale's website. Install it, then sign in.",
+  hostOnSetup: "On: finish the steps below",
+  hostStep2SummaryOwn: "Using your own address",
+  hostPhoneNoTailscale: "Phone doesn't have Tailscale yet? Scan this first",
+  hostSafetyOwn:
+    "You use your own address, so who can open it depends on that service: make sure it is not open to everyone. Each phone still needs its own pairing key, risky actions still wait for your Approve, and every phone action is listed here.",
   hostSwitch: "Sahkarmi Host",
   hostOn: "On: ready for your phone",
   hostStarting: "Starting…",
@@ -95,6 +100,11 @@ export const hostHi: HostDictionary = {
   hostHomeScreen:
     "सुझाव: इसे ऐप की तरह होम स्क्रीन पर रखें। iPhone (Safari): Share, फिर Add to Home Screen। Android (Chrome): ⋮, फिर Add to Home screen।",
   hostStep1PcHint: "Tailscale की वेबसाइट खुलेगी। इंस्टॉल करें, फिर साइन इन करें।",
+  hostOnSetup: "चालू: नीचे के कदम पूरे करें",
+  hostStep2SummaryOwn: "आपका अपना पता इस्तेमाल हो रहा है",
+  hostPhoneNoTailscale: "फ़ोन पर अभी Tailscale नहीं है? पहले इसे स्कैन करें",
+  hostSafetyOwn:
+    "आप अपना पता इस्तेमाल कर रहे हैं, इसलिए इसे कौन खोल सकता है यह उस सेवा पर निर्भर है: पक्का करें कि यह सबके लिए खुला न हो। फिर भी हर फ़ोन को अपनी पेयरिंग कुंजी चाहिए, जोखिम वाले काम आपकी मंज़ूरी का इंतज़ार करते हैं, और फ़ोन का हर काम यहाँ दिखता है।",
   hostSwitch: "सहकर्मी होस्ट",
   hostOn: "चालू: फ़ोन के लिए तैयार",
   hostStarting: "शुरू हो रहा है…",
@@ -169,6 +179,11 @@ export const hostBn: HostDictionary = {
   hostHomeScreen:
     "টিপ: এটি অ্যাপের মতো হোম স্ক্রিনে রাখুন। iPhone (Safari): Share, তারপর Add to Home Screen। Android (Chrome): ⋮, তারপর Add to Home screen।",
   hostStep1PcHint: "Tailscale-এর ওয়েবসাইট খুলবে। ইনস্টল করে সাইন ইন করুন।",
+  hostOnSetup: "চালু: নিচের ধাপগুলো শেষ করুন",
+  hostStep2SummaryOwn: "আপনার নিজের ঠিকানা ব্যবহার হচ্ছে",
+  hostPhoneNoTailscale: "ফোনে এখনও Tailscale নেই? আগে এটি স্ক্যান করুন",
+  hostSafetyOwn:
+    "আপনি নিজের ঠিকানা ব্যবহার করছেন, তাই কে এটি খুলতে পারবে তা সেই পরিষেবার উপর নির্ভর করে: নিশ্চিত করুন এটি সবার জন্য খোলা নয়। তবুও প্রতিটি ফোনের নিজস্ব পেয়ারিং কী লাগে, ঝুঁকির কাজ আপনার অনুমোদনের অপেক্ষা করে, আর ফোনের প্রতিটি কাজ এখানে দেখা যায়।",
   hostSwitch: "সহকর্মী হোস্ট",
   hostOn: "চালু: ফোনের জন্য তৈরি",
   hostStarting: "চালু হচ্ছে…",

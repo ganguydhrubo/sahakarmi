@@ -383,9 +383,12 @@ const JS = String.raw`"use strict";
   function decide(item, decision) {
     state.busyIds[item.id] = true; render();
     api("/api/approval", { approvalId: item.id, decision: decision, note: (state.notes[item.id] || "").trim() })
-      .then(function () { toast(decision === "approved" ? "Approved. " + item.coworker + " carries on." : "Rejected. " + item.coworker + " will not do it."); })
+      .then(function () {
+        delete state.notes[item.id]; // Only once it was sent: a failed send keeps what was typed.
+        toast(decision === "approved" ? "Approved. " + item.coworker + " carries on." : "Rejected. " + item.coworker + " will not do it.");
+      })
       .catch(function (cause) { toast(cause.message); })
-      .then(function () { delete state.busyIds[item.id]; delete state.notes[item.id]; refresh(); });
+      .then(function () { delete state.busyIds[item.id]; refresh(); });
   }
 
   function renderCoworkers(items) {

@@ -374,6 +374,14 @@ describe("Sahkarmi Host", () => {
     ]);
   });
 
+  it("says already decided when the PC decides a moment before the phone", async () => {
+    agent.listApprovals.mockReturnValueOnce([approval()]).mockReturnValue([]);
+    agent.decideApproval.mockRejectedValueOnce(new Error("Approval is no longer pending."));
+    const key = await pairPhone();
+    const result = await post("/api/approval", { approvalId: "ap-1", decision: "approved" }, key);
+    expect(result.status).toBe(409);
+  });
+
   it("answers a too-large message with a clear error", async () => {
     const key = await pairPhone();
     const result = await post("/api/chat", { botId: "asha", text: "x".repeat(40_000) }, key);

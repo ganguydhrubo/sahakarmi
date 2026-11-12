@@ -2565,10 +2565,19 @@ export function Conversation(props: ConversationProps) {
   // Older messages load above what the owner is reading: keep that spot still, and ask once
   // per batch for each chat.
   let earlierAsked = "";
-  let keepFromBottom: number | null = null;
+  // The spot is kept only for this chat and only briefly: if nothing older arrives, a later
+  // reply or another chat must not jump to it.
+  let keepFromBottom: { botId: string; fromBottom: number; until: number } | null = null;
   function loadEarlier() {
     const element = scrollElement;
-    if (element) keepFromBottom = element.scrollHeight - element.scrollTop;
+    const botId = props.bot?.id;
+    if (element && botId) {
+      keepFromBottom = {
+        botId,
+        fromBottom: element.scrollHeight - element.scrollTop,
+        until: Date.now() + 5_000,
+      };
+    }
     props.onLoadEarlier?.();
   }
   createEffect(
@@ -2576,9 +2585,10 @@ export function Conversation(props: ConversationProps) {
       () => props.messages.length,
       () => {
         const element = scrollElement;
-        const fromBottom = keepFromBottom;
-        if (!element || fromBottom === null) return;
+        const kept = keepFromBottom;
         keepFromBottom = null;
+        if (!element || !kept || kept.botId !== props.bot?.id || Date.now() > kept.until) return;
+        const fromBottom = kept.fromBottom;
         requestAnimationFrame(() => {
           element.scrollTop = element.scrollHeight - fromBottom;
         });

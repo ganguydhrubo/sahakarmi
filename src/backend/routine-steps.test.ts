@@ -205,6 +205,25 @@ describe("routine step types", () => {
     expect(exec.sent[1]?.text).toContain("Post it only on LinkedIn");
   });
 
+  it("never sends the owner's note out with the result when the next step is an output", async () => {
+    const folder = join(root, "out-note");
+    await mkdir(folder);
+    const { run } = await runOnce(
+      [
+        { botId: "asha", instruction: "Write the report" },
+        { kind: "approval", botId: "", instruction: "Save the report?" },
+        { kind: "output", botId: "", instruction: "", output: { kind: "file", folder } },
+      ],
+      executor(["Report text"], { decision: "approved", note: "Remove the prices" }),
+    );
+    expect(run.status).toBe("done");
+    expect(run.steps[1]?.result).toContain("no coworker read this note");
+    const [file] = await readdir(folder);
+    const text = await readFile(join(folder, file ?? ""), "utf8");
+    expect(text).toContain("Report text");
+    expect(text).not.toContain("Remove the prices");
+  });
+
   it("stops (as done) when the owner says no, and fails when nobody answers", async () => {
     const steps: SaveRoutineInput["steps"] = [
       { botId: "asha", instruction: "Write the report" },
