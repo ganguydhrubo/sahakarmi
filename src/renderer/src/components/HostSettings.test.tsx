@@ -16,6 +16,7 @@ function status(patch: Partial<HostStatus> = {}): HostStatus {
     devices: [],
     pairing: null,
     activity: [],
+    installQrSvg: "<svg data-install></svg>",
     error: null,
     ...patch,
   };

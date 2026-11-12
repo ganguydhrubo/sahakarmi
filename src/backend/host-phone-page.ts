@@ -158,6 +158,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .card-pc { border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
 .risk { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; }
 .amount { background: color-mix(in srgb, var(--brand) 16%, transparent); color: var(--brand); padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; }
+.note-input { width: 100%; min-width: 0; margin-top: 12px; font: inherit; font-size: 15px; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 .actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 14px; }
 .actions button { min-height: 50px; border-radius: 14px; font-weight: 700; font-size: 16px; }
 .reject { background: transparent; border: 1.5px solid var(--line); }
@@ -208,7 +209,7 @@ const JS = String.raw`"use strict";
   var key = null;
   var previousKey = null;
   try { key = localStorage.getItem(KEY); } catch (e) { key = null; }
-  var state = { tab: "approvals", overview: null, chatBot: null, busyIds: {}, timer: null, chatTimer: null, offline: false };
+  var state = { tab: "approvals", overview: null, chatBot: null, busyIds: {}, notes: {}, timer: null, chatTimer: null, offline: false };
 
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) {
@@ -326,7 +327,9 @@ const JS = String.raw`"use strict";
     var count = data.approvals.length + (data.waitingOnPc || []).length;
     $("badge").hidden = count === 0; $("badge").textContent = count > 9 ? "9+" : String(count);
     document.title = count ? "(" + count + ") Sahkarmi" : "Sahkarmi";
-    renderApprovals(data.approvals, data.waitingOnPc); renderCoworkers(data.coworkers); renderRoutines(data.routines);
+    // Never redraw the cards under someone typing a note.
+    var typing = document.activeElement && document.activeElement.classList.contains("note-input");
+    if (!typing) renderApprovals(data.approvals, data.waitingOnPc); renderCoworkers(data.coworkers); renderRoutines(data.routines);
   }
 
   function empty(icon, title, text) {
@@ -360,6 +363,13 @@ const JS = String.raw`"use strict";
         var tech = el("details", "tech"); tech.appendChild(el("summary", "", "Technical details"));
         tech.appendChild(el("pre", "", item.technical)); card.appendChild(tech);
       }
+      // A note goes to the coworker with the decision, exactly like on the PC.
+      var note = el("input", "note-input"); note.type = "text"; note.maxLength = 1000;
+      note.placeholder = "Add a note for " + item.coworker + " (optional)";
+      note.setAttribute("aria-label", "Note for " + item.coworker);
+      note.value = state.notes[item.id] || "";
+      note.addEventListener("input", function () { state.notes[item.id] = note.value; });
+      card.appendChild(note);
       var actions = el("div", "actions");
       var reject = el("button", "reject", "Reject"); reject.type = "button";
       var approve = el("button", "approve", "Approve"); approve.type = "button";
@@ -372,10 +382,10 @@ const JS = String.raw`"use strict";
 
   function decide(item, decision) {
     state.busyIds[item.id] = true; render();
-    api("/api/approval", { approvalId: item.id, decision: decision })
+    api("/api/approval", { approvalId: item.id, decision: decision, note: (state.notes[item.id] || "").trim() })
       .then(function () { toast(decision === "approved" ? "Approved. " + item.coworker + " carries on." : "Rejected. " + item.coworker + " will not do it."); })
       .catch(function (cause) { toast(cause.message); })
-      .then(function () { delete state.busyIds[item.id]; refresh(); });
+      .then(function () { delete state.busyIds[item.id]; delete state.notes[item.id]; refresh(); });
   }
 
   function renderCoworkers(items) {

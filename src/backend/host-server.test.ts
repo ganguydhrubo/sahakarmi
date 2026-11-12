@@ -290,13 +290,18 @@ describe("Sahkarmi Host", () => {
 
   it("decides through the desktop call, marked as from this phone, and logs it", async () => {
     const key = await pairPhone();
-    const result = await post("/api/approval", { approvalId: "ap-1", decision: "approved" }, key);
+    const result = await post(
+      "/api/approval",
+      { approvalId: "ap-1", decision: "approved", note: "Only to Ravi" },
+      key,
+    );
     expect(result.status).toBe(200);
     const deviceId = (await host.status()).devices[0]?.id;
     expect(agent.decideApproval).toHaveBeenCalledWith({
       approvalId: "ap-1",
       decision: "approved",
       decidedBy: `phone:${deviceId}`,
+      note: "Only to Ravi",
     });
     expect((await host.status()).activity[0]).toMatchObject({ action: "approved" });
     agent.listApprovals.mockReturnValue([approval("approved")]);

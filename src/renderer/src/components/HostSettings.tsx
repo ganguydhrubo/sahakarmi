@@ -81,6 +81,10 @@ function Step(props: {
   done: boolean;
   active: boolean;
   title: string;
+  /** One line shown once the step is done, instead of its instructions. */
+  summary?: string;
+  /** Keep the step's content visible after it is done (pairing another phone). */
+  keepOpen?: boolean;
   children: JSX.Element;
 }) {
   return (
@@ -99,7 +103,16 @@ function Step(props: {
             <span class="host-step-done-label">{t("hostStepDone")}</span>
           </Show>
         </h4>
-        {props.children}
+        <Show
+          when={!props.done || props.keepOpen}
+          fallback={
+            <Show when={props.summary}>
+              <p class="host-step-summary">{props.summary}</p>
+            </Show>
+          }
+        >
+          {props.children}
+        </Show>
       </div>
     </li>
   );
@@ -247,37 +260,69 @@ function HostPanel(props: { api: HostDesktopApi }) {
       <Show when={current()?.enabled} fallback={<p class="host-off-hint">{t("hostOffHint")}</p>}>
         <h4 class="host-steps-title">{t("hostStepsTitle")}</h4>
         <ol class="host-steps">
-          <Step number={1} done={step1Done()} active={!step1Done()} title={t("hostStep1")}>
-            <p class="host-hint">{t("hostStep1Hint")}</p>
-            <Show when={!step1Done()}>
-              <p class="host-note">
-                {tailscale()?.installed ? t("hostStep1SignIn") : t("hostStep1Missing")}
-              </p>
-              <div class="host-actions">
-                <Show when={!tailscale()?.installed}>
-                  <button
-                    type="button"
-                    class="button-primary"
-                    onClick={() => void window.sahkarmi.openExternal("tailscale-download")}
-                  >
-                    {t("hostGetTailscale")}
-                  </button>
-                </Show>
-                <button
-                  type="button"
-                  class="button-secondary"
-                  disabled={busy() !== null}
-                  onClick={() => void run("check", () => api.status({ refresh: true }))}
+          <Step
+            number={1}
+            done={step1Done()}
+            active={!step1Done()}
+            title={t("hostStep1")}
+            summary={
+              tailscale()?.dnsName
+                ? t("hostStep1Connected", { name: tailscale()?.dnsName ?? "" })
+                : undefined
+            }
+          >
+            <div class="host-install">
+              <div class="host-install-tile">
+                <span class="host-install-icon">
+                  <PcIcon size={26} />
+                </span>
+                <strong>{t("hostStep1Pc")}</strong>
+                <Show
+                  when={tailscale()?.installed}
+                  fallback={
+                    <>
+                      <button
+                        type="button"
+                        class="button-primary"
+                        onClick={() => void window.sahkarmi.openExternal("tailscale-download")}
+                      >
+                        {t("hostGetTailscale")}
+                      </button>
+                      <small>{t("hostStep1PcHint")}</small>
+                    </>
+                  }
                 >
-                  {t("hostCheckAgain")}
-                </button>
+                  <small>{t("hostStep1SignIn")}</small>
+                </Show>
               </div>
-            </Show>
-            <Show when={step1Done() && tailscale()?.dnsName}>
-              <p class="host-note">
-                {t("hostStep1Connected", { name: tailscale()?.dnsName ?? "" })}
-              </p>
-            </Show>
+              <div class="host-install-tile">
+                <span class="host-install-icon">
+                  <PhoneIcon size={26} />
+                </span>
+                <strong>{t("hostStep1Phone")}</strong>
+                <Show when={current()?.installQrSvg}>
+                  {/* Drawn on this PC from Tailscale's fixed download link. */}
+                  <div
+                    class="host-install-qr"
+                    role="img"
+                    aria-label={t("hostStep1PhoneHint")}
+                    innerHTML={current()?.installQrSvg ?? ""}
+                  />
+                </Show>
+                <small>{t("hostStep1PhoneHint")}</small>
+              </div>
+            </div>
+            <p class="host-hint">{t("hostStep1Same")}</p>
+            <div class="host-actions">
+              <button
+                type="button"
+                class="button-secondary"
+                disabled={busy() !== null}
+                onClick={() => void run("check", () => api.status({ refresh: true }))}
+              >
+                {busy() === "check" ? t("hostChecking") : t("hostCheckAgain")}
+              </button>
+            </div>
           </Step>
 
           <Step
@@ -285,19 +330,14 @@ function HostPanel(props: { api: HostDesktopApi }) {
             done={step2Done()}
             active={step1Done() && !step2Done()}
             title={t("hostStep2")}
+            summary={t("hostStep2Summary")}
           >
             <p class="host-hint">{t("hostStep2Hint")}</p>
-            <Show when={current()?.address}>
-              <p class="host-address">
-                <span>{t("hostAddress")}</span>
-                <code>{current()?.address}</code>
-              </p>
-            </Show>
-            <Show when={!step2Done() && tailscale()?.connected}>
+            <Show when={step1Done()}>
               <div class="host-actions">
                 <button
                   type="button"
-                  class="button-primary"
+                  class="button-primary host-big-button"
                   disabled={busy() !== null}
                   onClick={() => void run("setup", () => api.setupTailscale())}
                 >
@@ -305,34 +345,9 @@ function HostPanel(props: { api: HostDesktopApi }) {
                 </button>
               </div>
             </Show>
-            <Show when={allowHint() && !step2Done()}>
+            <Show when={allowHint()}>
               <p class="host-note host-note-strong">{t("hostAllowOnce")}</p>
             </Show>
-            <details
-              class="host-own-address"
-              open={Boolean(current()?.address && !current()?.addressFromTailscale)}
-            >
-              <summary>{t("hostOwnAddress")}</summary>
-              <p class="host-hint">{t("hostOwnAddressHint")}</p>
-              <form
-                class="host-address-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void run("address", () => api.setAddress(address()));
-                }}
-              >
-                <input
-                  type="url"
-                  value={address()}
-                  placeholder={t("hostAddressPlaceholder")}
-                  aria-label={t("hostAddress")}
-                  onInput={(event) => setAddress(event.currentTarget.value)}
-                />
-                <button type="submit" class="button-secondary" disabled={busy() !== null}>
-                  {t("hostSave")}
-                </button>
-              </form>
-            </details>
           </Step>
 
           <Step
@@ -340,6 +355,7 @@ function HostPanel(props: { api: HostDesktopApi }) {
             done={step3Done()}
             active={step2Done() && !step3Done()}
             title={t("hostStep3")}
+            keepOpen
           >
             <Show when={justPaired()}>
               <p class="host-success" role="status">
@@ -350,11 +366,17 @@ function HostPanel(props: { api: HostDesktopApi }) {
               when={current()?.pairing && msLeft() > 0}
               fallback={
                 <Show when={step2Done()}>
-                  <p class="host-hint">{t("hostStep3Hint")}</p>
+                  <Show when={!step3Done()}>
+                    <p class="host-hint">{t("hostStep3Hint")}</p>
+                  </Show>
                   <div class="host-actions">
                     <button
                       type="button"
-                      class="button-primary"
+                      classList={{
+                        "button-primary": !step3Done(),
+                        "host-big-button": !step3Done(),
+                        "button-secondary": step3Done(),
+                      }}
                       disabled={busy() !== null}
                       onClick={() => {
                         setJustPaired(null);
@@ -364,6 +386,9 @@ function HostPanel(props: { api: HostDesktopApi }) {
                       {step3Done() ? t("hostPairAnother") : t("hostPair")}
                     </button>
                   </div>
+                  <Show when={step3Done()}>
+                    <p class="host-tip">{t("hostHomeScreen")}</p>
+                  </Show>
                 </Show>
               }
             >
@@ -376,11 +401,13 @@ function HostPanel(props: { api: HostDesktopApi }) {
                   innerHTML={current()?.pairing?.qrSvg ?? ""}
                 />
                 <div class="host-pairing-copy">
-                  <p class="host-hint">{t("hostStep3Hint")}</p>
-                  <p class="host-hint">{t("hostPairCode")}</p>
-                  <p class="host-code">{groupCode(current()?.pairing?.code ?? "")}</p>
-                  <code class="host-pair-url">{current()?.address}</code>
+                  <p class="host-pairing-lead">{t("hostStep3Hint")}</p>
                   <p class="host-expires">{t("hostPairExpires", { time: countdown(msLeft()) })}</p>
+                  <details class="host-type-code">
+                    <summary>{t("hostPairCode")}</summary>
+                    <code class="host-pair-url">{current()?.address}</code>
+                    <p class="host-code">{groupCode(current()?.pairing?.code ?? "")}</p>
+                  </details>
                   <button
                     type="button"
                     class="button-secondary"
@@ -484,6 +511,35 @@ function HostPanel(props: { api: HostDesktopApi }) {
             </ul>
           </section>
         </Show>
+
+        <details class="host-section host-advanced">
+          <summary>{t("hostAdvanced")}</summary>
+          <p class="host-hint">{t("hostOwnAddressHint")}</p>
+          <form
+            class="host-address-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run("address", () => api.setAddress(address()));
+            }}
+          >
+            <input
+              type="url"
+              value={address()}
+              placeholder={t("hostAddressPlaceholder")}
+              aria-label={t("hostAddress")}
+              onInput={(event) => setAddress(event.currentTarget.value)}
+            />
+            <button type="submit" class="button-secondary" disabled={busy() !== null}>
+              {t("hostSave")}
+            </button>
+          </form>
+          <Show when={current()?.address}>
+            <p class="host-address">
+              <span>{t("hostAddress")}</span>
+              <code>{current()?.address}</code>
+            </p>
+          </Show>
+        </details>
 
         <p class="host-safety">{t("hostSafety")}</p>
       </Show>

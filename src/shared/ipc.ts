@@ -2970,6 +2970,8 @@ export interface HostStatus {
   tailscale: HostTailscaleStatus;
   devices: HostDevice[];
   pairing: { code: string; url: string; qrSvg: string; expiresAt: string } | null;
+  /** A QR the phone scans to install Tailscale from its own app store (iPhone or Android). */
+  installQrSvg: string;
   activity: HostActivity[];
   error: string | null;
 }

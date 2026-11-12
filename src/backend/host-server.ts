@@ -70,6 +70,8 @@ interface Pairing {
 }
 
 export const DEFAULT_HOST_PORT = 47821;
+/** Tailscale's own page: it sends an iPhone to the App Store and Android to Google Play. */
+const TAILSCALE_DOWNLOAD = "https://tailscale.com/download";
 const ACTIVITY_ACTIONS = new Set<HostActivity["action"]>([
   "paired",
   "message",
@@ -265,6 +267,7 @@ export class HostServer {
   #lastSeenSaved = 0;
   #badKeys = { windowStart: 0, count: 0 };
   #listening: Promise<void> | null = null;
+  #installQr: string | null = null;
   #tailscaleAsking: Promise<HostTailscaleStatus> | null = null;
   #saving: Promise<void> = Promise.resolve();
 
@@ -337,6 +340,7 @@ export class HostServer {
 
   async status(options: { refresh?: boolean } = {}): Promise<HostStatus> {
     this.#expirePairing();
+    this.#installQr ??= await this.#options.makeQr(TAILSCALE_DOWNLOAD).catch(() => "");
     const tailscale = await this.#tailscaleStatus(options.refresh === true);
     const fromTailscale =
       !this.#data.address && tailscale.serving && tailscale.dnsName
@@ -352,6 +356,7 @@ export class HostServer {
       addressFromTailscale: fromTailscale !== null,
       tailscale,
       devices: this.#data.devices.map(({ tokenHash: _hash, ...device }) => device),
+      installQrSvg: this.#installQr,
       pairing: this.#pairing
         ? {
             code: this.#pairing.code,
@@ -826,7 +831,13 @@ export class HostServer {
         .find((approval) => approval.id === approvalId && approval.status === "pending");
       if (!pending) throw new HttpError(409, "This request was already decided or has expired.");
       // The same call and policy as the desktop card; only the audit label differs.
-      await agent.decideApproval({ approvalId, decision, decidedBy: `phone:${device.id}` });
+      const note = typeof body.note === "string" ? body.note.trim().slice(0, 1_000) : "";
+      await agent.decideApproval({
+        approvalId,
+        decision,
+        decidedBy: `phone:${device.id}`,
+        ...(note ? { note } : {}),
+      });
       await this.#record(device.name, decision, pending.title);
       return { ok: true };
     }
