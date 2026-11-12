@@ -110,6 +110,8 @@ export const IPC_CHANNELS = {
   routinesDelete: "routines:delete",
   routinesSetEnabled: "routines:set-enabled",
   routinesRunNow: "routines:run-now",
+  routinesRerunFrom: "routines:rerun-from",
+  routinesDesign: "routines:design",
   routinesPickFolder: "routines:pick-folder",
   filesList: "files:list",
   filesAdd: "files:add",
@@ -1261,6 +1263,13 @@ export interface RoutineRunStep {
   deliveryId: string | null;
   /** Short excerpt of the coworker's final reply, or the failure reason. */
   result: string | null;
+  /**
+   * What the next step received after this one (capped). Kept only on recent runs, so a run
+   * can be restarted from a later step without redoing the earlier ones.
+   */
+  carry?: string | null;
+  /** True when this step was not run again but its result was reused from `rerunOf`. */
+  reused?: boolean;
   startedAt: string | null;
   finishedAt: string | null;
 }
@@ -1269,7 +1278,10 @@ export interface RoutineRun {
   id: string;
   routineId: string;
   routineName: string;
-  trigger: "schedule" | "manual" | "folder";
+  /** "rerun": started from one step of an earlier run, reusing that run's earlier results. */
+  trigger: "schedule" | "manual" | "folder" | "rerun";
+  /** For reruns: the run whose earlier results were reused. */
+  rerunOf?: string;
   /** For folder-triggered runs: the files that were added. */
   files?: string[];
   status: "running" | "done" | "failed";
@@ -1302,6 +1314,13 @@ export interface SaveRoutineInput {
   enabled: boolean;
   /** Required to save a cadence that repeats more often than every 5 minutes. */
   confirmFrequent?: boolean;
+}
+
+/** An unsaved routine drafted from the owner's description, opened in the editor to review. */
+export interface RoutineDraft {
+  name: string;
+  steps: SaveRoutineInput["steps"];
+  cadence: RoutineCadence | null;
 }
 
 export interface CreateScheduleInput {
@@ -2053,6 +2072,10 @@ export interface RoutinesDesktopApi {
   setEnabled: (routineId: string, enabled: boolean) => Promise<RoutinesState>;
   /** Starts a run in the background and returns at once. */
   runNow: (routineId: string) => Promise<RoutinesState>;
+  /** Runs a routine again from one step, reusing the earlier steps' results from that run. */
+  rerunFrom: (runId: string, stepId: string) => Promise<RoutinesState>;
+  /** One coworker turns the owner's words into a draft routine. Nothing is saved or run. */
+  design: (input: { description: string; botId: string }) => Promise<RoutineDraft>;
   /** Asks the owner to choose a folder for a "file added" trigger; null when cancelled. */
   pickFolder: () => Promise<string | null>;
 }

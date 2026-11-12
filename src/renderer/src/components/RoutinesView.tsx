@@ -3,6 +3,7 @@ import { FREQUENT_INTERVAL_MINUTES, isFrequentCadence } from "../../../shared/ca
 import type {
   Routine,
   RoutineCadence,
+  RoutineDraft,
   RoutineRun,
   RoutineStep,
   RoutineStepKind,
@@ -12,6 +13,11 @@ import type {
   SaveRoutineInput,
   WorkflowImportPreview,
 } from "../../../shared/ipc";
+import {
+  coworkerForRole,
+  ROUTINE_TEMPLATES,
+  type RoutineTemplate,
+} from "../../../shared/routine-templates";
 import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
@@ -125,6 +131,69 @@ function draftFrom(routine: Routine | null, bots: BotProfile[]): Draft {
   return draft;
 }
 
+/** A ready-made workflow as an unsaved draft, with the owner's coworkers matched by role. */
+function draftFromTemplate(template: RoutineTemplate, bots: BotProfile[]): Draft {
+  const ids = new Map(template.steps.map((step) => [step.id, newStepId()]));
+  const steps = template.steps.map((step): DraftStep => {
+    const draftStep: DraftStep = {
+      id: ids.get(step.id) as string,
+      botId: usesCoworker(step) ? coworkerForRole(step.role, bots) : "",
+      instruction: step.instruction,
+    };
+    if (step.kind) draftStep.kind = step.kind;
+    if (step.onNo) {
+      draftStep.onNo =
+        step.onNo.action === "jump"
+          ? { action: "jump", stepId: ids.get(step.onNo.stepId) as string }
+          : { action: "stop" };
+    }
+    if (step.output) draftStep.output = structuredClone(step.output);
+    return draftStep;
+  });
+  const draft = draftFrom(
+    {
+      id: "",
+      name: t(template.nameKey as MessageKey),
+      steps,
+      cadence: template.cadence,
+      enabled: true,
+      createdAt: "",
+      lastRunAt: null,
+      nextRunAt: null,
+    },
+    bots,
+  );
+  delete draft.id;
+  return draft;
+}
+
+/** A routine a coworker drafted from the owner's words, with fresh step ids for the editor. */
+function draftFromDesign(design: RoutineDraft, bots: BotProfile[]): Draft {
+  const ids = new Map(design.steps.map((step) => [step.id ?? "", newStepId()]));
+  const steps = design.steps.map((step): DraftStep => {
+    const draftStep: DraftStep = { ...structuredClone(step), id: ids.get(step.id ?? "") as string };
+    if (step.onNo?.action === "jump") {
+      draftStep.onNo = { action: "jump", stepId: ids.get(step.onNo.stepId) ?? "" };
+    }
+    return draftStep;
+  });
+  const draft = draftFrom(
+    {
+      id: "",
+      name: design.name,
+      steps,
+      cadence: design.cadence,
+      enabled: true,
+      createdAt: "",
+      lastRunAt: null,
+      nextRunAt: null,
+    },
+    bots,
+  );
+  delete draft.id;
+  return draft;
+}
+
 /** Routines: chains of coworker steps that run on a schedule or with Run now. */
 export function RoutinesView(props: {
   state: RoutinesState;
@@ -133,6 +202,7 @@ export function RoutinesView(props: {
   onDelete: (routineId: string) => Promise<void>;
   onSetEnabled: (routineId: string, enabled: boolean) => Promise<void>;
   onRunNow: (routineId: string) => Promise<void>;
+  onRerunFrom: (runId: string, stepId: string) => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [draft, setDraft] = createSignal<Draft | null>(null);
@@ -141,6 +211,43 @@ export function RoutinesView(props: {
   const [importing, setImporting] = createSignal<WorkflowImportPreview | null>(null);
   const [assign, setAssign] = createSignal<Record<string, string>>({});
   const [notice, setNotice] = createSignal<string | null>(null);
+  const [showTemplates, setShowTemplates] = createSignal(false);
+  const [describing, setDescribing] = createSignal(false);
+  const [wish, setWish] = createSignal("");
+  const [designing, setDesigning] = createSignal(false);
+  const designer = () =>
+    props.bots.find((bot) => bot.role.toLowerCase() === "orchestrator") ?? props.bots[0];
+
+  async function design() {
+    const bot = designer();
+    if (!bot || !wish().trim() || designing()) return;
+    setDesigning(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const drafted = await window.sahkarmi.routines.design({
+        description: wish(),
+        botId: bot.id,
+      });
+      setDescribing(false);
+      setWish("");
+      setDraft(draftFromDesign(drafted, props.bots));
+      setNotice(t("routineDescribeDone"));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setDesigning(false);
+    }
+  }
+
+  function useTemplate(template: RoutineTemplate) {
+    setShowTemplates(false);
+    setError(null);
+    setNotice(
+      template.steps.some((step) => step.output?.kind === "file") ? t("tplFolderNote") : null,
+    );
+    setDraft(draftFromTemplate(template, props.bots));
+  }
 
   function startImport() {
     setNotice(null);
@@ -320,6 +427,28 @@ export function RoutinesView(props: {
       <header class="center-view-header window-drag">
         <h1 id="routines-heading">{t("navRoutines")}</h1>
         <div class="center-view-actions">
+          <button
+            type="button"
+            disabled={props.bots.length === 0}
+            aria-pressed={describing()}
+            onClick={() => {
+              setShowTemplates(false);
+              setDescribing(!describing());
+            }}
+          >
+            {t("routineDescribe")}
+          </button>
+          <button
+            type="button"
+            disabled={props.bots.length === 0}
+            aria-pressed={showTemplates()}
+            onClick={() => {
+              setDescribing(false);
+              setShowTemplates(!showTemplates());
+            }}
+          >
+            {t("tplButton")}
+          </button>
           <button type="button" disabled={props.bots.length === 0 || busy()} onClick={startImport}>
             {t("importWorkflow")}
           </button>
@@ -335,6 +464,67 @@ export function RoutinesView(props: {
       </header>
       <div class="center-view-body">
         <p class="center-view-intro">{t("routinesIntro")}</p>
+        <Show when={describing() && !draft()}>
+          <section
+            class="routine-describe settings-card"
+            aria-labelledby="routine-describe-heading"
+          >
+            <h2 id="routine-describe-heading">{t("routineDescribeTitle")}</h2>
+            <p class="settings-meta">
+              {t("routineDescribeHelp", { name: designer()?.name ?? "" })}
+            </p>
+            <textarea
+              rows="4"
+              maxLength={4000}
+              value={wish()}
+              disabled={designing()}
+              placeholder={t("routineDescribePlaceholder")}
+              onInput={(event) => setWish(event.currentTarget.value)}
+            />
+            <div class="settings-buttons">
+              <button
+                type="button"
+                class="button-primary"
+                disabled={designing() || !wish().trim()}
+                onClick={() => void design()}
+              >
+                {designing()
+                  ? t("routineDescribeBusy", { name: designer()?.name ?? "" })
+                  : t("routineDescribeBuild")}
+              </button>
+              <button type="button" disabled={designing()} onClick={() => setDescribing(false)}>
+                {t("routineCancel")}
+              </button>
+            </div>
+          </section>
+        </Show>
+        <Show when={showTemplates() && !draft()}>
+          <section class="routine-templates" aria-labelledby="routine-templates-heading">
+            <h2 id="routine-templates-heading">{t("tplTitle")}</h2>
+            <p class="settings-meta">{t("tplIntro")}</p>
+            <ul class="routine-template-grid">
+              <For each={ROUTINE_TEMPLATES}>
+                {(template) => (
+                  <li class="routine-template-card">
+                    <strong>{t(template.nameKey as MessageKey)}</strong>
+                    <p>{t(template.descriptionKey as MessageKey)}</p>
+                    <small>
+                      {t("tplSteps", { count: String(template.steps.length) })} ·{" "}
+                      {describeRoutineCadence(template.cadence)}
+                    </small>
+                    <button
+                      type="button"
+                      class="button-primary"
+                      onClick={() => useTemplate(template)}
+                    >
+                      {t("tplUse")}
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </section>
+        </Show>
         <Show when={notice()}>
           <p class="settings-meta" role="status">
             {notice()}
@@ -550,6 +740,33 @@ export function RoutinesView(props: {
                                     <Show when={stepRun(step.id)?.result}>
                                       {(result) => <p class="routine-node-result">{result()}</p>}
                                     </Show>
+                                    <Show when={stepRun(step.id)?.reused}>
+                                      <small class="routine-node-reused">
+                                        {t("routineReused")}
+                                      </small>
+                                    </Show>
+                                    <Show
+                                      when={
+                                        last() &&
+                                        last()?.status !== "running" &&
+                                        stepRun(step.id) &&
+                                        index() > 0
+                                      }
+                                    >
+                                      <button
+                                        type="button"
+                                        class="routine-rerun"
+                                        disabled={busy()}
+                                        title={t("routineRerunHelp")}
+                                        onClick={() =>
+                                          void act(() =>
+                                            props.onRerunFrom(last()?.id ?? "", step.id),
+                                          )
+                                        }
+                                      >
+                                        ↻ {t("routineRerunHere")}
+                                      </button>
+                                    </Show>
                                   </li>
                                 );
                               }}
@@ -635,7 +852,9 @@ export function RoutinesView(props: {
                                         ? t("routineTriggerManual")
                                         : run.trigger === "folder"
                                           ? t("routineTriggerFolder")
-                                          : t("routineTriggerSchedule")}{" "}
+                                          : run.trigger === "rerun"
+                                            ? t("routineTriggerRerun")
+                                            : t("routineTriggerSchedule")}{" "}
                                       · {run.steps.filter((step) => step.status === "done").length}/
                                       {run.steps.length}
                                     </small>

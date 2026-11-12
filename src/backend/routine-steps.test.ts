@@ -372,3 +372,111 @@ describe("workflow files with step types", () => {
     expect(doc.steps).toEqual([{ by: "Asha", do: "Write" }]);
   });
 });
+
+describe("rerun from a step", () => {
+  async function failedRun() {
+    const store = new RoutineStore(root);
+    await store.initialize();
+    const replies = ["Suppliers: A, B", "B is cheapest"];
+    let calls = 0;
+    const exec = executor([]);
+    exec.waitFor = async () => {
+      calls += 1;
+      // Step 3 (the second coworker call) fails the first time.
+      if (calls === 2) return { ok: false, reply: null, error: "The task timed out." };
+      return { ok: true, reply: replies.shift() ?? "Email drafted", error: null };
+    };
+    store.start(exec);
+    const state = await store.save({
+      name: "Suppliers",
+      steps: [
+        { id: "s1", botId: "arjun", instruction: "Find suppliers" },
+        { id: "s2", kind: "approval", botId: "", instruction: "Compare them?" },
+        { id: "s3", botId: "asha", instruction: "Compare prices" },
+        { id: "s4", botId: "vikram", instruction: "Draft an email" },
+      ],
+      cadence: null,
+      enabled: true,
+    });
+    const routineId = state.routines[0]?.id ?? "";
+    await store.runNow(routineId);
+    await store.idle();
+    return { store, exec, routineId };
+  }
+
+  it("reruns only the failed step and after, reusing earlier results and approvals", async () => {
+    const { store, exec } = await failedRun();
+    const first = store.state().runs[0];
+    expect(first?.status).toBe("failed");
+    expect(first?.steps.map((step) => step.status)).toEqual(["done", "done", "failed", "skipped"]);
+    const sentBefore = exec.sent.length;
+    const approvalsBefore = exec.approvals.length;
+
+    await store.rerunFrom(first?.id ?? "", "s3");
+    await store.idle();
+    store.stop();
+    const rerun = store.state().runs[0];
+    expect(rerun?.trigger).toBe("rerun");
+    expect(rerun?.rerunOf).toBe(first?.id);
+    expect(rerun?.status).toBe("done");
+    expect(rerun?.steps.map((step) => [step.status, step.reused === true])).toEqual([
+      ["done", true],
+      ["done", true],
+      ["done", false],
+      ["done", false],
+    ]);
+    // Only steps 3 and 4 went to coworkers again, and nobody was asked to approve again.
+    expect(exec.sent.slice(sentBefore).map((step) => step.botId)).toEqual(["asha", "vikram"]);
+    expect(exec.approvals.length).toBe(approvalsBefore);
+    // Step 3 got step 1's result (the approval passed it through unchanged).
+    expect(exec.sent[sentBefore]?.text).toContain("Suppliers: A, B");
+  });
+
+  it("refuses a rerun it cannot do honestly", async () => {
+    const { store, routineId } = await failedRun();
+    const first = store.state().runs[0];
+    // From the step after the failed one: an earlier step did not finish.
+    await expect(store.rerunFrom(first?.id ?? "", "s4")).rejects.toThrow("did not finish");
+    await expect(store.rerunFrom("missing", "s3")).rejects.toThrow("no longer in the history");
+    // A step added before the restart point after that run.
+    const routine = store.state().routines[0];
+    await store.save({
+      id: routineId,
+      name: "Suppliers",
+      steps: [
+        { id: "s0", botId: "neha", instruction: "New first step" },
+        ...(routine?.steps ?? []),
+      ],
+      cadence: null,
+      enabled: true,
+    });
+    await expect(store.rerunFrom(first?.id ?? "", "s3")).rejects.toThrow("was added after");
+    store.stop();
+  });
+
+  it("keeps restart data only on the latest runs of a routine", async () => {
+    const store = new RoutineStore(root);
+    await store.initialize();
+    store.start(executor(Array.from({ length: 20 }, (_, n) => `reply ${n}`)));
+    const state = await store.save({
+      name: "Daily",
+      steps: [
+        { id: "a", botId: "asha", instruction: "Write" },
+        { id: "b", botId: "asha", instruction: "Check" },
+      ],
+      cadence: null,
+      enabled: true,
+    });
+    const routineId = state.routines[0]?.id ?? "";
+    for (let n = 0; n < 7; n += 1) {
+      await store.runNow(routineId);
+      await store.idle();
+    }
+    store.stop();
+    const runs = store.state().runs;
+    expect(runs).toHaveLength(7);
+    expect(runs.slice(0, 5).every((run) => run.steps[0]?.carry !== undefined)).toBe(true);
+    expect(runs.slice(5).every((run) => run.steps[0]?.carry === undefined)).toBe(true);
+    await expect(store.rerunFrom(runs[6]?.id ?? "", "b")).rejects.toThrow("too old");
+  });
+});
