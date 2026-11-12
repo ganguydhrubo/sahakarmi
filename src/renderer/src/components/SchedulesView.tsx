@@ -14,6 +14,7 @@ import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
 import { AgentAvatar } from "./AgentAvatar";
 import { localeTag, ScheduleList } from "./ScheduleControls";
+import { Tip } from "./Tip";
 
 /** Entries shown per day before collapsing into "+N more" (week and month views). */
 const MAX_PER_DAY = 3;
@@ -71,6 +72,7 @@ export function SchedulesView(props: {
       </header>
       <div class="center-view-body">
         <p class="center-view-intro">{t("schedulesIntro")}</p>
+        <Tip id="tipSchedules" text="tipSchedules" />
         <ScheduleCalendar
           schedules={props.schedules}
           routines={props.routines ?? []}

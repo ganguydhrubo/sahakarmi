@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import type { QueueDelivery, QueueSnapshot } from "../../../shared/ipc";
 import { vocab } from "../activity-vocab";
 import { t } from "../i18n";
+import { friendlyTaskText } from "../message-display";
 
 interface TaskQueueStripProps {
   queue: QueueSnapshot | undefined;
@@ -188,7 +189,9 @@ function TaskChip(props: {
  * markers, in sentence case when it was typed in capitals, cut at a word boundary.
  */
 export function taskTitle(delivery: QueueDelivery): string {
-  const text = delivery.text.replace(/^\[[^\]]+\]\s*/, "").trim();
+  const text = friendlyTaskText(delivery.text)
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .trim();
   const line =
     text
       .split(/\r?\n/)

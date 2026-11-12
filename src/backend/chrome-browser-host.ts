@@ -617,6 +617,13 @@ export class ChromeBrowserHost implements CoworkerBrowser {
     return this.listTabs().find((candidate) => candidate.id === tab.id) as BrowserTab;
   }
 
+  async navigate(tabId: string, action: "back" | "forward" | "reload"): Promise<void> {
+    await this.#enqueue(tabId, async (tab) => {
+      const pipe = await this.#ensureTab(tab);
+      await performCdpAction(pipe, tab, { type: action });
+    });
+  }
+
   #requireTab(tabId: string): ChromeTab {
     const tab = this.#tabs.get(tabId);
     if (!tab) throw new Error(`Unknown browser tab: ${tabId}`);

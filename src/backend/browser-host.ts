@@ -16,6 +16,7 @@ import type {
   BrowserControlAction,
   BrowserControlSession,
   BrowserControlState,
+  BrowserNavigation,
   BrowserTab,
   BrowserVisibilityInput,
   SocialPlatform,
@@ -39,6 +40,7 @@ import {
 import { pagesOverBudget, restingSiteMessage, SiteCrashGuard, siteOfPage } from "./browser-guards";
 import { type CdpSend, pasteEventScript, pressCdpKey, typeIntoFocus } from "./browser-keys";
 import { persistentBrowserUrl } from "./browser-state";
+import { attachContextMenu } from "./context-menu";
 import { readMemory } from "./memory-pressure";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
@@ -1164,6 +1166,14 @@ export class BrowserHost implements CoworkerBrowser {
     return !shown?.ownerBotId || !ownerBotId || shown.ownerBotId === ownerBotId;
   }
 
+  /** The owner's Back, Forward or Reload; a sleeping page has no history to move through. */
+  async navigate(tabId: string, action: BrowserNavigation): Promise<void> {
+    const contents = livePage(this.#requireTab(tabId).view);
+    if (!contents) return;
+    await performAction(contents, { type: action });
+    this.#emitChanged();
+  }
+
   async activate(tabId: string): Promise<void> {
     this.#requireTab(tabId);
     this.#activeTabId = tabId;
@@ -1535,6 +1545,7 @@ export class BrowserHost implements CoworkerBrowser {
       },
     });
     view.setBackgroundColor("#0b0b0b");
+    attachContextMenu(view.webContents, { navigation: true });
     return view;
   }
 
@@ -2040,6 +2051,8 @@ export interface CoworkerBrowser extends BrowserToolTarget {
   endControl(threadId: string, turnId: string): void;
   clearControls(): void;
   activate(tabId: string): Promise<void>;
+  /** The owner's Back, Forward and Reload buttons. */
+  navigate?(tabId: string, action: BrowserNavigation): Promise<void>;
   setVisible(input: BrowserVisibilityInput): Promise<void>;
   handleDynamicTool(params: DynamicToolCallParams): Promise<DynamicToolResult>;
   describeTarget(tabId: string, ref: string | null): { label: string; url: string };
@@ -2587,6 +2600,8 @@ function toPublicTab(tab: InternalTab): BrowserTab {
     loading: contents?.isLoading() ?? false,
     ownerThreadId: tab.ownerThreadId,
     ownerBotId: tab.ownerBotId,
+    canGoBack: contents?.navigationHistory.canGoBack() ?? false,
+    canGoForward: contents?.navigationHistory.canGoForward() ?? false,
   };
 }
 

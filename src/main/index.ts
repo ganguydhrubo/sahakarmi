@@ -25,6 +25,7 @@ import {
   utilityProcess,
 } from "electron";
 import electronUpdater from "electron-updater";
+import QRCode from "qrcode";
 import { AdaptiveOrchestrator } from "../backend/adaptive-orchestrator";
 import { memoryCategory } from "../backend/agent-memory-store";
 import { AgentService } from "../backend/agent-service";
@@ -47,6 +48,7 @@ import {
   setRuntimeDirectory,
   setToolsDirectory,
 } from "../backend/cli";
+import { attachContextMenu } from "../backend/context-menu";
 import { MAX_INSTRUCTIONS_CHARS } from "../backend/coworker-instructions";
 import { CustomSkills, parseSkillMarkdown } from "../backend/custom-skills";
 import { DesktopHost } from "../backend/desktop/desktop-host";
@@ -54,6 +56,7 @@ import { desktopControlSupported } from "../backend/desktop/desktop-tools";
 import { EngineSettingsStore } from "../backend/engine-settings";
 import { FeatureRegistry } from "../backend/feature-registry";
 import { DEFAULT_GEMINI_ACCOUNT_ID, GeminiAccountStore } from "../backend/gemini-accounts";
+import { HostServer } from "../backend/host-server";
 import { COMPOSIO_SECRET, ComposioClient } from "../backend/integrations/composio-client";
 import { errorSignature } from "../backend/intelligence/error-signature";
 import { IntelligenceService } from "../backend/intelligence/intelligence-service";
@@ -87,6 +90,7 @@ import { SecretCodec, SecretStore } from "../backend/secret-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { StartupTimings } from "../backend/startup-timings";
+import { shareWithTailscale, tailscaleStatus, unshareTailscale } from "../backend/tailscale";
 import { TelegramBridge } from "../backend/telegram-bridge";
 import { type InstallChannel, UsagePing } from "../backend/usage-ping";
 import { UsageService } from "../backend/usage-service";
@@ -325,6 +329,9 @@ let scheduleStore: ScheduleStore | null = null;
 let knowledgeService: KnowledgeApi | null = null;
 let routineStore: RoutineStore | null = null;
 let telegramBridge: TelegramBridge | null = null;
+let hostServer: HostServer | null = null;
+/** Started by Windows at sign-in for Sahkarmi Host: stay in the tray until the owner opens it. */
+const startedInBackground = process.argv.includes("--background");
 let usageService: UsageService | null = null;
 let intelligenceService: IntelligenceService | null = null;
 let isQuitting = false;
@@ -338,6 +345,7 @@ const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string> = {
   "agent-setup": "https://github.com/ganguydhrubo/sahakarmi/blob/main/docs/TROUBLESHOOTING.md",
   feedback: "https://github.com/ganguydhrubo/sahakarmi/issues/new/choose",
   message: "https://github.com/ganguydhrubo/sahakarmi/discussions",
+  "tailscale-download": "https://tailscale.com/download",
 };
 
 function configureContentSecurityPolicy(): void {
@@ -701,6 +709,36 @@ function registerTelegramIpc(telegram: TelegramBridge): void {
   );
 }
 
+function registerHostIpc(host: HostServer): void {
+  const refreshTray = <T>(value: T): T => {
+    backgroundTray?.refresh();
+    return value;
+  };
+  handleTrusted(IPC_CHANNELS.hostStatus, (input: unknown) =>
+    host.status({ refresh: isObject(input) && input.refresh === true }),
+  );
+  handleTrusted(IPC_CHANNELS.hostSetEnabled, async (input: unknown) =>
+    refreshTray(await host.setEnabled(isObject(input) && input.enabled === true)),
+  );
+  handleTrusted(IPC_CHANNELS.hostSetStartWithWindows, (input: unknown) =>
+    host.setStartWithWindows(isObject(input) && input.enabled === true),
+  );
+  handleTrusted(IPC_CHANNELS.hostSetAddress, (input: unknown) =>
+    host.setAddress(isObject(input) && typeof input.address === "string" ? input.address : ""),
+  );
+  handleTrusted(IPC_CHANNELS.hostSetupTailscale, async () => {
+    const status = await host.setupTailscale();
+    // Tailscale asks the owner to allow Serve once, on its own site.
+    if (status.enableUrl) await shell.openExternal(status.enableUrl);
+    return status;
+  });
+  handleTrusted(IPC_CHANNELS.hostStartPairing, () => host.startPairing());
+  handleTrusted(IPC_CHANNELS.hostCancelPairing, () => host.cancelPairing());
+  handleTrusted(IPC_CHANNELS.hostRemoveDevice, (input: unknown) =>
+    host.removeDevice(requireString(isObject(input) ? input.deviceId : null, "deviceId")),
+  );
+}
+
 function registerIpcHandlers(
   service: AgentService,
   mailbox: MailboxStore,
@@ -746,10 +784,10 @@ function registerIpcHandlers(
     requestMacPermission(parseMacPermission(permission)),
   );
   handleTrusted(IPC_CHANNELS.openExternal, (destination: unknown) => {
-    if (destination !== "agent-setup" && destination !== "feedback" && destination !== "message") {
+    if (typeof destination !== "string" || !Object.hasOwn(EXTERNAL_DESTINATIONS, destination)) {
       throw new Error("Unknown external destination.");
     }
-    return shell.openExternal(EXTERNAL_DESTINATIONS[destination]);
+    return shell.openExternal(EXTERNAL_DESTINATIONS[destination as ExternalDestination]);
   });
   handleTrusted(IPC_CHANNELS.openUrl, (value: unknown) => {
     const url = new URL(requireString(value, "URL"));
@@ -937,6 +975,14 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.browserActivate, (tabId: unknown) =>
     browser.activate(requireString(tabId, "tabId")),
   );
+  handleTrusted(IPC_CHANNELS.browserNavigate, async (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid browser navigation.");
+    const action = input.action;
+    if (action !== "back" && action !== "forward" && action !== "reload") {
+      throw new Error("Unknown browser navigation.");
+    }
+    await browser.navigate?.(requireString(input.tabId, "tabId"), action);
+  });
   handleTrusted(IPC_CHANNELS.browserClose, (tabId: unknown) =>
     browser.close(requireString(tabId, "tabId")),
   );
@@ -1619,6 +1665,12 @@ function createWindow(): BrowserWindow {
   }
 
   window.once("ready-to-show", () => {
+    if (startedInBackground && window === mainWindow && !backgroundTray?.visible) {
+      // maximize() would show the window on Windows: apply it when the owner opens it.
+      if (saved?.maximized) window.once("show", () => window.maximize());
+      showBackgroundTray();
+      return;
+    }
     if (saved?.maximized) window.maximize();
     window.show();
   });
@@ -1666,6 +1718,7 @@ function createWindow(): BrowserWindow {
     allowed(contents, permission, details.mediaType ? [details.mediaType] : undefined),
   );
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  attachContextMenu(window.webContents, { navigation: false });
   window.webContents.on("will-navigate", (event, targetUrl) => {
     if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();
   });
@@ -1824,9 +1877,18 @@ function showBackgroundTray(): void {
       setPaused: (paused) => void setAllCoworkersPaused(paused),
       isPaused: () => allPaused,
       quit: () => app.quit(),
+      // Says "on" only while the phone page is really being served.
+      statusLine: () =>
+        !hostServer?.enabled
+          ? null
+          : hostServer.port !== null
+            ? "Sahkarmi Host is on for your phone"
+            : "Sahkarmi Host could not start: see Settings, Phone & Host",
     });
   }
   backgroundTray.show();
+  // Started by Windows at sign-in: the owner chose this, so no "still running" notice each time.
+  if (startedInBackground && !mainWindow?.isVisible()) trayHintShown = true;
   if (!trayHintShown && Notification.isSupported()) {
     trayHintShown = true;
     const hint = new Notification({
@@ -2358,7 +2420,8 @@ if (!hasSingleInstanceLock) {
       }
       registerEngineIpc(service, engineSettings, runEvents, appMemory);
       startDailyUsageCount();
-      keepRunningInTray = () => features.isEnabled("background-tray");
+      keepRunningInTray = () =>
+        features.isEnabled("background-tray") || hostServer?.enabled === true;
       // Approvals raised while the owner is away wait longer before they expire.
       service.setOwnerPresence(ownerIsPresent);
       service.configureLazyProviderStart(() => features.isEnabled("lean-runtime"));
@@ -2776,6 +2839,46 @@ if (!hasSingleInstanceLock) {
       });
       telegramBridge = telegram;
       registerTelegramIpc(telegram);
+      const host = new HostServer({
+        userDataPath: app.getPath("userData"),
+        agent: {
+          listBots: () => service.listBots(),
+          readConversation: (botId) => service.readConversation(botId),
+          sendMessage: (input) => service.sendMessage(input),
+          // The same store, policy and audit trail as the desktop card and Telegram.
+          listApprovals: () => service.listApprovals(),
+          decideApproval: (input) => service.decideApproval(input),
+          routines: async () => routines.state(),
+          runRoutine: (routineId) => routines.runNow(routineId),
+          waitingOnPc: () =>
+            service
+              .listSecureInputs()
+              .map((request) => ({ botId: request.botId, title: request.label })),
+        },
+        makeQr: (text) =>
+          QRCode.toString(text, { type: "svg", margin: 1, errorCorrectionLevel: "M" }),
+        tailscale: {
+          status: (port) => tailscaleStatus(port),
+          share: (port) => shareWithTailscale(port),
+          unshare: (port) => unshareTailscale(port),
+        },
+        // The Store copy is started by Windows' own startup list, which the owner manages there.
+        setStartWithWindows: process.windowsStore
+          ? null
+          : (enabled) =>
+              app.setLoginItemSettings({
+                openAtLogin: enabled,
+                path: process.execPath,
+                args: enabled ? ["--background"] : [],
+              }),
+        log: (level, message, detail) => appLog.write(level, message, detail),
+      });
+      hostServer = host;
+      registerHostIpc(host);
+      void host
+        .load()
+        .then(() => backgroundTray?.refresh())
+        .catch((error) => appLog.write("error", "Sahkarmi Host did not start", error));
       configureApplicationMenu(service, updateService);
       if (await waitForRunningInstaller(await runningInstaller)) return;
       timings.mark("services");
@@ -2931,6 +3034,7 @@ async function prepareForShutdown(): Promise<void> {
   const cleanupTasks = Promise.all([
     browserHost?.destroy().catch(() => {}),
     telegramBridge?.stop().catch(() => {}),
+    hostServer?.close().catch(() => {}),
     agentService?.stop().catch(() => {}),
     usageService?.flush().catch(() => {}),
     intelligenceService?.dispose().catch(() => {}),

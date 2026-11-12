@@ -1,6 +1,12 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { type MessageKey, t } from "../i18n";
-import { onboardingState, resetOnboarding, setChecklistHidden } from "../onboarding";
+import {
+  holdTips,
+  onboardingState,
+  resetOnboarding,
+  setChecklistHidden,
+  setTipsOff,
+} from "../onboarding";
 import type { CenterView } from "./Sidebar";
 
 const SCREEN_HELP: Record<CenterView, { title: MessageKey; body: MessageKey }> = {
@@ -19,6 +25,77 @@ const SCREEN_HELP: Record<CenterView, { title: MessageKey; body: MessageKey }> =
   activity: { title: "navActivity", body: "screenActivity" },
   settings: { title: "settings", body: "screenSettings" },
 };
+
+/** Questions people ask, grouped; an answer reused from the old tips list drops its "Topic:" label. */
+const TOPICS: Array<{ group: MessageKey; items: Array<[q: MessageKey, a: MessageKey]> }> = [
+  {
+    group: "helpGroupStart",
+    items: [
+      ["helpQFree", "helpAFree"],
+      ["helpQFirstTask", "helpAFirstTask"],
+      ["helpQModels", "helpAModels"],
+    ],
+  },
+  {
+    group: "helpGroupTeam",
+    items: [
+      ["helpQCeo", "helpTipCeo"],
+      ["helpQAssign", "helpTipAssign"],
+      ["helpQCrew", "helpTipCrew"],
+      ["helpQDeleteWorkspace", "helpTipDeleteWorkspace"],
+    ],
+  },
+  {
+    group: "helpGroupRoutines",
+    items: [
+      ["helpQRoutine", "helpARoutine"],
+      ["helpQDescribe", "helpADescribe"],
+      ["helpQReadyMade", "helpAReadyMade"],
+      ["helpQSteps", "helpASteps"],
+      ["helpQRerun", "helpARerun"],
+    ],
+  },
+  {
+    group: "helpGroupSafety",
+    items: [
+      ["helpQApprovals", "helpAApprovals"],
+      ["helpQPublishing", "helpTipPublishing"],
+      ["helpQPrivacy", "helpAPrivacy"],
+    ],
+  },
+  {
+    group: "helpGroupConnect",
+    items: [
+      ["helpQTelegram", "helpAPhone"],
+      ["helpQBrowser", "helpTipBrowser"],
+      ["helpQMcp", "helpTipMcp"],
+    ],
+  },
+  {
+    group: "helpGroupFix",
+    items: [
+      ["helpQInterrupted", "helpAInterrupted"],
+      ["helpQErrors", "helpTipErrors"],
+      ["helpQSlow", "helpTipMemory"],
+      ["helpQContact", "helpAContact"],
+    ],
+  },
+];
+
+/** "CEO: open the menu…" → "open the menu…": the question above already names the topic. */
+export function answerText(text: string): string {
+  return text.replace(/^[^:.,!?।]{1,32}:\s+/u, "").replace(/^\p{Ll}/u, (c) => c.toUpperCase());
+}
+
+/** Matches every word of the query, in any order, ignoring case. */
+export function matchesQuery(text: string, query: string): boolean {
+  const haystack = text.toLocaleLowerCase();
+  return query
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => haystack.includes(word));
+}
 
 /** done: the app confirms it · todo: can be done, not yet confirmed · optional: cannot be checked. */
 type ItemStatus = "done" | "todo" | "optional";
@@ -53,8 +130,19 @@ export function HelpPanel(props: HelpPanelProps) {
   const [expanded, setExpanded] = createSignal(false);
   const [confirmReset, setConfirmReset] = createSignal(false);
   const [resetDone, setResetDone] = createSignal(false);
+  const [query, setQuery] = createSignal("");
+  const topics = createMemo(() => {
+    const q = query().trim();
+    return TOPICS.map((topic) => ({
+      group: topic.group,
+      items: topic.items
+        .map(([question, answer]) => ({ question: t(question), answer: answerText(t(answer)) }))
+        .filter((item) => !q || matchesQuery(`${item.question} ${item.answer}`, q)),
+    })).filter((topic) => topic.items.length > 0);
+  });
 
   onMount(() => {
+    onCleanup(holdTips());
     // Read once when Help opens; a failure just leaves the item as Optional.
     void Promise.all([
       window.sahkarmi.customSkills?.list() ?? Promise.resolve([]),
@@ -62,7 +150,7 @@ export function HelpPanel(props: HelpPanelProps) {
     ])
       .then(([skills, servers]) => setToolsAdded(skills.length > 0 || servers.length > 0))
       .catch(() => setToolsAdded(null));
-    panel?.querySelector<HTMLElement>(".help-panel-close")?.focus();
+    panel?.querySelector<HTMLElement>(".help-search input")?.focus();
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target || panel?.contains(target)) return;
@@ -167,33 +255,48 @@ export function HelpPanel(props: HelpPanelProps) {
         </button>
       </header>
 
-      <div class="help-panel-section help-panel-screen">
-        <h3>{t("helpThisScreen")}</h3>
-        <p>
-          <strong>{t(screen().title)}</strong> · {t(screen().body)}
-        </p>
-      </div>
+      <label class="help-search">
+        <span class="sr-only">{t("helpSearch")}</span>
+        <input
+          type="search"
+          value={query()}
+          placeholder={t("helpSearch")}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+        />
+      </label>
 
-      <div class="help-panel-section help-panel-screen">
-        <h3>{t("helpTeamTitle")}</h3>
-        <For
-          each={
-            [
-              "helpTipCeo",
-              "helpTipTelegram",
-              "helpTipBrowser",
-              "helpTipPublishing",
-              "helpTipDeleteWorkspace",
-              "helpTipAssign",
-              "helpTipMcp",
-              "helpTipMemory",
-              "helpTipErrors",
-              "helpTipCrew",
-            ] as MessageKey[]
-          }
+      <Show when={!query().trim()}>
+        <div class="help-panel-screen-card">
+          <h3>{t("helpThisScreen")}</h3>
+          <p>
+            <strong>{t(screen().title)}</strong>
+            {t(screen().body)}
+          </p>
+        </div>
+      </Show>
+
+      <div class="help-panel-section">
+        <h3>{t("helpTopicsTitle")}</h3>
+        <Show
+          when={topics().length > 0}
+          fallback={<p class="help-panel-quiet">{t("helpNoResults", { query: query().trim() })}</p>}
         >
-          {(tip) => <p>{t(tip)}</p>}
-        </For>
+          <For each={topics()}>
+            {(topic) => (
+              <div class="help-topic-group">
+                <h4>{t(topic.group)}</h4>
+                <For each={topic.items}>
+                  {(item) => (
+                    <details class="help-topic" open={Boolean(query().trim())}>
+                      <summary>{item.question}</summary>
+                      <p>{item.answer}</p>
+                    </details>
+                  )}
+                </For>
+              </div>
+            )}
+          </For>
+        </Show>
       </div>
 
       <div class="help-panel-section">
@@ -253,6 +356,18 @@ export function HelpPanel(props: HelpPanelProps) {
           </Show>
         </Show>
       </div>
+
+      <label class="help-tips-toggle">
+        <input
+          type="checkbox"
+          checked={!onboardingState().tipsOff}
+          onChange={(event) => setTipsOff(!event.currentTarget.checked)}
+        />
+        <span>
+          <strong>{t("helpTipsLabel")}</strong>
+          <small>{t("helpTipsHint")}</small>
+        </span>
+      </label>
 
       <div class="help-panel-footer">
         <button type="button" class="button-primary" onClick={props.onStartTour}>

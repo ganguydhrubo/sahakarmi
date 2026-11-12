@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { type MessageKey, t } from "../i18n";
+import { holdTips } from "../onboarding";
 
 export interface TourStep {
   /** A data-tour attribute value on a real control. */
@@ -123,6 +124,7 @@ export function GuidedTour(props: {
   };
 
   onMount(() => {
+    onCleanup(holdTips());
     if (steps.length === 0) {
       end("nothing");
       return;

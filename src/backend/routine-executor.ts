@@ -1,6 +1,6 @@
 import type { QueuedMessageReceipt, SendMessageInput } from "../shared/ipc";
 import { type DeliveryWaitPort, waitForDelivery } from "./delivery-wait";
-import type { RoutineExecutor } from "./routine-store";
+import type { RoutineApprovalResult, RoutineExecutor } from "./routine-store";
 
 /** The parts of AgentService a routine needs. */
 export interface RoutineAgentPort extends DeliveryWaitPort {
@@ -12,7 +12,7 @@ export interface RoutineAgentPort extends DeliveryWaitPort {
     question: string;
     details: string;
     timeoutMs: number;
-  }): Promise<"approved" | "rejected" | "timed-out">;
+  }): Promise<RoutineApprovalResult>;
 }
 
 /** A step waiting on approvals can take a while, but never forever. */

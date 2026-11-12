@@ -61,7 +61,9 @@ export function ApprovalsView(props: ApprovalsViewProps) {
       <header class="center-view-header window-drag">
         <h1 id="approvals-heading">{t("approvals")}</h1>
         <Show when={pending().length > 0}>
-          <span class="center-view-badge">{pending().length}</span>
+          <span class="center-view-badge center-view-badge-alert" data-count={pending().length}>
+            {pending().length}
+          </span>
         </Show>
       </header>
       <div class="center-view-body">
@@ -176,7 +178,7 @@ export function ApprovalCard(props: {
             {t(CATEGORY_LABELS[props.approval.category])}
           </span>
         </Show>
-        <Show when={props.approval.kind === "permission"}>
+        <Show when={props.approval.kind === "permission" && pending()}>
           <span class="approval-kind" title={t("approvalPausedHint")}>
             {t("approvalPaused")}
           </span>

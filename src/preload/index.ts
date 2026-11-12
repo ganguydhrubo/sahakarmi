@@ -125,6 +125,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
   browser: {
     open: (input) => ipcRenderer.invoke(IPC_CHANNELS.browserOpen, input),
     activate: (tabId) => ipcRenderer.invoke(IPC_CHANNELS.browserActivate, tabId),
+    navigate: (tabId, action) =>
+      ipcRenderer.invoke(IPC_CHANNELS.browserNavigate, { tabId, action }),
     close: (tabId) => ipcRenderer.invoke(IPC_CHANNELS.browserClose, tabId),
     listTabs: () => ipcRenderer.invoke(IPC_CHANNELS.browserListTabs),
     getControlState: () => ipcRenderer.invoke(IPC_CHANNELS.browserGetControlState),
@@ -388,6 +390,19 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     unpair: () => ipcRenderer.invoke(IPC_CHANNELS.telegramUnpair),
     setAllowPasswords: (allow: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.telegramSetAllowPasswords, { allow }),
+  },
+  host: {
+    status: (options?: { refresh?: boolean }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.hostStatus, { refresh: options?.refresh === true }),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke(IPC_CHANNELS.hostSetEnabled, { enabled }),
+    setStartWithWindows: (enabled: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.hostSetStartWithWindows, { enabled }),
+    setAddress: (address: string) => ipcRenderer.invoke(IPC_CHANNELS.hostSetAddress, { address }),
+    setupTailscale: () => ipcRenderer.invoke(IPC_CHANNELS.hostSetupTailscale),
+    startPairing: () => ipcRenderer.invoke(IPC_CHANNELS.hostStartPairing),
+    cancelPairing: () => ipcRenderer.invoke(IPC_CHANNELS.hostCancelPairing),
+    removeDevice: (deviceId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.hostRemoveDevice, { deviceId }),
   },
   customSkills: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.customSkillsList),

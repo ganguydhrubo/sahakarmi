@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BotSummary, SaveRoutineInput } from "../shared/ipc";
-import { parseYesNo, type RoutineExecutor, RoutineStore } from "./routine-store";
+import {
+  parseYesNo,
+  type RoutineApprovalResult,
+  type RoutineExecutor,
+  RoutineStore,
+} from "./routine-store";
 import { parseWorkflowJson, routineFromWorkflow, routineWorkflow } from "./workflow-export";
 
 let root: string;
@@ -18,7 +23,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-type Decision = "approved" | "rejected" | "timed-out";
+type Decision = RoutineApprovalResult;
 
 /** Answers coworker steps from a script and records approvals and Telegram posts. */
 function executor(
@@ -180,6 +185,43 @@ describe("routine step types", () => {
     expect(run.status).toBe("done");
     // The step after the approval still gets the report.
     expect(exec.sent[1]?.text).toContain("Report text");
+  });
+
+  it("hands the owner's note on the approval to the next step", async () => {
+    const exec = executor(["Report text", "Posted"], {
+      decision: "approved",
+      note: "Post it only on LinkedIn",
+    });
+    const { run } = await runOnce(
+      [
+        { botId: "asha", instruction: "Write the report" },
+        { kind: "approval", botId: "", instruction: "Post the report?" },
+        { botId: "vikram", instruction: "Post it" },
+      ],
+      exec,
+    );
+    expect(run.steps[1]?.result).toBe("Approved. Your note: Post it only on LinkedIn");
+    expect(exec.sent[1]?.text).toContain("Report text");
+    expect(exec.sent[1]?.text).toContain("Post it only on LinkedIn");
+  });
+
+  it("never sends the owner's note out with the result when the next step is an output", async () => {
+    const folder = join(root, "out-note");
+    await mkdir(folder);
+    const { run } = await runOnce(
+      [
+        { botId: "asha", instruction: "Write the report" },
+        { kind: "approval", botId: "", instruction: "Save the report?" },
+        { kind: "output", botId: "", instruction: "", output: { kind: "file", folder } },
+      ],
+      executor(["Report text"], { decision: "approved", note: "Remove the prices" }),
+    );
+    expect(run.status).toBe("done");
+    expect(run.steps[1]?.result).toContain("no coworker read this note");
+    const [file] = await readdir(folder);
+    const text = await readFile(join(folder, file ?? ""), "utf8");
+    expect(text).toContain("Report text");
+    expect(text).not.toContain("Remove the prices");
   });
 
   it("stops (as done) when the owner says no, and fails when nobody answers", async () => {

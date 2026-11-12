@@ -29,6 +29,7 @@ import {
   describeCadence,
   localeTag,
 } from "./ScheduleControls";
+import { Tip } from "./Tip";
 import { WorkflowExportMenu } from "./WorkflowExportMenu";
 
 const RUN_STATUS: Record<RoutineRun["status"], MessageKey> = {
@@ -464,6 +465,9 @@ export function RoutinesView(props: {
       </header>
       <div class="center-view-body">
         <p class="center-view-intro">{t("routinesIntro")}</p>
+        <Show when={!draft()}>
+          <Tip id="routines-start" text="tipRoutinesStart" />
+        </Show>
         <Show when={describing() && !draft()}>
           <section
             class="routine-describe settings-card"
@@ -839,6 +843,7 @@ export function RoutinesView(props: {
                           </header>
                           <Show when={runsOf(routine().id).length > 0}>
                             <h3>{t("routineRunHistory")}</h3>
+                            <Tip id="routine-runs" text="tipRoutineRun" />
                             <ul class="routine-history">
                               <For each={runsOf(routine().id).slice(0, 8)}>
                                 {(run) => (
@@ -880,6 +885,7 @@ export function RoutinesView(props: {
                 void save(current());
               }}
             >
+              <Tip id="routine-editor" text="tipRoutineEditor" />
               <label class="routine-field">
                 <span>{t("routineName")}</span>
                 <input

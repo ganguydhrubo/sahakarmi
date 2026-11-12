@@ -10,6 +10,7 @@ import type {
 import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
 import { speechLocale } from "../preferences";
+import { Tip } from "./Tip";
 
 const STATUS_LABELS: Record<KnowledgeSourceStatus, MessageKey> = {
   pending: "knowledgeStatusPending",
@@ -292,7 +293,9 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
     <section class="center-view knowledge-view" aria-labelledby="knowledge-heading">
       <header class="center-view-header window-drag">
         <h1 id="knowledge-heading">{t("knowledgeTitle")}</h1>
-        <span class="center-view-badge">{workspaceBases().length}</span>
+        <span class="center-view-badge" data-count={workspaceBases().length}>
+          {workspaceBases().length}
+        </span>
         <div class="memory-header-actions no-drag">
           <button type="button" class="button-primary" onClick={() => setCreating(true)}>
             {t("knowledgeNew")}
@@ -302,6 +305,7 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
 
       <div class="center-view-body">
         <p class="center-view-intro">{t("knowledgeSubtitle")}</p>
+        <Tip id="tipKnowledge" text="tipKnowledge" />
         <Show when={error()}>
           <p class="approval-error" role="alert">
             {error()}

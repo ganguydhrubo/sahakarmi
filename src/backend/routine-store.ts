@@ -32,6 +32,13 @@ interface RoutineStoreEvents {
   changed: [state: RoutinesState];
 }
 
+/** An Approval step's answer; the object form carries a note the owner wrote on the card. */
+export type RoutineApprovalResult =
+  | "approved"
+  | "rejected"
+  | "timed-out"
+  | { decision: "approved" | "rejected"; note: string };
+
 /** How a routine reaches coworkers: the same mailbox, queue, permissions and approvals as a person. */
 export interface RoutineExecutor {
   /** Queues the text for the coworker and returns the delivery id. */
@@ -47,7 +54,7 @@ export interface RoutineExecutor {
     routineName: string;
     question: string;
     details: string;
-  }): Promise<"approved" | "rejected" | "timed-out">;
+  }): Promise<RoutineApprovalResult>;
   /** Output steps that post to Telegram. */
   sendTelegram?(text: string): Promise<void>;
 }
@@ -520,9 +527,34 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
         ? `Routine "${routineName}" is waiting for you. The result so far:\n\n${shown}`
         : `Routine "${routineName}" is waiting for you before it goes on.`,
     });
-    if (decision === "approved") return { ok: true, result: "Approved." };
-    if (decision === "rejected") {
-      return { ok: true, result: "Not approved, so the routine stopped here.", stop: true };
+    const verdict = typeof decision === "string" ? decision : decision.decision;
+    const note = typeof decision === "string" ? null : decision.note;
+    if (verdict === "approved") {
+      if (!note) return { ok: true, result: "Approved." };
+      // An Output step sends the result word for word: the note must not be sent along with it.
+      if ((plan[index + 1]?.kind ?? "agent") === "output") {
+        return {
+          ok: true,
+          result: `Approved. Your note: ${note} (The next step sends the result as it is, so no coworker read this note.)`,
+        };
+      }
+      // The next steps read the owner's note together with the result so far.
+      return {
+        ok: true,
+        result: `Approved. Your note: ${note}`,
+        next: [previous, `The owner approved this and added a note. Follow it: ${note}`]
+          .filter(Boolean)
+          .join("\n\n"),
+      };
+    }
+    if (verdict === "rejected") {
+      return {
+        ok: true,
+        result: note
+          ? `Not approved, so the routine stopped here. Your note: ${note}`
+          : "Not approved, so the routine stopped here.",
+        stop: true,
+      };
     }
     return { ok: false, error: "No answer within 24 hours, so the routine stopped." };
   }

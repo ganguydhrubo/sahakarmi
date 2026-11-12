@@ -26,6 +26,7 @@ import { SETTINGS_SECTION_KEY } from "../settings-section";
 import { AboutCard } from "./AboutCard";
 import { AssignmentsSettings } from "./AssignmentsSettings";
 import { FeaturesSettings } from "./FeaturesSettings";
+import { HostSettings } from "./HostSettings";
 import { IntelligenceSettings } from "./IntelligenceSettings";
 import { McpSettings } from "./McpSettings";
 import { ModelSuggestions } from "./ModelSuggestions";
@@ -35,6 +36,7 @@ import { SkillsSettings } from "./SkillsSettings";
 import { StorageView } from "./StorageView";
 import { TelegramSettings } from "./TelegramSettings";
 import { ThemeSelector } from "./ThemeSelector";
+import { Tip } from "./Tip";
 import { UpdateControl } from "./UpdateControl";
 import { VoiceSettings } from "./VoiceSettings";
 
@@ -48,6 +50,7 @@ type SettingsSection =
   | "intelligence"
   | "voice"
   | "telegram"
+  | "host"
   | "features"
   | "updates"
   | "data"
@@ -67,6 +70,7 @@ const SECTION_GROUPS: Array<{ label: MessageKey; items: SectionItem[] }> = [
     items: [
       { id: "general", label: "setGeneral", description: "setDescGeneral" },
       { id: "voice", label: "setVoice", description: "setDescVoice" },
+      { id: "host", label: "setHost", description: "setDescHost" },
       { id: "telegram", label: "setTelegram", description: "setDescTelegram" },
     ],
   },
@@ -314,6 +318,7 @@ export function SettingsView(props: SettingsViewProps) {
               <section class="settings-card">
                 <h2>{t("providers")}</h2>
                 <p>{t("connectIntro")}</p>
+                <Tip id="models" text="tipModels" />
                 <ProviderConnect agentStatus={props.agentStatus} />
                 <p class="settings-meta provider-permissions-link">
                   <button type="button" class="link-button" onClick={props.onOpenPermissions}>
@@ -382,6 +387,12 @@ export function SettingsView(props: SettingsViewProps) {
           {panel("telegram", () => (
             <section class="settings-card">
               <TelegramSettings bots={props.bots} />
+            </section>
+          ))}
+
+          {panel("host", () => (
+            <section class="settings-card">
+              <HostSettings />
             </section>
           ))}
 

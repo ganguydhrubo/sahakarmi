@@ -70,7 +70,10 @@ describe("onboarding state", () => {
       welcome: "auto",
       tour: "never",
       checklistHidden: false,
+      tipsOff: false,
+      seenTips: [],
     });
+    expect(parseOnboarding("{not json").tipsOff).toBe(true);
   });
 });
 

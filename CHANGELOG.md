@@ -5,6 +5,34 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-12
+
+### Added
+
+- **Phone & Host**: use Sahkarmi from your phone (iPhone or Android). Approve requests, chat with
+  your coworkers and run routines from anywhere, free and private, through your own Tailscale.
+  Three guided steps: a QR on screen opens the App Store or Google Play, one click links this PC,
+  and pointing the phone camera at the pairing code pairs it. Only your own devices can open it;
+  each phone can be removed at any time, and every action from a phone is listed.
+- Phone approvals show the exact command and where the request came from, and take a note just
+  like on the PC. Requests that need private details say they can only be answered on the PC.
+- Optional **Start with Windows** keeps Host ready in the tray after sign-in (not in the
+  Microsoft Store build).
+- **Voice typing** on this PC: speak and the words appear in the message box, like ChatGPT.
+- Browser: **back, forward and reload**, a Chrome-like address bar (type a web address or words
+  to search) and right-click menus. How the browser itself works is unchanged.
+- **Copy** button on messages, a clearer send button, and older messages load by themselves when
+  you scroll up, keeping your place.
+- **Searchable Help** and short one-time tips.
+
+### Fixed
+
+- Your **note on an approval now reaches the coworker**. Before, a note typed on a paused command
+  was ignored; it now arrives with your decision, and in routines it is handed to the next step.
+- Dark mode: fixed hard-to-read text, badges and cards across the app.
+- Plain language: routine and system notes, usage notes and modes now read as short sentences
+  instead of raw text.
+
 ## [0.32.0] - 2026-11-12
 
 ### Added
