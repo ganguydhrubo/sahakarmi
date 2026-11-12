@@ -730,3 +730,21 @@
   width: 100%;
   resize: vertical;
 }
+
+/* The view has no padding of its own; line the new sections up with the intro. */
+.routines-view .routine-templates,
+.routines-view .routine-describe,
+.routines-view > .settings-meta[role="status"] {
+  margin: 0 24px 16px;
+}
+
+.routines-view .routine-templates {
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.routines-view .routine-templates h2,
+.routines-view .routine-describe h2 {
+  font-size: 1.05rem;
+}
