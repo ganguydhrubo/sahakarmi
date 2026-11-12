@@ -6,6 +6,8 @@ export interface BackgroundTrayActions {
   setPaused: (paused: boolean) => void;
   isPaused: () => boolean;
   quit: () => void;
+  /** A status line for the top of the menu, e.g. "Sahkarmi Host is on · 1 phone". */
+  statusLine?: () => string | null;
 }
 
 /**
@@ -49,11 +51,13 @@ export class BackgroundTray {
   refresh(): void {
     if (!this.#tray || this.#tray.isDestroyed()) return;
     const paused = this.#actions.isPaused();
+    const status = this.#actions.statusLine?.() ?? null;
     this.#tray.setToolTip(
       paused ? "Sahkarmi: coworkers paused" : "Sahkarmi is running in the background",
     );
     this.#tray.setContextMenu(
       Menu.buildFromTemplate([
+        ...(status ? ([{ label: status, enabled: false }, { type: "separator" }] as const) : []),
         { label: "Open Sahkarmi", click: () => this.#actions.open() },
         {
           label: "Pause all coworkers",

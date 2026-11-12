@@ -66,7 +66,7 @@ const TOPICS: Array<{ group: MessageKey; items: Array<[q: MessageKey, a: Message
   {
     group: "helpGroupConnect",
     items: [
-      ["helpQTelegram", "helpTipTelegram"],
+      ["helpQTelegram", "helpAPhone"],
       ["helpQBrowser", "helpTipBrowser"],
       ["helpQMcp", "helpTipMcp"],
     ],

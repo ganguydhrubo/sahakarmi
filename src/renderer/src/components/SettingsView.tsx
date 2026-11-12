@@ -26,6 +26,7 @@ import { SETTINGS_SECTION_KEY } from "../settings-section";
 import { AboutCard } from "./AboutCard";
 import { AssignmentsSettings } from "./AssignmentsSettings";
 import { FeaturesSettings } from "./FeaturesSettings";
+import { HostSettings } from "./HostSettings";
 import { IntelligenceSettings } from "./IntelligenceSettings";
 import { McpSettings } from "./McpSettings";
 import { ModelSuggestions } from "./ModelSuggestions";
@@ -49,6 +50,7 @@ type SettingsSection =
   | "intelligence"
   | "voice"
   | "telegram"
+  | "host"
   | "features"
   | "updates"
   | "data"
@@ -68,6 +70,7 @@ const SECTION_GROUPS: Array<{ label: MessageKey; items: SectionItem[] }> = [
     items: [
       { id: "general", label: "setGeneral", description: "setDescGeneral" },
       { id: "voice", label: "setVoice", description: "setDescVoice" },
+      { id: "host", label: "setHost", description: "setDescHost" },
       { id: "telegram", label: "setTelegram", description: "setDescTelegram" },
     ],
   },
@@ -384,6 +387,12 @@ export function SettingsView(props: SettingsViewProps) {
           {panel("telegram", () => (
             <section class="settings-card">
               <TelegramSettings bots={props.bots} />
+            </section>
+          ))}
+
+          {panel("host", () => (
+            <section class="settings-card">
+              <HostSettings />
             </section>
           ))}
 

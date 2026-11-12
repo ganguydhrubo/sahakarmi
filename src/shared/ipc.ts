@@ -208,6 +208,14 @@ export const IPC_CHANNELS = {
   telegramSetCoworker: "telegram:set-coworker",
   telegramUnpair: "telegram:unpair",
   telegramSetAllowPasswords: "telegram:set-allow-passwords",
+  hostStatus: "host:status",
+  hostSetEnabled: "host:set-enabled",
+  hostSetStartWithWindows: "host:set-start-with-windows",
+  hostSetAddress: "host:set-address",
+  hostSetupTailscale: "host:setup-tailscale",
+  hostStartPairing: "host:start-pairing",
+  hostCancelPairing: "host:cancel-pairing",
+  hostRemoveDevice: "host:remove-device",
   customSkillsList: "custom-skills:list",
   customSkillsAdd: "custom-skills:add",
   customSkillsPreviewGithub: "custom-skills:preview-github",
@@ -607,7 +615,7 @@ export interface SaveBusinessTargetInput {
   notes: string;
 }
 
-export type ExternalDestination = "agent-setup" | "feedback" | "message";
+export type ExternalDestination = "agent-setup" | "feedback" | "message" | "tailscale-download";
 
 export interface AgentStatus {
   phase: AgentPhase;
@@ -2375,6 +2383,8 @@ export interface SahkarmiDesktopApi {
   apis: ApiIntegrationsDesktopApi;
   assignments: AssignmentsDesktopApi;
   telegram: TelegramDesktopApi;
+  /** Sahkarmi Host: use this PC from a phone. Absent in older builds and some tests. */
+  host?: HostDesktopApi;
   customSkills: CustomSkillsDesktopApi;
   mcp: McpDesktopApi;
   workflow: WorkflowDesktopApi;
@@ -2918,6 +2928,61 @@ export interface TelegramDesktopApi {
   setCoworker: (botId: string) => Promise<TelegramStatus>;
   unpair: () => Promise<TelegramStatus>;
   setAllowPasswords: (allow: boolean) => Promise<TelegramStatus>;
+}
+
+/** A phone paired with Sahkarmi Host. Its key is stored only as a hash. */
+export interface HostDevice {
+  id: string;
+  name: string;
+  pairedAt: string;
+  lastSeenAt: string | null;
+}
+
+/** One thing a paired phone did, for the activity list. Never holds message text or keys. */
+export interface HostActivity {
+  at: string;
+  deviceName: string;
+  action: "paired" | "message" | "approved" | "rejected" | "routine" | "unpaired" | "removed";
+  detail: string;
+}
+
+export interface HostTailscaleStatus {
+  /** The Tailscale app is installed on this PC. */
+  installed: boolean;
+  /** Signed in and connected to the owner's private network. */
+  connected: boolean;
+  /** This PC's private name, e.g. my-pc.tail1234.ts.net. */
+  dnsName: string | null;
+  /** The phone link is already shared through Tailscale. */
+  serving: boolean;
+}
+
+export interface HostStatus {
+  enabled: boolean;
+  running: boolean;
+  port: number | null;
+  /** Start hidden with Windows. Not offered in the Store build, where Windows manages startup. */
+  startWithWindows: boolean;
+  canStartWithWindows: boolean;
+  /** The https address the phone opens: from Tailscale, or typed by the owner. */
+  address: string | null;
+  addressFromTailscale: boolean;
+  tailscale: HostTailscaleStatus;
+  devices: HostDevice[];
+  pairing: { code: string; url: string; qrSvg: string; expiresAt: string } | null;
+  activity: HostActivity[];
+  error: string | null;
+}
+
+export interface HostDesktopApi {
+  status: () => Promise<HostStatus>;
+  setEnabled: (enabled: boolean) => Promise<HostStatus>;
+  setStartWithWindows: (enabled: boolean) => Promise<HostStatus>;
+  setAddress: (address: string) => Promise<HostStatus>;
+  setupTailscale: () => Promise<HostStatus>;
+  startPairing: () => Promise<HostStatus>;
+  cancelPairing: () => Promise<HostStatus>;
+  removeDevice: (deviceId: string) => Promise<HostStatus>;
 }
 
 export interface ComposioDesktopApi {

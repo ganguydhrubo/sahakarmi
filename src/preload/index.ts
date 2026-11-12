@@ -391,6 +391,18 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     setAllowPasswords: (allow: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.telegramSetAllowPasswords, { allow }),
   },
+  host: {
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.hostStatus),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke(IPC_CHANNELS.hostSetEnabled, { enabled }),
+    setStartWithWindows: (enabled: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.hostSetStartWithWindows, { enabled }),
+    setAddress: (address: string) => ipcRenderer.invoke(IPC_CHANNELS.hostSetAddress, { address }),
+    setupTailscale: () => ipcRenderer.invoke(IPC_CHANNELS.hostSetupTailscale),
+    startPairing: () => ipcRenderer.invoke(IPC_CHANNELS.hostStartPairing),
+    cancelPairing: () => ipcRenderer.invoke(IPC_CHANNELS.hostCancelPairing),
+    removeDevice: (deviceId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.hostRemoveDevice, { deviceId }),
+  },
   customSkills: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.customSkillsList),
     add: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.customSkillsAdd, { text }),

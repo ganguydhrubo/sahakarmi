@@ -115,6 +115,8 @@ export const onboardingEn = {
   helpAPrivacy:
     "On your computer. Your chats, files, memory and knowledge stay here. A message goes only to the AI you chose for that coworker.",
   helpQTelegram: "Can I use Sahkarmi from my phone?",
+  helpAPhone:
+    "Yes, two free ways. Phone & Host (Settings): approve requests, chat and run routines from a private page on your phone; set it up once with the free Tailscale app and a QR code. Or Telegram (Settings): tap Approve or Reject, or send /pending. Either way, Sahkarmi must be running on your PC (the tray is enough).",
   helpQBrowser: "How do coworkers use websites?",
   helpQMcp: "How do I add a tool server (MCP)?",
   helpQInterrupted: "My message says Interrupted. What now?",
@@ -306,6 +308,8 @@ export const onboardingHi: typeof onboardingEn = {
   helpAPrivacy:
     "आपके कंप्यूटर पर। आपकी चैट, फ़ाइलें, मेमोरी और जानकारी यहीं रहती हैं। संदेश सिर्फ़ उसी AI को जाता है जो आपने उस सहकर्मी के लिए चुना है।",
   helpQTelegram: "क्या फ़ोन से सहकर्मी चला सकता हूँ?",
+  helpAPhone:
+    "हाँ, दो मुफ़्त तरीके। फ़ोन और होस्ट (सेटिंग्स): फ़ोन के निजी पेज से अनुरोध मंज़ूर करें, चैट करें और रूटीन चलाएँ; मुफ़्त Tailscale ऐप और QR कोड से एक बार सेट करें। या टेलीग्राम (सेटिंग्स): Approve या Reject दबाएँ, या /pending भेजें। दोनों में आपके PC पर सहकर्मी चलता रहना चाहिए (ट्रे में भी चलेगा)।",
   helpQBrowser: "सहकर्मी वेबसाइट कैसे चलाते हैं?",
   helpQMcp: "टूल सर्वर (MCP) कैसे जोड़ूँ?",
   helpQInterrupted: "मेरे संदेश पर “Interrupted” लिखा है। अब क्या करूँ?",
@@ -493,6 +497,8 @@ export const onboardingBn: typeof onboardingEn = {
   helpAPrivacy:
     "আপনার কম্পিউটারে। চ্যাট, ফাইল, মেমরি আর তথ্য এখানেই থাকে। বার্তা শুধু সেই AI-এর কাছে যায় যেটি আপনি ওই সহকর্মীর জন্য বেছেছেন।",
   helpQTelegram: "ফোন থেকে সহকর্মী চালাতে পারি?",
+  helpAPhone:
+    "হ্যাঁ, দুটি বিনামূল্যের উপায়। ফোন ও হোস্ট (সেটিংস): ফোনের ব্যক্তিগত পেজ থেকে অনুরোধ মঞ্জুর করুন, চ্যাট করুন আর রুটিন চালান; বিনামূল্যের Tailscale অ্যাপ আর QR কোড দিয়ে একবার সেট করুন। অথবা টেলিগ্রাম (সেটিংস): Approve বা Reject চাপুন, অথবা /pending পাঠান। দুই ক্ষেত্রেই আপনার PC-তে সহকর্মী চালু থাকতে হবে (ট্রেতে থাকলেও চলবে)।",
   helpQBrowser: "সহকর্মীরা ওয়েবসাইট কীভাবে চালায়?",
   helpQMcp: "টুল সার্ভার (MCP) কীভাবে যোগ করব?",
   helpQInterrupted: "আমার বার্তায় “Interrupted” লেখা। এখন কী করব?",
