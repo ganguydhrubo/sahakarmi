@@ -675,3 +675,58 @@
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Ready-made workflows gallery. */
+.routine-templates {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.routine-templates h2 {
+  margin: 0;
+}
+
+.routine-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.routine-template-card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.routine-template-card p {
+  margin: 0;
+}
+
+.routine-template-card > button {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+/* "Describe it": the owner's words become a draft routine. */
+.routine-describe {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.routine-describe h2 {
+  margin: 0;
+}
+
+.routine-describe textarea {
+  width: 100%;
+  resize: vertical;
+}

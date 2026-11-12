@@ -5,6 +5,19 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+### Added
+
+- Routines: **Rerun from here** on each step of the last run. That step and the ones after it run
+  again; earlier steps are not redone, so their results and approvals are reused (nothing is
+  asked or sent twice). The latest 5 runs of each routine keep what is needed for this.
+- Routines: **Describe it**. Say in your own words what should happen, when, and who should do
+  it; your orchestrator coworker drafts the steps and schedule. The draft opens in the editor
+  and nothing is saved or run until you press Save.
+- Routines: **Ready-made** workflows for small businesses: weekly GST check, payment reminders,
+  daily lead follow-up, Monday sales report, competitor watch, social media week plan, review
+  replies, supplier quotes, morning cash position and month-end checklist. Your own coworkers
+  are matched by role, and anything that sends or posts asks you first.
+
 ## [0.31.0] - 2026-11-12
 
 ### Added

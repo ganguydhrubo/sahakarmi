@@ -77,6 +77,7 @@ import { classifyCommand } from "../backend/permission-policy";
 import { PermissionService } from "../backend/permission-service";
 import { ProviderSetup } from "../backend/provider-setup";
 import { ResourceAssignmentStore } from "../backend/resource-assignments";
+import { designRoutine } from "../backend/routine-designer";
 import { createRoutineExecutor } from "../backend/routine-executor";
 import { importDesktopRoutinesOnce } from "../backend/routine-import";
 import { parseRoutineCadence, parseRoutineTrigger, RoutineStore } from "../backend/routine-store";
@@ -1385,6 +1386,20 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.routinesRunNow, (routineId: unknown) =>
     routines.runNow(requireString(routineId, "routineId")),
   );
+  handleTrusted(IPC_CHANNELS.routinesDesign, async (input: unknown) => {
+    if (!isObject(input) || typeof input.description !== "string") {
+      throw new Error("Describe what the routine should do.");
+    }
+    const bots = service.listBots();
+    const designer = bots.find((bot) => bot.id === requireString(input.botId, "botId"));
+    if (!designer) throw new Error("Unknown coworker.");
+    const team = bots
+      .filter((bot) => bot.workspaceId === designer.workspaceId)
+      .map((bot) => ({ id: bot.id, name: bot.name, role: bot.role }));
+    const outcome = await designRoutine(service, designer.id, input.description, team);
+    if (!outcome.ok) throw new Error(outcome.error);
+    return outcome.draft;
+  });
   handleTrusted(IPC_CHANNELS.routinesRerunFrom, (input: unknown) => {
     if (!isObject(input)) throw new Error("Invalid rerun.");
     return routines.rerunFrom(

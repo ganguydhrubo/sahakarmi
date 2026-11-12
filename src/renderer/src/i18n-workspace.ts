@@ -76,6 +76,47 @@ export const workspaceEn = {
     "Run this step and the ones after it again. Earlier steps are not redone: their results and approvals from the last run are reused.",
   routineReused: "Reused from the last run",
   routineTriggerRerun: "Rerun from a step",
+  tplButton: "Ready-made",
+  tplTitle: "Ready-made workflows",
+  tplIntro:
+    "Pick one to open it in the editor. Change anything you like; nothing runs until you save it.",
+  tplUse: "Use this",
+  tplSteps: "{count} steps",
+  tplFolderNote: "Choose a folder for the “Save as a file” step, then save.",
+  tplGstName: "Weekly GST check",
+  tplGstDesc:
+    "Totals last week's GST and flags invoices with a missing GSTIN, wrong rate or HSN code.",
+  tplRemindName: "Payment reminders",
+  tplRemindDesc:
+    "Finds overdue invoices, drafts polite reminders, and sends them after you approve.",
+  tplLeadsName: "Daily lead follow-up",
+  tplLeadsDesc: "Collects yesterday's enquiries and sends personal follow-ups after you approve.",
+  tplSalesName: "Monday sales report",
+  tplSalesDesc: "A one-page report of last week's sales, saved as a file and sent to Telegram.",
+  tplCompetitorName: "Competitor watch",
+  tplCompetitorDesc:
+    "Checks competitors' prices and products weekly and tells you only when something changed.",
+  tplSocialName: "Social media week plan",
+  tplSocialDesc: "Plans next week's 5 posts, then writes captions once you like the plan.",
+  tplReviewsName: "Review replies",
+  tplReviewsDesc: "Drafts replies to new reviews and complaints, and posts them after you approve.",
+  tplSupplierName: "Supplier quotes",
+  tplSupplierDesc:
+    "Finds suppliers, compares landed cost, and drafts quote requests for the best two.",
+  tplCashName: "Morning cash position",
+  tplCashDesc: "Balance, money coming in and payments going out this week, on your Telegram.",
+  tplMonthEndName: "Month-end checklist",
+  tplMonthEndDesc:
+    "Bank reconciliation, pending invoices and TDS/GST dates, with an owner for each item.",
+  routineDescribe: "Describe it",
+  routineDescribeTitle: "Describe a routine",
+  routineDescribeHelp:
+    "Say what should happen, when, and who should do it. {name} drafts the steps; you check them before saving.",
+  routineDescribePlaceholder:
+    "e.g. Every Monday at 9, Asha totals last week's GST, asks me before emailing our CA, and saves the summary in a folder.",
+  routineDescribeBuild: "Draft it",
+  routineDescribeBusy: "{name} is drafting the steps…",
+  routineDescribeDone: "Check every step and the schedule. Nothing runs until you save.",
   routineOutputWhere: "Where should the result go?",
   routineOutputFile: "Save as a file in a folder",
   routineOutputTelegram: "Send to my Telegram",
