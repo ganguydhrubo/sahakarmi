@@ -278,9 +278,13 @@ async function main() {
     "/open-source-ai-agent.html",
     "/ai-agent-for-windows.html",
     "/alternatives.html",
-    // The generated coworker pages (scripts/build-coworker-pages.ts), as listed in the sitemap.
+    "/download.html",
+    // The generated coworker pages (scripts/build-coworker-pages.ts) and video pages
+    // (scripts/build-video-library.ts), as listed in the sitemap.
     ...[
-      ...sitemapForPages.matchAll(/<loc>https:\/\/sahkarmi\.site(\/coworkers\/[^<]*)<\/loc>/g),
+      ...sitemapForPages.matchAll(
+        /<loc>https:\/\/sahkarmi\.site(\/(?:coworkers|videos)\/[^<]*)<\/loc>/g,
+      ),
     ].map((m) => m[1]),
   ]) {
     const secondary = await load(page);

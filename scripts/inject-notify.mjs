@@ -21,6 +21,7 @@ const site = join(dirname(fileURLToPath(import.meta.url)), "..", "website");
 const pages = [
   ...readdirSync(site),
   ...readdirSync(join(site, "coworkers")).map((name) => `coworkers/${name}`),
+  ...readdirSync(join(site, "videos")).map((name) => `videos/${name}`),
 ];
 for (const name of pages.filter((file) => file.endsWith(".html"))) {
   const target = join(site, name);

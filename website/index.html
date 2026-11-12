@@ -787,6 +787,126 @@
       .js .plug-mcp .plug-switch i { left: 17px; transition: none; }
       .plug-card:hover { transform: none; }
     }
+
+    /* Hero 2026-11: one pill, one big download, the Store beside it, facts underneath. */
+    .phone-announce { border-color: rgba(46, 139, 87, 0.45); background: linear-gradient(100deg, rgba(46, 139, 87, 0.16), rgba(232, 119, 46, 0.08) 70%, transparent), var(--card); }
+    .phone-mark { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--leaf); color: #fff; flex: none; }
+    .phone-mark svg { width: 15px; height: 15px; }
+    .hero-cta { gap: 14px 16px; margin-top: 6px; }
+    .hero-cta .btn-xl { min-height: 60px; }
+    .hero-store img { display: block; height: 60px; width: auto; }
+    .hero-cta.on-phone #hero-download { display: none; }
+    .hero-facts { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 14px 0 0; padding: 0; }
+    .hero-fact { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text-2); font-size: 14px; font-weight: 600; white-space: nowrap; }
+    .hero-fact b { color: var(--text); }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--leaf); box-shadow: 0 0 0 4px rgba(46, 139, 87, 0.2); }
+    .cta-meta .watch-link { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; font-weight: 700; color: var(--saffron-ink); text-decoration: none; white-space: nowrap; }
+    .cta-meta .watch-link svg { width: 14px; height: 14px; }
+    .to-pc { margin-top: 6px; padding: 18px; border-radius: 20px; border: 1px solid var(--saffron); background: linear-gradient(140deg, rgba(232, 119, 46, 0.14), transparent 60%), var(--card); display: grid; gap: 12px; }
+    .to-pc[hidden] { display: none; }
+    .to-pc-title { margin: 0; font-weight: 800; font-size: 17px; color: var(--text); }
+    .to-pc-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .to-pc-actions .btn { flex: 1 1 200px; justify-content: center; }
+    .to-pc-actions svg { width: 18px; height: 18px; }
+    .to-pc-note { margin: 0; color: var(--muted); font-size: 14px; }
+    .nav a { white-space: nowrap; }
+
+    /* Phone & Host section */
+    .phone-announce b { color: var(--leaf-ink); }
+    .phone-band { position: relative; overflow: hidden; }
+    .phone-glow { position: absolute; inset: 10% auto auto -10%; width: 640px; height: 640px; border-radius: 50%; background: radial-gradient(circle, rgba(46, 139, 87, 0.22), transparent 65%); pointer-events: none; }
+    .phone-grid { position: relative; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: clamp(28px, 5vw, 72px); align-items: center; }
+    @media (max-width: 900px) { .phone-grid { grid-template-columns: 1fr; } }
+    .phone-eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--leaf-ink); }
+    .phone-steps { list-style: none; counter-reset: ph; margin: 22px 0 0; padding: 0; display: grid; gap: 12px; }
+    .phone-steps li { counter-increment: ph; position: relative; display: grid; gap: 2px; padding: 14px 16px 14px 58px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); }
+    .phone-steps li::before { content: counter(ph); position: absolute; left: 14px; top: 14px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--leaf); color: #fff; font-weight: 800; }
+    .phone-steps b { color: var(--text); font-size: 16px; }
+    .phone-steps span { color: var(--text-2); font-size: 15px; }
+    .phone-ticks { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 18px 0 0; padding: 0; }
+    .phone-ticks li { color: var(--text-2); font-weight: 600; font-size: 14px; }
+    .phone-ticks li::before { content: "✓"; color: var(--leaf-ink); font-weight: 800; margin-right: 6px; }
+    .phone-stage { position: relative; display: grid; justify-items: center; gap: 0; padding: 10px 0; }
+    .phone-device { position: relative; width: min(300px, 82vw); aspect-ratio: 9 / 18.5; padding: 12px; border-radius: 44px; background: linear-gradient(160deg, #2a2f45, #0f1220); box-shadow: 0 40px 90px rgba(15, 18, 32, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.08); transform: rotate(-3deg); animation: phone-float 7s ease-in-out infinite; }
+    @keyframes phone-float { 50% { transform: rotate(-3deg) translateY(-10px); } }
+    @media (prefers-reduced-motion: reduce) { .phone-device { animation: none; } }
+    .phone-notch { position: absolute; top: 20px; left: 50%; width: 84px; height: 22px; margin-left: -42px; border-radius: 999px; background: #0f1220; z-index: 2; }
+    .phone-screen { height: 100%; border-radius: 34px; overflow: hidden; background: #fbf7f0; color: #141829; display: flex; flex-direction: column; gap: 10px; padding: 48px 12px 0; font-size: 12px; }
+    .phone-top { display: flex; align-items: center; gap: 8px; padding: 0 4px 6px; border-bottom: 1px solid rgba(20, 24, 41, 0.08); }
+    .phone-top b { display: block; font-size: 15px; }
+    .phone-top small { display: flex; align-items: center; gap: 5px; color: #646a85; }
+    .phone-top small i { width: 7px; height: 7px; border-radius: 50%; background: #2e8b57; }
+    .phone-logo { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, #3b4a8c 0 45%, #e8772e 45%); flex: none; }
+    .phone-card { display: grid; gap: 5px; padding: 11px; border-radius: 16px; background: #fff; box-shadow: 0 6px 18px rgba(30, 42, 90, 0.1); }
+    .phone-card small { color: #646a85; }
+    .phone-card b { font-size: 13.5px; line-height: 1.3; }
+    .phone-src { color: #646a85; font-size: 11px; }
+    .phone-note { padding: 7px 9px; border-radius: 9px; border: 1px solid rgba(20, 24, 41, 0.14); color: #9a9cb3; }
+    .phone-btns { display: flex; gap: 6px; margin-top: 2px; }
+    .phone-btns span { flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; border: 1px solid rgba(20, 24, 41, 0.14); font-weight: 700; }
+    .phone-btns .yes { background: #2e8b57; border-color: #2e8b57; color: #fff; }
+    .phone-btns .run { background: #e8772e; border-color: #e8772e; color: #0f1220; }
+    .phone-card-quiet { opacity: 0.85; }
+    .phone-tabs { margin-top: auto; display: flex; justify-content: space-around; padding: 10px 0 16px; border-top: 1px solid rgba(20, 24, 41, 0.08); color: #646a85; font-weight: 600; }
+    .phone-tabs .on { color: #a84e14; }
+    .phone-link { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 0; }
+    .phone-link span { width: 6px; height: 6px; border-radius: 50%; background: var(--leaf); animation: phone-pulse 1.6s ease-in-out infinite; }
+    .phone-link span:nth-child(2) { animation-delay: 0.2s; }
+    .phone-link span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes phone-pulse { 50% { opacity: 0.25; transform: scale(0.7); } }
+    @media (prefers-reduced-motion: reduce) { .phone-link span { animation: none; } }
+    .phone-pc { display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-weight: 700; }
+    .phone-pc svg { width: 22px; height: 22px; color: var(--saffron-ink); }
+
+    /* Download section: command-line card and the steps after downloading */
+    .dl-grid { max-width: none; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
+    .cli-mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: #0f1220; color: #5ec48a; font: 800 16px ui-monospace, Consolas, monospace; }
+    .dl-cli .cli-label { margin: 4px 0 -4px; font-weight: 700; color: var(--text); font-size: 14px; }
+    .dl-cli .winget code { font-size: 12.5px; white-space: normal; overflow-wrap: anywhere; overflow: visible; }
+    .dl-steps { list-style: none; counter-reset: ds; margin: 22px 0 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .dl-steps li { counter-increment: ds; position: relative; display: grid; gap: 4px; padding: 16px 16px 16px 60px; border-radius: 16px; border: 1px dashed var(--line-2); background: var(--card); }
+    .dl-steps li::before { content: counter(ds); position: absolute; left: 16px; top: 16px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--saffron); color: #0f1220; font-weight: 800; }
+    .dl-steps b { color: var(--text); }
+    .dl-steps span { color: var(--text-2); font-size: 14.5px; }
+    /* "Download started" card */
+    .dl-started { position: fixed; z-index: 70; right: 16px; bottom: 16px; width: min(420px, calc(100% - 32px)); padding: 20px 20px 16px; border-radius: 22px; border: 1px solid var(--saffron); background: var(--card-solid); color: var(--text); box-shadow: var(--shadow); animation: dls-in 0.45s var(--ease) both; }
+    .dl-started[hidden] { display: none; }
+    @keyframes dls-in { from { opacity: 0; transform: translateY(24px) scale(0.98); } }
+    @media (prefers-reduced-motion: reduce) { .dl-started { animation: none; } }
+    .dls-close { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border-radius: 50%; border: 0; display: grid; place-items: center; background: transparent; color: var(--muted); cursor: pointer; }
+    .dls-close:hover { background: var(--card); color: var(--text); }
+    .dls-kicker { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--leaf-ink); font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .dls-kicker i { width: 9px; height: 9px; border-radius: 50%; background: var(--leaf); box-shadow: 0 0 0 4px rgba(46, 139, 87, 0.2); }
+    .dl-started h2 { margin: 6px 36px 12px 0; font-size: 21px; line-height: 1.25; }
+    .dls-steps { margin: 0; padding: 0 0 0 22px; display: grid; gap: 10px; }
+    .dls-steps li { padding-left: 4px; }
+    .dls-steps li::marker { color: var(--saffron-ink); font-weight: 800; }
+    .dls-steps b { display: block; color: var(--text); font-size: 15px; line-height: 1.35; }
+    .dls-steps span { color: var(--muted); font-size: 13.5px; }
+    .dls-alt { margin: 14px 0 0; font-size: 13.5px; color: var(--muted); }
+    .dls-alt a { color: var(--saffron-ink); font-weight: 700; }
+    /* Video library teaser */
+    .vteaser { padding-block: clamp(36px, 6vw, 64px) 0; }
+    .vteaser-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 20px; margin-bottom: 18px; }
+    .vteaser-head h2 { margin: 0; }
+    .vteaser-row { list-style: none; margin: 0; padding: 0 0 6px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(158px, 1fr); gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .vteaser-row::-webkit-scrollbar { display: none; }
+    .vteaser-row li { scroll-snap-align: start; }
+    .vteaser-row a { position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2); text-decoration: none; transition: transform 0.35s var(--ease); }
+    .vteaser-row a:hover { transform: translateY(-4px); }
+    @media (prefers-reduced-motion: reduce) { .vteaser-row a { transition: none; } .vteaser-row a:hover { transform: none; } }
+    .vteaser-row img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .vteaser-row a::after { content: ""; position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, rgba(0, 0, 0, 0.78)); }
+    .vt-title { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 1; color: #fff; font-weight: 800; font-size: 14.5px; line-height: 1.3; }
+    .vt-len { position: absolute; right: 10px; top: 10px; z-index: 1; padding: 2px 8px; border-radius: 8px; background: rgba(15, 18, 32, 0.78); color: #fff; font-size: 12.5px; font-weight: 700; }
+    .vt-more a { display: grid; align-content: center; justify-items: center; padding: 12px; text-align: center; gap: 4px; background: linear-gradient(160deg, rgba(232, 119, 46, 0.22), transparent 70%), var(--card); color: var(--text); }
+    .vt-more a::after { display: none; }
+    .vt-more b { font: 800 46px/1 var(--font-display); color: var(--saffron-ink); }
+    .vt-more span { font-weight: 700; color: var(--text-2); }
+    /* Wide screens keep the top menu short; the phone menu lists everything. */
+    @media (min-width: 901px) { .nav-more { display: none; } }
+    @media (min-width: 901px) and (max-width: 1180px) { .nav a { padding: 8px 8px; font-size: 14.5px; } }
+    @media (min-width: 901px) and (max-width: 1040px) { .nav-mid { display: none; } }
   </style>
 </head>
 <body>
@@ -804,15 +924,17 @@
         <span><b>Sahkarmi</b><small lang="hi">सहकर्मी</small></span>
       </a>
       <nav class="nav" id="nav" aria-label="Main navigation">
-        <a href="#new" data-i18n="navNew">What's new</a>
-        <a href="#knowledge" data-i18n="navKnowledge">Documents</a>
+        <a class="nav-mid" href="#new" data-i18n="navNew">What's new</a>
+        <a href="#phone" data-i18n="navPhone">Phone</a>
+        <a href="/videos/" data-i18n="navVideos">Videos</a>
+        <a class="nav-more" href="#knowledge" data-i18n="navKnowledge">Documents</a>
         <a href="#see" data-i18n="navSee">See it working</a>
-        <a href="#how" data-i18n="navHow">How it works</a>
+        <a class="nav-more" href="#how" data-i18n="navHow">How it works</a>
         <a href="#features" data-i18n="navFeatures">Features</a>
         <a href="#download" data-i18n="navDownload">Download</a>
-        <a href="#privacy" data-i18n="navPrivacy">Privacy</a>
+        <a class="nav-more" href="#privacy" data-i18n="navPrivacy">Privacy</a>
         <a href="#faq" data-i18n="navFaq">FAQ</a>
-        <a href="#community" data-i18n="navCommunity">Community</a>
+        <a class="nav-more" href="#community" data-i18n="navCommunity">Community</a>
       </nav>
       <div class="header-actions">
         <a class="btn btn-primary btn-small header-download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe"><span data-i18n="mini">Download</span></a>
@@ -833,30 +955,27 @@
       <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="wrap hero-grid">
         <div class="hero-copy">
-          <a class="tg-announce pc-announce" href="/computer-use.html"><span class="plug-spark" aria-hidden="true">⌘</span><span data-i18n="pcAnnounce">New: coworkers can now use the apps on your PC</span><b aria-hidden="true">→</b></a>
-          <a class="tg-announce store-announce" href="#download"><svg class="ms-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#f25022" d="M2 2h9.5v9.5H2z"/><path fill="#7fba00" d="M12.5 2H22v9.5h-9.5z"/><path fill="#00a4ef" d="M2 12.5h9.5V22H2z"/><path fill="#ffb900" d="M12.5 12.5H22V22h-9.5z"/></svg><span data-i18n="msAnnounce">New: Sahkarmi is on the Microsoft Store, free</span><b aria-hidden="true">→</b></a>
-          <a class="tg-announce" href="#telegram"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#26A5E4"/><path fill="#fff" d="M10.9 23.4 34 14.5c1.1-.4 2 .3 1.7 1.9l-3.9 18.5c-.3 1.3-1.1 1.6-2.2 1l-6-4.4-2.9 2.8c-.3.3-.6.6-1.3.6l.4-6.1 11.1-10c.5-.4-.1-.7-.7-.3l-13.7 8.6-5.9-1.8c-1.3-.4-1.3-1.3.3-1.9z"/></svg><span data-i18n="tgAnnounce">New: give your team work from Telegram</span><b aria-hidden="true">→</b></a>
-          <a class="tg-announce plug-announce" href="#plug"><span class="plug-spark" aria-hidden="true">✦</span><span data-i18n="plugAnnounce">New: Skills, MCP servers and workflow export</span><b aria-hidden="true">→</b></a>
-          <a class="tg-announce calc-announce" href="/savings.html"><span class="calc-mark" aria-hidden="true">₹</span><span data-i18n="calcAnnounce">New: how much time and money can AI save you?</span><b aria-hidden="true">→</b></a>
-          <p class="chip"><i aria-hidden="true"></i><span data-i18n="chip">Free · Open source · Version</span> <span data-release-version>0.22.0</span></p>
+          <a class="tg-announce phone-announce" href="#phone"><span class="phone-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18h2"/></svg></span><span data-i18n="phoneAnnounce">New in 0.33: use Sahkarmi from your iPhone or Android</span><b aria-hidden="true">→</b></a>
           <h1><span data-i18n="h1a">Hire an AI team.</span> <span class="accent" data-i18n="h1b">Pay ₹0.</span></h1>
           <p class="rotator"><span data-i18n="rotPre">They</span> <span class="rot-words"><span data-i18n="rot1" class="on">chase your invoices.</span><span data-i18n="rot2">answer your customers.</span><span data-i18n="rot3">write your posts.</span><span data-i18n="rot4">research your market.</span><span data-i18n="rot5">fix your code.</span><span data-i18n="rot6">work while you sleep.</span></span></p>
           <p class="lead" data-i18n="lead">Sahkarmi is free, open-source AI that uses your Windows PC like a coworker would. It browses websites, opens and works in desktop apps, researches, writes, works inside 1,660 apps and runs on a schedule. Before it pays, sends or posts, it asks you.</p>
-          <div class="cta-row">
-            <a class="btn btn-primary btn-glow" id="download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">
+          <div class="cta-row hero-cta">
+            <a class="ms-badge hero-store" href="https://apps.microsoft.com/detail/9PD6BP3NGVST" target="_blank" rel="noopener noreferrer"><img src="/assets/ms-store-badge.svg" width="190" height="52" alt="Download from the Microsoft Store" /></a>
+            <a class="btn btn-primary btn-glow btn-xl" id="hero-download" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
               <span id="download-label" data-i18n="download">Download for Windows</span>
             </a>
-            <a class="btn btn-secondary" href="#see"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg><span data-i18n="watch">Watch the 2-minute film</span></a>
           </div>
-          <div class="ms-spot">
-            <a class="ms-badge" href="https://apps.microsoft.com/detail/9PD6BP3NGVST" target="_blank" rel="noopener noreferrer"><img src="/assets/ms-store-badge.svg" width="190" height="52" alt="Download from the Microsoft Store" /></a>
-            <div class="ms-copy">
-              <p class="ms-title"><span class="ms-free" data-i18n="msFree">FREE · ₹0</span><span data-i18n="msTitle">Now on the Microsoft Store</span></p>
-              <ul class="ms-ticks"><li data-i18n="msT1">Signed and certified by Microsoft</li><li data-i18n="msT2">One-click install, no SmartScreen warning</li><li data-i18n="msT3">Updates automatically</li></ul>
+          <div class="to-pc" id="to-pc" hidden>
+            <p class="to-pc-title" data-i18n="toPcTitle">On your phone? Sahkarmi installs on a Windows PC.</p>
+            <div class="to-pc-actions">
+              <button type="button" class="btn btn-primary" id="to-pc-share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13"/></svg><span id="to-pc-share-label" data-i18n="toPcShare">Send the link to my PC</span></button>
+              <a class="btn btn-secondary" id="to-pc-mail" href="mailto:?subject=Sahkarmi%20for%20my%20PC&amp;body=Download%20Sahkarmi%20(free)%3A%20https%3A%2F%2Fsahkarmi.site%2Fdownload.html"><span data-i18n="toPcMail">Email it to myself</span></a>
             </div>
+            <p class="to-pc-note" data-i18n="toPcNote">Then open sahkarmi.site/download on your PC. Once it is installed, your phone can use it too.</p>
           </div>
-          <p class="cta-meta"><span id="dl-meta" data-i18n="dlMeta">Free forever. No account, no card. Windows 10 and 11.</span> · <a href="https://github.com/ganguydhrubo/sahakarmi" target="_blank" rel="noopener noreferrer" data-i18n="source">Source code</a></p>
+          <p class="hero-facts"><span class="hero-fact"><i class="live-dot" aria-hidden="true"></i><span data-i18n="hfVersion">Version</span>&nbsp;<b data-release-version>0.22.0</b></span><span class="hero-fact" data-release-size="win">240 MB</span><span class="hero-fact" data-i18n="hfWin">Windows 10 and 11</span><span class="hero-fact" data-i18n="hfFree">Free, no account, no card</span></p>
+          <p class="cta-meta"><span id="dl-meta" data-i18n="dlMeta">The Microsoft Store version is signed by Microsoft and updates itself.</span> <a class="watch-link" href="#see"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg><span data-i18n="watch">Watch the 2-minute film</span></a></p>
           <ul class="proof">
             <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--saffron-ink)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i18n="p1">Runs on your PC</span></li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke="var(--turmeric)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="m9 12 2 2 4-4"/></svg><span data-i18n="p2">Asks before it pays or sends</span></li>
@@ -887,6 +1006,26 @@
         <li><b data-count="3">3</b><span data-i18n="st4">languages: English, हिन्दी, বাংলা</span></li>
         <li><b>₹0</b><span data-i18n="st5">to download and use</span></li>
       </ul>
+    </section>
+
+    <!-- Video library teaser -->
+    <section id="videos" class="vteaser" aria-labelledby="vt-h">
+      <div class="wrap">
+        <div class="vteaser-head reveal">
+          <div><p class="eyebrow" data-i18n="vtEyebrow">Video library</p><h2 id="vt-h" data-i18n="vtH2">See it do real jobs</h2></div>
+          <a class="btn btn-secondary" href="/videos/"><span data-i18n="vtAll">See all films</span></a>
+        </div>
+        <!-- videos-teaser:start (generated by scripts/build-video-library.ts) -->
+        <ul class="vteaser-row reveal" aria-label="15 films">
+          <li><a href="/videos/launch.html"><img src="/assets/videos/launch.jpg" width="540" height="960" alt="Film: Meet Sahkarmi: an AI team that asks before it pays" loading="lazy" decoding="async" /><span class="vt-len">1:21</span><span class="vt-title" aria-hidden="true">Meet Sahkarmi: an AI team that asks before it pays</span></a></li>
+          <li><a href="/videos/gmail-whatsapp.html"><img src="/assets/videos/gmail-whatsapp.jpg" width="540" height="960" alt="Film: Gmail and WhatsApp inbox, sorted by AI coworkers" loading="lazy" decoding="async" /><span class="vt-len">1:53</span><span class="vt-title" aria-hidden="true">Gmail and WhatsApp inbox, sorted by AI coworkers</span></a></li>
+          <li><a href="/videos/creator.html"><img src="/assets/videos/creator.jpg" width="540" height="960" alt="Film: A creator's AI team: script, edit, captions and posting" loading="lazy" decoding="async" /><span class="vt-len">1:58</span><span class="vt-title" aria-hidden="true">A creator's AI team: script, edit, captions and posting</span></a></li>
+          <li><a href="/videos/hr.html"><img src="/assets/videos/hr.jpg" width="540" height="960" alt="Film: HR on autopilot: attendance, leave and salaries" loading="lazy" decoding="async" /><span class="vt-len">1:54</span><span class="vt-title" aria-hidden="true">HR on autopilot: attendance, leave and salaries</span></a></li>
+          <li><a href="/videos/accountant.html"><img src="/assets/videos/accountant.jpg" width="540" height="960" alt="Film: Month-end accounts: bills, expenses, GST and Tally" loading="lazy" decoding="async" /><span class="vt-len">2:12</span><span class="vt-title" aria-hidden="true">Month-end accounts: bills, expenses, GST and Tally</span></a></li>
+          <li class="vt-more"><a href="/videos/"><b>15</b><span>films in the library</span></a></li>
+        </ul>
+        <!-- videos-teaser:end -->
+      </div>
     </section>
 
     <!-- Apps -->
@@ -931,6 +1070,51 @@
           <li class="tile tile-wide"><span class="tile-icon" aria-hidden="true">⇶</span><h3 data-i18n="b10T">One job, the whole team</h3><p data-i18n="b10P">Give one goal; it is split between coworkers, pauses for your approvals and resumes after a restart.</p></li>
           <li class="tile tile-wide tile-lang"><span class="tile-big" aria-hidden="true">अ · A · অ</span><h3 data-i18n="b8T">Speaks your language</h3><p data-i18n="b8P">English, हिन्दी and বাংলা. INR with lakh and crore, GST and IST built in.</p></li>
         </ul>
+      </div>
+    </section>
+
+    <!-- Phone & Host (0.33) -->
+    <section id="phone" class="phone-band" aria-labelledby="phone-h">
+      <div class="phone-glow" aria-hidden="true"></div>
+      <div class="wrap phone-grid">
+        <div class="phone-copy reveal">
+          <p class="eyebrow phone-eyebrow"><span class="phone-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18h2"/></svg></span><span data-i18n="phEyebrow">New in 0.33 · Phone &amp; Host</span></p>
+          <h2 id="phone-h" data-i18n="phH2">Your PC, in your pocket.</h2>
+          <p class="lead" data-i18n="phLead">Approve requests, chat with your coworkers and run routines from your iPhone or Android, wherever you are. Your phone talks straight to your own PC through your free Tailscale. No company server in between, nothing to pay.</p>
+          <ol class="phone-steps">
+            <li><b data-i18n="ph1">Get the free Tailscale app</b><span data-i18n="ph1P">On your PC and your phone, signed in with the same account. Sahkarmi shows a QR that opens the App Store or Google Play.</span></li>
+            <li><b data-i18n="ph2">Link this PC to your phone</b><span data-i18n="ph2P">One click in Settings, Phone &amp; Host. Only your own devices can open it, never the internet.</span></li>
+            <li><b data-i18n="ph3">Point your phone camera at the code</b><span data-i18n="ph3P">Sahkarmi opens and pairs by itself. Add it to your home screen and it works like an app.</span></li>
+          </ol>
+          <ul class="phone-ticks">
+            <li data-i18n="phT1">iPhone and Android</li>
+            <li data-i18n="phT2">Each phone has its own key you can remove</li>
+            <li data-i18n="phT3">Risky actions still wait for your Approve</li>
+          </ul>
+        </div>
+        <div class="phone-stage reveal" aria-hidden="true">
+          <div class="phone-device">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="phone-top"><span class="phone-logo"></span><div><b data-i18n="phMockTitle">Needs you</b><small><i></i><span data-i18n="phMockConn">Connected to your PC</span></small></div></div>
+              <div class="phone-card">
+                <small data-i18n="phMockWho">Asha asks · 9:41</small>
+                <b data-i18n="phMockAsk">Send the GST invoice to Mehta Traders?</b>
+                <span class="phone-src" data-i18n="phMockSrc">Came from: your routine "Month-end invoices"</span>
+                <span class="phone-note" data-i18n="phMockNote">Add a note for Asha (optional)</span>
+                <div class="phone-btns"><span data-i18n="phMockNo">Reject</span><span class="yes" data-i18n="phMockYes">Approve</span></div>
+              </div>
+              <div class="phone-card phone-card-quiet">
+                <small data-i18n="phMockWho2">Routine · every Monday 9:00</small>
+                <b data-i18n="phMockAsk2">Weekly sales report</b>
+                <div class="phone-btns"><span class="run" data-i18n="phMockRun">Run now</span></div>
+              </div>
+              <nav class="phone-tabs"><span class="on" data-i18n="phTab1">Needs you</span><span data-i18n="phTab2">Chat</span><span data-i18n="phTab3">Routines</span></nav>
+            </div>
+          </div>
+          <div class="phone-link"><span></span><span></span><span></span></div>
+          <div class="phone-pc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i18n="phMockPc">Your PC does the work</span></div>
+        </div>
       </div>
     </section>
 
@@ -1330,7 +1514,6 @@
             <p class="price"><b>₹0</b><span data-i18n="storePrice">free forever, no in-app purchases</span></p>
             <p data-i18n="storeP">One-click install with no SmartScreen warning, and the Store keeps Sahkarmi up to date for you.</p>
             <a class="ms-badge" href="https://apps.microsoft.com/detail/9PD6BP3NGVST" target="_blank" rel="noopener noreferrer"><img src="/assets/ms-store-badge.svg" width="190" height="52" alt="Download from the Microsoft Store" /></a>
-            <div class="winget"><code>winget install --id 9PD6BP3NGVST --source msstore</code><button type="button" data-copy="winget install --id 9PD6BP3NGVST --source msstore" data-i18n="msCopy">Copy</button></div>
             <small><a href="ms-windows-store://pdp/?productid=9PD6BP3NGVST" data-i18n="storeApp">Open straight in the Microsoft Store app</a></small>
           </div>
           <div class="dl-card" id="card-win">
@@ -1352,7 +1535,21 @@
             <a class="btn btn-primary" data-platform-tile="win" href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe"><span data-i18n="winBtn">Download .exe</span></a>
             <small><a href="/install.html#windows" data-i18n="winHelp">Windows install and first-launch steps</a></small>
           </div>
+          <div class="dl-card dl-cli" id="card-cli">
+            <div class="os"><span class="cli-mark" aria-hidden="true">&gt;_</span><div><h3 data-i18n="cliH">Command line</h3><span class="os-sub" data-i18n="cliSub">For IT teams and power users</span></div></div>
+            <span class="status tested" data-i18n="cliStatus">Updates with one command</span>
+            <p class="cli-label">winget <span data-i18n="cliWinget">(built into Windows 11)</span></p>
+            <div class="winget"><code>winget install --id 9PD6BP3NGVST --source msstore</code><button type="button" data-copy="winget install --id 9PD6BP3NGVST --source msstore" data-i18n="msCopy">Copy</button></div>
+            <p class="cli-label">Scoop</p>
+            <div class="winget"><code>scoop bucket add sahkarmi https://github.com/ganguydhrubo/scoop-sahkarmi; scoop install sahkarmi</code><button type="button" data-copy="scoop bucket add sahkarmi https://github.com/ganguydhrubo/scoop-sahkarmi; scoop install sahkarmi" data-i18n="msCopy">Copy</button></div>
+            <small><a href="/install.html#terminal" data-i18n="cliMore">Terminal install and building from source</a></small>
+          </div>
         </div>
+        <ol class="dl-steps reveal" aria-label="After you download">
+          <li><b data-i18n="ds1">Open the file</b><span data-i18n="ds1P">Your browser shows it at the top right or bottom. The Store version installs by itself.</span></li>
+          <li><b data-i18n="ds2">If Windows warns you</b><span data-i18n="ds2P">The installer is not code-signed yet, so SmartScreen may ask. Choose More info, then Run anyway.</span></li>
+          <li><b data-i18n="ds3">Say what to do</b><span data-i18n="ds3P">Pick a coworker and type or speak the job. The free AI is built in: no key, no account.</span></li>
+        </ol>
         <dl class="dl-facts reveal" aria-label="Release details">
           <div><dt data-i18n="dfVersion">Version</dt><dd data-release-version>0.22.0</dd></div>
           <div><dt data-i18n="dfDate">Released</dt><dd><time data-release-date datetime="2026-11-05">2026-11-05</time></dd></div>
@@ -1510,6 +1707,17 @@
     </section>
   </main>
 
+  <div class="dl-started" id="dl-started" role="dialog" aria-modal="false" aria-labelledby="dls-h" hidden>
+    <button type="button" class="dls-close" id="dls-close" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <p class="dls-kicker"><i aria-hidden="true"></i><span data-i18n="dlsKicker">Download started</span></p>
+    <h2 id="dls-h" data-i18n="dlsH">Three steps and your team is ready</h2>
+    <ol class="dls-steps">
+      <li><b data-i18n="dls1">Open Sahkarmi-Setup from your downloads</b><span data-i18n="dls1P">Top right in Chrome and Edge, or press Ctrl+J.</span></li>
+      <li><b data-i18n="dls2">Windows protected your PC? Choose More info, then Run anyway</b><span data-i18n="dls2P">It shows because the installer is not code-signed yet. The source is open on GitHub.</span></li>
+      <li><b data-i18n="dls3">Pick a coworker and say what to do</b><span data-i18n="dls3P">The free AI is built in. No key, no account, no card.</span></li>
+    </ol>
+    <p class="dls-alt"><a id="dls-retry" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe" data-i18n="dlsRetry">Download did not start? Try again</a> · <a href="https://apps.microsoft.com/detail/9PD6BP3NGVST" target="_blank" rel="noopener noreferrer" data-i18n="dlsStore">No warning: get it from the Microsoft Store</a></p>
+  </div>
   <div class="dl-bar" id="dl-bar" aria-hidden="true">
     <span class="dl-bar-text" data-i18n="barText">Your free AI team for Windows</span>
     <a class="btn btn-primary btn-small" data-download href="https://github.com/ganguydhrubo/sahakarmi/releases/download/v0.22.0/Sahkarmi-0.22.0-x64.exe" tabindex="-1"><span data-i18n="mini">Download</span></a>
@@ -1692,8 +1900,8 @@
         downloadOther: "Windows only, for now",
         downloadAny: "Download",
         watch: "Watch the 2-minute film",
-        dlMeta: "Free forever. No account, no card. Windows 10 and 11.",
-        dlMetaOther: "Free. No account, no card. Windows 10 and 11.",
+        dlMeta: "The Microsoft Store version is signed by Microsoft and updates itself.",
+        dlMetaOther: "Sahkarmi is for Windows 10 and 11. Open this page on your Windows PC to install.",
         dlMetaMobile: "Free desktop app for Windows 10 and 11. Open this page on your Windows PC to install.",
         source: "Source code",
         p1: "Runs on your PC",
@@ -1963,6 +2171,69 @@
         pMore: "GitHub Copilot, Cursor, Qwen Code, Kimi Code, Cline, Grok, Mistral Vibe, Kiro, Goose, Factory Droid and Qoder. Sahkarmi installs each one for you when you press Connect.",
         pMoreT: "11 more AI agents",
         pMoreC: "Your plan; Copilot and Kiro have free tiers",
+        phoneAnnounce: "New in 0.33: use Sahkarmi from your iPhone or Android",
+        toPcTitle: "On your phone? Sahkarmi installs on a Windows PC.",
+        toPcShare: "Send the link to my PC",
+        toPcMail: "Email it to myself",
+        toPcNote: "Then open sahkarmi.site/download on your PC. Once it is installed, your phone can use it too.",
+        toPcShareText: "Free AI coworkers for my Windows PC",
+        toPcCopied: "Link copied. Paste it on your PC.",
+        hfVersion: "Version",
+        hfWin: "Windows 10 and 11",
+        hfFree: "Free, no account, no card",
+        navPhone: "Phone",
+        phEyebrow: "New in 0.33 · Phone & Host",
+        phH2: "Your PC, in your pocket.",
+        phLead: "Approve requests, chat with your coworkers and run routines from your iPhone or Android, wherever you are. Your phone talks straight to your own PC through your free Tailscale. No company server in between, nothing to pay.",
+        ph1: "Get the free Tailscale app",
+        ph1P: "On your PC and your phone, signed in with the same account. Sahkarmi shows a QR that opens the App Store or Google Play.",
+        ph2: "Link this PC to your phone",
+        ph2P: "One click in Settings, Phone & Host. Only your own devices can open it, never the internet.",
+        ph3: "Point your phone camera at the code",
+        ph3P: "Sahkarmi opens and pairs by itself. Add it to your home screen and it works like an app.",
+        phT1: "iPhone and Android",
+        phT2: "Each phone has its own key you can remove",
+        phT3: "Risky actions still wait for your Approve",
+        phMockTitle: "Needs you",
+        phMockConn: "Connected to your PC",
+        phMockWho: "Asha asks · 9:41",
+        phMockAsk: "Send the GST invoice to Mehta Traders?",
+        phMockSrc: "Came from: your routine \"Month-end invoices\"",
+        phMockNote: "Add a note for Asha (optional)",
+        phMockNo: "Reject",
+        phMockYes: "Approve",
+        phMockWho2: "Routine · every Monday 9:00",
+        phMockAsk2: "Weekly sales report",
+        phMockRun: "Run now",
+        phTab1: "Needs you",
+        phTab2: "Chat",
+        phTab3: "Routines",
+        phMockPc: "Your PC does the work",
+        cliH: "Command line",
+        cliSub: "For IT teams and power users",
+        cliStatus: "Updates with one command",
+        cliWinget: "(built into Windows 11)",
+        cliMore: "Terminal install and building from source",
+        ds1: "Open the file",
+        ds1P: "Your browser shows it at the top right or bottom. The Store version installs by itself.",
+        ds2: "If Windows warns you",
+        ds2P: "The installer is not code-signed yet, so SmartScreen may ask. Choose More info, then Run anyway.",
+        ds3: "Say what to do",
+        ds3P: "Pick a coworker and type or speak the job. The free AI is built in: no key, no account.",
+        dlsKicker: "Download started",
+        dlsH: "Three steps and your team is ready",
+        dls1: "Open Sahkarmi-Setup from your downloads",
+        dls1P: "Top right in Chrome and Edge, or press Ctrl+J.",
+        dls2: "Windows protected your PC? Choose More info, then Run anyway",
+        dls2P: "It shows because the installer is not code-signed yet. The source is open on GitHub.",
+        dls3: "Pick a coworker and say what to do",
+        dls3P: "The free AI is built in. No key, no account, no card.",
+        dlsRetry: "Download did not start? Try again",
+        dlsStore: "No warning: get it from the Microsoft Store",
+        vtEyebrow: "Video library",
+        vtH2: "See it do real jobs",
+        vtAll: "See all films",
+        navVideos: "Videos",
       },
       hi: {
         skip: "सामग्री पर जाएँ",
@@ -2114,8 +2385,8 @@
         downloadOther: "अभी सिर्फ़ Windows के लिए",
         downloadAny: "डाउनलोड करें",
         watch: "2 मिनट की फ़िल्म देखिए",
-        dlMeta: "हमेशा मुफ़्त. न अकाउंट, न कार्ड. Windows 10 और 11.",
-        dlMetaOther: "मुफ़्त. न अकाउंट, न कार्ड. Windows 10 और 11.",
+        dlMeta: "Microsoft Store वाला वर्ज़न Microsoft से साइन है और अपने आप अपडेट होता है.",
+        dlMetaOther: "सहकर्मी Windows 10 और 11 के लिए है. इंस्टॉल करने के लिए यह पेज अपने Windows PC पर खोलें.",
         dlMetaMobile: "Windows 10 और 11 के लिए मुफ़्त डेस्कटॉप ऐप. इंस्टॉल करने के लिए यह पेज अपने Windows PC पर खोलें.",
         source: "सोर्स कोड",
         p1: "आपके PC पर चलता है",
@@ -2385,6 +2656,69 @@
         pMore: "GitHub Copilot, Cursor, Qwen Code, Kimi Code, Cline, Grok, Mistral Vibe, Kiro, Goose, Factory Droid और Qoder. Connect दबाते ही सहकर्मी इन्हें आपके लिए इंस्टॉल करता है.",
         pMoreT: "11 और AI एजेंट",
         pMoreC: "आपका प्लान; Copilot और Kiro के फ्री प्लान हैं",
+        phoneAnnounce: "नया 0.33 में: अपने iPhone या Android से सहकर्मी चलाएँ",
+        toPcTitle: "फ़ोन पर हैं? सहकर्मी Windows PC पर इंस्टॉल होता है.",
+        toPcShare: "लिंक अपने PC पर भेजें",
+        toPcMail: "खुद को ईमेल करें",
+        toPcNote: "फिर अपने PC पर sahkarmi.site/download खोलें. इंस्टॉल होने के बाद आपका फ़ोन भी इसे चला सकता है.",
+        toPcShareText: "मेरे Windows PC के लिए मुफ़्त AI सहकर्मी",
+        toPcCopied: "लिंक कॉपी हो गया. इसे अपने PC पर खोलें.",
+        hfVersion: "वर्ज़न",
+        hfWin: "Windows 10 और 11",
+        hfFree: "मुफ़्त, न अकाउंट, न कार्ड",
+        navPhone: "फ़ोन",
+        phEyebrow: "नया 0.33 में · फ़ोन और होस्ट",
+        phH2: "आपका PC, आपकी जेब में.",
+        phLead: "कहीं से भी अपने iPhone या Android पर अनुरोध मंज़ूर करें, सहकर्मियों से चैट करें और रूटीन चलाएँ. आपका फ़ोन आपके मुफ़्त Tailscale से सीधे आपके PC से बात करता है. बीच में किसी कंपनी का सर्वर नहीं, कोई पैसा नहीं.",
+        ph1: "मुफ़्त Tailscale ऐप लें",
+        ph1P: "अपने PC और फ़ोन पर, एक ही खाते से साइन इन करके. सहकर्मी एक QR दिखाता है जो App Store या Google Play खोलता है.",
+        ph2: "इस PC को अपने फ़ोन से जोड़ें",
+        ph2P: "Settings में फ़ोन और होस्ट पर एक क्लिक. सिर्फ़ आपके अपने डिवाइस इसे खोल सकते हैं, इंटरनेट कभी नहीं.",
+        ph3: "फ़ोन का कैमरा कोड की ओर रखें",
+        ph3P: "सहकर्मी खुलकर अपने आप जुड़ जाता है. होम स्क्रीन पर रखें, यह ऐप की तरह चलता है.",
+        phT1: "iPhone और Android",
+        phT2: "हर फ़ोन की अपनी कुंजी, जिसे आप हटा सकते हैं",
+        phT3: "जोखिम वाले काम फिर भी आपकी मंज़ूरी का इंतज़ार करते हैं",
+        phMockTitle: "आपकी ज़रूरत",
+        phMockConn: "आपके PC से जुड़ा",
+        phMockWho: "आशा पूछ रही है · 9:41",
+        phMockAsk: "मेहता ट्रेडर्स को GST इनवॉइस भेजें?",
+        phMockSrc: "कहाँ से: आपका रूटीन \"महीने के अंत के इनवॉइस\"",
+        phMockNote: "आशा के लिए नोट लिखें (वैकल्पिक)",
+        phMockNo: "मना करें",
+        phMockYes: "मंज़ूर करें",
+        phMockWho2: "रूटीन · हर सोमवार 9:00",
+        phMockAsk2: "साप्ताहिक बिक्री रिपोर्ट",
+        phMockRun: "अभी चलाएँ",
+        phTab1: "आपकी ज़रूरत",
+        phTab2: "चैट",
+        phTab3: "रूटीन",
+        phMockPc: "काम आपका PC करता है",
+        cliH: "कमांड लाइन",
+        cliSub: "IT टीम और पावर यूज़र के लिए",
+        cliStatus: "एक कमांड से अपडेट",
+        cliWinget: "(Windows 11 में पहले से)",
+        cliMore: "टर्मिनल से इंस्टॉल और सोर्स से बिल्ड",
+        ds1: "फ़ाइल खोलें",
+        ds1P: "ब्राउज़र इसे ऊपर दाईं ओर या नीचे दिखाता है. Store वाला वर्ज़न अपने आप इंस्टॉल होता है.",
+        ds2: "अगर Windows चेतावनी दे",
+        ds2P: "इंस्टॉलर अभी कोड-साइन नहीं है, इसलिए SmartScreen पूछ सकता है. More info चुनें, फिर Run anyway.",
+        ds3: "काम बताएँ",
+        ds3P: "कोई सहकर्मी चुनें और काम लिखें या बोलें. मुफ़्त AI पहले से है: न की, न अकाउंट.",
+        dlsKicker: "डाउनलोड शुरू हो गया",
+        dlsH: "तीन कदम और आपकी टीम तैयार",
+        dls1: "डाउनलोड से Sahkarmi की फ़ाइल खोलें",
+        dls1P: "Chrome और Edge में ऊपर दाईं ओर, या Ctrl+J दबाएँ.",
+        dls2: "Windows protected your PC दिखे? More info चुनें, फिर Run anyway",
+        dls2P: "यह इसलिए दिखता है क्योंकि इंस्टॉलर अभी कोड-साइन नहीं है. सोर्स GitHub पर खुला है.",
+        dls3: "कोई सहकर्मी चुनें और काम बताएँ",
+        dls3P: "मुफ़्त AI पहले से है. न की, न अकाउंट, न कार्ड.",
+        dlsRetry: "डाउनलोड शुरू नहीं हुआ? फिर से कोशिश करें",
+        dlsStore: "बिना चेतावनी: Microsoft Store से लें",
+        vtEyebrow: "वीडियो लाइब्रेरी",
+        vtH2: "असली काम करते देखें",
+        vtAll: "सभी फ़िल्में देखें",
+        navVideos: "वीडियो",
       },
     };
 
@@ -2418,7 +2752,7 @@
     function applyPlatform() {
       const platform = detectPlatform();
       const dict = STRINGS[lang];
-      const button = document.getElementById("download");
+      const button = document.getElementById("hero-download");
       const label = document.getElementById("download-label");
       const meta = document.getElementById("dl-meta");
       const header = document.querySelector(".header-download");
@@ -2435,6 +2769,13 @@
         if (header) header.setAttribute("href", DOWNLOADS[platform]);
       }
       document.getElementById("card-store").classList.add("primary");
+      // A phone cannot install a Windows app: offer to send the link to the PC instead.
+      const toPc = document.getElementById("to-pc");
+      const heroCta = document.querySelector(".hero-cta");
+      if (toPc && heroCta) {
+        toPc.hidden = platform !== "mobile";
+        heroCta.classList.toggle("on-phone", platform === "mobile");
+      }
     }
 
     const params = new URLSearchParams(location.search);
@@ -2443,6 +2784,41 @@
     applyLanguage(params.get("lang") || saved || (navigator.language.startsWith("hi") ? "hi" : "en"));
     for (const button of document.querySelectorAll(".lang button")) {
       button.addEventListener("click", () => applyLanguage(button.dataset.lang));
+    }
+
+    // After an installer click: show the steps (the download itself is never held up).
+    const started = document.getElementById("dl-started");
+    if (started) {
+      const hide = () => { started.hidden = true; };
+      document.getElementById("dls-close")?.addEventListener("click", hide);
+      document.addEventListener("keydown", (event) => { if (event.key === "Escape") hide(); });
+      document.addEventListener("click", (event) => {
+        const link = event.target instanceof Element ? event.target.closest('a[href$=".exe"]') : null;
+        if (!link || link.id === "dls-retry") return;
+        setTimeout(() => {
+          started.hidden = false;
+          document.getElementById("dls-close")?.focus({ preventScroll: true });
+        }, 400);
+      });
+    }
+
+    // Phones: share the download page with the owner's own PC (share sheet, or copy the link).
+    const shareButton = document.getElementById("to-pc-share");
+    if (shareButton) {
+      shareButton.addEventListener("click", async () => {
+        const url = "https://sahkarmi.site/download.html";
+        const label = document.getElementById("to-pc-share-label");
+        try {
+          if (navigator.share) {
+            await navigator.share({ title: "Sahkarmi", text: STRINGS[lang].toPcShareText, url });
+            return;
+          }
+          await navigator.clipboard.writeText(url);
+          label.textContent = STRINGS[lang].toPcCopied;
+        } catch (_) {
+          /* Share sheet closed: nothing to do. */
+        }
+      });
     }
 
     // Copy the winget command
@@ -2596,7 +2972,7 @@
 
     // Sticky download bar once the hero button is out of view (Windows visitors only).
     const bar = document.getElementById("dl-bar");
-    const heroButton = document.getElementById("download");
+    const heroButton = document.getElementById("hero-download");
     if (bar && heroButton && detectPlatform() === "win" && "IntersectionObserver" in window) {
       new IntersectionObserver(([entry]) => {
         const show = !entry.isIntersecting && entry.boundingClientRect.top < 0;

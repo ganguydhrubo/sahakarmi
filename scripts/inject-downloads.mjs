@@ -129,6 +129,7 @@ function applyWinget(html) {
 const pages = [
   ...readdirSync(dirname(file)),
   ...readdirSync(join(dirname(file), "coworkers")).map((name) => `coworkers/${name}`),
+  ...readdirSync(join(dirname(file), "videos")).map((name) => `videos/${name}`),
 ].filter((name) => name.endsWith(".html") && name !== "404.html");
 for (const name of pages) {
   const target = join(dirname(file), name);
