@@ -79,6 +79,8 @@ export const workspaceBn: WorkspaceDictionary = {
   routineReused: "গতবারের ফলাফল",
   routineTriggerRerun: "একটি ধাপ থেকে আবার",
   routineNoteStep: "ধাপ {step} / {total}",
+  exchangeShow: "কী বলেছে দেখুন",
+  exchangeHide: "লুকান",
   orchModeLabel: "কে কাজ করবে",
   orchModeAuto: "সহকর্মী ঠিক করুক",
   orchAdvanced: "অ্যাডভান্সড: কাজ নিজে থেকে যাচাই",

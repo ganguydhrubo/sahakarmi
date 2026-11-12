@@ -211,7 +211,12 @@ export function MemoryView(props: {
     <section class="center-view memory-view" aria-labelledby="memory-heading">
       <header class="center-view-header window-drag">
         <h1 id="memory-heading">{t("memoryTitle")}</h1>
-        <span class="center-view-badge">{searchQuery().trim() ? memories().length : total()}</span>
+        <span
+          class="center-view-badge"
+          data-count={searchQuery().trim() ? memories().length : total()}
+        >
+          {searchQuery().trim() ? memories().length : total()}
+        </span>
         <div class="memory-header-actions no-drag">
           <input
             type="search"

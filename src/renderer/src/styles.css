@@ -16364,47 +16364,36 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
   outline-offset: 2px;
 }
 
-/* What another coworker said: one line, the whole message on click. */
+/* What another coworker said: folded away, shown on request. */
 .exchange-system-row {
   flex-wrap: wrap;
 }
 
-.exchange-preview {
-  flex-basis: 100%;
-  max-width: 100%;
-  margin-top: 2px;
-  text-align: left;
-}
-
-.exchange-preview summary {
-  display: block;
-  overflow: hidden;
-  padding: 6px 10px;
-  border: 1px solid rgb(var(--ink-rgb) / 0.1);
-  border-radius: var(--radius-sm);
-  background: rgb(var(--ink-rgb) / 0.04);
-  color: var(--text-secondary);
-  font-size: var(--fs-xs);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  list-style: none;
+.exchange-preview-toggle {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.14);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-2xs, 11px);
   cursor: pointer;
 }
 
-.exchange-preview summary::-webkit-details-marker {
-  display: none;
+.exchange-preview-toggle:hover {
+  color: var(--text-primary);
+  background: rgb(var(--ink-rgb) / 0.06);
 }
 
-.exchange-preview summary:hover {
-  background: rgb(var(--ink-rgb) / 0.07);
+.exchange-preview-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
-.exchange-preview[open] summary {
-  display: none;
-}
-
-.exchange-preview p {
-  margin: 0;
+.exchange-preview-text {
+  flex-basis: 100%;
+  margin: 6px 0 0;
   padding: 8px 10px;
   border: 1px solid rgb(var(--ink-rgb) / 0.1);
   border-radius: var(--radius-sm);
@@ -16412,6 +16401,7 @@ button:not(.button-primary):not(.rail-nav-item):not(.feature-switch):not(.md-cop
   color: var(--text-secondary);
   font-size: var(--fs-sm);
   line-height: 1.5;
+  text-align: left;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -16440,4 +16430,35 @@ button.button-primary[disabled] {
   color: rgb(var(--ink-rgb) / 0.45);
   box-shadow: none;
   cursor: default;
+}
+
+/* A count next to a screen title is information, not an alert: neutral, and hidden at zero. */
+.center-view-badge {
+  background: rgb(var(--ink-rgb) / 0.1);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.center-view-badge:empty,
+.center-view-badge[data-count="0"] {
+  display: none;
+}
+
+/* Tip actions are quiet text buttons, never the heavy default button. */
+.feature-tip .feature-tip-actions button {
+  min-height: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.feature-tip .feature-tip-actions button:hover {
+  background: none;
+}
+
+.center-view-badge-alert {
+  background: var(--brand-sindoor);
+  color: #fff;
 }

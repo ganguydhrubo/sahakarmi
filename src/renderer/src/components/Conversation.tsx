@@ -567,6 +567,8 @@ function ExchangeSystemRow(props: {
   onSelectAgent: (botId: string) => void;
 }) {
   const [agentsOpen, setAgentsOpen] = createSignal(false);
+  // Raw collaborator input stays folded away; the receiving coworker reports on it.
+  const [previewOpen, setPreviewOpen] = createSignal(false);
   const exchange = () => props.message.exchange;
   const recipients = () => exchange()?.recipientBotIds ?? [];
   const sender = () => {
@@ -672,10 +674,17 @@ function ExchangeSystemRow(props: {
       </Show>
       <time dateTime={props.message.time}>{props.message.time}</time>
       <Show when={props.message.body.trim()}>
-        <details class="exchange-preview">
-          <summary>{props.message.body.replace(/\s+/g, " ").trim()}</summary>
-          <p>{props.message.body.trim()}</p>
-        </details>
+        <button
+          type="button"
+          class="exchange-preview-toggle"
+          aria-expanded={previewOpen()}
+          onClick={() => setPreviewOpen((open) => !open)}
+        >
+          {previewOpen() ? t("exchangeHide") : t("exchangeShow")}
+        </button>
+        <Show when={previewOpen()}>
+          <p class="exchange-preview-text">{props.message.body.trim()}</p>
+        </Show>
       </Show>
     </div>
   );
@@ -3492,7 +3501,7 @@ export function Conversation(props: ConversationProps) {
                       "send-button-ready": hasDraft() && !submitting(),
                       "send-button-busy": submitting(),
                     }}
-                    aria-label={label()}
+                    aria-label={scheduleMode() ? t("scheduleLabel") : "Send message"}
                     title={
                       props.activeTurnId && !scheduleMode()
                         ? t(canSteer() ? "steerHint" : "queueHint")

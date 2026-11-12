@@ -293,7 +293,9 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
     <section class="center-view knowledge-view" aria-labelledby="knowledge-heading">
       <header class="center-view-header window-drag">
         <h1 id="knowledge-heading">{t("knowledgeTitle")}</h1>
-        <span class="center-view-badge">{workspaceBases().length}</span>
+        <span class="center-view-badge" data-count={workspaceBases().length}>
+          {workspaceBases().length}
+        </span>
         <div class="memory-header-actions no-drag">
           <button type="button" class="button-primary" onClick={() => setCreating(true)}>
             {t("knowledgeNew")}

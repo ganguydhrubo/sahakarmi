@@ -77,6 +77,8 @@ export const workspaceEn = {
   routineReused: "Reused from the last run",
   routineTriggerRerun: "Rerun from a step",
   routineNoteStep: "Step {step} of {total}",
+  exchangeShow: "Show what they said",
+  exchangeHide: "Hide",
   orchModeLabel: "Who works on it",
   orchModeAuto: "Let Sahkarmi decide",
   orchAdvanced: "Advanced: check the work automatically",
