@@ -5,6 +5,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-12
+
 ### Added
 
 - Routines: **Rerun from here** on each step of the last run. That step and the ones after it run
