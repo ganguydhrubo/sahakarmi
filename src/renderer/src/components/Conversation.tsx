@@ -837,7 +837,8 @@ function sameTools(left: ToolCallSummary[] | null, right: ToolCallSummary[] | nu
  */
 export function addressToUrl(value: string): string {
   const text = value.trim();
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || /^(about|mailto):/i.test(text)) return text;
+  // The browser opens web pages only, so anything else typed becomes a search.
+  if (/^https?:\/\//i.test(text)) return text;
   const looksLikeAddress =
     !/\s/.test(text) &&
     (/^localhost(:\d+)?(\/|$)/i.test(text) ||
@@ -2561,7 +2562,30 @@ export function Conversation(props: ConversationProps) {
     } else if (event.key === "Escape") props.onCloseAgentPicker();
   }
 
-  let earlierAsked = -1;
+  // Older messages load above what the owner is reading: keep that spot still, and ask once
+  // per batch for each chat.
+  let earlierAsked = "";
+  let keepFromBottom: number | null = null;
+  function loadEarlier() {
+    const element = scrollElement;
+    if (element) keepFromBottom = element.scrollHeight - element.scrollTop;
+    props.onLoadEarlier?.();
+  }
+  createEffect(
+    on(
+      () => props.messages.length,
+      () => {
+        const element = scrollElement;
+        const fromBottom = keepFromBottom;
+        if (!element || fromBottom === null) return;
+        keepFromBottom = null;
+        requestAnimationFrame(() => {
+          element.scrollTop = element.scrollHeight - fromBottom;
+        });
+      },
+      { defer: true },
+    ),
+  );
   return (
     <main
       ref={(element) => (conversationPanel = element)}
@@ -2853,9 +2877,10 @@ export function Conversation(props: ConversationProps) {
           updateScrollFade(element);
           // Near the top: bring in older messages by themselves, once per batch.
           const earlier = props.earlierCount ?? 0;
-          if (element.scrollTop < 240 && earlier > 0 && earlierAsked !== earlier) {
-            earlierAsked = earlier;
-            props.onLoadEarlier?.();
+          const batch = `${props.bot?.id ?? ""}:${earlier}`;
+          if (element.scrollTop < 240 && earlier > 0 && earlierAsked !== batch) {
+            earlierAsked = batch;
+            loadEarlier();
           }
         }}
       >
@@ -2917,11 +2942,7 @@ export function Conversation(props: ConversationProps) {
           </Show>
           <Show when={(props.earlierCount ?? 0) > 0 && props.onLoadEarlier}>
             <div class="load-earlier">
-              <button
-                type="button"
-                class="load-earlier-button"
-                onClick={() => props.onLoadEarlier?.()}
-              >
+              <button type="button" class="load-earlier-button" onClick={() => loadEarlier()}>
                 {t("loadEarlier", { count: String(props.earlierCount ?? 0) })}
               </button>
             </div>

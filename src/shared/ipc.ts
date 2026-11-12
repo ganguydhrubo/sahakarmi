@@ -2975,7 +2975,8 @@ export interface HostStatus {
 }
 
 export interface HostDesktopApi {
-  status: () => Promise<HostStatus>;
+  /** `refresh` asks Tailscale again instead of using the answer from the last few seconds. */
+  status: (options?: { refresh?: boolean }) => Promise<HostStatus>;
   setEnabled: (enabled: boolean) => Promise<HostStatus>;
   setStartWithWindows: (enabled: boolean) => Promise<HostStatus>;
   setAddress: (address: string) => Promise<HostStatus>;

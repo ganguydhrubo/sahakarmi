@@ -87,7 +87,8 @@ export function VoiceRecorder(props: {
 
   const controller = new VoiceRecorderController({
     onTick: (elapsedMs, level) => dispatch({ type: "tick", elapsedMs, level }),
-    onLimit: () => void stop(),
+    // Dictating: the time limit finishes like Done, so the words still reach the message box.
+    onLimit: () => void (mode() === "dictate" && local ? finishDictation() : stop()),
   });
 
   function releaseAudio() {
@@ -113,6 +114,8 @@ export function VoiceRecorder(props: {
     recognition?.stop();
     releaseAudio();
   });
+
+  let finishingRun = 0;
 
   async function start(asNote = false) {
     releaseAudio();
@@ -156,6 +159,8 @@ export function VoiceRecorder(props: {
     } catch (error) {
       local = null;
       setDictationMode(null);
+      // The recording goes on as a voice note, so Done never throws away what was said.
+      setMode("note");
       props.onError(cleanVoiceError(error));
     }
   }
@@ -215,6 +220,8 @@ export function VoiceRecorder(props: {
   async function finishDictation() {
     const finishing = local;
     local = null;
+    finishingRun += 1;
+    const run = finishingRun;
     setWriting(true);
     controller.pause();
     try {
@@ -223,6 +230,8 @@ export function VoiceRecorder(props: {
       controller.dispose();
       setWriting(false);
     }
+    // Cancelled while the last words were being written: say nothing.
+    if (run !== finishingRun || !open()) return;
     const text = state().transcript.trim();
     setOpen(false);
     setDictationMode(null);
@@ -232,6 +241,7 @@ export function VoiceRecorder(props: {
   }
 
   function cancel() {
+    finishingRun += 1;
     controller.dispose();
     local?.cancel();
     local = null;

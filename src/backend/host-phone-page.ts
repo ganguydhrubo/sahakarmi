@@ -34,6 +34,7 @@ const HTML = `<!doctype html>
     <input id="pair-name" maxlength="40" placeholder="My phone">
     <button id="pair-button" class="primary big" type="submit">Pair this phone</button>
     <p id="pair-error" class="error" role="alert" hidden></p>
+    <button id="pair-back" class="link" type="button" hidden>Keep using this phone as before</button>
   </form>
   <ol class="pair-steps">
     <li><b>Private.</b> Only your own devices can open this page.</li>
@@ -121,6 +122,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .pair-form input { width: 100%; min-width: 0; font: inherit; font-size: 18px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 #pair-code { font-size: 26px; letter-spacing: .18em; text-align: center; font-weight: 700; text-transform: uppercase; }
 .pair-form .primary { margin-top: 12px; }
+.link { background: none; border: 0; color: var(--brand); font-weight: 700; padding: 8px 0; text-decoration: underline; }
 .pair-steps { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 8px; text-align: left; color: var(--muted); font-size: 14px; }
 .pair-steps li { background: var(--card); border-radius: 14px; padding: 10px 14px; }
 .pair-steps b { color: var(--ink); }
@@ -147,6 +149,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .card-meta { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; margin-bottom: 6px; flex-wrap: wrap; }
 .card h2 { font-size: 17px; margin: 0 0 6px; line-height: 1.3; }
 .card p { margin: 0; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.source { margin-top: 10px !important; font-size: 13px; }
+.source-outside { color: var(--bad) !important; font-weight: 600; }
+.warn { margin-top: 4px !important; font-size: 13px; color: var(--bad) !important; }
+.tech { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.tech summary { cursor: pointer; }
+.tech pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--bg); padding: 8px 10px; border-radius: 10px; margin: 6px 0 0; }
+.card-pc { border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
 .risk { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; }
 .amount { background: color-mix(in srgb, var(--brand) 16%, transparent); color: var(--brand); padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; }
 .actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 14px; }
@@ -236,6 +245,7 @@ const JS = String.raw`"use strict";
       setOffline(false);
       return response.json().catch(function () { return {}; }).then(function (data) {
         if (response.status === 401) { forget(); throw new Error(data.error || "Pair this phone again."); }
+        if (response.status === 429) { backOff(); throw new Error(data.error || "Too many tries. Wait a minute."); }
         if (!response.ok) throw new Error(data.error || "Your PC could not do that.");
         return data;
       });
@@ -269,13 +279,23 @@ const JS = String.raw`"use strict";
         key = data.key; previousKey = null; try { localStorage.setItem(KEY, key); } catch (e) { /* the key lives for this visit only */ }
         showApp(); toast("Paired. This phone can now use Sahkarmi.");
       })
-      .catch(function (cause) { error.textContent = cause.message === "Failed to fetch" ? "Can't reach your PC. Check it is on." : cause.message; error.hidden = false; })
+      .catch(function (cause) {
+        error.textContent = cause.message === "Failed to fetch" ? "Can't reach your PC. Check it is on." : cause.message; error.hidden = false;
+        // A phone that was already paired keeps working when a new pairing fails.
+        if (previousKey) { $("pair-back").hidden = false; }
+      })
       .then(function () { button.disabled = false; button.textContent = "Pair this phone"; });
   }
 
   function showApp() {
     $("pair").hidden = true; $("app").hidden = false;
     selectTab(state.tab); refresh(); startPolling();
+  }
+
+  // After "too many tries", wait a minute before asking the PC again.
+  function backOff() {
+    stopPolling();
+    setTimeout(function () { if (key) startPolling(); }, 60000);
   }
 
   function startPolling() {
@@ -303,18 +323,26 @@ const JS = String.raw`"use strict";
 
   function render() {
     var data = state.overview; if (!data) return;
-    var count = data.approvals.length;
+    var count = data.approvals.length + (data.waitingOnPc || []).length;
     $("badge").hidden = count === 0; $("badge").textContent = count > 9 ? "9+" : String(count);
     document.title = count ? "(" + count + ") Sahkarmi" : "Sahkarmi";
-    renderApprovals(data.approvals); renderCoworkers(data.coworkers); renderRoutines(data.routines);
+    renderApprovals(data.approvals, data.waitingOnPc); renderCoworkers(data.coworkers); renderRoutines(data.routines);
   }
 
   function empty(icon, title, text) {
     var box = el("div", "empty"); box.appendChild(el("span", "empty-big", icon)); box.appendChild(el("strong", "", title)); box.appendChild(el("span", "", text)); return box;
   }
 
-  function renderApprovals(items) {
+  function renderApprovals(items, waiting) {
     var host = $("approvals"); clear(host);
+    (waiting || []).forEach(function (item) {
+      var card = el("article", "card card-pc");
+      card.appendChild(el("div", "card-meta", item.coworker + " is waiting"));
+      card.appendChild(el("h2", "", item.title));
+      card.appendChild(el("p", "", "This needs private details, so it can only be answered on your PC."));
+      host.appendChild(card);
+    });
+    if (!items.length && (waiting || []).length) return;
     if (!items.length) { host.appendChild(empty("✓", "Nothing needs you", "When a coworker asks before doing something, it shows up here.")); return; }
     items.forEach(function (item) {
       var card = el("article", "card");
@@ -323,6 +351,15 @@ const JS = String.raw`"use strict";
       if (item.amount) meta.appendChild(el("span", "amount", item.amount));
       card.appendChild(meta); card.appendChild(el("h2", "", item.title));
       if (item.details) card.appendChild(el("p", "", item.details));
+      if (item.source) {
+        var source = el("p", "source" + (item.outside ? " source-outside" : ""), "Came from: " + item.source);
+        card.appendChild(source);
+        if (item.outside) card.appendChild(el("p", "warn", "Outside content can hide instructions you never gave. Check carefully before approving."));
+      }
+      if (item.technical) {
+        var tech = el("details", "tech"); tech.appendChild(el("summary", "", "Technical details"));
+        tech.appendChild(el("pre", "", item.technical)); card.appendChild(tech);
+      }
       var actions = el("div", "actions");
       var reject = el("button", "reject", "Reject"); reject.type = "button";
       var approve = el("button", "approve", "Approve"); approve.type = "button";
@@ -418,6 +455,12 @@ const JS = String.raw`"use strict";
     });
   }
 
+  $("pair-back").addEventListener("click", function () {
+    if (!previousKey) return;
+    key = previousKey; previousKey = null;
+    try { localStorage.setItem(KEY, key); } catch (e) { /* this visit only */ }
+    $("pair-back").hidden = true; $("pair-error").hidden = true; showApp();
+  });
   $("pair-form").addEventListener("submit", function (event) { event.preventDefault(); pair(); });
   $("pair-code").addEventListener("input", function () { var box = $("pair-code"); box.value = box.value.toUpperCase().replace(/[^A-Z0-9 -]/g, ""); });
   Array.prototype.forEach.call(document.querySelectorAll(".bottom button"), function (button) {

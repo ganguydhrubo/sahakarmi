@@ -90,7 +90,7 @@ import { SecretCodec, SecretStore } from "../backend/secret-store";
 import { SharedFiles } from "../backend/shared-files";
 import { LearnedSkills, SkillLibrary } from "../backend/skill-library";
 import { StartupTimings } from "../backend/startup-timings";
-import { shareWithTailscale, tailscaleStatus } from "../backend/tailscale";
+import { shareWithTailscale, tailscaleStatus, unshareTailscale } from "../backend/tailscale";
 import { TelegramBridge } from "../backend/telegram-bridge";
 import { type InstallChannel, UsagePing } from "../backend/usage-ping";
 import { UsageService } from "../backend/usage-service";
@@ -714,7 +714,9 @@ function registerHostIpc(host: HostServer): void {
     backgroundTray?.refresh();
     return value;
   };
-  handleTrusted(IPC_CHANNELS.hostStatus, () => host.status());
+  handleTrusted(IPC_CHANNELS.hostStatus, (input: unknown) =>
+    host.status({ refresh: isObject(input) && input.refresh === true }),
+  );
   handleTrusted(IPC_CHANNELS.hostSetEnabled, async (input: unknown) =>
     refreshTray(await host.setEnabled(isObject(input) && input.enabled === true)),
   );
@@ -1663,11 +1665,13 @@ function createWindow(): BrowserWindow {
   }
 
   window.once("ready-to-show", () => {
-    if (saved?.maximized) window.maximize();
     if (startedInBackground && window === mainWindow && !backgroundTray?.visible) {
+      // maximize() would show the window on Windows: apply it when the owner opens it.
+      if (saved?.maximized) window.once("show", () => window.maximize());
       showBackgroundTray();
       return;
     }
+    if (saved?.maximized) window.maximize();
     window.show();
   });
   rememberWindowState(window);
@@ -1878,6 +1882,8 @@ function showBackgroundTray(): void {
     });
   }
   backgroundTray.show();
+  // Started by Windows at sign-in: the owner chose this, so no "still running" notice each time.
+  if (startedInBackground && !mainWindow?.isVisible()) trayHintShown = true;
   if (!trayHintShown && Notification.isSupported()) {
     trayHintShown = true;
     const hint = new Notification({
@@ -2839,12 +2845,17 @@ if (!hasSingleInstanceLock) {
           decideApproval: (input) => service.decideApproval(input),
           routines: async () => routines.state(),
           runRoutine: (routineId) => routines.runNow(routineId),
+          waitingOnPc: () =>
+            service
+              .listSecureInputs()
+              .map((request) => ({ botId: request.botId, title: request.label })),
         },
         makeQr: (text) =>
           QRCode.toString(text, { type: "svg", margin: 1, errorCorrectionLevel: "M" }),
         tailscale: {
           status: (port) => tailscaleStatus(port),
           share: (port) => shareWithTailscale(port),
+          unshare: (port) => unshareTailscale(port),
         },
         // The Store copy is started by Windows' own startup list, which the owner manages there.
         setStartWithWindows: process.windowsStore

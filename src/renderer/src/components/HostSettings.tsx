@@ -267,7 +267,7 @@ function HostPanel(props: { api: HostDesktopApi }) {
                   type="button"
                   class="button-secondary"
                   disabled={busy() !== null}
-                  onClick={() => void run("check", () => api.status())}
+                  onClick={() => void run("check", () => api.status({ refresh: true }))}
                 >
                   {t("hostCheckAgain")}
                 </button>
@@ -445,9 +445,13 @@ function HostPanel(props: { api: HostDesktopApi }) {
                 type="checkbox"
                 checked={current()?.startWithWindows === true}
                 disabled={busy() !== null}
-                onChange={(event) =>
-                  void run("startup", () => api.setStartWithWindows(event.currentTarget.checked))
-                }
+                onChange={(event) => {
+                  const box = event.currentTarget;
+                  void run("startup", () => api.setStartWithWindows(box.checked)).then((next) => {
+                    // Windows refused: show the real setting again.
+                    if (!next) box.checked = current()?.startWithWindows === true;
+                  });
+                }}
               />
               <span>
                 <strong>{t("hostStartWithWindows")}</strong>

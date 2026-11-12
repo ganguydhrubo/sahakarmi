@@ -392,7 +392,8 @@ const sahkarmiApi: SahkarmiDesktopApi = {
       ipcRenderer.invoke(IPC_CHANNELS.telegramSetAllowPasswords, { allow }),
   },
   host: {
-    status: () => ipcRenderer.invoke(IPC_CHANNELS.hostStatus),
+    status: (options?: { refresh?: boolean }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.hostStatus, { refresh: options?.refresh === true }),
     setEnabled: (enabled: boolean) => ipcRenderer.invoke(IPC_CHANNELS.hostSetEnabled, { enabled }),
     setStartWithWindows: (enabled: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.hostSetStartWithWindows, { enabled }),

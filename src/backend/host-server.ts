@@ -25,6 +25,8 @@ export interface HostAgentPort {
   decideApproval(input: DecideApprovalInput): Promise<ApprovalRequest>;
   routines(): Promise<RoutinesState>;
   runRoutine(routineId: string): Promise<unknown>;
+  /** Private details a coworker waits for; typed on the PC only, never on the phone. */
+  waitingOnPc?(): Array<{ botId: string; title: string }>;
 }
 
 export interface HostServerOptions {
@@ -35,6 +37,8 @@ export interface HostServerOptions {
   tailscale: {
     status: (port: number | null) => Promise<HostTailscaleStatus>;
     share: (port: number) => Promise<{ ok: boolean; enableUrl: string | null; message: string }>;
+    /** Stops sharing, but only when the shared link points at this port. */
+    unshare?: (port: number) => Promise<void>;
   };
   /** Start hidden with Windows; null where Windows manages startup itself (Store build). */
   setStartWithWindows: ((enabled: boolean) => void) | null;
@@ -66,6 +70,15 @@ interface Pairing {
 }
 
 export const DEFAULT_HOST_PORT = 47821;
+const ACTIVITY_ACTIONS = new Set<HostActivity["action"]>([
+  "paired",
+  "message",
+  "approved",
+  "rejected",
+  "routine",
+  "unpaired",
+  "removed",
+]);
 const PORT_TRIES = 10;
 export const PAIRING_MS = 2 * 60_000;
 const PAIRING_FAILURES = 8;
@@ -117,6 +130,45 @@ export function cleanAddress(value: string): string | null {
   if (url.protocol !== "https:") throw new Error("The phone address must start with https://");
   if (url.username || url.password) throw new Error("The phone address cannot hold a password.");
   return url.origin;
+}
+
+/** "Where this request came from", worded as on the desktop card. */
+function provenanceLine(provenance: ApprovalRequest["provenance"]): string | null {
+  if (!provenance) return null;
+  const name = provenance.label ? oneLine(provenance.label, 80) : "";
+  switch (provenance.kind) {
+    case "owner":
+      return "You asked";
+    case "remote":
+      return "You asked, from your phone";
+    case "routine":
+      return name ? `A routine (${name})` : "A routine";
+    case "schedule":
+      return "A schedule";
+    case "team-run":
+      return "A team project";
+    case "coworker":
+      return name ? `Another coworker (${name})` : "Another coworker";
+    case "system":
+      return "Sahkarmi itself";
+    case "web":
+      return `A web page it read (${name || "?"})`;
+    case "app":
+      return `A reply from a connected app or tool (${name || "?"})`;
+    case "file":
+      return `A file from outside its folders (${name || "?"})`;
+    default:
+      return null;
+  }
+}
+
+function safeAddress(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    return cleanAddress(value);
+  } catch {
+    return null;
+  }
 }
 
 /** Folds app notes such as "[Routine "x" · step 1/3]" to their words for the phone. */
@@ -212,6 +264,8 @@ export class HostServer {
   #tailscale: { at: number; value: HostTailscaleStatus } | null = null;
   #lastSeenSaved = 0;
   #badKeys = { windowStart: 0, count: 0 };
+  #listening: Promise<void> | null = null;
+  #tailscaleAsking: Promise<HostTailscaleStatus> | null = null;
   #saving: Promise<void> = Promise.resolve();
 
   constructor(options: HostServerOptions) {
@@ -237,7 +291,7 @@ export class HostServer {
         enabled: value.enabled === true,
         port: typeof value.port === "number" && value.port > 0 ? value.port : null,
         startWithWindows: value.startWithWindows === true,
-        address: typeof value.address === "string" ? value.address : null,
+        address: safeAddress(value.address),
         devices: Array.isArray(value.devices)
           ? value.devices.filter(
               (device): device is StoredDevice =>
@@ -257,7 +311,10 @@ export class HostServer {
         .slice(-ACTIVITY_KEEP)
         .flatMap((line) => {
           try {
-            return [JSON.parse(line) as HostActivity];
+            const entry = JSON.parse(line) as HostActivity;
+            return ACTIVITY_ACTIONS.has(entry?.action) && typeof entry.at === "string"
+              ? [entry]
+              : [];
           } catch {
             return [];
           }
@@ -313,7 +370,11 @@ export class HostServer {
     if (enabled) await this.#listen();
     else {
       this.#pairing = null;
+      const port = this.#data.port;
       await this.close();
+      // Nothing else on this PC should ever receive what phones send to the shared link.
+      if (port) await this.#options.tailscale.unshare?.(port).catch(() => undefined);
+      this.#tailscale = null;
       // Starting hidden with Windows only makes sense while the host is on.
       if (this.#data.startWithWindows) {
         this.#options.setStartWithWindows?.(false);
@@ -336,6 +397,7 @@ export class HostServer {
   async setAddress(address: string): Promise<HostStatus> {
     this.#data.address = cleanAddress(address);
     this.#pairing = null;
+    this.#error = null;
     await this.#save();
     return this.status();
   }
@@ -400,10 +462,26 @@ export class HostServer {
     await this.#saving;
   }
 
-  async #listen(): Promise<void> {
-    if (this.#server) return;
-    const base = this.#options.basePort ?? this.#data.port ?? DEFAULT_HOST_PORT;
-    const tries = base === 0 ? 1 : PORT_TRIES;
+  #listen(): Promise<void> {
+    if (this.#server) return Promise.resolve();
+    // One start at a time: a switch flipped while starting waits for the same start.
+    this.#listening ??= this.#listenOnce().finally(() => {
+      this.#listening = null;
+    });
+    return this.#listening;
+  }
+
+  async #listenOnce(): Promise<void> {
+    await this.#bind();
+    // Switched off while it was starting: do not leave it running.
+    if (!this.#data.enabled) await this.close();
+  }
+
+  async #bind(): Promise<void> {
+    const saved = this.#options.basePort === undefined ? this.#data.port : null;
+    const base = this.#options.basePort ?? saved ?? DEFAULT_HOST_PORT;
+    // A port Tailscale already forwards to is kept: moving would send phones somewhere else.
+    const tries = base === 0 || saved ? 1 : PORT_TRIES;
     for (let attempt = 0; attempt < tries; attempt += 1) {
       const port = base === 0 ? 0 : base + attempt;
       const server = createServer((request, response) => void this.#handle(request, response));
@@ -433,20 +511,26 @@ export class HostServer {
       this.#options.log?.("info", "host listening", { port: chosen });
       return;
     }
-    this.#error = "Every port Sahkarmi Host can use is busy. Restart the PC and try again.";
+    this.#error = saved
+      ? `Another program on this PC is using port ${saved}, which your phone link points to. Close it or restart the PC, then turn Sahkarmi Host off and on.`
+      : "Every port Sahkarmi Host can use is busy. Restart the PC and try again.";
   }
 
   async #tailscaleStatus(refresh: boolean): Promise<HostTailscaleStatus> {
     const cached = this.#tailscale;
     if (!refresh && cached && this.#now() - cached.at < TAILSCALE_CACHE_MS) return cached.value;
-    let value: HostTailscaleStatus;
-    try {
-      value = await this.#options.tailscale.status(this.port);
-    } catch {
-      value = { installed: false, connected: false, dnsName: null, serving: false };
-    }
-    this.#tailscale = { at: this.#now(), value };
-    return value;
+    // One question to Tailscale at a time; callers in the meantime share the answer.
+    this.#tailscaleAsking ??= this.#options.tailscale
+      .status(this.port)
+      .catch(() => ({ installed: false, connected: false, dnsName: null, serving: false }))
+      .then((value) => {
+        this.#tailscale = { at: this.#now(), value };
+        return value;
+      })
+      .finally(() => {
+        this.#tailscaleAsking = null;
+      });
+    return this.#tailscaleAsking;
   }
 
   #expirePairing(): void {
@@ -532,6 +616,7 @@ export class HostServer {
       if (!(cause instanceof HttpError)) {
         this.#options.log?.("warn", "host request failed", { error: String(cause) });
       }
+      if (status === 413) response.setHeader("Connection", "close");
       if (!response.headersSent) this.#json(response, status, { error: message });
       else response.end();
     }
@@ -609,9 +694,6 @@ export class HostServer {
 
   #authenticate(request: IncomingMessage): StoredDevice {
     const now = this.#now();
-    if (now - this.#badKeys.windowStart > 60_000) this.#badKeys = { windowStart: now, count: 0 };
-    if (this.#badKeys.count >= BAD_KEY_LIMIT)
-      throw new HttpError(429, "Too many tries. Wait a minute.");
     const header = request.headers.authorization ?? "";
     const key = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
     const hash = key ? hashKey(key) : "";
@@ -619,6 +701,11 @@ export class HostServer {
       ? this.#data.devices.find((candidate) => sameText(candidate.tokenHash, hash))
       : undefined;
     if (!device) {
+      // Wrong keys slow down further guessing; a paired phone is never locked out by them.
+      if (now - this.#badKeys.windowStart > 60_000) this.#badKeys = { windowStart: now, count: 0 };
+      if (this.#badKeys.count >= BAD_KEY_LIMIT) {
+        throw new HttpError(429, "Too many tries. Wait a minute.");
+      }
       this.#badKeys.count += 1;
       throw new HttpError(401, "This phone is not paired. Pair it again from your PC.");
     }
@@ -657,12 +744,24 @@ export class HostServer {
             id: approval.id,
             coworker: names.get(approval.botId) ?? "A coworker",
             title: approval.title,
-            details: approval.details.slice(0, 600),
+            details:
+              approval.details.length > 600
+                ? `${approval.details.slice(0, 600)}…`
+                : approval.details,
+            // What exactly will run, and where the request came from, as on the desktop card.
+            technical: approval.technical ? approval.technical.slice(0, 1_500) : null,
+            source: provenanceLine(approval.provenance),
+            // Outside content can carry instructions the owner never gave: the phone flags it.
+            outside: ["web", "app", "file"].includes(approval.provenance?.kind ?? ""),
             amount: approval.amount,
             risk: approval.riskLevel ?? null,
             createdAt: approval.createdAt,
             expiresAt: approval.expiresAt ?? null,
           })),
+        waitingOnPc: (agent.waitingOnPc?.() ?? []).map((item) => ({
+          coworker: names.get(item.botId) ?? "A coworker",
+          title: item.title,
+        })),
         routines: routines.routines.map((routine) => {
           const lastRun = routines.runs.find((run) => run.routineId === routine.id);
           return {
@@ -759,7 +858,11 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
   let size = 0;
   for await (const chunk of request) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new HttpError(413, "That is too large.");
+    if (size > MAX_BODY) {
+      // Stop reading; the answer still goes out, then the connection closes.
+      request.pause();
+      throw new HttpError(413, "That is too large.");
+    }
     chunks.push(chunk as Buffer);
   }
   try {

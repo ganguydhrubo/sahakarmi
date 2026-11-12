@@ -14,7 +14,15 @@ import {
   pairingCode,
   phoneMessage,
 } from "./host-server";
-import { enableLink, parseTailscaleStatus, servesPort, tailscaleStatus } from "./tailscale";
+import {
+  enableLink,
+  parseTailscaleStatus,
+  servesPort,
+  sharesSomethingElse,
+  shareWithTailscale,
+  tailscaleStatus,
+  unshareTailscale,
+} from "./tailscale";
 
 const bot = {
   id: "asha",
@@ -329,6 +337,72 @@ describe("Sahkarmi Host", () => {
     ).toBe(401);
   });
 
+  it("never locks a paired phone out because of other people's wrong keys", async () => {
+    const key = await pairPhone();
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await call("/api/overview", { headers: { Authorization: "Bearer wrong" } });
+    }
+    expect(
+      (await call("/api/overview", { headers: { Authorization: "Bearer wrong" } })).status,
+    ).toBe(429);
+    expect(
+      (await call("/api/overview", { headers: { Authorization: `Bearer ${key}` } })).status,
+    ).toBe(200);
+  });
+
+  it("shows the exact command and where a request came from, flagging outside content", async () => {
+    agent.listApprovals.mockReturnValue([
+      {
+        ...approval(),
+        technical: "git push origin main",
+        provenance: { kind: "web", label: "example.com" },
+      },
+    ]);
+    const key = await pairPhone();
+    const { body } = await call("/api/overview", { headers: { Authorization: `Bearer ${key}` } });
+    expect(body.approvals).toEqual([
+      expect.objectContaining({
+        technical: "git push origin main",
+        source: "A web page it read (example.com)",
+        outside: true,
+      }),
+    ]);
+  });
+
+  it("answers a too-large message with a clear error", async () => {
+    const key = await pairPhone();
+    const result = await post("/api/chat", { botId: "asha", text: "x".repeat(40_000) }, key);
+    expect(result.status).toBe(413);
+  });
+
+  it("stays off when switched off while it was still starting", async () => {
+    await host.setEnabled(false);
+    const starting = host.setEnabled(true);
+    await host.setEnabled(false);
+    await starting;
+    expect(host.port).toBeNull();
+  });
+
+  it("ignores a damaged saved address instead of failing every request", async () => {
+    await host.close();
+    await host.flush();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(dir, "host.json"),
+      JSON.stringify({
+        version: 1,
+        enabled: true,
+        port: null,
+        address: "not a url %%",
+        devices: [],
+      }),
+    );
+    host = make();
+    await host.load();
+    expect((await host.status()).address).toBe("https://pc.tail1.ts.net");
+    expect((await fetch(`${base()}/`)).status).toBe(200);
+  });
+
   it("turns off completely", async () => {
     await host.setEnabled(false);
     expect(host.port).toBeNull();
@@ -393,6 +467,26 @@ describe("helpers", () => {
     expect(
       enableLink("To enable, visit:\n\n  https://login.tailscale.com/f/serve?node=abc\n"),
     ).toBe("https://login.tailscale.com/f/serve?node=abc");
+    const ours = JSON.stringify({
+      Web: { "pc.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:47821" } } } },
+    });
+    const theirs = JSON.stringify({
+      Web: { "pc.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000" } } } },
+    });
+    expect(sharesSomethingElse(ours, 47821)).toBe(false);
+    expect(sharesSomethingElse(theirs, 47821)).toBe(true);
+    const calls: string[][] = [];
+    const runner = (status: string) => async (args: string[]) => {
+      calls.push(args);
+      return { ok: true, stdout: args[1] === "status" ? status : "", stderr: "" };
+    };
+    expect((await shareWithTailscale(47821, runner(theirs))).ok).toBe(false);
+    expect(calls.some((args) => args.includes("--bg"))).toBe(false);
+    calls.length = 0;
+    await unshareTailscale(47821, runner(theirs));
+    expect(calls.some((args) => args.includes("off"))).toBe(false);
+    await unshareTailscale(47821, runner(ours));
+    expect(calls.some((args) => args.includes("off"))).toBe(true);
     const missing = await tailscaleStatus(1, async () => ({
       ok: false,
       stdout: "",
