@@ -76,9 +76,26 @@
 
   <main class="wrap">
     <h1>Sahkarmi changelog</h1>
-    <p class="lead">Every released version of the Sahkarmi desktop app, newest first. Version 0.13.0 is the latest. Each version links to its GitHub release, where the installer, checksums and build attestation are attached.</p>
+    <p class="lead">Every released version of the Sahkarmi desktop app, newest first. Version 0.33.0 is the latest. Each version links to its GitHub release, where the installer, checksums and build attestation are attached.</p>
     <p>The same list is kept in <a href="https://github.com/ganguydhrubo/sahakarmi/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">CHANGELOG.md</a> in the repository. The project follows <a href="https://semver.org/" target="_blank" rel="noopener noreferrer">Semantic Versioning</a>. Some early versions were tagged but not published, so a few numbers are missing.</p>
     <ul class="toc">
+      <li><a href="#v0-33-0">0.33.0</a></li>
+      <li><a href="#v0-32-0">0.32.0</a></li>
+      <li><a href="#v0-31-0">0.31.0</a></li>
+      <li><a href="#v0-30-0">0.30.0</a></li>
+      <li><a href="#v0-29-0">0.29.0</a></li>
+      <li><a href="#v0-28-0">0.28.0</a></li>
+      <li><a href="#v0-27-0">0.27.0</a></li>
+      <li><a href="#v0-26-1">0.26.1</a></li>
+      <li><a href="#v0-26-0">0.26.0</a></li>
+      <li><a href="#v0-25-1">0.25.1</a></li>
+      <li><a href="#v0-25-0">0.25.0</a></li>
+      <li><a href="#v0-24-0">0.24.0</a></li>
+      <li><a href="#v0-23-0">0.23.0</a></li>
+      <li><a href="#v0-22-1">0.22.1</a></li>
+      <li><a href="#v0-22-0">0.22.0</a></li>
+      <li><a href="#v0-21-2">0.21.2</a></li>
+      <li><a href="#v0-21-1">0.21.1</a></li>
       <li><a href="#v0-21-0">0.21.0</a></li>
       <li><a href="#v0-20-0">0.20.0</a></li>
       <li><a href="#v0-19-0">0.19.0</a></li>
@@ -143,6 +160,269 @@
       <li><a href="#v0-2-0">0.2.0</a></li>
     </ul>
 
+    <h2 id="v0-33-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.33.0" target="_blank" rel="noopener noreferrer">Version 0.33.0</a> <span class="date">12 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li><strong>Phone &amp; Host</strong>: use Sahkarmi from your phone (iPhone or Android). Approve requests, chat with your coworkers and run routines from anywhere, free and private, through your own Tailscale. Three guided steps: a QR on screen opens the App Store or Google Play, one click links this PC, and pointing the phone camera at the pairing code pairs it. Only your own devices can open it; each phone can be removed at any time, and every action from a phone is listed.</li>
+      <li>Phone approvals show the exact command and where the request came from, and take a note just like on the PC. Requests that need private details say they can only be answered on the PC.</li>
+      <li>Optional <strong>Start with Windows</strong> keeps Host ready in the tray after sign-in (not in the Microsoft Store build).</li>
+      <li><strong>Voice typing</strong> on this PC: speak and the words appear in the message box, like ChatGPT.</li>
+      <li>Browser: <strong>back, forward and reload</strong>, a Chrome-like address bar (type a web address or words to search) and right-click menus. How the browser itself works is unchanged.</li>
+      <li><strong>Copy</strong> button on messages, a clearer send button, and older messages load by themselves when you scroll up, keeping your place.</li>
+      <li><strong>Searchable Help</strong> and short one-time tips.</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Your <strong>note on an approval now reaches the coworker</strong>. Before, a note typed on a paused command was ignored; it now arrives with your decision, and in routines it is handed to the next step.</li>
+      <li>Dark mode: fixed hard-to-read text, badges and cards across the app.</li>
+      <li>Plain language: routine and system notes, usage notes and modes now read as short sentences instead of raw text.</li>
+    </ul>
+    <h2 id="v0-32-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.32.0" target="_blank" rel="noopener noreferrer">Version 0.32.0</a> <span class="date">12 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Routines: <strong>Rerun from here</strong> on each step of the last run. That step and the ones after it run again; earlier steps are not redone, so their results and approvals are reused (nothing is asked or sent twice). The latest 5 runs of each routine keep what is needed for this.</li>
+      <li>Routines: <strong>Describe it</strong>. Say in your own words what should happen, when, and who should do it; your orchestrator coworker drafts the steps and schedule. The draft opens in the editor and nothing is saved or run until you press Save.</li>
+      <li>Routines: <strong>Ready-made</strong> workflows for small businesses: weekly GST check, payment reminders, daily lead follow-up, Monday sales report, competitor watch, social media week plan, review replies, supplier quotes, morning cash position and month-end checklist. Your own coworkers are matched by role, and anything that sends or posts asks you first.</li>
+    </ul>
+    <h2 id="v0-31-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.31.0" target="_blank" rel="noopener noreferrer">Version 0.31.0</a> <span class="date">12 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Workflows 2.0 (Routines): three new step types besides "Coworker does a task". - <strong>Yes/no check</strong>: a coworker answers a question about the result so far. Yes goes on; no stops the routine or skips to a later step. The result so far is passed on unchanged. - <strong>Ask me first</strong>: one approval card with the result so far, in the app and on Telegram if paired. No stops the routine; no answer within 24 hours stops it as failed. - <strong>Send the result</strong>: save the result as a new .md file in a folder (never overwrites a file), or send it to your Telegram.</li>
+      <li>Exported workflow files keep the step types, so an imported workflow runs the same way. A file output asks for a folder again, because a folder belongs to one computer.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Routines saved before this version keep running exactly as before.</li>
+    </ul>
+    <h2 id="v0-30-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.30.0" target="_blank" rel="noopener noreferrer">Version 0.30.0</a> <span class="date">10 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Intelligence Core (Settings &gt; Intelligence). Sahkarmi now learns from finished work: which coworker is good at which kind of work, what is likely to fail or run late, and which errors keep coming back. Everything stays on your computer in one small file; no new paid service, nothing is sent anywhere, and no AI model is trained.</li>
+      <li>Every finished task gets an evidence grade: verified, partial, failed or inconclusive. Only outside evidence (files that exist, your check command, a reviewer) can raise a grade. A coworker saying "done" is never enough on its own.</li>
+      <li>"Who should do this?": type a task and see who has the best record on that kind of work, with the reasons and numbers. Also shown: each coworker's track record, the chance of failing, typical time, overloaded queues, repeated errors and memory pressure. A number that comes from a rule rather than history is marked "estimate".</li>
+      <li>Check a team-run plan before it runs: missing or circular steps, the longest path, two steps writing the same file, and risky steps.</li>
+      <li>Notes and lessons, kept per workspace with a trust level. A coworker's own text is never trusted. You can add, correct and delete notes; old notes expire on their own.</li>
+      <li>You stay in charge: mark any result 👍 / 👎 or leave it out, roll the failure prediction back to an earlier point, or forget everything learnt for a workspace.</li>
+      <li>Settings &gt; Features &gt; "Intelligence: adaptive team runs" (Labs, off by default). When on, team runs may hand a task to a coworker with a better record, replace a coworker that was removed, give other coworkers trial tasks where the usual one does poorly, and stop retrying after the same failure twice. Every change is posted in the chat with its reason. A plan written by the workspace CEO keeps the coworkers it names at the start.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>With the first Intelligence switch on (the default), Sahkarmi only watches and advises. Team runs, chats and approvals behave exactly as before unless you turn on adaptive team runs.</li>
+    </ul>
+    <h2 id="v0-29-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.29.0" target="_blank" rel="noopener noreferrer">Version 0.29.0</a> <span class="date">9 November 2026</span></h2>
+    <h3>Changed</h3>
+    <ul>
+      <li>A calmer, more even look across the whole app. Theme colours and every feature stay the same.</li>
+      <li>One type scale everywhere: ten text sizes and four weights instead of about forty sizes and twelve weights, so headings, labels, body text and helper text are always clearly apart.</li>
+      <li>One spacing grid (8 px, 4 px for tight controls) and four corner sizes, so padding, gaps and corners line up from screen to screen.</li>
+      <li>Settings are grouped into Personal, Coworkers &amp; AI and App. Each page opens with a title and one line on what it is for. General is split into Look &amp; feel, Language &amp; tone and Keyboard cards, with each setting's name and help text next to its control.</li>
+      <li>The left icon bar is grouped (work, knowledge, automation, business) with thin dividers.</li>
+      <li>Buttons, fields and choice trays share one height, hover and selected look; the theme picker now matches the other choices.</li>
+      <li>Clearer labels: "AI &amp; models", "Theme", "Send key", "Status line style", "AI providers".</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>The pinned coworkers strip no longer shows a scrollbar when five coworkers are pinned.</li>
+      <li>"Use suggestion" no longer wraps onto two lines, and the custom memory limit field shows its full "Automatic" hint.</li>
+    </ul>
+    <h2 id="v0-28-0">Version 0.28.0 <span class="date">(not published separately; shipped inside 0.29.0)</span> <span class="date">9 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Telegram: when a coworker needs an OTP, a login ID (user name, email or phone) or a password to sign in somewhere, your Telegram chat asks too. Reply with it: it is typed straight into that page, your message is deleted from the chat at once, and the coworker never sees it. Only the Telegram account you paired can answer. /skip says no; /pc lets you type it on the computer yourself.</li>
+      <li>Passwords and PINs from Telegram only when you turn on Settings &gt; Telegram &gt; Allow passwords from Telegram (off by default). OTPs and login IDs always work.</li>
+      <li>Telegram tells you when a coworker needs you at the computer, for example for a "verify you are human" check or a payment page.</li>
+      <li>Telegram: /coworkers shows a button for each coworker; one tap and your next message goes to them.</li>
+      <li>Coworkers can ask for a login ID on the secure card, not only a password, OTP or PIN.</li>
+    </ul>
+    <h2 id="v0-27-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.27.0" target="_blank" rel="noopener noreferrer">Version 0.27.0</a> <span class="date">9 November 2026</span></h2>
+    <p>Every new part is behind its own switch in Settings &gt; Features. The ones that are on by default change nothing until they are needed, so an upgraded install works as 0.26.1 did.</p>
+    <h3>Added</h3>
+    <ul>
+      <li>Ask once after outside content (on): once a reply has read a web page, a web search, an app, a connector or a file outside the coworker's folders, its first command, outgoing message or key-file read is asked on the normal approval card, even in auto mode. One question per reply; the answer covers the rest of it. Work without outside content gets no new question.</li>
+      <li>Approval cards say where a request came from: you, your phone, a routine, a schedule, a team run, another coworker by name, the app itself, or the page, app or file the coworker read.</li>
+      <li>Work limits (Settings &gt; Features &gt; Work limits): replies a day for each coworker and steps per team run. Nothing is limited until you set a number. At the limit the coworker or run pauses with a notice saying where to raise it; a running reply is never cut short.</li>
+      <li>Auto concurrency: how many coworkers work at once follows the PC's free memory. Fair turns: messages you typed go first, then whoever waited longest. Both off by default.</li>
+      <li>Processor use and awake browser pages under the memory meter. Optional per-coworker page budget (two awake pages each) and a site crash guard (a site that crashes three times in ten minutes stays asleep for coworkers).</li>
+      <li>Leftover coworker programs from a crashed start are found and closed (off by default; only Sahkarmi's own programs).</li>
+      <li>Skill packs: eighteen ready skill packs pinned to exact versions with checked licences, skill import that brings a plugin's linked files along, and suggested connections that are added only after you confirm.</li>
+      <li>Ready-made connectors list (off by default) with each service's name and logo, pinned versions and per-tool permission rules.</li>
+      <li>Open Interpreter as an engine (off by default), using your own install.</li>
+      <li>Built-in browser: keys and tokens on a page are hidden from the AI (on), and clicked elements can be remembered (off).</li>
+      <li>Settings &gt; About lists the open-source projects Sahkarmi uses and their licences.</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>The orange "Could not update. Please try again." card came up at start whenever GitHub was briefly slow or down. A check you did not ask for (at start, on its timer, after sleep) now stays quiet on a passing problem (no internet, timeout, dropped connection, GitHub busy) and tries again after 2 minutes. Check for updates still tells you the reason.</li>
+      <li>Gemini showed "Google account 1, 2" instead of each account's email when the sign-in had been saved in an older format. Every format now shows the email; the sign-in is only ever sent to Google's own address.</li>
+      <li>A message sent again (Gemini moving to the next Google account, or a retry on a free model) showed twice in the open chat.</li>
+      <li>A browser tab whose page closed itself, as sign-in pop-ups do, could not be shown or used by its coworker again.</li>
+    </ul>
+    <h2 id="v0-26-1"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.26.1" target="_blank" rel="noopener noreferrer">Version 0.26.1</a> <span class="date">8 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Built-in browser stopped working for every coworker (errors naming getTitle or getURL) after a page ended by itself, for example a video or upload page that closed its own window, or a page whose process was killed while memory was short. The tab kept pointing at the dead page, so every later browser call failed until Sahkarmi was restarted, and coworkers looped asking the owner to hand the browser back. A tab now lets go of a dead page at once and opens its address in a fresh page on its next use; a crashed page is reloaded the same way. Other tabs and coworkers are not affected.</li>
+      <li>"… is using your desktop" was posted again and again in one chat, even after the coworker's last reply (every 3 minutes without a desktop step, and on each follow-up turn). A chat now gets the line once, and again only after 30 minutes without desktop use there.</li>
+    </ul>
+    <h2 id="v0-26-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.26.0" target="_blank" rel="noopener noreferrer">Version 0.26.0</a> <span class="date">8 November 2026</span></h2>
+    <p>0.25.1 was never published, so its two fixes ship here too.</p>
+    <h3>Added</h3>
+    <ul>
+      <li>Memory limit (Settings &gt; Features): choose how much RAM Sahkarmi and the coworker programs it starts may use together: Automatic, a ready-made size (2, 3, 4, 6, 8, 12 GB… up to what this PC has) or any amount in half-GB steps. Sahkarmi measures its real use (every program it started, grouped as Claude, Codex, Antigravity, OpenCode, tools), shows it live with where the memory goes, forecasts when the limit would be reached at the present growth, and suggests a limit for this PC. Near the limit it closes idle coworker programs and makes background work wait; work already running is never stopped for memory. Automatic keeps the old behaviour.</li>
+      <li>Warning threshold for the memory limit, and "Most steps in one Claude turn" (50-1000, was a fixed 200).</li>
+      <li>Assign APIs, connected apps, skills and MCP servers to whole AI engines (every Claude, Codex, Antigravity… coworker), single coworkers, whole workspaces or each workspace's CEO. The same "Assign" picker is on Marketplace &gt; APIs, Apps and Skills and on Settings &gt; Skills and MCP Servers. Anything never assigned stays available to everyone, as before.</li>
+      <li>Settings &gt; Assignments: every API, connected app, skill and MCP server in one list, with whether it is connected, who it is assigned to, and whether coworkers can use it right now (and if not, why).</li>
+      <li>Antigravity accounts show their email address instead of "Google account 1, 2, 3".</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>"This PC is short of free memory, so this message waits" no longer interrupts a coworker that is already working: a Claude coworker whose program is open never waits, Sahkarmi first closes idle Claude programs before making anyone wait, and the note disappears as soon as the work starts. The thresholds now fit 16 GB PCs (3 GB free is fine).</li>
+      <li>Antigravity keeps working when an MCP server cannot start: the chat opens without that server and says which one and why, instead of failing or waiting for ever. An empty Antigravity MCP config file (0 bytes) no longer causes an error on every session, and Sahkarmi's own tools no longer drop with "connection forcibly closed".</li>
+      <li>Connected apps no longer flip to "Connect" when one check with Composio fails; the last known state is kept and Settings &gt; Assignments says the check failed. A newly connected or removed app reaches idle coworkers at their next message instead of only in a new chat.</li>
+      <li>A turn about to be stopped for showing no progress is announced at three quarters of the time limit first.</li>
+      <li>From 0.25.1: Claude coworkers can use the apps you connect in Marketplace &gt; Apps, and a message you type never waits for free memory.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>When memory is short, idle Claude programs close after one minute instead of ten, and a chat stops trying automatic compaction after two failures in a row (ideas from the upstream project's latest releases, written fresh for Sahkarmi).</li>
+    </ul>
+    <h2 id="v0-25-1">Version 0.25.1 <span class="date">(not published separately; shipped inside 0.26.0)</span> <span class="date">7 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Claude coworkers can now use the apps you connect in Marketplace &gt; Apps (Notion, Gmail, GitHub and the rest). Before, only Codex coworkers received them, so a Claude coworker said "no Notion tools reached this session" while the app showed Connected. Anything that sends, creates, changes or deletes still asks for your approval first.</li>
+      <li>A message you type to a coworker no longer waits for free memory. Only routines, scheduled work and coworker-to-coworker messages wait when the PC is short of memory.</li>
+    </ul>
+    <h2 id="v0-25-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.25.0" target="_blank" rel="noopener noreferrer">Version 0.25.0</a> <span class="date">6 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Windows updates: "Restart to update" no longer loops. Sahkarmi now closes completely before a small helper installs the update as you (never through an administrator prompt), retries silently when antivirus still holds a file, and opens the new version by itself. If it still cannot install, the old version opens and says why. Before, one busy file made the installer stop on an error box that silent updates never showed, so it waited forever unseen and the next start asked for the same restart again. Closing Sahkarmi with an update ready installs it silently the same way.</li>
+      <li>Copies installed with Scoop no longer try to update themselves into a second copy; they say to run <code>scoop update sahkarmi</code>.</li>
+      <li>Claude coworkers: a conversation whose saved session was lost (after signing in to another account, for example) starts a fresh session and keeps your message, instead of failing every message. One coworker's failure no longer stops every other Claude coworker.</li>
+      <li>Antigravity and other ACP coworkers remember their conversation after a restart even when the agent had to open a new session.</li>
+      <li>A signed-out AI that no coworker uses is no longer started every few minutes to check it.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Many coworkers at once: up to 64 can work at the same time (Settings &gt; Engine). A new Claude coworker waits for free memory instead of filling an 8 GB PC, and when memory runs low only a few browser pages stay awake; the rest sleep and wake when a coworker needs them.</li>
+    </ul>
+    <h2 id="v0-24-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.24.0" target="_blank" rel="noopener noreferrer">Version 0.24.0</a> <span class="date">6 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Marketplace → APIs: paste an API key (and, if you like, a name or a docs link). Sahkarmi finds how the API works from its OpenAPI/Swagger description, its documentation page or the public APIs.guru directory, and asks only for what it could not find. Seven real tests run before you can turn it on (key, connection, endpoint, a real answer, readable data, permissions, errors and limits), and you choose which coworkers, workspaces or CEO may use it. Coworkers then answer questions like "tomorrow's weather in Kolkata" with live data. Keys are encrypted on this PC and never shown to coworkers; reading calls never ask, calls that change something ask you once.</li>
+      <li>MCP servers: "Test server" really connects, lists the server's tools, and explains a failure in plain words with a one-click fix (install uv, Node.js or Python, re-check PATH). New servers stay off until a test passes, and you can choose which coworkers get each server.</li>
+      <li>Connect from GitHub tells you whether a repo is an MCP server and how to run it, with the evidence. "Install for me" shows one approval card with every download and command, then installs into Sahkarmi's own folder.</li>
+      <li>Projects that are not MCP servers, such as MoneyPrinterTurbo, can be set up as a Skill your coworkers run, step by step.</li>
+      <li>Shared mode runs a heavy MCP server once for all coworkers.</li>
+      <li>Memory: coworkers can recall related team memories at the start of a message (Settings &gt; Features), and the Memory page lists, searches and deletes them.</li>
+      <li>Settings &gt; Storage shows what uses space and frees it safely.</li>
+      <li>Settings &gt; Features: how many coworkers may work at once, and how long a silent task may run before it is stopped.</li>
+      <li>Team runs say honestly whether a task was checked (passed, failed or not checked), and you can add your own check command. A Performance view shows how coworker turns went; it stays on your PC.</li>
+      <li>Tasks cut off when Sahkarmi closed can be run again with one click.</li>
+      <li>Optional: keep Sahkarmi running in the tray when the window closes (off by default).</li>
+      <li>Labs, off by default: the CEO plans team runs, and a second AI model reviews each task.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>New coworkers start on the most capable model of the AI you use (Codex: Sol; Claude: Opus). Coworkers you already set up keep their model.</li>
+      <li>Approvals: once you say "no" to a step, the coworker's retries of that same step in the same task are refused without asking you again. Cards say in plain words when a command also runs a second one.</li>
+      <li>Messages you type while a coworker works join its current task; scheduled tasks, routines and team runs wait their turn.</li>
+      <li>A brief AI-service hiccup (overloaded, server error, network) is retried automatically, at most twice. When a model is at its limit, only that message moves to the free model.</li>
+      <li>Lighter and faster: only the AI tools your coworkers use start with the app, idle Claude sessions close after 10 minutes and resume where they left off, long chats update one message at a time and load the newest 80 messages first, and coworker pages go quiet while Sahkarmi is minimised.</li>
+      <li>Knowledge Bases index in a separate background process, so the window never waits for them.</li>
+      <li>Old messages are archived by month, so large mailboxes open at once.</li>
+      <li>API keys you give Sahkarmi are stored encrypted with Windows, and each AI tool receives only its own key.</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>A tab you were typing in is never reloaded because a coworker saved on the same site, even when you started typing just before.</li>
+      <li>A coworker could run a shell command without your approval through an unchecked path; every command now goes through the approval rules.</li>
+      <li>Coworkers can no longer change Sahkarmi's own settings, other AI tools' settings, or files that hold keys without asking.</li>
+      <li>Browser downloads now follow the downloads permission.</li>
+      <li>Coworkers can no longer pass a task back and forth without end (stopped after 6 hand-offs).</li>
+      <li>Pause and Cancel on a team run now really stop the coworker, and runs waiting on your approval continue after a restart.</li>
+      <li>Codex is started without a shell and fully stopped with everything it started.</li>
+      <li>MCP servers installed after Sahkarmi started, old SSE addresses and Windows' Microsoft Store Python stub are handled correctly.</li>
+      <li>A damaged settings file is set aside and reported instead of stopping the app.</li>
+    </ul>
+    <h2 id="v0-23-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.23.0" target="_blank" rel="noopener noreferrer">Version 0.23.0</a> <span class="date">6 November 2026</span></h2>
+    <h3>Added</h3>
+    <ul>
+      <li>Messages you type while a coworker is working now join the task it is doing, as in Claude Code: the coworker reads them at its next step and adjusts, without the work being stopped and without the message waiting in line. This works for Codex and Claude coworkers with a text message; other models, attachments and messages behind others in the queue still wait their turn, and "Send now" still stops the task and starts the message.</li>
+      <li>A very long paste (over 5,000 characters) is attached as a text file instead of filling the message box.</li>
+      <li>Settings &gt; MCP servers warns when a local server's command is not on this PC, so a missing install or wrong path no longer leaves coworkers silently without that server's tools.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>A coworker whose Claude, Codex or OpenAI plan, quota or credit is used up moves the message to the backup free model in more cases ("Credit balance is too low", "hit your usage limit", "insufficient_quota", "out of extra usage"), so started work goes on.</li>
+      <li>Coworkers are told to read the page after submitting, sending, saving or paying in the browser, and to report an error or no change plainly instead of reporting success.</li>
+      <li>Deleting a coworker now lets go of its Claude or Codex session, so it stops using memory.</li>
+    </ul>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Errors in Settings &gt; MCP servers and Settings &gt; Skills no longer start with "Error invoking remote method ...".</li>
+      <li>Searching the Marketplace's learned skills with no match said you had no learned skills; it now says there are no matches.</li>
+    </ul>
+    <h2 id="v0-22-1"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.22.1" target="_blank" rel="noopener noreferrer">Version 0.22.1</a> <span class="date">5 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>The Export menu in a coworker's chat opened behind the task strip ("queued / running / done") and was cut off completely while the browser was open, so it could not be used. The Export menu and the model menu next to it now open on top, under their button, in every layout.</li>
+      <li>The page in the browser panel now always fits the panel. It used to take the panel's size from one step before (after resizing the window, changing the text size or enlarging the browser), so pages were cut off or left a gap; and a rounding error made it a pixel wider than the window, cutting off its right edge.</li>
+    </ul>
+    <h2 id="v0-22-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.22.0" target="_blank" rel="noopener noreferrer">Version 0.22.0</a> <span class="date">5 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>One approval per task. Saying yes to a post, message or form on a site now covers the next steps of that same task (Next, Share, a retry after the page redraws) for up to 2 hours, instead of a new card for every click. A new instruction asks again; deleting something, payments and account changes always ask. Two identical questions at the same moment now share one card. The main window also reloads by itself if its page crashes.</li>
+      <li>Claude coworkers no longer sit at "Request line mein hai" forever. Sahkarmi shared <code>~\.claude</code> with Claude Code, so both used one sign-in file: whichever account signed in or refreshed last won, and Sahkarmi kept falling back to "sign-in required" and queueing every message to a Claude coworker. Sahkarmi now keeps its own Claude sign-in in <code>%APPDATA%\Sahkarmi\claude-account</code> (CLAUDE_CONFIG_DIR for every Claude process it starts); existing coworker chats move there once, so they still resume. Sign in once with Connect.</li>
+      <li>Connect for Claude finishes as soon as the browser page says you are signed in, instead of waiting for the sign-in tool to exit (it could wait forever, then report "took too long").</li>
+      <li>A signed-out provider is checked again even while other coworkers are working; before, it was skipped whenever any coworker was busy, so a sign-in done meanwhile was never noticed.</li>
+      <li>The Claude sign-in check no longer reads a slow start on a busy PC as "signed out": longer limit, one retry, no extra shell, and a failing check is logged with its reason.</li>
+      <li>A coworker whose AI is signed out says so in its chat, with where to click, instead of an endless queued spinner.</li>
+      <li>Coworker browsers are kept apart. There was one browser panel and one selected page for everyone: opening coworker B's browser when B had no pages of its own showed coworker A's page on top of B's empty start screen. The panel now shows only the coworker whose chat is open, a colleague's page never takes the panel, closing a page selects the same coworker's next page, and refreshing a site no longer reloads other coworkers' pages of that site.</li>
+      <li>Logins stay after a restart. Electron drops cookies without an expiry date when the app closes, and sites such as Facebook can keep the login itself in them (the daily run then found "Continue as ..." instead of the account). A coworker's browser now keeps those cookies, in Chromium's encrypted cookie store, for sites it has open; a site that logs out still removes them, and cookies are written to disk shortly after each change and on quit.</li>
+      <li>Splitting the old shared browser no longer copies one site's login into several coworkers (one Facebook session in many cookie jars, so a login change in one ended it for all); each site's login goes to one coworker. The split that already ran on a PC is not repeated.</li>
+      <li>An approved Post goes through: the repeat of an approved click is matched by coworker, action, button name and page address without its query string, because Facebook changes both between page reads and the approval never matched (a new approval was opened instead).</li>
+      <li>LinkedIn posts are no longer refused as "could not be verified": the signed-in member is read from inside the open LinkedIn page, the same way LinkedIn's site does, because the app's own background request was challenged by LinkedIn's bot check.</li>
+      <li>A coworker tied to one account whose browser is signed in to another (for example Instagram) asks the owner once whether to switch, instead of refusing every action with no way out. It still never acts as another account without that approval.</li>
+      <li>The password and code card no longer fails with "The page changed since the coworker asked" when a site redraws itself on the same address: on the same origin it finds the password (or code) field again; on another origin it still refuses. The value is never logged or stored.</li>
+      <li>Page caches in coworker browsers (up to ~1 GB each) are emptied once after start when they pass 150 MB; cookies, local storage and IndexedDB are not touched.</li>
+    </ul>
+    <h3>Added</h3>
+    <ul>
+      <li>Coworkers can use the Windows desktop (<code>sahkarmi_desktop</code>: screenshot, list/focus/close windows, click, move, scroll, drag, type, keys, launch apps, read a window's controls through UI Automation), with every AI provider. Settings &gt; Permissions &gt; "Control this PC" (default Ask: one approval per coworker per app session). Sahkarmi's own windows, password fields, credential and UAC screens, and script hosts are refused; a note in the coworker's chat says when it uses the desktop, and only one coworker drives the desktop at a time.</li>
+    </ul>
+    <h3>Performance</h3>
+    <ul>
+      <li>The window no longer repaints all the time while idle: every avatar's eyes blinked forever (32 running SVG animations, about 1,400 repaints every 10 seconds even with nothing happening). Only the avatar under the pointer and working coworkers animate now.</li>
+      <li>Clicking back into the window no longer starts a model refresh (one process per AI tool), an update check and an AI-tool check every time; focus does that at most every 10 minutes, waking the PC still does it at once, and the 15-minute timers are unchanged. Signed-out providers are checked at most every 3 minutes in the background.</li>
+    </ul>
+    <h3>Disk space</h3>
+    <ul>
+      <li>Old AI tool copies are removed at start: every Claude Code, Codex and OpenCode version except the one in use, the old Codex download in <code>tools\codex</code>, interrupted downloads, download folders in %TEMP% older than an hour and half-written save files. Before, the previous copy (300-480 MB each) was kept, and one still running during an update was never removed.</li>
+      <li>Uninstall asks whether to delete your Sahkarmi data too (default No); an update or a silent uninstall never touches it. Uninstall always removes the update download cache.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>New interface font: Inter for all Latin text (Mukta and Hind Siliguri still draw Hindi and Bengali); the rounded Baloo 2 headings are gone.</li>
+    </ul>
+    <h2 id="v0-21-2"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.21.2" target="_blank" rel="noopener noreferrer">Version 0.21.2</a> <span class="date">3 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>"Restart to update" no longer loops on Windows PCs where the installer cannot start without a permission prompt. Each Restart click is written down before the installer runs; if the same version is still running at the next start, the app says that the last update did not install and asks to choose Yes when Windows asks for permission (Sahkarmi is free software and not yet signed, so Windows calls it an unknown publisher). After two such attempts the update is handed to the browser as a normal download, which installs the way the first install did.</li>
+      <li>A failed attempt also switches off the silent install at quit, so closing Sahkarmi no longer raises the same permission prompt every time.</li>
+      <li>An installer that cannot start at all (missing or blocked file) is reported at once instead of leaving the app on "Installing update…" with every coworker stopped; the app restarts itself so work can continue.</li>
+      <li>A copy installed from the Microsoft Store says so on the Updates page instead of the generic "Updates are available in installed desktop builds."</li>
+    </ul>
+    <h2 id="v0-21-1"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.21.1" target="_blank" rel="noopener noreferrer">Version 0.21.1</a> <span class="date">3 November 2026</span></h2>
+    <h3>Fixed</h3>
+    <ul>
+      <li>Spreadsheet passages no longer carry "| | | |" from empty cells: blank cells at either end of a row are dropped and a run of blanks in the middle collapses to one, so Excel and CSV rows read cleanly in search results and in what coworkers are given.</li>
+      <li>Existing Knowledge Bases pick up indexing improvements by themselves: the first time a newer Sahkarmi opens a base, every file is read again in the background and vectors left by an older embedding model are removed. Nothing to remove or add by hand.</li>
+    </ul>
+    <h3>Changed</h3>
+    <ul>
+      <li>Telegram: the pairing code is shown in its own highlighted box, large, with a Copy button, so the one thing you have to send from your phone cannot be missed.</li>
+      <li>Multi-Agent (team runs) screen uses the same paper, lines, buttons and saffron as the rest of the app, in light and dark, instead of its own grey styling.</li>
+      <li>Page introductions share one width and spacing on every screen (Knowledge, Memory, Routines, Activity, Business, Shared files, Marketplace), and the Routines empty state sits in the same gutter as everything else.</li>
+    </ul>
     <h2 id="v0-21-0"><a href="https://github.com/ganguydhrubo/sahakarmi/releases/tag/v0.21.0" target="_blank" rel="noopener noreferrer">Version 0.21.0</a> <span class="date">3 November 2026</span></h2>
     <h3>Added</h3>
     <ul>
