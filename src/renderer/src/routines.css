@@ -662,3 +662,16 @@
 .routine-output-choice .routine-folder-trigger {
   margin: 0 0 4px 24px;
 }
+
+/* Rerun from a step: a quiet button at the bottom of each step of the last run. */
+.routine-rerun {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 2px 10px;
+  font-size: var(--fs-xs);
+}
+
+.routine-node-reused {
+  color: var(--text-muted);
+  font-style: italic;
+}

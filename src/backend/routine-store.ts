@@ -239,6 +239,45 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     return this.state();
   }
 
+  /**
+   * Runs the routine again from one step of an earlier run. The steps before it are not run
+   * again: their results (and approvals) are reused from that run, so a fixed step does not
+   * redo, re-ask or re-send everything before it.
+   */
+  async rerunFrom(runId: string, stepId: string): Promise<RoutinesState> {
+    const earlier = this.#state.runs.find((run) => run.id === runId);
+    if (!earlier) throw new Error("That run is no longer in the history.");
+    const routine = this.#require(earlier.routineId);
+    if (this.#active.has(routine.id)) throw new Error("This routine is already running.");
+    if (earlier.status === "running") throw new Error("Wait for that run to finish first.");
+    const from = routine.steps.findIndex((step) => step.id === stepId);
+    if (from < 0) throw new Error("That step is no longer in the routine.");
+    let previous: string | null = null;
+    const reused: RoutineRunStep[] = [];
+    for (const step of routine.steps.slice(0, from)) {
+      const before = earlier.steps.find((candidate) => candidate.stepId === step.id);
+      if (!before) {
+        throw new Error("A step before this one was added after that run. Run the whole routine.");
+      }
+      if (before.status === "done") {
+        if (before.carry === undefined) {
+          throw new Error("That run is too old to restart from a step. Run the whole routine.");
+        }
+        previous = before.carry;
+      } else if (before.status !== "skipped") {
+        throw new Error("An earlier step did not finish in that run. Rerun from that step.");
+      }
+      reused.push({ ...structuredClone(before), reused: true });
+    }
+    this.#launch(routine.id, "rerun", from === 0 ? (earlier.files ?? []) : [], {
+      from,
+      previous,
+      reused,
+      rerunOf: earlier.id,
+    });
+    return this.state();
+  }
+
   /** Resolves when every running routine has finished. For tests and shutdown. */
   async idle(): Promise<void> {
     while (this.#active.size > 0) await Promise.allSettled([...this.#active.values()]);
@@ -267,8 +306,13 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     }
   }
 
-  #launch(routineId: string, trigger: RoutineRun["trigger"], files: string[] = []): void {
-    const task = this.#run(routineId, trigger, files)
+  #launch(
+    routineId: string,
+    trigger: RoutineRun["trigger"],
+    files: string[] = [],
+    resume?: Resume,
+  ): void {
+    const task = this.#run(routineId, trigger, files, resume)
       .catch((error) => console.error("Routine run failed:", error))
       .finally(() => {
         this.#active.delete(routineId);
@@ -322,38 +366,42 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     routineId: string,
     trigger: RoutineRun["trigger"],
     files: string[] = [],
+    resume?: Resume,
   ): Promise<void> {
     const routine = this.#require(routineId);
     const executor = this.#executor;
     const startedAt = this.#now().toISOString();
-    if (trigger === "manual" || trigger === "folder") routine.lastRunAt = startedAt;
+    if (trigger !== "schedule") routine.lastRunAt = startedAt;
     const run: RoutineRun = {
       id: randomUUID(),
       routineId,
       routineName: routine.name,
       trigger,
       ...(files.length > 0 ? { files } : {}),
+      ...(resume ? { rerunOf: resume.rerunOf } : {}),
       status: "running",
       startedAt,
       finishedAt: null,
       steps: routine.steps.map(
-        (step): RoutineRunStep => ({
-          stepId: step.id,
-          ...(step.kind && step.kind !== "agent" ? { kind: step.kind } : {}),
-          botId: step.botId,
-          instruction: step.instruction,
-          status: "queued",
-          deliveryId: null,
-          result: null,
-          startedAt: null,
-          finishedAt: null,
-        }),
+        (step, position): RoutineRunStep =>
+          resume?.reused[position] ?? {
+            stepId: step.id,
+            ...(step.kind && step.kind !== "agent" ? { kind: step.kind } : {}),
+            botId: step.botId,
+            instruction: step.instruction,
+            status: "queued",
+            deliveryId: null,
+            result: null,
+            startedAt: null,
+            finishedAt: null,
+          },
       ),
     };
     // The run follows the steps as they were when it started, even if the routine is edited.
     const plan = structuredClone(routine.steps);
     this.#state.runs.unshift(run);
     this.#state.runs = this.#state.runs.slice(0, MAX_RUNS);
+    this.#dropOldCarries(routineId);
     await this.#persist();
 
     const finish = async (status: RoutineRun["status"], from: number) => {
@@ -365,8 +413,8 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
       await this.#persist();
     };
 
-    let previous: string | null = null;
-    let index = 0;
+    let previous: string | null = resume?.previous ?? null;
+    let index = resume?.from ?? 0;
     while (index < run.steps.length) {
       const step = run.steps[index] as RoutineRunStep;
       const definition = plan[index] as Routine["steps"][number];
@@ -417,6 +465,8 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
       step.status = "done";
       step.result = outcome.result ? excerpt(outcome.result) : null;
       if (outcome.next !== undefined) previous = outcome.next;
+      step.carry =
+        previous && previous.length > CARRY_LIMIT ? previous.slice(0, CARRY_LIMIT) : previous;
       if (outcome.stop) {
         await finish("done", index + 1);
         return;
@@ -498,6 +548,17 @@ export class RoutineStore extends EventEmitter<RoutineStoreEvents> {
     return { ok: false, error: "This output step has no destination." };
   }
 
+  /** Only the latest few runs of a routine keep the text needed to restart from a step. */
+  #dropOldCarries(routineId: string): void {
+    let seen = 0;
+    for (const run of this.#state.runs) {
+      if (run.routineId !== routineId) continue;
+      seen += 1;
+      if (seen <= RERUNNABLE_RUNS) continue;
+      for (const step of run.steps) delete step.carry;
+    }
+  }
+
   #require(routineId: string): Routine {
     const routine = this.#state.routines.find((candidate) => candidate.id === routineId);
     if (!routine) throw new Error("This routine no longer exists.");
@@ -563,6 +624,19 @@ function stepText(
     previous.length > CONTEXT_LIMIT ? `${previous.slice(0, CONTEXT_LIMIT)}\n…` : previous;
   return `${header}\n\nResult of step ${index} (use as input):\n${context}`;
 }
+
+/** Where a rerun starts, and what it reuses from the earlier run. */
+interface Resume {
+  from: number;
+  previous: string | null;
+  reused: RoutineRunStep[];
+  rerunOf: string;
+}
+
+/** How much of each step's result a run keeps for restarting from a later step. */
+const CARRY_LIMIT = 20_000;
+/** How many of a routine's latest runs keep those results. */
+const RERUNNABLE_RUNS = 5;
 
 type StepOutcome =
   | { ok: false; error: string }

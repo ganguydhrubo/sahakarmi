@@ -133,6 +133,7 @@ export function RoutinesView(props: {
   onDelete: (routineId: string) => Promise<void>;
   onSetEnabled: (routineId: string, enabled: boolean) => Promise<void>;
   onRunNow: (routineId: string) => Promise<void>;
+  onRerunFrom: (runId: string, stepId: string) => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [draft, setDraft] = createSignal<Draft | null>(null);
@@ -550,6 +551,33 @@ export function RoutinesView(props: {
                                     <Show when={stepRun(step.id)?.result}>
                                       {(result) => <p class="routine-node-result">{result()}</p>}
                                     </Show>
+                                    <Show when={stepRun(step.id)?.reused}>
+                                      <small class="routine-node-reused">
+                                        {t("routineReused")}
+                                      </small>
+                                    </Show>
+                                    <Show
+                                      when={
+                                        last() &&
+                                        last()?.status !== "running" &&
+                                        stepRun(step.id) &&
+                                        index() > 0
+                                      }
+                                    >
+                                      <button
+                                        type="button"
+                                        class="routine-rerun"
+                                        disabled={busy()}
+                                        title={t("routineRerunHelp")}
+                                        onClick={() =>
+                                          void act(() =>
+                                            props.onRerunFrom(last()?.id ?? "", step.id),
+                                          )
+                                        }
+                                      >
+                                        ↻ {t("routineRerunHere")}
+                                      </button>
+                                    </Show>
                                   </li>
                                 );
                               }}
@@ -635,7 +663,9 @@ export function RoutinesView(props: {
                                         ? t("routineTriggerManual")
                                         : run.trigger === "folder"
                                           ? t("routineTriggerFolder")
-                                          : t("routineTriggerSchedule")}{" "}
+                                          : run.trigger === "rerun"
+                                            ? t("routineTriggerRerun")
+                                            : t("routineTriggerSchedule")}{" "}
                                       · {run.steps.filter((step) => step.status === "done").length}/
                                       {run.steps.length}
                                     </small>

@@ -71,6 +71,11 @@ export const workspaceEn = {
   routineApprovalHelp:
     "You get one approval card, with the result so far (also on Telegram if paired). No stops the routine.",
   routineApprovalYou: "You decide",
+  routineRerunHere: "Rerun from here",
+  routineRerunHelp:
+    "Run this step and the ones after it again. Earlier steps are not redone: their results and approvals from the last run are reused.",
+  routineReused: "Reused from the last run",
+  routineTriggerRerun: "Rerun from a step",
   routineOutputWhere: "Where should the result go?",
   routineOutputFile: "Save as a file in a folder",
   routineOutputTelegram: "Send to my Telegram",

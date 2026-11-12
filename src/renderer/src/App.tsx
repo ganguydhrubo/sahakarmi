@@ -1549,6 +1549,9 @@ export function App() {
                     onRunNow={(routineId) =>
                       routineAction(window.sahkarmi.routines.runNow(routineId))
                     }
+                    onRerunFrom={(runId, stepId) =>
+                      routineAction(window.sahkarmi.routines.rerunFrom(runId, stepId))
+                    }
                   />
                 </Match>
                 <Match when={view() === "usage"}>

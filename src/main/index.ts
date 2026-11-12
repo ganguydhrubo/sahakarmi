@@ -1385,6 +1385,13 @@ function registerIpcHandlers(
   handleTrusted(IPC_CHANNELS.routinesRunNow, (routineId: unknown) =>
     routines.runNow(requireString(routineId, "routineId")),
   );
+  handleTrusted(IPC_CHANNELS.routinesRerunFrom, (input: unknown) => {
+    if (!isObject(input)) throw new Error("Invalid rerun.");
+    return routines.rerunFrom(
+      requireString(input.runId, "runId"),
+      requireString(input.stepId, "stepId"),
+    );
+  });
 
   handleTrusted(IPC_CHANNELS.filesList, (directory: unknown) =>
     sharedFiles.list(typeof directory === "string" ? directory : ""),

@@ -73,6 +73,11 @@ export const workspaceHi: WorkspaceDictionary = {
   routineApprovalHelp:
     "आपको अब तक के नतीजे के साथ एक अनुमति कार्ड मिलेगा (जुड़ा हो तो Telegram पर भी)। ना कहने पर रूटीन रुक जाता है।",
   routineApprovalYou: "आप तय करें",
+  routineRerunHere: "यहाँ से दोबारा चलाएँ",
+  routineRerunHelp:
+    "यह कदम और इसके बाद वाले कदम दोबारा चलेंगे। पहले के कदम दोबारा नहीं होंगे: पिछली बार के नतीजे और अनुमतियाँ वही रहेंगी।",
+  routineReused: "पिछली बार का नतीजा",
+  routineTriggerRerun: "एक कदम से दोबारा",
   routineOutputWhere: "नतीजा कहाँ जाए?",
   routineOutputFile: "फ़ोल्डर में फ़ाइल के रूप में सहेजें",
   routineOutputTelegram: "मेरे Telegram पर भेजें",
