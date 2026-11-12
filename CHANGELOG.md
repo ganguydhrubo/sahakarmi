@@ -5,6 +5,8 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-12
+
 ### Added
 
 - **Phone & Host**: use Sahkarmi from your phone (iPhone or Android). Approve requests, chat with
