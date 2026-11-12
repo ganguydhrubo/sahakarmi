@@ -82,6 +82,7 @@ import { SecureInputCard } from "./SecureInputCard";
 import { SidebarToggleIcon } from "./Sidebar";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { TaskQueueStrip } from "./TaskQueueStrip";
+import { Tip } from "./Tip";
 import { ToolCallCard, type ToolCallSummary, ToolGroupCard } from "./ToolCallCard";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { WorkflowExportMenu } from "./WorkflowExportMenu";
@@ -681,12 +682,33 @@ function MessageBody(props: {
     /^(Failed|Interrupted|Cancelled)$/.test(props.message.status ?? "");
   // Long instructions from the owner fold to a few lines so the reply stays in view.
   const [expanded, setExpanded] = createSignal(false);
+  const routine = createMemo(() => routineNote(props.message));
+  const design = createMemo(() => routineDesignNote(props.message));
+  const body = () => design() ?? routine()?.text ?? props.message.body;
+  // A routine step carries the earlier step's result, so it folds sooner.
   const collapsible = () =>
     props.message.author === "you" &&
-    (props.message.body.length > 700 || props.message.body.split("\n").length > 12);
+    (routine()
+      ? body().length > 280 || body().split("\n").length > 4
+      : body().length > 700 || body().split("\n").length > 12);
   const collapsed = () => collapsible() && !expanded();
   return (
     <>
+      <Show when={design()}>
+        <div class="message-routine-tag">
+          <span aria-hidden="true">↻</span>
+          <strong>{t("routineDescribe")}</strong>
+        </div>
+      </Show>
+      <Show when={routine()}>
+        {(note) => (
+          <div class="message-routine-tag">
+            <span aria-hidden="true">↻</span>
+            <strong>{note().name}</strong>
+            <span>{t("routineNoteStep", { step: note().step, total: note().total })}</span>
+          </div>
+        )}
+      </Show>
       <Show when={props.referencedMessage}>
         {(referenced) => (
           <div class="message-reply-context">
@@ -701,7 +723,7 @@ function MessageBody(props: {
           fallback={
             <p class="message-copy" classList={{ "message-collapsed": collapsed() }}>
               <RichMessageText
-                body={props.message.body}
+                body={body()}
                 bots={props.bots}
                 citations={props.message.citations}
                 onSelectAgent={props.onSelectAgent}
@@ -712,7 +734,7 @@ function MessageBody(props: {
         >
           <div class="message-copy message-rich" classList={{ "message-collapsed": collapsed() }}>
             <RichMarkdown
-              body={props.message.body}
+              body={body()}
               inline={(text) => (
                 <RichMessageText
                   body={text}
@@ -791,6 +813,48 @@ const SYSTEM_NOTE =
 
 function isSystemNote(message: BotMessage): boolean {
   return message.author === "you" && SYSTEM_NOTE.test(message.body);
+}
+
+const ROUTINE_NOTE = /^\[Routine "(.*?)" · step (\d+)\/(\d+)(?: · yes\/no check)?\] ?/;
+const DESIGN_NOTE = /^\[Routine design\][\s\S]*?What the owner wants: (.*)/;
+const DESIGN_REPLY = /^\s*(?:```(?:json)?\s*)?\{\s*"name"\s*:[\s\S]*"steps"\s*:\s*\[/;
+
+/** "Describe it" asks the orchestrator in its chat; show the request and the JSON reply briefly. */
+export function routineDesignNote(message: Pick<BotMessage, "author" | "body">): string | null {
+  if (message.author === "you") {
+    const match = DESIGN_NOTE.exec(message.body);
+    return match ? t("routineDesignAsked", { wish: (match[1] as string).trim() }) : null;
+  }
+  if (!DESIGN_REPLY.test(message.body)) return null;
+  try {
+    const start = message.body.indexOf("{");
+    const value = JSON.parse(message.body.slice(start, message.body.lastIndexOf("}") + 1)) as {
+      name?: unknown;
+      steps?: unknown;
+    };
+    if (!Array.isArray(value.steps)) return null;
+    return t("routineDesignReplied", {
+      name: typeof value.name === "string" ? value.name : "",
+      count: String(value.steps.length),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** A step a routine sent a coworker: shown as a quiet card with a label, not as the owner typing. */
+export function routineNote(
+  message: Pick<BotMessage, "author" | "body">,
+): { name: string; step: string; total: string; text: string } | null {
+  if (message.author !== "you") return null;
+  const match = ROUTINE_NOTE.exec(message.body);
+  if (!match) return null;
+  return {
+    name: match[1] as string,
+    step: match[2] as string,
+    total: match[3] as string,
+    text: message.body.slice(match[0].length),
+  };
 }
 
 function MessageActions(props: {
@@ -2991,6 +3055,8 @@ export function Conversation(props: ConversationProps) {
                             "message-entry-user": message.author === "you",
                             "message-entry-bot": message.author === "bot",
                             "message-entry-system": isSystemNote(message),
+                            "message-entry-routine":
+                              routineNote(message) !== null || routineDesignNote(message) !== null,
                           }}
                         >
                           <div class="message-shell">
@@ -3109,7 +3175,17 @@ export function Conversation(props: ConversationProps) {
             now={activityNow()}
             activeSince={activeSince()}
           />
+          <Tip
+            id="chat-follow-up"
+            text="tipChatFollowUp"
+            when={
+              !props.pendingApprovals?.length &&
+              shownMessages().some((message) => message.author === "bot" && !message.streaming) &&
+              !shownMessages().some((message) => message.streaming)
+            }
+          />
           <Show when={props.pendingApprovals?.length && props.onDecideApproval}>
+            <Tip id="first-approval" text="tipApproval" />
             <ul class="approval-list inline-approvals" aria-label={t("approvals")}>
               <For each={props.pendingApprovals}>
                 {(approval) => (

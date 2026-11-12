@@ -18,6 +18,10 @@ export interface OnboardingState {
   welcome: WelcomeState;
   tour: TourState;
   checklistHidden: boolean;
+  /** The owner turned off the one-time tips next to features. */
+  tipsOff: boolean;
+  /** Tips already shown and closed; each appears once. */
+  seenTips: string[];
 }
 
 const DEFAULT_STATE: OnboardingState = {
@@ -25,7 +29,11 @@ const DEFAULT_STATE: OnboardingState = {
   welcome: "auto",
   tour: "never",
   checklistHidden: false,
+  tipsOff: false,
+  seenTips: [],
 };
+
+const MAX_SEEN_TIPS = 100;
 
 /**
  * Nothing opens by itself unless storage can both save and read back: otherwise a dismissed
@@ -52,10 +60,14 @@ export function parseOnboarding(raw: string | null): OnboardingState {
       welcome: value.welcome === "show" || value.welcome === "dismissed" ? value.welcome : "auto",
       tour: value.tour === "skipped" || value.tour === "finished" ? value.tour : "never",
       checklistHidden: value.checklistHidden === true,
+      tipsOff: value.tipsOff === true,
+      seenTips: Array.isArray(value.seenTips)
+        ? value.seenTips.filter((id): id is string => typeof id === "string").slice(-MAX_SEEN_TIPS)
+        : [],
     };
   } catch {
     // A damaged value is treated as seen, so it can never cause a popup loop.
-    return { ...DEFAULT_STATE, welcome: "dismissed" };
+    return { ...DEFAULT_STATE, welcome: "dismissed", tipsOff: true };
   }
 }
 
@@ -63,7 +75,7 @@ function readState(): OnboardingState {
   try {
     return parseOnboarding(window.localStorage.getItem(ONBOARDING_KEY));
   } catch {
-    return { ...DEFAULT_STATE, welcome: "dismissed" };
+    return { ...DEFAULT_STATE, welcome: "dismissed", tipsOff: true };
   }
 }
 
@@ -95,9 +107,50 @@ export function setChecklistHidden(hidden: boolean): void {
   update({ checklistHidden: hidden });
 }
 
-/** Help → Reset guidance: the welcome card and checklist come back once. */
+/** Help → Reset guidance: the welcome card, checklist and tips come back once. */
 export function resetOnboarding(): void {
-  update({ welcome: "show", tour: "never", checklistHidden: false });
+  update({ welcome: "show", tour: "never", checklistHidden: false, tipsOff: false, seenTips: [] });
+}
+
+export function setTipsOff(off: boolean): void {
+  update({ tipsOff: off });
+}
+
+export function markTipSeen(id: string): void {
+  const seen = state().seenTips;
+  if (!seen.includes(id)) update({ seenTips: [...seen, id].slice(-MAX_SEEN_TIPS) });
+}
+
+/** The welcome card, the tour and Help hold tips back while they are open. */
+const [tipHolds, setTipHolds] = createSignal(0);
+export function holdTips(): () => void {
+  setTipHolds((count) => count + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    setTipHolds((count) => Math.max(0, count - 1));
+  };
+}
+
+/** One tip at a time: the first that asks keeps the spot until it is closed or leaves. */
+const [activeTip, setActiveTip] = createSignal<string | null>(null);
+
+export { activeTip };
+
+/** Whether this tip may show at all right now (not seen, tips on, nothing else open). */
+export function tipEligible(id: string): boolean {
+  const current = state();
+  return !current.tipsOff && storageWorks() && !current.seenTips.includes(id) && tipHolds() === 0;
+}
+
+/** Takes the single tip spot if it is free. */
+export function claimTip(id: string): void {
+  if (activeTip() === null) setActiveTip(id);
+}
+
+export function releaseTip(id: string): void {
+  if (activeTip() === id) setActiveTip(null);
 }
 
 /**
@@ -123,4 +176,6 @@ export function settleWelcomeForExistingUser(input: {
 export function reloadOnboardingForTests(): void {
   setStorageWorks(probeStorage());
   setStateSignal(readState());
+  setActiveTip(null);
+  setTipHolds(0);
 }

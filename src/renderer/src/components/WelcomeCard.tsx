@@ -1,5 +1,6 @@
-import { Show } from "solid-js";
+import { onCleanup, onMount, Show } from "solid-js";
 import { t } from "../i18n";
+import { holdTips } from "../onboarding";
 
 /** First-run card inside an empty chat. Never an overlay: the chat and composer stay usable. */
 export function WelcomeCard(props: {
@@ -9,6 +10,7 @@ export function WelcomeCard(props: {
   onExplore: () => void;
   onDismiss: () => void;
 }) {
+  onMount(() => onCleanup(holdTips()));
   return (
     <section class="welcome-card" aria-labelledby="welcome-card-title">
       <div class="welcome-card-copy">

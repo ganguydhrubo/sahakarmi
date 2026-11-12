@@ -748,3 +748,7 @@
 .routines-view .routine-describe h2 {
   font-size: 1.05rem;
 }
+
+.routines-view > .feature-tip {
+  margin: 0 24px 12px;
+}

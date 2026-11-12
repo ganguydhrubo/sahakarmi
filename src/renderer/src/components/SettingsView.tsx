@@ -35,6 +35,7 @@ import { SkillsSettings } from "./SkillsSettings";
 import { StorageView } from "./StorageView";
 import { TelegramSettings } from "./TelegramSettings";
 import { ThemeSelector } from "./ThemeSelector";
+import { Tip } from "./Tip";
 import { UpdateControl } from "./UpdateControl";
 import { VoiceSettings } from "./VoiceSettings";
 
@@ -314,6 +315,7 @@ export function SettingsView(props: SettingsViewProps) {
               <section class="settings-card">
                 <h2>{t("providers")}</h2>
                 <p>{t("connectIntro")}</p>
+                <Tip id="models" text="tipModels" />
                 <ProviderConnect agentStatus={props.agentStatus} />
                 <p class="settings-meta provider-permissions-link">
                   <button type="button" class="link-button" onClick={props.onOpenPermissions}>

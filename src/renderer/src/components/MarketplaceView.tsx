@@ -21,6 +21,7 @@ import { AgentAvatar } from "./AgentAvatar";
 import { ApiIntegrationsPanel } from "./ApiIntegrationsPanel";
 import { AppsPanel } from "./AppsPanel";
 import { AssignButton } from "./AssignAccess";
+import { Tip } from "./Tip";
 
 type Tab = "agents" | "apps" | "apis" | "skills";
 type Filter = "all" | "featured" | "added" | AgentCategory;
@@ -366,6 +367,7 @@ export function MarketplaceView(props: {
                 ? t("apisIntro")
                 : t("marketSkillsIntro")}
         </p>
+        <Tip id="marketplace" text="tipMarketplace" />
         <Show when={error()}>
           <p class="center-view-error" role="alert">
             {error()}

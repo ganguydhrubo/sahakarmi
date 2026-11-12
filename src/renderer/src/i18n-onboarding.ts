@@ -47,6 +47,84 @@ export const onboardingEn = {
   welcomeConnect: "Connect AI provider",
   welcomeExplore: "Explore features",
   welcomeNotNow: "Not now",
+  tipGotIt: "Got it",
+  tipTurnOff: "Turn off tips",
+  tipChatFollowUp:
+    "Not quite right? Just reply in your own words, like “make it shorter” or “write it in Hindi”. Your coworker keeps working on the same task.",
+  tipApproval:
+    "Your coworker is asking before it acts. Approve lets it do only this one thing; Reject stops it. Nothing happens until you choose.",
+  tipRoutinesStart:
+    "New to routines? Press Ready-made to start from a finished one, or Describe it and say what you want in your own words.",
+  tipRoutineEditor:
+    "Each step goes to one coworker and hands its result to the next. Put “Ask me first” before anything that sends, posts or pays. Nothing runs until you Save.",
+  tipRoutineRun:
+    "Every run is listed here. If one step went wrong, press Rerun from here on that step; the steps before it are not done again.",
+  tipMarketplace:
+    "Pick a coworker that fits your work and press Add. It joins your team ready to use, and you can change it any time.",
+  tipKnowledge:
+    "Add your price list, policies or notes here. Coworkers answer from them and show which file the answer came from.",
+  tipSchedules:
+    "Make a task repeat by itself: pick a coworker, write the task and choose when. Sahkarmi must be open at that time.",
+  tipModels:
+    "Not sure what to pick? The free model works with no login. Sign in with your own Claude, ChatGPT or Gemini later for stronger answers.",
+  helpSearch: "Search help",
+  helpNoResults:
+    "No answer matches “{query}”. Try a simpler word, or email us at sahkarmi.site@gmail.com.",
+  helpTopicsTitle: "Questions and answers",
+  helpTipsLabel: "Tips next to features",
+  helpTipsHint: "A short tip the first time you reach a feature. Each one shows once.",
+  helpGroupStart: "Getting going",
+  helpGroupTeam: "Your team",
+  helpGroupRoutines: "Routines (automatic work)",
+  helpGroupSafety: "Approvals and privacy",
+  helpGroupConnect: "Phone, browser and tools",
+  helpGroupFix: "When something goes wrong",
+  helpQFree: "Is Sahkarmi really free?",
+  helpAFree:
+    "Yes. Start with the free model, no login needed. For stronger answers, sign in with your own Claude, ChatGPT or Gemini account in Settings > AI & models; your plan's limits apply there.",
+  helpQFirstTask: "How do I give a coworker a task?",
+  helpAFirstTask:
+    "Pick a coworker on the left, type what you need in plain words in the box at the bottom and press Enter. Replies, steps and files appear in the chat. Use the paperclip to add a file and the mic to speak.",
+  helpQModels: "Which AI should I choose?",
+  helpAModels:
+    "Keep the free model while you try things. When you want better answers, open Settings > AI & models and sign in. Each coworker can use a different AI from the menu above its chat.",
+  helpQCeo: "How does the CEO share out work?",
+  helpQCrew: "How do I give a coworker a 3D face?",
+  helpQAssign: "How do I choose who can use an app or tool?",
+  helpQDeleteWorkspace: "How do I delete a workspace?",
+  helpQRoutine: "What is a routine?",
+  helpARoutine:
+    "A routine is work that runs by itself: a list of steps, each done by one coworker, with the result handed to the next. Run it with Run now or on a schedule, for example every Monday at 9.",
+  helpQDescribe: "Can Sahkarmi build a routine for me?",
+  helpADescribe:
+    "Yes. In Routines press Describe it and say what should happen, when and who should do it. Your orchestrator drafts the steps; you check them and press Save. Nothing runs before that.",
+  helpQReadyMade: "Are there ready-made routines?",
+  helpAReadyMade:
+    "Yes. In Routines press Ready-made for ten common business jobs, such as GST checks, payment reminders and a Monday sales report. Press Use this, change anything, and save.",
+  helpQSteps: "What do the step types do?",
+  helpASteps:
+    "Coworker task: a coworker does the work. Yes/no check: a coworker answers a question, and No stops the routine or skips ahead. Ask me first: waits for your Approve. Save or send: puts the result in a file or on your Telegram.",
+  helpQRerun: "One step failed. Do I start again?",
+  helpARerun:
+    "No. Open the routine, find the step in the last run and press Rerun from here. That step and the ones after it run again; earlier results and approvals are reused.",
+  helpQApprovals: "Why does a coworker ask me before acting?",
+  helpAApprovals:
+    "Before anything that sends, posts, pays, deletes or changes your computer, a coworker asks you. Approve allows only that one action; Reject stops it. You can answer here or on Telegram.",
+  helpQPublishing: "How is posting to social media kept safe?",
+  helpQPrivacy: "Where are my chats and files kept?",
+  helpAPrivacy:
+    "On your computer. Your chats, files, memory and knowledge stay here. A message goes only to the AI you chose for that coworker.",
+  helpQTelegram: "Can I use Sahkarmi from my phone?",
+  helpQBrowser: "How do coworkers use websites?",
+  helpQMcp: "How do I add a tool server (MCP)?",
+  helpQInterrupted: "My message says Interrupted. What now?",
+  helpAInterrupted:
+    "The task stopped before it finished, for example because the app closed. Press Send again on that message to send it once more.",
+  helpQErrors: "Something failed. What do I do?",
+  helpQSlow: "My computer feels slow. Can I limit Sahkarmi?",
+  helpQContact: "I still need help.",
+  helpAContact:
+    "Email us at sahkarmi.site@gmail.com with what you tried and a screenshot. You can also press Show me around for a short tour.",
   helpButton: "Help",
   helpClose: "Close help",
   helpThisScreen: "About this screen",
@@ -161,6 +239,82 @@ export const onboardingHi: typeof onboardingEn = {
   welcomeConnect: "AI प्रदाता जोड़ें",
   welcomeExplore: "फ़ीचर देखें",
   welcomeNotNow: "अभी नहीं",
+  tipGotIt: "समझ गया",
+  tipTurnOff: "टिप्स बंद करें",
+  tipChatFollowUp:
+    "जवाब ठीक नहीं लगा? अपने शब्दों में बताइए, जैसे “छोटा करो” या “हिंदी में लिखो”। सहकर्मी उसी काम पर लगा रहेगा।",
+  tipApproval:
+    "आपका सहकर्मी काम करने से पहले पूछ रहा है। अनुमति दें तो सिर्फ़ यही एक काम होगा; मना करें तो रुक जाएगा। आपके चुनने तक कुछ नहीं होता।",
+  tipRoutinesStart:
+    "रूटीन में नए हैं? तैयार वर्कफ़्लो से शुरू करें, या “बताइए, बन जाएगा” दबाकर अपने शब्दों में बताइए।",
+  tipRoutineEditor:
+    "हर कदम एक सहकर्मी करता है और नतीजा अगले को देता है। भेजने, पोस्ट करने या पेमेंट से पहले “पहले मुझसे पूछें” रखें। सेव करने तक कुछ नहीं चलता।",
+  tipRoutineRun:
+    "हर बार चलने का रिकॉर्ड यहाँ है। कोई कदम गलत हुआ तो उसी कदम पर “यहाँ से दोबारा चलाएँ” दबाएँ; पहले के कदम दोबारा नहीं होते।",
+  tipMarketplace:
+    "अपने काम का सहकर्मी चुनें और जोड़ें दबाएँ। वह तैयार होकर आपकी टीम में आ जाएगा, और आप उसे कभी भी बदल सकते हैं।",
+  tipKnowledge:
+    "अपनी रेट लिस्ट, नियम या नोट्स यहाँ जोड़ें। सहकर्मी उन्हीं से जवाब देंगे और बताएँगे कि जवाब किस फ़ाइल से आया।",
+  tipSchedules: "काम अपने आप दोहराएँ: सहकर्मी चुनें, काम लिखें और समय चुनें। उस समय सहकर्मी ऐप खुला होना चाहिए।",
+  tipModels:
+    "क्या चुनें, पता नहीं? मुफ़्त मॉडल बिना लॉगिन चलता है। बेहतर जवाब के लिए बाद में अपने Claude, ChatGPT या Gemini से साइन इन करें।",
+  helpSearch: "मदद में खोजें",
+  helpNoResults:
+    "“{query}” से कोई जवाब नहीं मिला। आसान शब्द आज़माएँ, या sahkarmi.site@gmail.com पर ईमेल करें।",
+  helpTopicsTitle: "सवाल और जवाब",
+  helpTipsLabel: "फ़ीचर के पास टिप्स",
+  helpTipsHint: "किसी फ़ीचर पर पहली बार आने पर एक छोटी टिप। हर टिप एक बार ही दिखती है।",
+  helpGroupStart: "शुरुआत",
+  helpGroupTeam: "आपकी टीम",
+  helpGroupRoutines: "रूटीन (अपने आप होने वाला काम)",
+  helpGroupSafety: "अनुमति और प्राइवेसी",
+  helpGroupConnect: "फ़ोन, ब्राउज़र और टूल",
+  helpGroupFix: "कुछ गड़बड़ हो तो",
+  helpQFree: "क्या सहकर्मी सच में मुफ़्त है?",
+  helpAFree:
+    "हाँ। मुफ़्त मॉडल से शुरू करें, लॉगिन की ज़रूरत नहीं। बेहतर जवाब के लिए सेटिंग्स > AI और मॉडल में अपने Claude, ChatGPT या Gemini खाते से साइन इन करें; वहाँ आपके प्लान की सीमा लागू होती है।",
+  helpQFirstTask: "सहकर्मी को काम कैसे दूँ?",
+  helpAFirstTask:
+    "बाईं ओर सहकर्मी चुनें, नीचे के बॉक्स में आसान शब्दों में लिखें और Enter दबाएँ। जवाब, कदम और फ़ाइलें चैट में दिखेंगे। फ़ाइल जोड़ने के लिए पेपरक्लिप और बोलने के लिए माइक दबाएँ।",
+  helpQModels: "कौन सा AI चुनूँ?",
+  helpAModels:
+    "आज़माते समय मुफ़्त मॉडल रखें। बेहतर जवाब चाहिए तो सेटिंग्स > AI और मॉडल खोलकर साइन इन करें। हर सहकर्मी अपनी चैट के ऊपर के मेन्यू से अलग AI चला सकता है।",
+  helpQCeo: "सीईओ काम कैसे बाँटता है?",
+  helpQCrew: "सहकर्मी को 3D चेहरा कैसे दूँ?",
+  helpQAssign: "कौन सा ऐप या टूल कौन चलाए, यह कैसे तय करूँ?",
+  helpQDeleteWorkspace: "वर्कस्पेस कैसे हटाऊँ?",
+  helpQRoutine: "रूटीन क्या है?",
+  helpARoutine:
+    "रूटीन ऐसा काम है जो अपने आप चलता है: कदमों की सूची, हर कदम एक सहकर्मी करता है और नतीजा अगले को देता है। अभी चलाएँ दबाएँ या समय तय करें, जैसे हर सोमवार 9 बजे।",
+  helpQDescribe: "क्या सहकर्मी मेरे लिए रूटीन बना सकता है?",
+  helpADescribe:
+    "हाँ। रूटीन में “बताइए, बन जाएगा” दबाएँ और बताइए क्या, कब और कौन करे। आपका ऑर्केस्ट्रेटर कदम बनाएगा; आप जाँचकर सेव करें। उससे पहले कुछ नहीं चलता।",
+  helpQReadyMade: "क्या तैयार रूटीन हैं?",
+  helpAReadyMade:
+    "हाँ। रूटीन में “तैयार वर्कफ़्लो” दबाएँ: GST जाँच, पेमेंट रिमाइंडर, सोमवार सेल्स रिपोर्ट जैसे दस आम काम। “इसे लें” दबाएँ, जो चाहें बदलें और सेव करें।",
+  helpQSteps: "कदमों के प्रकार क्या करते हैं?",
+  helpASteps:
+    "सहकर्मी काम करे: सहकर्मी काम करता है। हाँ/ना जाँच: सहकर्मी सवाल का जवाब देता है, ना पर रूटीन रुकता है या आगे जाता है। पहले मुझसे पूछें: आपकी अनुमति का इंतज़ार। नतीजा भेजें: नतीजा फ़ाइल में या आपके Telegram पर।",
+  helpQRerun: "एक कदम फ़ेल हुआ। क्या फिर से शुरू करूँ?",
+  helpARerun:
+    "नहीं। रूटीन खोलें, पिछली बार के उस कदम पर “यहाँ से दोबारा चलाएँ” दबाएँ। वह कदम और आगे के कदम फिर चलेंगे; पहले के नतीजे और अनुमतियाँ वही रहेंगी।",
+  helpQApprovals: "सहकर्मी काम से पहले मुझसे क्यों पूछता है?",
+  helpAApprovals:
+    "भेजने, पोस्ट करने, पेमेंट, कुछ हटाने या कंप्यूटर बदलने से पहले सहकर्मी आपसे पूछता है। अनुमति सिर्फ़ उसी एक काम के लिए होती है; मना करने पर काम रुकता है। आप यहाँ या Telegram पर जवाब दे सकते हैं।",
+  helpQPublishing: "सोशल मीडिया पर पोस्ट करना सुरक्षित कैसे रहता है?",
+  helpQPrivacy: "मेरी चैट और फ़ाइलें कहाँ रहती हैं?",
+  helpAPrivacy:
+    "आपके कंप्यूटर पर। आपकी चैट, फ़ाइलें, मेमोरी और जानकारी यहीं रहती हैं। संदेश सिर्फ़ उसी AI को जाता है जो आपने उस सहकर्मी के लिए चुना है।",
+  helpQTelegram: "क्या फ़ोन से सहकर्मी चला सकता हूँ?",
+  helpQBrowser: "सहकर्मी वेबसाइट कैसे चलाते हैं?",
+  helpQMcp: "टूल सर्वर (MCP) कैसे जोड़ूँ?",
+  helpQInterrupted: "मेरे संदेश पर “Interrupted” लिखा है। अब क्या करूँ?",
+  helpAInterrupted: "काम पूरा होने से पहले रुक गया, जैसे ऐप बंद होने से। उस संदेश पर “फिर भेजें” दबाएँ।",
+  helpQErrors: "कुछ फ़ेल हुआ। क्या करूँ?",
+  helpQSlow: "कंप्यूटर धीमा लग रहा है। क्या सहकर्मी को सीमित कर सकता हूँ?",
+  helpQContact: "मुझे अब भी मदद चाहिए।",
+  helpAContact:
+    "sahkarmi.site@gmail.com पर ईमेल करें, बताइए क्या आज़माया और स्क्रीनशॉट भेजें। छोटे टूर के लिए “मुझे घुमाकर दिखाएँ” भी दबा सकते हैं।",
   helpButton: "मदद",
   helpClose: "मदद बंद करें",
   helpThisScreen: "इस स्क्रीन के बारे में",
@@ -272,6 +426,82 @@ export const onboardingBn: typeof onboardingEn = {
   welcomeConnect: "AI প্রদানকারী যোগ করুন",
   welcomeExplore: "ফিচার দেখুন",
   welcomeNotNow: "এখন নয়",
+  tipGotIt: "বুঝেছি",
+  tipTurnOff: "টিপস বন্ধ করুন",
+  tipChatFollowUp:
+    "উত্তর ঠিক হয়নি? নিজের ভাষায় বলুন, যেমন “ছোট করো” বা “বাংলায় লেখো”। সহকর্মী একই কাজে লেগে থাকবে।",
+  tipApproval:
+    "আপনার সহকর্মী কাজের আগে জিজ্ঞেস করছে। অনুমোদন দিলে শুধু এই একটি কাজ হবে; বাতিল করলে থেমে যাবে। আপনি না বেছে নেওয়া পর্যন্ত কিছু হয় না।",
+  tipRoutinesStart: "রুটিনে নতুন? তৈরি ওয়ার্কফ্লো থেকে শুরু করুন, বা “বলুন, তৈরি হবে” টিপে নিজের ভাষায় বলুন।",
+  tipRoutineEditor:
+    "প্রতিটি ধাপ একজন সহকর্মী করে আর ফল পরের জনকে দেয়। পাঠানো, পোস্ট বা পেমেন্টের আগে “আগে আমাকে জিজ্ঞেস করুন” রাখুন। সেভ না করা পর্যন্ত কিছু চলে না।",
+  tipRoutineRun:
+    "প্রতিবার চলার হিসাব এখানে। কোনো ধাপ ভুল হলে সেই ধাপে “এখান থেকে আবার চালান” টিপুন; আগের ধাপগুলো আবার হয় না।",
+  tipMarketplace:
+    "আপনার কাজের উপযুক্ত সহকর্মী বেছে যোগ করুন টিপুন। সে তৈরি হয়ে আপনার টিমে আসবে, আর যেকোনো সময় বদলাতে পারবেন।",
+  tipKnowledge:
+    "আপনার দামের তালিকা, নিয়ম বা নোট এখানে যোগ করুন। সহকর্মীরা সেখান থেকে উত্তর দেবে আর জানাবে কোন ফাইল থেকে এসেছে।",
+  tipSchedules:
+    "কাজ নিজে থেকে বারবার করান: সহকর্মী বেছে কাজ লিখুন আর সময় দিন। সেই সময় সহকর্মী অ্যাপ খোলা থাকতে হবে।",
+  tipModels:
+    "কী বাছবেন বুঝছেন না? ফ্রি মডেল লগইন ছাড়াই চলে। ভালো উত্তরের জন্য পরে নিজের Claude, ChatGPT বা Gemini দিয়ে সাইন ইন করুন।",
+  helpSearch: "সাহায্যে খুঁজুন",
+  helpNoResults:
+    "“{query}”-এর কোনো উত্তর মেলেনি। সহজ শব্দ চেষ্টা করুন, বা sahkarmi.site@gmail.com-এ ইমেল করুন।",
+  helpTopicsTitle: "প্রশ্ন ও উত্তর",
+  helpTipsLabel: "ফিচারের পাশে টিপস",
+  helpTipsHint: "কোনো ফিচারে প্রথমবার এলে একটি ছোট টিপ। প্রতিটি একবারই দেখায়।",
+  helpGroupStart: "শুরু করা",
+  helpGroupTeam: "আপনার টিম",
+  helpGroupRoutines: "রুটিন (নিজে থেকে হওয়া কাজ)",
+  helpGroupSafety: "অনুমোদন ও গোপনীয়তা",
+  helpGroupConnect: "ফোন, ব্রাউজার ও টুল",
+  helpGroupFix: "কিছু ভুল হলে",
+  helpQFree: "সহকর্মী কি সত্যিই ফ্রি?",
+  helpAFree:
+    "হ্যাঁ। ফ্রি মডেল দিয়ে শুরু করুন, লগইন লাগে না। ভালো উত্তরের জন্য সেটিংস > AI ও মডেলে নিজের Claude, ChatGPT বা Gemini অ্যাকাউন্টে সাইন ইন করুন; সেখানে আপনার প্ল্যানের সীমা প্রযোজ্য।",
+  helpQFirstTask: "সহকর্মীকে কাজ কীভাবে দেব?",
+  helpAFirstTask:
+    "বাঁ দিকে একজন সহকর্মী বেছে নিন, নিচের বাক্সে সহজ ভাষায় লিখে Enter টিপুন। উত্তর, ধাপ আর ফাইল চ্যাটে দেখা যাবে। ফাইল যোগ করতে পেপারক্লিপ, বলতে মাইক টিপুন।",
+  helpQModels: "কোন AI বাছব?",
+  helpAModels:
+    "চেষ্টা করার সময় ফ্রি মডেল রাখুন। ভালো উত্তর চাইলে সেটিংস > AI ও মডেল খুলে সাইন ইন করুন। প্রতিটি সহকর্মী তার চ্যাটের উপরের মেনু থেকে আলাদা AI চালাতে পারে।",
+  helpQCeo: "সিইও কীভাবে কাজ ভাগ করে?",
+  helpQCrew: "সহকর্মীকে 3D মুখ কীভাবে দেব?",
+  helpQAssign: "কোন অ্যাপ বা টুল কে চালাবে, কীভাবে ঠিক করব?",
+  helpQDeleteWorkspace: "ওয়ার্কস্পেস কীভাবে মুছব?",
+  helpQRoutine: "রুটিন কী?",
+  helpARoutine:
+    "রুটিন এমন কাজ যা নিজে থেকে চলে: ধাপের তালিকা, প্রতিটি ধাপ একজন সহকর্মী করে আর ফল পরের জনকে দেয়। এখনই চালান টিপুন বা সময় দিন, যেমন প্রতি সোমবার ৯টায়।",
+  helpQDescribe: "সহকর্মী কি আমার জন্য রুটিন বানাতে পারে?",
+  helpADescribe:
+    "হ্যাঁ। রুটিনে “বলুন, তৈরি হবে” টিপে বলুন কী, কখন আর কে করবে। আপনার অর্কেস্ট্রেটর ধাপগুলো বানাবে; আপনি দেখে সেভ করুন। তার আগে কিছু চলে না।",
+  helpQReadyMade: "তৈরি রুটিন আছে কি?",
+  helpAReadyMade:
+    "হ্যাঁ। রুটিনে “তৈরি ওয়ার্কফ্লো” টিপুন: GST যাচাই, পেমেন্ট রিমাইন্ডার, সোমবারের সেলস রিপোর্টের মতো দশটি সাধারণ কাজ। “এটি নিন” টিপে যা খুশি বদলে সেভ করুন।",
+  helpQSteps: "ধাপের ধরনগুলো কী করে?",
+  helpASteps:
+    "সহকর্মী কাজ করবে: সহকর্মী কাজটি করে। হ্যাঁ/না যাচাই: সহকর্মী প্রশ্নের উত্তর দেয়, না হলে রুটিন থামে বা এগিয়ে যায়। আগে আমাকে জিজ্ঞেস করুন: আপনার অনুমোদনের অপেক্ষা। ফলাফল পাঠান: ফল ফাইলে বা আপনার Telegram-এ।",
+  helpQRerun: "একটি ধাপ ব্যর্থ হয়েছে। আবার শুরু করব?",
+  helpARerun:
+    "না। রুটিন খুলে শেষবারের সেই ধাপে “এখান থেকে আবার চালান” টিপুন। সেই ধাপ আর পরের ধাপগুলো আবার চলবে; আগের ফল আর অনুমোদন একই থাকবে।",
+  helpQApprovals: "সহকর্মী কাজের আগে কেন জিজ্ঞেস করে?",
+  helpAApprovals:
+    "পাঠানো, পোস্ট, পেমেন্ট, কিছু মোছা বা কম্পিউটার বদলানোর আগে সহকর্মী আপনাকে জিজ্ঞেস করে। অনুমোদন শুধু সেই একটি কাজের জন্য; বাতিল করলে কাজ থামে। এখানে বা Telegram-এ উত্তর দিতে পারেন।",
+  helpQPublishing: "সোশ্যাল মিডিয়ায় পোস্ট কীভাবে নিরাপদ থাকে?",
+  helpQPrivacy: "আমার চ্যাট আর ফাইল কোথায় থাকে?",
+  helpAPrivacy:
+    "আপনার কম্পিউটারে। চ্যাট, ফাইল, মেমরি আর তথ্য এখানেই থাকে। বার্তা শুধু সেই AI-এর কাছে যায় যেটি আপনি ওই সহকর্মীর জন্য বেছেছেন।",
+  helpQTelegram: "ফোন থেকে সহকর্মী চালাতে পারি?",
+  helpQBrowser: "সহকর্মীরা ওয়েবসাইট কীভাবে চালায়?",
+  helpQMcp: "টুল সার্ভার (MCP) কীভাবে যোগ করব?",
+  helpQInterrupted: "আমার বার্তায় “Interrupted” লেখা। এখন কী করব?",
+  helpAInterrupted: "কাজ শেষ হওয়ার আগে থেমে গেছে, যেমন অ্যাপ বন্ধ হওয়ায়। সেই বার্তায় “আবার পাঠান” টিপুন।",
+  helpQErrors: "কিছু ব্যর্থ হয়েছে। কী করব?",
+  helpQSlow: "কম্পিউটার ধীর লাগছে। সহকর্মীকে সীমিত করা যায়?",
+  helpQContact: "আমার এখনও সাহায্য দরকার।",
+  helpAContact:
+    "sahkarmi.site@gmail.com-এ ইমেল করুন, কী চেষ্টা করেছেন লিখুন আর স্ক্রিনশট দিন। ছোট ট্যুরের জন্য “ঘুরিয়ে দেখান”-ও টিপতে পারেন।",
   helpButton: "সাহায্য",
   helpClose: "সাহায্য বন্ধ করুন",
   helpThisScreen: "এই স্ক্রিন সম্পর্কে",

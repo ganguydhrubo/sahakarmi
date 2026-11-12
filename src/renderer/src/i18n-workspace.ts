@@ -76,6 +76,10 @@ export const workspaceEn = {
     "Run this step and the ones after it again. Earlier steps are not redone: their results and approvals from the last run are reused.",
   routineReused: "Reused from the last run",
   routineTriggerRerun: "Rerun from a step",
+  routineNoteStep: "Step {step} of {total}",
+  routineDesignAsked: "Asked to draft a routine: {wish}",
+  routineDesignReplied:
+    "Drafted “{name}” with {count} steps. It is open in Routines for you to check.",
   tplButton: "Ready-made",
   tplTitle: "Ready-made workflows",
   tplIntro:

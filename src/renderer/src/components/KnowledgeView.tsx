@@ -10,6 +10,7 @@ import type {
 import type { BotProfile } from "../data";
 import { type MessageKey, t } from "../i18n";
 import { speechLocale } from "../preferences";
+import { Tip } from "./Tip";
 
 const STATUS_LABELS: Record<KnowledgeSourceStatus, MessageKey> = {
   pending: "knowledgeStatusPending",
@@ -302,6 +303,7 @@ export function KnowledgeView(props: { workspaceId: string; bots: BotProfile[] }
 
       <div class="center-view-body">
         <p class="center-view-intro">{t("knowledgeSubtitle")}</p>
+        <Tip id="tipKnowledge" text="tipKnowledge" />
         <Show when={error()}>
           <p class="approval-error" role="alert">
             {error()}
