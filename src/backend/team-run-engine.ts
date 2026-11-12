@@ -57,7 +57,37 @@ export interface TeamRunEngineOptions {
   review?: () => boolean;
   /** Work limit ("budget-stop"): most task messages one run may send; null means no limit. */
   stepBudget?: () => number | null;
+  /**
+   * The Intelligence Core (adaptive mode only; null or `active() === false` changes nothing):
+   * another coworker when the assigned one is gone or fails twice the same way, and a stop
+   * instead of a third identical failure.
+   */
+  intelligence?: TeamRunIntelligence | null;
 }
+
+/** What the team-run engine may ask the Intelligence Core. Every answer is optional advice. */
+export interface TeamRunIntelligence {
+  /** True only while adaptive mode is on. */
+  active(): boolean;
+  reassign(input: {
+    run: Pick<OrchestratorRun, "id" | "workspaceId">;
+    task: Pick<OrchestratorTask, "id" | "title" | "description" | "role">;
+    fromBotId: string;
+    reason: "unavailable" | "repeated-failure";
+    detail: string;
+  }): { botId: string; botName: string; explanation: string } | null;
+  noteStoppedRetry(input: {
+    run: Pick<OrchestratorRun, "id" | "workspaceId">;
+    task: Pick<OrchestratorTask, "id" | "title">;
+    botId: string;
+    signature: string;
+  }): void;
+  /** A failure's stable signature (numbers, paths and ids taken out). */
+  signature(text: string | null | undefined): string | null;
+}
+
+/** A task is handed to another coworker at most this many times. */
+const MAX_REASSIGNMENTS_PER_TASK = 1;
 
 /** Thrown inside a task to pause the run at its step limit; never reaches the owner as an error. */
 class StepBudgetReached extends Error {}
@@ -234,6 +264,7 @@ export class TeamRunEngine {
   readonly #retryGraceMs: number | undefined;
   readonly #review: () => boolean;
   readonly #stepBudget: () => number | null;
+  readonly #intelligence: TeamRunIntelligence | null;
   readonly #saver: RunCheckpointSaver;
   /** Older JSON checkpoints imported and orphans removed; every graph call waits for it. */
   readonly #ready: Promise<void>;
@@ -257,6 +288,7 @@ export class TeamRunEngine {
     this.#retryGraceMs = options.retryGraceMs;
     this.#review = options.review ?? (() => false);
     this.#stepBudget = options.stepBudget ?? (() => null);
+    this.#intelligence = options.intelligence ?? null;
     const sqlite =
       options.checkpoints === "json" ? null : new SqliteCheckpointSaver(options.checkpointDir);
     this.#saver = sqlite ?? new TeamRunCheckpointSaver(options.checkpointDir);
@@ -551,8 +583,30 @@ export class TeamRunEngine {
     }
     const attempt = task.attemptCount + 1;
     const instance = run.instances.find((i) => i.instanceId === task.assignedInstanceId);
-    const botId = instance?.botId ?? task.assignedBotId;
-    const bot = this.#port.listBots().find((candidate) => candidate.id === botId);
+    let botId = instance?.botId ?? task.assignedBotId;
+    let bot = this.#port.listBots().find((candidate) => candidate.id === botId);
+    if (!bot) {
+      // Adaptive mode: another coworker with a record on this work takes it (once per task).
+      const replacement = await this.#reassign(
+        run,
+        task,
+        instance,
+        botId,
+        "unavailable",
+        `coworker "${instance?.botName ?? botId}" is not available`,
+      );
+      if (replacement) {
+        botId = replacement.id;
+        bot = replacement;
+        // A message already sent to the coworker that is gone will never be answered.
+        const pending = task.inputs.attemptDeliveries as Record<string, string> | undefined;
+        if (pending?.[String(attempt)]) {
+          const { [String(attempt)]: _gone, ...rest } = pending;
+          task.inputs = { ...task.inputs, attemptDeliveries: rest };
+          await this.#store.updateTask(run.id, task);
+        }
+      }
+    }
     if (!bot) {
       return this.#finishTask(run, task, {
         status: "failed",
@@ -725,6 +779,7 @@ export class TeamRunEngine {
       passed,
       evidence,
     );
+    if (!passed) await this.#guardRepeatedFailure(run, verified, evidence, where.botId);
     if (passed && result) {
       verified.deliverables = verified.deliverables.map((item, index) =>
         index === 0 ? { ...item, summary: result } : item,
@@ -807,6 +862,113 @@ export class TeamRunEngine {
           : `${reviewer.name} gave no clear review verdict.`,
       timestamp: now(),
     };
+  }
+
+  /**
+   * Adaptive mode: hands a task to the coworker the Intelligence Core picks, at most once per
+   * task, and says so in the chat. Null: no change (adaptive off, limit reached, no better pick).
+   */
+  async #reassign(
+    run: OrchestratorRun,
+    task: OrchestratorTask,
+    instance: OrchestratorRun["instances"][number] | undefined,
+    fromBotId: string,
+    reason: "unavailable" | "repeated-failure",
+    detail: string,
+  ): Promise<BotSummary | null> {
+    const intelligence = this.#intelligence;
+    if (!intelligence || !safeActive(intelligence)) return null;
+    const earlier = Array.isArray(task.inputs.reassignments) ? task.inputs.reassignments : [];
+    if (earlier.length >= MAX_REASSIGNMENTS_PER_TASK) return null;
+    let pick: ReturnType<TeamRunIntelligence["reassign"]> = null;
+    try {
+      pick = intelligence.reassign({
+        run: { id: run.id, workspaceId: run.workspaceId },
+        task: { id: task.id, title: task.title, description: task.description, role: task.role },
+        fromBotId,
+        reason,
+        detail,
+      });
+    } catch {
+      return null;
+    }
+    const chosenId = pick?.botId;
+    const bot = chosenId
+      ? this.#port.listBots().find((candidate) => candidate.id === chosenId)
+      : null;
+    if (!pick || !bot || bot.id === fromBotId) return null;
+    const note = {
+      from: fromBotId,
+      to: bot.id,
+      reason,
+      explanation: pick.explanation,
+      at: new Date().toISOString(),
+    };
+    task.inputs = { ...task.inputs, reassignments: [...earlier, note] };
+    task.assignedBotId = bot.id;
+    await this.#store.updateTask(run.id, task);
+    if (instance) {
+      instance.botId = bot.id;
+      instance.botName = bot.name;
+      await this.#store.updateInstance(run.id, instance);
+    }
+    this.#emit({
+      type: "notice",
+      botId: bot.id,
+      code: "team_run_reassigned",
+      message: `Team run "${run.objective.slice(0, 80)}": "${task.title}" now goes to ${bot.name}. ${pick.explanation}`,
+    });
+    this.#emit({ type: "orchestrator-task-updated", runId: run.id, task });
+    return bot;
+  }
+
+  /**
+   * Adaptive mode: the same failure twice in a row will not fix itself with a third try. The task
+   * goes to another coworker once if one has a better record; otherwise its retries stop.
+   */
+  async #guardRepeatedFailure(
+    run: OrchestratorRun,
+    verified: OrchestratorTask,
+    evidence: OrchestratorVerificationEvidence[],
+    botId: string,
+  ): Promise<void> {
+    const intelligence = this.#intelligence;
+    if (!intelligence || !safeActive(intelligence)) return;
+    const failed = evidence.find((item) => !item.passed);
+    let signature: string | null = null;
+    try {
+      signature = intelligence.signature(failed?.summary ?? verified.error);
+    } catch {
+      signature = null;
+    }
+    if (!signature) return;
+    const earlier = Array.isArray(verified.inputs.failureSignatures)
+      ? (verified.inputs.failureSignatures as string[])
+      : [];
+    verified.inputs = { ...verified.inputs, failureSignatures: [...earlier, signature].slice(-5) };
+    if (verified.status !== "repairing" || earlier[earlier.length - 1] !== signature) return;
+    const instance = run.instances.find((i) => i.instanceId === verified.assignedInstanceId);
+    const moved = await this.#reassign(
+      run,
+      verified,
+      instance,
+      botId,
+      "repeated-failure",
+      signature,
+    );
+    if (moved) return;
+    verified.status = "failed";
+    verified.error = `${failed?.summary ?? "The task failed"}. It failed the same way twice, so Sahkarmi stopped retrying instead of repeating it (Intelligence: adaptive mode).`;
+    try {
+      intelligence.noteStoppedRetry({
+        run: { id: run.id, workspaceId: run.workspaceId },
+        task: { id: verified.id, title: verified.title },
+        botId,
+        signature,
+      });
+    } catch {
+      // Writing the note down is best effort.
+    }
   }
 
   async #finishTask(
@@ -1035,4 +1197,12 @@ function buildGraph(
     .addConditionalEdges("plan", route, ["work", END])
     .addEdge("work", "plan")
     .compile({ checkpointer: saver });
+}
+
+function safeActive(intelligence: TeamRunIntelligence): boolean {
+  try {
+    return intelligence.active();
+  } catch {
+    return false;
+  }
 }

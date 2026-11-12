@@ -12,7 +12,7 @@ import type {
 import { AgentCollaborationBus } from "./agent-collaboration-bus";
 import { AgentExecutionFactory } from "./agent-execution-factory";
 import type { OrchestratorStore } from "./orchestrator-store";
-import type { TeamRunAgentPort, TeamRunEngine } from "./team-run-engine";
+import type { TeamRunAgentPort, TeamRunEngine, TeamRunIntelligence } from "./team-run-engine";
 import { VerificationRepairEngine } from "./verification-repair-engine";
 
 export type OrchestratorEventListener = (event: AgentEvent) => void;
@@ -35,6 +35,19 @@ export interface OrchestratorEngineOptions {
   stepBudget?: () => number | null;
   /** Flag cross-model-review, read for every finished task. */
   review?: () => boolean;
+  /**
+   * The Intelligence Core's pick for a template-planned task. Applied only when it says so
+   * (adaptive mode and clearly better evidence); otherwise it is advice written down for the
+   * owner. A CEO's plan names its coworkers itself and is never re-routed.
+   */
+  route?: (input: {
+    runId: string;
+    workspaceId: string | null;
+    task: OrchestratorTask;
+    defaultBotId: string;
+  }) => { botId: string; applied: boolean; explanation: string } | null;
+  /** Adaptive replanning inside a running team run (see TeamRunIntelligence). */
+  intelligence?: TeamRunIntelligence | null;
 }
 
 export interface OrchestratorDependencies {
@@ -93,6 +106,7 @@ export class AdaptiveOrchestrator {
             checkpoints: options.checkpoints?.() ?? "sqlite",
             review: options.review,
             stepBudget: options.stepBudget,
+            intelligence: options.intelligence ?? null,
           }),
       );
       this.#engine.catch(() => {
@@ -228,6 +242,7 @@ export class AdaptiveOrchestrator {
       strategy === "multi-agent"
         ? (this.#engineOptions?.planner?.(input.workspaceId ?? null) ?? null)
         : null;
+    if (!ceoBotId) this.#routeWithIntelligence(run);
     run.status = ceoBotId ? "planning" : "running";
     await this.#store.saveRun(run);
     this.#emit({ type: "orchestrator-run-updated", run });
@@ -278,6 +293,7 @@ export class AdaptiveOrchestrator {
       this.#applyCeoPlan(latest, outcome.plan.tasks, workspacePath, bots);
       latest.plannedBy = "ceo";
     } else {
+      this.#routeWithIntelligence(latest);
       this.#emit({
         type: "notice",
         botId: ceoBotId,
@@ -355,6 +371,39 @@ export class AdaptiveOrchestrator {
     for (const task of run.tasks) {
       const instance = run.instances.find((i) => i.instanceId === task.assignedInstanceId);
       if (instance) task.assignedBotId = instance.botId;
+    }
+  }
+
+  /**
+   * Template plans name starter coworkers by role. The Intelligence Core may hand a task to a
+   * coworker with a clearly better record on that kind of work (adaptive mode only); every
+   * answer, applied or not, is written down by the Intelligence Core with its reason.
+   */
+  #routeWithIntelligence(run: OrchestratorRun): void {
+    const route = this.#engineOptions?.route;
+    if (!route) return;
+    const bots = this.#engineOptions?.port.listBots() ?? [];
+    for (const task of run.tasks) {
+      const instance = run.instances.find((i) => i.instanceId === task.assignedInstanceId);
+      if (!instance) continue;
+      let pick: ReturnType<NonNullable<OrchestratorEngineOptions["route"]>> = null;
+      try {
+        pick = route({
+          runId: run.id,
+          workspaceId: run.workspaceId === "default" ? null : run.workspaceId,
+          task,
+          defaultBotId: instance.botId,
+        });
+      } catch {
+        continue;
+      }
+      if (!pick?.applied || pick.botId === instance.botId) continue;
+      const bot = bots.find((candidate) => candidate.id === pick?.botId);
+      if (!bot) continue;
+      instance.botId = bot.id;
+      instance.botName = bot.name;
+      task.assignedBotId = bot.id;
+      task.inputs = { ...task.inputs, routedBy: "intelligence", routing: pick.explanation };
     }
   }
 

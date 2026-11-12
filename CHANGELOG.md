@@ -5,6 +5,38 @@ All notable changes to Sahkarmi are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-11-10
+
+### Added
+
+- Intelligence Core (Settings > Intelligence). Sahkarmi now learns from finished work: which
+  coworker is good at which kind of work, what is likely to fail or run late, and which errors
+  keep coming back. Everything stays on your computer in one small file; no new paid service,
+  nothing is sent anywhere, and no AI model is trained.
+- Every finished task gets an evidence grade: verified, partial, failed or inconclusive. Only
+  outside evidence (files that exist, your check command, a reviewer) can raise a grade. A
+  coworker saying "done" is never enough on its own.
+- "Who should do this?": type a task and see who has the best record on that kind of work, with
+  the reasons and numbers. Also shown: each coworker's track record, the chance of failing,
+  typical time, overloaded queues, repeated errors and memory pressure. A number that comes from
+  a rule rather than history is marked "estimate".
+- Check a team-run plan before it runs: missing or circular steps, the longest path, two steps
+  writing the same file, and risky steps.
+- Notes and lessons, kept per workspace with a trust level. A coworker's own text is never
+  trusted. You can add, correct and delete notes; old notes expire on their own.
+- You stay in charge: mark any result 👍 / 👎 or leave it out, roll the failure prediction back
+  to an earlier point, or forget everything learnt for a workspace.
+- Settings > Features > "Intelligence: adaptive team runs" (Labs, off by default). When on, team
+  runs may hand a task to a coworker with a better record, replace a coworker that was removed,
+  give other coworkers trial tasks where the usual one does poorly, and stop retrying after the
+  same failure twice. Every change is posted in the chat with its reason. A plan written by the
+  workspace CEO keeps the coworkers it names at the start.
+
+### Changed
+
+- With the first Intelligence switch on (the default), Sahkarmi only watches and advises. Team
+  runs, chats and approvals behave exactly as before unless you turn on adaptive team runs.
+
 ## [0.29.0] - 2026-11-09
 
 ### Changed

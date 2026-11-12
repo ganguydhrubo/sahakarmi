@@ -7,6 +7,7 @@ import { backgroundHi } from "./i18n-background";
 import { connectorsHi } from "./i18n-connectors";
 import { engineHi } from "./i18n-engine";
 import { extensionsHi } from "./i18n-extensions-hi";
+import { intelligenceHi } from "./i18n-intelligence";
 import { marketplaceHi } from "./i18n-marketplace-hi";
 import { mcpHi } from "./i18n-mcp";
 import { memoryHi } from "./i18n-memory";
@@ -311,6 +312,7 @@ export const hi: Dictionary = {
   ...engineHi,
   ...safetyHi,
   ...assignHi,
+  ...intelligenceHi,
   ...mcpHi,
   ...connectorsHi,
   ...skillPacksHi,

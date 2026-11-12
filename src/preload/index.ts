@@ -296,6 +296,32 @@ const sahkarmiApi: SahkarmiDesktopApi = {
     getBudgets: () => ipcRenderer.invoke(IPC_CHANNELS.orchestratorGetBudgets),
     setBudgets: (input) => ipcRenderer.invoke(IPC_CHANNELS.orchestratorSetBudgets, input),
   },
+  intelligence: {
+    status: (workspaceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligenceStatus, workspaceId ?? null),
+    performance: (workspaceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligencePerformance, workspaceId ?? null),
+    outcomes: (input) => ipcRenderer.invoke(IPC_CHANNELS.intelligenceOutcomes, input ?? {}),
+    recommend: (input) => ipcRenderer.invoke(IPC_CHANNELS.intelligenceRecommend, input),
+    predictions: (workspaceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligencePredictions, workspaceId ?? null),
+    analyzeRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.intelligenceAnalyzeRun, runId),
+    decisions: (workspaceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligenceDecisions, workspaceId ?? null),
+    experiences: (workspaceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligenceExperiences, workspaceId ?? null),
+    addExperience: (input) => ipcRenderer.invoke(IPC_CHANNELS.intelligenceAddExperience, input),
+    correctExperience: (input) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligenceCorrectExperience, input),
+    deleteExperience: (input) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligenceDeleteExperience, input),
+    setFeedback: (input) => ipcRenderer.invoke(IPC_CHANNELS.intelligenceSetFeedback, input),
+    setExcluded: (input) => ipcRenderer.invoke(IPC_CHANNELS.intelligenceSetExcluded, input),
+    resources: () => ipcRenderer.invoke(IPC_CHANNELS.intelligenceResources),
+    rollbackModel: (input) => ipcRenderer.invoke(IPC_CHANNELS.intelligenceRollbackModel, input),
+    resetLearning: (workspaceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.intelligenceResetLearning, workspaceId ?? null),
+  },
   knowledge: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.knowledgeList),
     create: (input) => ipcRenderer.invoke(IPC_CHANNELS.knowledgeCreate, input),
