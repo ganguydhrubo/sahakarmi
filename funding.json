@@ -64,7 +64,7 @@
         "guid": "approval-boundary",
         "status": "active",
         "name": "A real approval boundary",
-        "description": "Sahkarmi asks the owner before it pays, sends or posts. In the current preview that is an instruction the model follows, not a control enforced in the tool-call path, and this is stated openly on the website and in the README. This plan moves the gate into the code so that a payment, send or publish is refused by the application regardless of what the model has been persuaded to believe, and adds a prompt-injection threat model with regression tests. It is the most important unfinished work in the project.",
+        "description": "Sahkarmi asks the owner before it pays, sends or posts. In this preview that is an instruction the model follows, not a control enforced in the tool-call path, as the website and README state openly. This plan moves the gate into the code, so a payment, send or publish is refused by the application whatever the model has been persuaded to believe, and adds a prompt-injection threat model with tests. It is the most important unfinished work in the project.",
         "amount": 12000,
         "currency": "USD",
         "frequency": "one-time",
