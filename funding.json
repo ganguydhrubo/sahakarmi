@@ -6,7 +6,7 @@
     "role": "owner",
     "name": "Dhrubojyoti Gangopadhyay",
     "email": "gangulydhrubo@gmail.com",
-    "description": "Maintainer of Sahkarmi, a free and open-source desktop application that gives Indian small businesses a team of AI coworkers which run on the owner's own computer, in English, Hindi and Bengali.",
+    "description": "Maintainer of Sahkarmi, a free and open-source desktop application that gives Indian small businesses a team of AI coworkers which run on the owner's own computer, in English, Hindi and Bengali. Sixteen years in revenue operations for cement and steel distribution across India; sole maintainer, no company, no funding to date.",
     "webpageUrl": {
       "url": "https://sahkarmi.site"
     }
@@ -15,7 +15,7 @@
     {
       "guid": "sahkarmi",
       "name": "Sahkarmi",
-      "description": "A free, open-source Windows application that gives a small business a team of AI coworkers. They browse, research, draft, work in connected apps and run scheduled routines on the owner's own PC, in English, Hindi and Bengali, and stop for the owner's approval before paying, sending or posting anything. Built for the long tail of India's 7.8 crore MSMEs, who cannot afford per-seat cloud AI and cannot risk automated systems acting alone on money or customers.",
+      "description": "A free, open-source Windows application that gives a small business a team of AI coworkers. They browse, research, draft, work across 1,660 connected apps and run scheduled routines on the owner's own PC, and they ask the owner before paying, sending or posting anything. The interface is complete in English, Hindi and Bengali, and partly translated into nine more Indian languages. Everything is stored on the user's machine; there is no cloud service and no analytics. Built for the long tail of India's 7.8 crore MSMEs, who cannot afford per-seat cloud AI and cannot risk automated systems acting alone on money or customers. Live on the Microsoft Store, 69 releases since the repository went public on 19 October 2026.",
       "webpageUrl": {
         "url": "https://sahkarmi.site"
       },
@@ -41,6 +41,12 @@
         "guid": "primary-contact",
         "type": "other",
         "description": "Contact the maintainer by email to arrange a funding channel."
+      },
+      {
+        "guid": "github-sponsors",
+        "type": "payment-provider",
+        "address": "https://github.com/sponsors/ganguydhrubo",
+        "description": "GitHub Sponsors, monthly or one-time. GitHub charges no fee on sponsorships to personal accounts."
       }
     ],
     "plans": [
@@ -48,17 +54,47 @@
         "guid": "maintainer-time",
         "status": "active",
         "name": "Maintainer time",
-        "description": "Full-time maintenance and development of Sahkarmi, including Hindi and Bengali language support and the approval layer that makes the product safe for non-technical business owners.",
-        "amount": 0,
+        "description": "One year of full-time work on Sahkarmi by its sole maintainer. Today it is built around other paid work. This is the plan that matters most: every other item below is work that exists but cannot be finished without uninterrupted time.",
+        "amount": 18000,
         "currency": "USD",
         "frequency": "yearly",
+        "channels": ["primary-contact", "github-sponsors"]
+      },
+      {
+        "guid": "approval-boundary",
+        "status": "active",
+        "name": "A real approval boundary",
+        "description": "Sahkarmi asks the owner before it pays, sends or posts. In the current preview that is an instruction the model follows, not a control enforced in the tool-call path, and this is stated openly on the website and in the README. This plan moves the gate into the code so that a payment, send or publish is refused by the application regardless of what the model has been persuaded to believe, and adds a prompt-injection threat model with regression tests. It is the most important unfinished work in the project.",
+        "amount": 12000,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": ["primary-contact"]
+      },
+      {
+        "guid": "indian-languages",
+        "status": "active",
+        "name": "Finish nine Indian languages",
+        "description": "Marathi, Telugu, Tamil, Gujarati, Kannada, Malayalam, Punjabi, Odia and Assamese each have 64 translated interface strings against more than 276 for Hindi. The shell is translated and the rest is still English. This plan completes them and pays native speakers to review each one, because machine translation is not good enough for an interface somebody trusts with money.",
+        "amount": 3000,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": ["primary-contact"]
+      },
+      {
+        "guid": "code-signing",
+        "status": "active",
+        "name": "Sign the Windows installer",
+        "description": "The Windows build is unsigned, so a first-time user meets a SmartScreen warning and learns to click through it. Teaching non-technical users to dismiss security warnings is itself a security failure. A three-year code-signing certificate fixes it.",
+        "amount": 900,
+        "currency": "USD",
+        "frequency": "one-time",
         "channels": ["primary-contact"]
       },
       {
         "guid": "cloud-execution",
         "status": "active",
         "name": "Durable cloud execution",
-        "description": "Build and host cloud execution so a small business owner's scheduled work keeps running when their computer is switched off.",
+        "description": "Build and host cloud execution so a small business owner's scheduled work keeps running when their computer is switched off. This is the one piece that would cost money to run, and the only thing that would ever be offered as a paid option. The desktop application stays free.",
         "amount": 25000,
         "currency": "USD",
         "frequency": "one-time",
