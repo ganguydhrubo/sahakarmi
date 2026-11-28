@@ -43,7 +43,7 @@ Aira is a free, open-source AI agent for Android phones (Apache License 2.0), by
 - Requirements: Android 11 or later for chat, web and files; Android 12 or later to operate phone apps (Android 14 or later recommended). No root; phone control is set up once with wireless debugging.
 - Privacy: there is no Aira server. Messages and screen content go only to the model provider the owner chooses (OpenAI, Anthropic, Gemini, xAI, Groq, Mistral, OpenRouter, local Ollama or LM Studio, and more).
 - Price: free. The owner pays only their own AI model provider, if any.
-- [Download Aira (GitHub Releases)](https://github.com/ganguydhrubo/Aira/releases/latest): the newest APK; Obtainium can install updates automatically
+- [Download Aira.apk](https://github.com/ganguydhrubo/Aira/releases/latest/download/Aira.apk): the newest APK, direct download. All versions: https://github.com/ganguydhrubo/Aira/releases/latest. Obtainium (https://github.com/ImranR98/Obtainium/releases/latest) can install updates automatically
 - [Aira source code](https://github.com/ganguydhrubo/Aira): the primary source for every fact above
 - Founder: Dhrubojyoti Gangopadhyay ([LinkedIn](https://www.linkedin.com/in/dhrubojyoti-gangopadhyay/), Telegram https://t.me/druboG)
 
