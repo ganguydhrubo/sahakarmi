@@ -684,6 +684,12 @@
     .tg-announce:hover { background: rgba(38, 165, 228, 0.22); }
     .tg-announce svg { width: 24px; height: 24px; flex: none; }
     .tg-announce b { color: #26a5e4; }
+    .aira-chip { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin: 0 8px 12px 0; padding: 6px 16px 6px 7px; border-radius: 999px; border: 1px solid rgba(255, 138, 42, 0.7); background: #14110f; color: #ffedd7; font-size: 14px; font-weight: 600; line-height: 1.25; text-decoration: none; box-shadow: 0 0 0 0 rgba(255, 138, 42, 0.55); animation: aira-glow 2.5s ease-in-out infinite; transition: transform 0.2s; }
+    .aira-chip:hover { transform: translateY(-1px); }
+    .aira-chip img { width: 30px; height: 30px; flex: none; }
+    .aira-chip b { color: #ff8a2a; }
+    @keyframes aira-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 138, 42, 0.5), 0 0 10px rgba(255, 138, 42, 0.25); } 50% { box-shadow: 0 0 0 5px rgba(255, 138, 42, 0), 0 0 26px rgba(255, 138, 42, 0.6); } }
+    @media (prefers-reduced-motion: reduce) { .aira-chip { animation: none; box-shadow: 0 0 14px rgba(255, 138, 42, 0.35); } }
     .tg-band { position: relative; overflow: hidden; --tg: #26a5e4; }
     .tg-glow { position: absolute; inset: -20% -10% auto auto; width: 620px; height: 620px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--tg) 28%, transparent), transparent 65%); pointer-events: none; }
     .tg-grid { position: relative; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
@@ -1061,6 +1067,7 @@
       <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="wrap hero-grid">
         <div class="hero-copy">
+          <a class="aira-chip" href="/aira" aria-label="Introducing Aira, an AI agent for Android phones"><picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/aira/aira-logo-still-96.webp" type="image/webp" /><img src="/assets/aira/aira-logo-spin-64.webp" width="30" height="30" alt="The Aira logo" decoding="async" /></picture><span data-i18n="airaChip">New: Meet Aira, your Android AI agent</span><b aria-hidden="true">→</b></a>
           <a class="tg-announce phone-announce" href="/changelog.html"><span class="phone-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16v9H9l-5 4z"/></svg></span><span data-i18n="phoneAnnounce">New in 0.37: your coworker tells you what it learned, and suggests your next message</span><b aria-hidden="true">→</b></a>
           <p class="hero-kicker" data-i18n="heroKicker">Free desktop app for Windows</p>
           <h1><span data-i18n="h1a">Hire an AI team.</span> <span class="accent" data-i18n="h1b">Pay ₹0.</span></h1>
@@ -1077,7 +1084,7 @@
             <a class="ms-badge hero-store" href="https://apps.microsoft.com/detail/9PD6BP3NGVST" target="_blank" rel="noopener noreferrer"><img src="/assets/ms-store-badge.svg" width="190" height="52" alt="Download from the Microsoft Store" /></a>
           </div>
           <p class="lead" data-i18n="lead">Sahkarmi is free, open-source AI that uses your Windows PC like a coworker would. It browses websites, opens and works in desktop apps, researches, writes, works inside 1,660 apps and runs on a schedule. Before it pays, sends or posts, it asks you.</p>
-          <p class="hero-help"><a href="https://t.me/dhruboG" target="_blank" rel="noopener noreferrer" data-i18n="heroHelp">Need help installing? Message us on Telegram</a></p>
+          <p class="hero-help"><a href="https://t.me/druboG" target="_blank" rel="noopener noreferrer" data-i18n="heroHelp">Need help installing? Message us on Telegram</a></p>
           <div class="to-pc" id="to-pc" hidden>
             <p class="to-pc-title" data-i18n="toPcTitle">On your phone? Sahkarmi installs on a Windows PC.</p>
             <div class="to-pc-actions">
@@ -1732,7 +1739,7 @@
         </div>
         <div class="install-help reveal" id="install-help">
           <div><h3 data-i18n="ihH">Need help installing Sahkarmi?</h3><p data-i18n="ihP">Message us on Telegram. Tell us your Windows version and what you see on the screen.</p></div>
-          <a class="btn btn-ghost" href="https://t.me/dhruboG" target="_blank" rel="noopener noreferrer" data-i18n="ihBtn">Get help on Telegram</a>
+          <a class="btn btn-ghost" href="https://t.me/druboG" target="_blank" rel="noopener noreferrer" data-i18n="ihBtn">Get help on Telegram</a>
         </div>
         <p class="platforms sr-only">
           <a data-platform="win" href="https://github.com/ganguydhrubo/Sahkarmi/releases/download/v0.35.0/Sahkarmi-0.35.0-x64.exe">Windows installer</a>
@@ -1961,8 +1968,9 @@
       <div class="footer-links">
         <span data-i18n="talk">Talk to a human:</span>
         <a href="mailto:sahkarmi.site@gmail.com"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>sahkarmi.site@gmail.com</a>
-        <a href="https://t.me/dhruboG" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.94 4.6 18.7 19.86c-.24 1.07-.88 1.34-1.78.83l-4.93-3.63-2.38 2.29c-.26.26-.48.48-.99.48l.35-5.02 9.14-8.26c.4-.35-.09-.55-.62-.2L6.2 13.46l-4.86-1.52c-1.06-.33-1.08-1.06.22-1.57L20.58 3.05c.88-.33 1.65.2 1.36 1.55z"/></svg>Telegram</a>
+        <a href="https://t.me/druboG" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.94 4.6 18.7 19.86c-.24 1.07-.88 1.34-1.78.83l-4.93-3.63-2.38 2.29c-.26.26-.48.48-.99.48l.35-5.02 9.14-8.26c.4-.35-.09-.55-.62-.2L6.2 13.46l-4.86-1.52c-1.06-.33-1.08-1.06.22-1.57L20.58 3.05c.88-.33 1.65.2 1.36 1.55z"/></svg>Telegram</a>
         <a href="https://discord.com/invite/unk83wqPUD" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z"/></svg>Discord</a>
+        <a href="/aira" data-i18n="footAira">Aira for Android</a>
         <a href="/computer-use.html" data-i18n="footComputer">AI that uses your computer</a>
         <a href="/use-cases.html" data-i18n="footUseCases">Use cases</a>
         <a href="/coworkers/" data-i18n="footCoworkers">All AI coworkers</a>
@@ -2058,6 +2066,7 @@
         tgInput: "Message",
         plugAnnounce: "New: Skills, MCP servers and workflow export",
         pcAnnounce: "New: coworkers can now use the apps on your PC",
+        footAira: "Aira for Android",
         footComputer: "AI that uses your computer",
         footUseCases: "Use cases",
         footCoworkers: "All AI coworkers",
@@ -2483,6 +2492,7 @@
         pMore: "GitHub Copilot, Cursor, Qwen Code, Kimi Code, Cline, Grok, Mistral Vibe, Kiro, Goose, Factory Droid and Qoder. Sahkarmi installs each one for you when you press Connect.",
         pMoreT: "11 more AI agents",
         pMoreC: "Your plan; Copilot and Kiro have free tiers",
+        airaChip: "New: Meet Aira, your Android AI agent",
         phoneAnnounce: "New in 0.37: your coworker tells you what it learned, and suggests your next message",
         toPcTitle: "On your phone? Sahkarmi installs on a Windows PC.",
         toPcShare: "Send the link to my PC",
@@ -2621,6 +2631,7 @@
         tgInput: "मैसेज",
         plugAnnounce: "नया: स्किल्स, MCP सर्वर और वर्कफ़्लो एक्सपोर्ट",
         pcAnnounce: "नया: सहकर्मी अब आपके PC के ऐप्स चला सकते हैं",
+        footAira: "Android के लिए Aira",
         footComputer: "आपका कंप्यूटर चलाने वाला AI",
         footUseCases: "इस्तेमाल के उदाहरण",
         footCoworkers: "सभी AI सहकर्मी",
@@ -3046,6 +3057,7 @@
         pMore: "GitHub Copilot, Cursor, Qwen Code, Kimi Code, Cline, Grok, Mistral Vibe, Kiro, Goose, Factory Droid और Qoder. Connect दबाते ही सहकर्मी इन्हें आपके लिए इंस्टॉल करता है.",
         pMoreT: "11 और AI एजेंट",
         pMoreC: "आपका प्लान; Copilot और Kiro के फ्री प्लान हैं",
+        airaChip: "नया: मिलिए Aira से, आपके Android फ़ोन का AI एजेंट",
         phoneAnnounce: "नया 0.37 में: सहकर्मी बताता है कि उसने क्या सीखा, और आपका अगला संदेश सुझाता है",
         toPcTitle: "फ़ोन पर हैं? सहकर्मी Windows PC पर इंस्टॉल होता है.",
         toPcShare: "लिंक अपने PC पर भेजें",

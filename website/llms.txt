@@ -33,6 +33,20 @@ Key facts (checked against release 0.34.0 on 25 November 2026):
 - On Mac as on Windows: coworkers controlling desktop apps (macOS asks once for Accessibility and Screen Recording), voice typing that runs on the computer, and guided MCP server installs. Windows only: the Tally connector and the Microsoft Store, winget and Scoop installs.
 - Checksums for the Mac files: `SHA256SUMS-macos.txt` on the release page. Verify with `shasum -a 256 ~/Downloads/Sahkarmi-0.37.0-arm64.dmg`.
 
+## Aira (Android)
+
+Aira is a free, open-source AI agent for Android phones (Apache License 2.0), by the same founder as Sahkarmi. The owner says what they need, and Aira works their apps and the web on a hidden background screen until the job is done, so the phone stays free to use. It is a separate app from Sahkarmi, which runs on Windows and Mac.
+
+- [Aira](https://sahkarmi.site/aira): what Aira is, what it can and cannot do, how to install it, and the FAQ
+- What it does: operates apps (reads lists and chats, taps, types, shares text), browses the web in a built-in browser, helps with the current screen, runs schedules and conditions, hold to talk (offline voice packs can be downloaded in the app), a Linux sandbox for files and computing (arm64), and tasks handed over from AI tools on a computer (CLI + Skill or MCP).
+- What it does not do: it does not log in or pay for the owner (logins, verification codes and payments are handed back), it cannot read screens that block screenshots, it has no server and no AI model of its own, and there is no iPhone version.
+- Requirements: Android 11 or later for chat, web and files; Android 12 or later to operate phone apps (Android 14 or later recommended). No root; phone control is set up once with wireless debugging.
+- Privacy: there is no Aira server. Messages and screen content go only to the model provider the owner chooses (OpenAI, Anthropic, Gemini, xAI, Groq, Mistral, OpenRouter, local Ollama or LM Studio, and more).
+- Price: free. The owner pays only their own AI model provider, if any.
+- [Download Aira (GitHub Releases)](https://github.com/ganguydhrubo/Aira/releases/latest): the newest APK; Obtainium can install updates automatically
+- [Aira source code](https://github.com/ganguydhrubo/Aira): the primary source for every fact above
+- Founder: Dhrubojyoti Gangopadhyay ([LinkedIn](https://www.linkedin.com/in/dhrubojyoti-gangopadhyay/), Telegram https://t.me/druboG)
+
 ## Official links
 
 - [Website](https://sahkarmi.site/): product overview, explainer video, real screenshots, download and FAQ
@@ -62,7 +76,7 @@ Key facts (checked against release 0.34.0 on 25 November 2026):
 ## Contact
 
 - Email: sahkarmi.site@gmail.com
-- Telegram: https://t.me/dhruboG
+- Telegram: https://t.me/druboG
 - Discord: https://discord.com/invite/unk83wqPUD
 - Bug reports: https://github.com/ganguydhrubo/sahakarmi/issues
 - Security reports: private vulnerability reporting on the GitHub repository (see SECURITY.md)
